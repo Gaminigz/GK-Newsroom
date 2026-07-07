@@ -3,7 +3,28 @@
 > Written 2026-07-07 by the previous session. If any fact here contradicts
 > the code, **trust the code and update this file**.
 
-## ⚡ ACTIVE TASK (2026-07-08): fix the Railway `gk-newsroom` deploy
+## ✅ RESOLVED (2026-07-08): Railway `gk-newsroom` deploy is live
+
+Fixed by the user's local desktop session via Railway CLI (`railway up`):
+service **newsroom** in project **gk-newsroom** (GK SMART's Projects,
+`gamini@ggmt.sg`) is ACTIVE, unexposed, US West, with the Cron Runs tab
+present — cron `0 22 * * *` UTC (5 AM ICT) picked up from `railway.json`.
+
+Follow-ups still open:
+1. **Verify first cron run writes to Mongo** — after 5 AM ICT check
+   `gk_newsroom.ai_feed_items` for today-dated docs and `ai_feed_podcast`
+   for today's `_id`.
+2. **`railway up` deploys the local folder, not GitHub** — the service is
+   likely NOT linked to the repo, so `git push` won't auto-deploy. To fix:
+   service Settings → Source → connect `Gaminigz/GK-Newsroom`, branch
+   `claude/git-review-ja0lpn` (or main after merge).
+3. **Rotate secrets** — the Mongo password and Gemini key appeared in
+   screen captures during setup. Rotate both (Atlas → Database Access;
+   AI Studio → new key), then update Railway variables + local `.env`.
+
+Original task notes kept below for context.
+
+### (archived) ACTIVE TASK (2026-07-08): fix the Railway `gk-newsroom` deploy
 
 State when the last session ended:
 
