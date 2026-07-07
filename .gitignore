@@ -1,0 +1,13 @@
+node_modules/
+.env
+.env.local
+.env.production
+*.log
+.DS_Store
+dist/
+build/
+.tmp/
+/tmp-*
+# runtime scratchpad from yt-routine.sh
+/tmp/yai-newsroom/
+scratchpad/

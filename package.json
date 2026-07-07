@@ -1,0 +1,30 @@
+{
+  "name": "yai-newsroom",
+  "version": "0.1.0",
+  "private": false,
+  "description": "The Yai Ai newsroom pipeline: RSS → Gemini rewrite → MongoDB → yaikh.com/ai-feed + daily podcast + Android-emulator posting rig for TikTok & YouTube Shorts.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "fetch": "tsx src/scripts/run-fetch.mjs",
+    "podcast": "tsx src/scripts/run-podcast.mjs",
+    "seed": "tsx src/scripts/seed-history-and-timelines.mjs",
+    "seed:rewrite": "tsx src/scripts/seed-history-and-timelines.mjs --rewrite",
+    "photo": "tsx src/scripts/render-brief-photo.mjs",
+    "ping": "tsx -e \"import { pingDb, closeDb } from './src/lib/mongo.ts'; pingDb().then(r=>console.log(r)).finally(()=>closeDb())\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google/genai": "^2.8.0",
+    "mongodb": "^7.3.0",
+    "rss-parser": "^3.13.0",
+    "sharp": "^0.34.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.23.0",
+    "typescript": "^5.7.0"
+  }
+}
