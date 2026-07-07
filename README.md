@@ -95,6 +95,19 @@ Never rename these collections or the marketing site's reader breaks silently.
 - Podcast (script + ~150s TTS):            ~$0.60/day
 - Total ≈ **$0.61/day, ≈ $18/month**. Free Trial credit covers >18 months.
 
+## Deploy (Railway cron — GK stack)
+
+The pipeline runs as a **cron service** on Railway (account **GK SMART's Projects**, `gamini@ggmt.sg`). `railway.json` configures it: `npm run daily` (fetch → podcast) at `0 22 * * *` UTC (5:00 AM ICT), no restart on exit.
+
+One-time setup in the Railway dashboard:
+
+1. **New Project → Deploy from GitHub repo** → pick `Gaminigz/GK-Newsroom` (install the Railway GitHub app on the `Gaminigz` account if it's not listed).
+2. **Variables** — add `MONGO_URL`, `MONGO_DB=gk_newsroom`, `GEMINI_API_KEY` (same values as local `.env`).
+3. Confirm the service picked up the cron schedule from `railway.json` (Settings → Cron Schedule). No public networking / domain needed — this service has no HTTP server.
+4. In Atlas (**gamini@ggmt.sg** account → Network Access) allow `0.0.0.0/0` — Railway egress IPs are dynamic, so an IP allowlist can't pin them.
+
+Each run boots the container, executes the pipeline once (~3 min, ~$0.61 in Gemini calls), and exits.
+
 ## Related repos
 
 - **[yaikhsales/homepage](https://github.com/yaikhsales/homepage)** — the marketing site + `/ai-feed` reader UI + floating podcast player. Deployed to Railway (`robust-hope / production` env). Do NOT copy pipeline code back into it; keep the seam at Mongo.

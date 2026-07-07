@@ -8,6 +8,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "daily": "npm run fetch && npm run podcast",
     "fetch": "tsx src/scripts/run-fetch.mjs",
     "podcast": "tsx src/scripts/run-podcast.mjs",
     "seed": "tsx src/scripts/seed-history-and-timelines.mjs",
@@ -20,11 +21,11 @@
     "@google/genai": "^2.8.0",
     "mongodb": "^7.3.0",
     "rss-parser": "^3.13.0",
-    "sharp": "^0.34.0"
+    "sharp": "^0.34.0",
+    "tsx": "^4.23.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "tsx": "^4.23.0",
     "typescript": "^5.7.0"
   }
 }

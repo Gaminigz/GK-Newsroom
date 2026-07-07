@@ -11,9 +11,9 @@ You are working on **`yaikhsales/yai-newsroom`** — a CLI-first Node/TypeScript
 
 | Lane | Owner | URL |
 |---|---|---|
-| **This repo** — CLI pipeline | runs locally on the user's Mac (not deployed) | https://github.com/yaikhsales/yai-newsroom |
-| **`yaikhsales/homepage`** — marketing site | Railway (`robust-hope / production`) | https://yaikh-com-production.up.railway.app / https://yaikh.com |
-| **MongoDB Atlas** — the seam | Atlas project **Project 0** in TEXLINK org | cluster `yaikhhomepage`, DB `yaikh` |
+| **This repo** — CLI pipeline | GK stack: `Gaminigz/GK-Newsroom` on GitHub; daily cron on Railway (**GK SMART's Projects**, `gamini@ggmt.sg`, Hobby) — see `railway.json`. Also runs locally on the user's Mac. | https://github.com/Gaminigz/GK-Newsroom |
+| **`yaikhsales/homepage`** — marketing site (legacy yaikh stack) | Railway (`robust-hope / production`) on the yaikh account — GK reader-side fork NOT done yet | https://yaikh-com-production.up.railway.app / https://yaikh.com |
+| **MongoDB Atlas** — the seam | GK stack: `gamini@ggmt.sg` Atlas account | cluster `Cluster0` (`cluster0.rnuc0oz.mongodb.net`), DB `gk_newsroom` |
 
 ## Auth accounts
 
@@ -67,7 +67,7 @@ Caption cap on YouTube Shorts is **100 characters**. Never exceed it — the Upl
 
 1. **Video renderer for YouTube from a static image** — currently YouTube's free in-app Ai create generates from a prompt each time. Faster/cheaper alternative: ffmpeg over the daily rendered photo + a 30-second slice of the podcast audio. See `scripts/render-brief-photo.mjs` for the photo half.
 2. **Facebook Reels posting** — Meta Graph API works but the Yai account needs a Page (not a personal profile). Approach: mirror `yt-routine.sh` but drive the FB app.
-3. **Cron / schedule** — everything runs manually today. `launchd` plist (Mac) or GitHub Actions (cloud) would let it run daily without user interaction. Emulator part still needs a machine to be up.
+3. **Cron / schedule** — ✅ Railway cron service (GK account, `gamini@ggmt.sg`): `railway.json` runs `npm run daily` (fetch → podcast) at 22:00 UTC = 5:00 AM ICT. Costs ~$0.61/day in Gemini calls per run — change `startCommand` to `npm run fetch` if podcast should stay manual. Emulator posting part still needs a machine to be up (not cron-able on Railway).
 4. **The floating "Winamp-style" podcast player** on yaikh.com is done in the homepage repo — no work here.
 
 ## Gotchas we've already paid for — do NOT re-debug
