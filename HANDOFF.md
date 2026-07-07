@@ -3,6 +3,36 @@
 > Written 2026-07-07 by the previous session. If any fact here contradicts
 > the code, **trust the code and update this file**.
 
+## ⚡ ACTIVE TASK (2026-07-08): fix the Railway `gk-newsroom` deploy
+
+State when the last session ended:
+
+- Railway account **GK SMART's Projects** (`gamini@ggmt.sg`, Hobby) already has a
+  project **`gk-newsroom`** showing **0/1 services online** — almost certainly
+  because it deploys a branch with no start command. The fix is committed on
+  branch **`claude/git-review-ja0lpn`**: `railway.json` (startCommand
+  `npm run daily`, cron `0 22 * * *` UTC = 5 AM ICT, restartPolicy NEVER) plus
+  a `daily` npm script and `tsx` moved to production dependencies.
+- The user created a Railway account API token (`claude-code`) and was setting
+  the Claude environment to **Full network access** with env vars
+  `RAILWAY_TOKEN`, `MONGO_URL`, `GEMINI_API_KEY`. If those are present in your
+  container, YOU have Railway API access — do not ask the user to click.
+
+What to do (in order):
+
+1. Verify access: `curl -s https://backboard.railway.com/graphql/v2 -H "Authorization: Bearer $RAILWAY_TOKEN" -H 'Content-Type: application/json' -d '{"query":"query { me { email } }"}'` — expect `gamini@ggmt.sg`.
+2. Via the GraphQL API (or `npm i -g @railway/cli` + `RAILWAY_TOKEN` env):
+   find project `gk-newsroom` → its service → set source branch to
+   `claude/git-review-ja0lpn`, set service variables `MONGO_URL`,
+   `MONGO_DB=gk_newsroom`, `GEMINI_API_KEY`, confirm cron from railway.json.
+3. Trigger a deploy, tail the logs. Success = `fetched N items` then
+   `done: {...}` then clean exit. "No open ports" warnings are normal (cron
+   worker, no HTTP server).
+4. Verify data: connect with `MONGO_URL` to DB `gk_newsroom`, check
+   `ai_feed_items` has docs dated today and `ai_feed_podcast` has today's
+   `_id`. Only then tell the user it works.
+5. Update this section (or delete it) when done.
+
 ## The one-paragraph picture
 
 You are working on **`yaikhsales/yai-newsroom`** — a CLI-first Node/TypeScript pipeline that fetches Ai news, rewrites it in the Yai voice with Gemini, stores everything in a shared MongoDB Atlas cluster, generates a daily podcast, and (via an Android-emulator posting rig) posts to TikTok + YouTube Shorts on the Yai channels. The public marketing site **`yaikhsales/homepage`** reads the same Mongo DB to render `/ai-feed` and stream the podcast — do **not** duplicate pipeline logic there. The seam is Mongo.
