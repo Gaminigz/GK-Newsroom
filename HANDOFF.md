@@ -47,7 +47,7 @@ Never rename or restructure these collections without also patching the homepage
 - ✅ 12 History + 47 Timeline items seeded and rendering on `/ai-feed` with `📚 Yai History · EPn` and `🕰 Timeline · Brand` pills. History is sorted EP1→EP12 at the bottom of the feed so the filter chip always shows a clean sequence.
 - ✅ Daily podcast (Dara + Maly two-speaker, `gemini-2.5-flash-preview-tts`, Puck + Kore voices) storing WAV in Mongo
 - ✅ TikTok text-post via Android emulator, both English and Khmer (ADBKeyBoard IME for Unicode via `am broadcast -a ADB_INPUT_B64 --es msg <base64>`)
-- ✅ YouTube Shorts via Veo (AI Playground → Create video from a prompt), with music picked from the "epic cinematic" search (row 3 = "Epic Cinematic Dramatic Adventure Trailer", 157K uses), music ducked to 25%, **Pop filter for sharpness** (the only sharpness-boosting filter — Retro/Dreamy/Soft all reduce sharpness), big bold text overlay at the top, uploaded
+- ✅ YouTube Shorts via YouTube's **free in-app Shorts Ai create feature** (AI Playground → Create video from a prompt — free in-app generation of video or music, NOT a Veo/Gemini API call, costs us nothing), with music picked from the "epic cinematic" search (row 3 = "Epic Cinematic Dramatic Adventure Trailer", 157K uses), music ducked to 25%, **Pop filter for sharpness** (the only sharpness-boosting filter — Retro/Dreamy/Soft all reduce sharpness), big bold text overlay at the top, uploaded
 
 ## The proven emulator recipe (repeat exactly)
 
@@ -58,14 +58,14 @@ Set-up done once per AVD:
 
 Per-post:
 1. `source src/scripts/yt-routine.sh`
-2. `yt_veo_prompt "your visual prompt..."` — waits ~60s for Veo to generate
+2. `yt_veo_prompt "your visual prompt..."` — waits ~60s for YouTube's free Ai create to generate
 3. `yt_pipeline "$'overlay text\\nline 2\\n\\nyaikh.com/ai-feed'" "caption with #yai #yaikh #Claude #ai"`
 
 Caption cap on YouTube Shorts is **100 characters**. Never exceed it — the Upload button greys out and it's easy to miss.
 
 ## What is NOT yet built (in priority order)
 
-1. **Video renderer for YouTube from a static image** — currently Veo generates from a prompt each time. Faster/cheaper alternative: ffmpeg over the daily rendered photo + a 30-second slice of the podcast audio. See `scripts/render-brief-photo.mjs` for the photo half.
+1. **Video renderer for YouTube from a static image** — currently YouTube's free in-app Ai create generates from a prompt each time. Faster/cheaper alternative: ffmpeg over the daily rendered photo + a 30-second slice of the podcast audio. See `scripts/render-brief-photo.mjs` for the photo half.
 2. **Facebook Reels posting** — Meta Graph API works but the Yai account needs a Page (not a personal profile). Approach: mirror `yt-routine.sh` but drive the FB app.
 3. **Cron / schedule** — everything runs manually today. `launchd` plist (Mac) or GitHub Actions (cloud) would let it run daily without user interaction. Emulator part still needs a machine to be up.
 4. **The floating "Winamp-style" podcast player** on yaikh.com is done in the homepage repo — no work here.
