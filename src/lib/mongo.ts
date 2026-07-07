@@ -22,7 +22,7 @@ function client(): Promise<MongoClient> {
   return cached;
 }
 
-export async function getDb(name = "yaikh"): Promise<Db> {
+export async function getDb(name = process.env.MONGO_DB || "yaikh"): Promise<Db> {
   const c = await client();
   return c.db(name);
 }
