@@ -54,6 +54,9 @@ npm run seed:rewrite    # regenerate all series items in place
 
 # Render the daily 9:16 branded photo (for TikTok photo-post mode).
 npm run photo -- ./out/brief.png
+
+# Serve the public reader page locally (http://localhost:8080).
+npm run web
 ```
 
 ## Repository layout
@@ -107,6 +110,25 @@ One-time setup in the Railway dashboard:
 4. In Atlas (**gamini@ggmt.sg** account → Network Access) allow `0.0.0.0/0` — Railway egress IPs are dynamic, so an IP allowlist can't pin them.
 
 Each run boots the container, executes the pipeline once (~3 min, ~$0.61 in Gemini calls), and exits.
+
+### Second service: the public reader page
+
+`src/scripts/serve-web.mjs` (`npm run web`) is the shareable feed page — news
+cards, History/Timeline series, and the daily podcast player, read straight
+from Mongo. Deploy it as a **second service in the same Railway project**:
+
+1. gk-newsroom project → **+ New → GitHub Repo** → `Gaminigz/GK-Newsroom`
+   (same repo as the worker).
+2. Service → **Settings → Config-as-code** → set the file path to
+   `railway.web.json` (otherwise it inherits the worker's `railway.json`
+   and becomes a second cron — wrong).
+3. **Variables** → `MONGO_URL`, `MONGO_DB=gk_newsroom` (no Gemini key needed —
+   it only reads).
+4. **Settings → Networking → Generate Domain** → you get the public
+   `*.up.railway.app` link to share on social media.
+
+Routes: `/` (feed page, 5-min cache) · `/podcast/latest.wav` ·
+`/podcast/YYYY-MM-DD.wav` · `/healthz`.
 
 ## Related repos
 

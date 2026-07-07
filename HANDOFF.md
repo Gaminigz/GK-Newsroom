@@ -10,6 +10,12 @@ service **newsroom** in project **gk-newsroom** (GK SMART's Projects,
 `gamini@ggmt.sg`) is ACTIVE, unexposed, US West, with the Cron Runs tab
 present — cron `0 22 * * *` UTC (5 AM ICT) picked up from `railway.json`.
 
+**Web reader added (2026-07-08):** `npm run web` / `src/scripts/serve-web.mjs`
+is the public shareable feed page (news + series + podcast player). Deploy as
+a SECOND service in the same Railway project with config file
+`railway.web.json` + Generate Domain — full steps in README "Second service".
+Once live, record the public URL here.
+
 Follow-ups still open:
 1. **Verify first cron run writes to Mongo** — after 5 AM ICT check
    `gk_newsroom.ai_feed_items` for today-dated docs and `ai_feed_podcast`

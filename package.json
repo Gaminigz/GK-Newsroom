@@ -14,6 +14,7 @@
     "seed": "tsx src/scripts/seed-history-and-timelines.mjs",
     "seed:rewrite": "tsx src/scripts/seed-history-and-timelines.mjs --rewrite",
     "photo": "tsx src/scripts/render-brief-photo.mjs",
+    "web": "tsx src/scripts/serve-web.mjs",
     "ping": "tsx -e \"import { pingDb, closeDb } from './src/lib/mongo.ts'; pingDb().then(r=>console.log(r)).finally(()=>closeDb())\"",
     "typecheck": "tsc --noEmit"
   },
