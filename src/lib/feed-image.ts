@@ -24,8 +24,6 @@ async function fetchOgImage(url: string): Promise<string | null> {
     const res = await fetch(url, {
       headers: { "User-Agent": UA, Accept: "text/html,*/*" },
       signal: ctl.signal,
-      // Next fetch cache — same URL is only refetched every 15 min.
-      next: { revalidate: 900 },
     });
     clearTimeout(timer);
     if (!res.ok) return null;
