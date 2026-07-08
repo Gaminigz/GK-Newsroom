@@ -10,7 +10,16 @@ service **newsroom** in project **gk-newsroom** (GK SMART's Projects,
 `gamini@ggmt.sg`) is ACTIVE, unexposed, US West, with the Cron Runs tab
 present — cron `0 22 * * *` UTC (5 AM ICT) picked up from `railway.json`.
 
-## ✅ RESOLVED (2026-07-08): web reader deployed — https://web-production-2b43c.up.railway.app
+## ✅ LIVE (2026-07-08): the public reader page
+
+**https://web-production-2b43c.up.railway.app** — second service ("web") in
+the gk-newsroom Railway project, deployed from `railway.web.json` by the
+user's local desktop session. Verified serving today's feed (35 stories)
+and the daily podcast. Shareable publicly. Remaining niceties: custom
+domain, and rotate the Mongo password + Gemini key (they appeared on
+screen during setup), then update Railway variables + local `.env`.
+
+### (archived) deploy runbook
 
 Deployed by the local desktop session via `railway up` (service **web** in
 project gk-newsroom, staged copy with `railway.web.json` as the active
@@ -151,7 +160,15 @@ Caption cap on YouTube Shorts is **100 characters**. Never exceed it — the Upl
 
 ## What is NOT yet built (in priority order)
 
-1. **Video renderer for YouTube from a static image** — currently YouTube's free in-app Ai create generates from a prompt each time. Faster/cheaper alternative: ffmpeg over the daily rendered photo + a 30-second slice of the podcast audio. See `scripts/render-brief-photo.mjs` for the photo half.
+1. **Video renderer for YouTube** — ✅ built (2026-07-08): `npm run video` /
+   `src/scripts/render-brief-video.mjs` renders photo + podcast slice to a
+   1080×1920 H.264/AAC mp4 via ffmpeg (`brew install ffmpeg` on the Mac;
+   FFMPEG_PATH env override). Verified by dry-run against a stub ffmpeg —
+   the first REAL encode on a machine with ffmpeg still needs eyeballing.
+   Note: `render-brief-photo.mjs` also got fixed to honor MONGO_DB (it
+   hardcoded the old `yaikh` db) and to exclude series items from "top
+   stories". Upload automation (drive the YT app with the file) is still
+   the emulator's job.
 2. **Facebook Reels posting** — Meta Graph API works but the Yai account needs a Page (not a personal profile). Approach: mirror `yt-routine.sh` but drive the FB app.
 3. **Cron / schedule** — ✅ Railway cron service (GK account, `gamini@ggmt.sg`): `railway.json` runs `npm run daily` (fetch → podcast) at 22:00 UTC = 5:00 AM ICT. Costs ~$0.61/day in Gemini calls per run — change `startCommand` to `npm run fetch` if podcast should stay manual. Emulator posting part still needs a machine to be up (not cron-able on Railway).
 4. **The floating "Winamp-style" podcast player** on yaikh.com is done in the homepage repo — no work here.

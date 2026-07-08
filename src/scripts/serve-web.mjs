@@ -5,10 +5,14 @@
  * already ship) that renders the daily feed straight from Mongo:
  *
  *   GET /                      the feed page (news + History/Timeline series
- *                              + today's podcast player), server-rendered
+ *                              + Winamp-style podcast player), server-rendered
  *   GET /podcast/latest.wav    latest ready episode audio
  *   GET /podcast/<date>.wav    a specific episode ("YYYY-MM-DD")
  *   GET /healthz               JSON liveness probe for Railway
+ *
+ * The player lists EVERY ready episode from `ai_feed_podcast` (they live in
+ * Mongo forever once generated, so the back-catalog streams instantly) —
+ * numbered Episode 1 = the oldest, with a dropdown to jump between days.
  *
  * Runs as the second Railway service in the gk-newsroom project (config in
  * railway.web.json). The cron worker writes Mongo; this reads it. Renders
@@ -39,10 +43,11 @@ async function loadFeed() {
       .toArray(),
     col.find({ series: "history" }).sort({ seriesEpisode: 1 }).toArray(),
     col.find({ series: "timeline" }).sort({ seriesReleased: -1 }).toArray(),
-    listEpisodes(1).catch(() => []),
+    // Full back-catalog, newest first. Episode 1 = the oldest ready one.
+    listEpisodes(366).catch(() => []),
   ]);
 
-  return { news, history, timeline, episode: episodes[0] ?? null };
+  return { news, history, timeline, episodes };
 }
 
 /* ------------------------------------------------------------- helpers */
@@ -63,6 +68,19 @@ function timeAgo(ms) {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   return d === 1 ? "yesterday" : `${d}d ago`;
+}
+
+/** "YYYY-MM-DD" → "DD.MM.YYYY" for the player display. */
+function fmtDate(key) {
+  const [y, m, d] = String(key).split("-");
+  return d && m && y ? `${d}.${m}.${y}` : String(key);
+}
+
+function fmtDur(sec) {
+  if (!sec || !Number.isFinite(sec)) return "–:––";
+  const m = Math.floor(sec / 60);
+  const s = String(Math.round(sec % 60)).padStart(2, "0");
+  return `${m}:${s}`;
 }
 
 /** Only real http(s) images qualify for og:image (data-URI SVGs do not). */
@@ -107,17 +125,49 @@ function card(it) {
   </article>`;
 }
 
-function page({ news, history, timeline, episode }) {
+/**
+ * Winamp-style compact player. `episodes` come newest-first from Mongo;
+ * Episode numbers count up from the oldest (EP1 = first ever generated).
+ */
+function player(episodes) {
+  if (!episodes?.length) return "";
+  const total = episodes.length;
+  const list = episodes.map((e, i) => ({
+    n: total - i,
+    date: e.date,
+    label: fmtDate(e.date),
+    dur: fmtDur(e.durationSec),
+  }));
+  const cur = list[0];
+
+  const rows = list
+    .map(
+      (e, i) =>
+        `<li data-i="${i}"${i === 0 ? ' class="on"' : ""}><span class="n">Episode ${e.n}</span><span class="d">${e.label}</span><span class="t">${e.dur}</span></li>`,
+    )
+    .join("");
+
+  return `<section class="wa">
+    <div class="wa-row">
+      <button class="wa-b" id="waPrev" aria-label="Older episode">⏮</button>
+      <button class="wa-b wa-main" id="waPlay" aria-label="Play">▶</button>
+      <button class="wa-b" id="waNext" aria-label="Newer episode">⏭</button>
+      <div class="wa-lcd">
+        <div class="wa-lcd-top" id="waTitle">EP ${cur.n} · ${cur.label} · THE Ai BRIEF</div>
+        <div class="wa-lcd-sub"><span id="waCur">0:00</span> / <span id="waDur">${cur.dur}</span></div>
+      </div>
+      <button class="wa-b wa-drop" id="waDrop" aria-label="Episode list">▾</button>
+    </div>
+    <div class="wa-seek" id="waSeek"><div class="wa-fill" id="waFill"></div></div>
+    <ol class="wa-list" id="waList" hidden>${rows}</ol>
+    <audio id="waAudio" preload="none"></audio>
+    <script id="waData" type="application/json">${JSON.stringify(list)}</script>
+  </section>`;
+}
+
+function page({ news, history, timeline, episodes }) {
   const top = news[0];
   const ogImage = firstShareImage(news);
-  const player = episode
-    ? `<section class="podcast">
-        <div class="podcast-label">\u{1F399} Daily Ai Brief · ${esc(episode.dateKey ?? episode._id ?? "")}${
-          episode.durationSec ? ` · ${Math.round(episode.durationSec / 60)} min` : ""
-        }</div>
-        <audio controls preload="none" src="/podcast/latest.wav"></audio>
-      </section>`
-    : "";
 
   const chips = ["all", "news", "history", "timeline"]
     .map(
@@ -141,16 +191,47 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="${ogImage ? "summary_large_image" : "summary"}">
 <style>
-  :root { --bg:#0d1117; --card:#161b22; --line:#21262d; --fg:#e6edf3; --dim:#8b949e; --acc:#e3b341; }
+  :root { --bg:#0d1117; --card:#161b22; --line:#21262d; --fg:#e6edf3; --dim:#8b949e; --acc:#e3b341; --lcd:#39ff88; }
   * { box-sizing:border-box; margin:0; }
   body { background:var(--bg); color:var(--fg); font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
   .wrap { max-width:680px; margin:0 auto; padding:16px 14px 60px; }
   header h1 { font-size:26px; letter-spacing:-.02em; }
   header h1 em { color:var(--acc); font-style:normal; }
   header .sub { color:var(--dim); font-size:14px; margin-top:2px; }
-  .podcast { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin:16px 0 6px; }
-  .podcast-label { font-size:13px; color:var(--dim); margin-bottom:8px; }
-  .podcast audio { width:100%; height:38px; }
+
+  /* ---- Winamp-style player ---- */
+  .wa { margin:16px 0 6px; border:1px solid #14161b; border-radius:10px;
+        background:linear-gradient(#343a46,#20242c); box-shadow:0 2px 8px #0006; overflow:hidden; }
+  .wa-row { display:flex; align-items:center; gap:8px; padding:8px 10px 6px; }
+  .wa-b { flex:0 0 auto; width:34px; height:30px; border-radius:6px; cursor:pointer; color:#cdd3dd;
+          background:linear-gradient(#4a5160,#2b303a); border:1px solid #171a20;
+          box-shadow:inset 0 1px 0 #ffffff22; font-size:13px; line-height:1; }
+  .wa-b:active { background:linear-gradient(#2b303a,#4a5160); }
+  .wa-main { width:42px; font-size:15px; color:var(--acc); }
+  .wa-lcd { flex:1 1 auto; min-width:0; background:#080d09; border:1px solid #000;
+            border-radius:5px; padding:4px 10px 5px; box-shadow:inset 0 2px 6px #000c; }
+  .wa-lcd-top { color:var(--lcd); font:600 12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
+                letter-spacing:.06em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+                text-shadow:0 0 6px #39ff8877; }
+  .wa-lcd-sub { color:#2bcf6e; font:11px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace; opacity:.9; }
+  .wa-drop { font-size:15px; transition:transform .18s; }
+  .wa-drop.open { transform:rotate(180deg); }
+  .wa-seek { height:8px; margin:0 10px 9px; border-radius:4px; background:#12151b;
+             box-shadow:inset 0 1px 3px #000a; cursor:pointer; }
+  .wa-fill { height:100%; width:0%; border-radius:4px;
+             background:linear-gradient(90deg,#e3b341,#f37021); box-shadow:0 0 6px #f3702188; }
+  .wa-list { list-style:none; max-height:224px; overflow-y:auto; border-top:1px solid #14161b;
+             background:#101318; padding:4px 0; }
+  .wa-list li { display:flex; gap:10px; align-items:baseline; padding:8px 14px; cursor:pointer;
+                font:12.5px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace; color:#aab3bf; }
+  .wa-list li:hover { background:#181d25; }
+  .wa-list li.on { color:var(--lcd); }
+  .wa-list li.on .n::before { content:"▸ "; }
+  .wa-list .n { flex:1; }
+  .wa-list .d { color:#7f8894; }
+  .wa-list li.on .d { color:var(--lcd); opacity:.8; }
+  .wa-list .t { width:44px; text-align:right; color:#6b7480; }
+
   .chips { display:flex; gap:8px; margin:14px 0 4px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
   .chip { flex:0 0 auto; background:var(--card); color:var(--dim); border:1px solid var(--line); border-radius:999px; padding:6px 14px; font-size:13px; cursor:pointer; }
   .chip.on { color:#0d1117; background:var(--acc); border-color:var(--acc); font-weight:600; }
@@ -176,7 +257,7 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
     <h1>GK <em>Ai</em> Newsroom</h1>
     <div class="sub">The daily Ai brief — fresh every morning at 5 AM.</div>
   </header>
-  ${player}
+  ${player(episodes)}
   <nav class="chips">${chips}</nav>
   <main id="feed">
     ${news.map(card).join("\n")}
@@ -196,6 +277,72 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
       });
     });
   });
+
+  // ---- Winamp player ----
+  (() => {
+    const data = document.getElementById("waData");
+    if (!data) return;
+    const eps = JSON.parse(data.textContent);          // newest first
+    const audio = document.getElementById("waAudio");
+    const play = document.getElementById("waPlay");
+    const prev = document.getElementById("waPrev");
+    const next = document.getElementById("waNext");
+    const drop = document.getElementById("waDrop");
+    const listEl = document.getElementById("waList");
+    const title = document.getElementById("waTitle");
+    const cur = document.getElementById("waCur");
+    const dur = document.getElementById("waDur");
+    const seek = document.getElementById("waSeek");
+    const fill = document.getElementById("waFill");
+    let i = 0, loaded = false;
+
+    const mmss = (s) => isFinite(s) ? Math.floor(s/60) + ":" + String(Math.floor(s%60)).padStart(2,"0") : "–:––";
+
+    function show(idx) {
+      i = idx; loaded = false;
+      const e = eps[i];
+      title.textContent = "EP " + e.n + " · " + e.label + " · THE Ai BRIEF";
+      dur.textContent = e.dur; cur.textContent = "0:00"; fill.style.width = "0%";
+      listEl.querySelectorAll("li").forEach((li, k) => li.classList.toggle("on", k === i));
+    }
+    function load() {
+      if (!loaded) { audio.src = "/podcast/" + eps[i].date + ".wav"; loaded = true; }
+    }
+    function start(idx) { show(idx); load(); audio.play(); }
+
+    play.addEventListener("click", () => {
+      load();
+      if (audio.paused) audio.play(); else audio.pause();
+    });
+    audio.addEventListener("play",  () => { play.textContent = "⏸"; });
+    audio.addEventListener("pause", () => { play.textContent = "▶"; });
+    audio.addEventListener("ended", () => { if (i > 0) start(i - 1); });   // roll into the next-newer day
+    audio.addEventListener("loadedmetadata", () => { dur.textContent = mmss(audio.duration); });
+    audio.addEventListener("timeupdate", () => {
+      cur.textContent = mmss(audio.currentTime);
+      if (audio.duration) fill.style.width = (audio.currentTime / audio.duration * 100) + "%";
+    });
+
+    prev.addEventListener("click", () => { if (i < eps.length - 1) start(i + 1); }); // older
+    next.addEventListener("click", () => { if (i > 0) start(i - 1); });              // newer
+
+    seek.addEventListener("click", (ev) => {
+      if (!audio.duration) return;
+      const r = seek.getBoundingClientRect();
+      audio.currentTime = ((ev.clientX - r.left) / r.width) * audio.duration;
+    });
+
+    drop.addEventListener("click", () => {
+      listEl.hidden = !listEl.hidden;
+      drop.classList.toggle("open", !listEl.hidden);
+    });
+    listEl.addEventListener("click", (ev) => {
+      const li = ev.target.closest("li");
+      if (li) start(Number(li.dataset.i));
+    });
+
+    show(0);
+  })();
 </script>
 </body>
 </html>`;

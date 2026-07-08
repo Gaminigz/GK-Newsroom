@@ -57,6 +57,12 @@ npm run photo -- ./out/brief.png
 
 # Serve the public reader page locally (http://localhost:8080).
 npm run web
+
+# Render the daily 9:16 video: brief photo + 30s of the podcast as
+# soundtrack — uploads directly as a YouTube Short / TikTok video.
+# Needs ffmpeg (brew install ffmpeg).
+npm run video                          # → ./brief.mp4
+npm run video -- --start 20 --duration 45 --out out/brief.mp4
 ```
 
 ## Repository layout
@@ -126,6 +132,8 @@ from Mongo. Deploy it as a **second service in the same Railway project**:
    it only reads).
 4. **Settings → Networking → Generate Domain** → you get the public
    `*.up.railway.app` link to share on social media.
+
+Live at: **https://web-production-2b43c.up.railway.app**
 
 Routes: `/` (feed page, 5-min cache) · `/podcast/latest.wav` ·
 `/podcast/YYYY-MM-DD.wav` · `/healthz`.
