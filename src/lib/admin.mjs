@@ -134,7 +134,7 @@ function loginPage(error = "") {
       <label>PASSWORD</label>
       <input type="password" name="password" placeholder="••••••••••" autocomplete="current-password">
       <button type="submit">Sign in to console</button>
-      <a class="forgot" href="/admin">Forgot password?</a>
+      <a class="forgot" href="mailto:gk.smart@ggmt.sg?subject=Admin%20access%20request">Forgot password? Email gk.smart@ggmt.sg</a>
     </form>
 </body>
 </html>`;

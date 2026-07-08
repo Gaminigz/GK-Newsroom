@@ -197,23 +197,91 @@ function buyerNav(on) {
 
 /* -------------------------------------------------------- 3.1 welcome */
 
-function welcomePage() {
+const SUPPORT = {
+  email: "gk.smart@ggmt.sg",
+  telegram: "https://t.me/GKSmartbiz",
+  whatsapp: "https://wa.me/6585565977",
+  whatsappLabel: "+65 8556 5977",
+};
+
+function supportLinks() {
+  return `<div class="row" style="gap:8px;flex-wrap:wrap;justify-content:center">
+    <a class="chip" href="mailto:${SUPPORT.email}">✉️ ${SUPPORT.email}</a>
+    <a class="chip" href="${SUPPORT.telegram}" target="_blank" rel="noopener">✈️ @GKSmartbiz</a>
+    <a class="chip" href="${SUPPORT.whatsapp}" target="_blank" rel="noopener">💬 WhatsApp ${SUPPORT.whatsappLabel}</a>
+  </div>`;
+}
+
+function legalFooter() {
+  return `<div class="sub" style="font-size:12px;margin-top:22px;text-align:center">
+    <a href="/app/terms" style="text-decoration:underline">Terms of Service</a> ·
+    <a href="/app/privacy" style="text-decoration:underline">Privacy Policy</a> ·
+    <a href="/app/support" style="text-decoration:underline">Support &amp; Contact</a>
+  </div>`;
+}
+
+function welcomePage(req) {
+  const myShop = cookies(req ?? { headers: {} }).app_shop;
   return shell({
     title: "3una 5aha — the spice marketplace",
     body: `
-    <div style="text-align:center; padding-top:9vh">
+    <div style="text-align:center; padding-top:7vh">
       <div style="width:92px;height:92px;border-radius:26px;background:#f0e7de;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;font-size:38px">🌶</div>
       <h1 style="font-size:32px"><span style="color:${ORANGE}">3</span>una <span style="color:${ORANGE}">5</span>aha</h1>
       <div class="sub" style="margin:6px 0 4px">කුළුබඩු · the spice marketplace</div>
-      <p class="sub" style="max-width:280px;margin:0 auto 34px">Find Sri Lankan dishes around the world — from restaurants &amp; home cooks near you</p>
-      <button class="btn ghost" style="margin-bottom:10px" onclick="alert('Google sign-in arrives with the native app — browse as guest for now')">Continue with Google</button>
-      <button class="btn fb" style="margin-bottom:10px" onclick="alert('Facebook sign-in arrives with the native app — browse as guest for now')">Continue with Facebook</button>
-      <button class="btn dark" style="margin-bottom:22px" onclick="alert('Apple sign-in arrives with the native app — browse as guest for now')">Continue with Apple</button>
-      <a href="/app/home" style="font-weight:700;color:${ORANGE}">Browse as guest →</a>
-      <div style="margin-top:18px"><a href="/app/register" style="font-weight:700">🏪 Sell on 3una 5aha — register your shop</a></div>
-      <div class="sub" style="font-size:11.5px;margin-top:26px">By continuing you agree to our Terms &amp; Privacy Policy</div>
+      <p class="sub" style="max-width:280px;margin:0 auto 30px">Find Sri Lankan dishes around the world — from restaurants &amp; home cooks near you</p>
+      <a class="btn" style="margin-bottom:10px" href="/app/home">Start browsing — no sign-up needed</a>
+      ${myShop ? `<a class="btn dark" style="margin-bottom:10px" href="/app/owner/${esc(myShop)}">🏪 My shop dashboard</a>` : `<a class="btn ghost" style="margin-bottom:10px" href="/app/register">🏪 Sell on 3una 5aha — open your shop</a>`}
+      <div class="sub" style="font-size:12.5px;margin:16px 0 10px">Questions? Talk to a human:</div>
+      ${supportLinks()}
+      ${legalFooter()}
+      <div class="sub" style="font-size:11.5px;margin-top:12px">By continuing you agree to our Terms &amp; Privacy Policy</div>
     </div>`,
   });
+}
+
+/* --------------------------------------------------- legal & support */
+
+function legalShell(title, body) {
+  return shell({
+    title: `${title} — 3una 5aha`,
+    back: "/app",
+    body: `<h1 style="font-size:21px">${esc(title)}</h1>
+    <div class="sub" style="margin-bottom:14px">3una 5aha · operated by GK SMART (GGMT PTE. LTD., Singapore) · last updated 9 July 2026</div>
+    <div class="card" style="line-height:1.65">${body}</div>
+    ${legalFooter()}`,
+  });
+}
+
+function termsPage() {
+  return legalShell("Terms of Service", `
+    <p><strong>1. The service.</strong> 3una 5aha is a marketplace connecting buyers with independent restaurants and home cooks ("shops"). Shops prepare and sell food; 3una 5aha provides the listing, ordering and chat platform and is not the seller, preparer or deliverer of any food.</p>
+    <p style="margin-top:10px"><strong>2. Accounts.</strong> Browsing needs no account. Shops register with contact details and are live immediately. We may suspend or remove any shop or user that breaks these terms, posts objectionable content, or harms the community — without prior notice.</p>
+    <p style="margin-top:10px"><strong>3. User content &amp; zero tolerance.</strong> Dish listings, photos and chat messages are user-generated. Objectionable content, abuse, fraud or illegal goods are not tolerated. Report any content or user via <a href="/app/support" style="text-decoration:underline">Support</a> — reports are reviewed within 24 hours and offending content or users removed or blocked.</p>
+    <p style="margin-top:10px"><strong>4. Orders &amp; payment.</strong> Orders are agreements between buyer and shop. Payment is settled directly with the shop at pickup unless stated otherwise. Prices are set by shops in their local currency.</p>
+    <p style="margin-top:10px"><strong>5. Food safety.</strong> Shops are solely responsible for food safety, hygiene, allergen information and compliance with their local food regulations.</p>
+    <p style="margin-top:10px"><strong>6. Liability.</strong> The service is provided "as is". To the maximum extent permitted by law, GK SMART is not liable for indirect or consequential loss arising from use of the platform.</p>
+    <p style="margin-top:10px"><strong>7. Changes.</strong> We may update these terms; continued use means acceptance. Questions: <a href="mailto:${SUPPORT.email}" style="text-decoration:underline">${SUPPORT.email}</a>.</p>`);
+}
+
+function privacyPage() {
+  return legalShell("Privacy Policy", `
+    <p><strong>What we collect.</strong> Buyers: name, phone number, city and order/chat history — only what you enter when ordering. Shops: shop name, owner name, email, phone, city and listings. No payment card data is collected or stored. No advertising trackers, no analytics SDKs, no selling of data — ever.</p>
+    <p style="margin-top:10px"><strong>Why.</strong> Solely to run the marketplace: showing nearby shops, passing your order and pickup chat to the shop, and letting shops manage their menu.</p>
+    <p style="margin-top:10px"><strong>Where it lives.</strong> Data is stored in MongoDB Atlas (cloud database) and served via Railway (hosting). It is visible only to you, the shop you order from, and the 3una 5aha operators.</p>
+    <p style="margin-top:10px"><strong>Cookies.</strong> A small number of functional cookies only (your city, your phone for order history, your shop id). No tracking cookies.</p>
+    <p style="margin-top:10px"><strong>Your rights &amp; account deletion.</strong> You can request a copy of your data, correction, or <strong>full deletion of your account and data</strong> at any time — email <a href="mailto:${SUPPORT.email}?subject=Account%20deletion%20request" style="text-decoration:underline">${SUPPORT.email}</a> or message us on <a href="${SUPPORT.telegram}" style="text-decoration:underline">Telegram</a> / <a href="${SUPPORT.whatsapp}" style="text-decoration:underline">WhatsApp</a>. Deletion is completed within 30 days.</p>
+    <p style="margin-top:10px"><strong>Children.</strong> The service is not directed at children under 13.</p>
+    <p style="margin-top:10px"><strong>Contact.</strong> Data controller: GK SMART (GGMT PTE. LTD., Singapore) · <a href="mailto:${SUPPORT.email}" style="text-decoration:underline">${SUPPORT.email}</a>.</p>`);
+}
+
+function supportPage() {
+  return legalShell("Support & Contact", `
+    <p><strong>Talk to a human — buyers and shop owners.</strong> Tech support, order problems, password/access recovery, reports of bad content or behaviour, account deletion — all through any of these:</p>
+    <p style="margin-top:12px">✉️ Email: <a href="mailto:${SUPPORT.email}" style="text-decoration:underline;font-weight:700">${SUPPORT.email}</a><br>
+    ✈️ Telegram: <a href="${SUPPORT.telegram}" style="text-decoration:underline;font-weight:700">@GKSmartbiz</a><br>
+    💬 WhatsApp: <a href="${SUPPORT.whatsapp}" style="text-decoration:underline;font-weight:700">${SUPPORT.whatsappLabel}</a></p>
+    <p style="margin-top:12px"><strong>Lost access to your shop?</strong> Email us from your registered address and we restore your dashboard link. <strong>Account deletion:</strong> one message, done within 30 days. <strong>Reporting content:</strong> tell us the shop or order — reviewed within 24 hours.</p>`);
 }
 
 /* ----------------------------------------------------------- 3.3 home */
@@ -462,7 +530,7 @@ function registerPage(error = "") {
     body: `
     <h1>Register your shop</h1>
     <div class="sub si">ඔබේ කඩය ලියාපදිංචි කරන්න</div>
-    <p class="sub" style="margin:8px 0 4px">Restaurants &amp; home cooks welcome — worldwide. Your shop goes live after a quick review by the 3una 5aha team.</p>
+    <p class="sub" style="margin:8px 0 4px">Restaurants &amp; home cooks welcome — worldwide. Your shop is <strong>live immediately</strong>, no waiting. Need help? <a href="/app/support" style="text-decoration:underline">Support</a> is one tap away.</p>
     ${error ? `<div class="card" style="background:#fdecea;border-color:#efc4bf;color:#b3261e">${esc(error)}</div>` : ""}
     <form method="POST" action="/app/register">
       <label>SHOP NAME</label>
@@ -488,13 +556,14 @@ function registerPage(error = "") {
 
 function registeredPage(shopId, name) {
   return shell({
-    title: "Shop submitted — 3una 5aha",
+    title: "Shop live — 3una 5aha",
     body: `
     <div style="text-align:center;padding-top:10vh">
       <div style="font-size:52px">🎉</div>
-      <h1 style="margin-top:10px">${esc(name)} is submitted!</h1>
-      <p class="sub" style="max-width:300px;margin:10px auto 26px">Your shop is <strong>pending review</strong>. The 3una 5aha team approves new shops quickly — you can already set up your menu while you wait.</p>
-      <a class="btn" href="/app/owner/${esc(shopId)}">Open my shop dashboard</a>
+      <h1 style="margin-top:10px">${esc(name)} is LIVE!</h1>
+      <p class="sub" style="max-width:300px;margin:10px auto 26px">Buyers nearby can already find you. Add your first dishes now — this browser stays signed in to your dashboard (lost the link? <a href="/app/support" style="text-decoration:underline">Support</a> restores it).</p>
+      <a class="btn" href="/app/owner/${esc(shopId)}/add-dish">+ Add my first dish</a>
+      <div style="margin-top:12px"><a href="/app/owner/${esc(shopId)}" style="font-weight:700">Open my shop dashboard →</a></div>
       <div style="margin-top:14px"><a class="sub" href="/app/home">← back to browsing</a></div>
     </div>`,
   });
@@ -558,6 +627,9 @@ async function ownerDash(id) {
     ${special ? `<div class="card row"><div class="thumb">🎁</div><div style="flex:1"><strong>${esc(special.name)}</strong>
       <div class="sub" style="font-size:12.5px">${lkr(special.price)}${special.discount && special.discount !== "none" ? ` · <span style=\"color:${ORANGE}\">${esc(special.discount)}</span>` : ""} · showing in Today's promotions</div></div></div>`
       : `<div class="sub card">No special yet — publish one with the toggle in "Add dish".</div>`}
+    <div class="sub" style="margin:18px 0 8px;text-align:center">Tech support, any problem — talk to a human:</div>
+    ${supportLinks()}
+    <div style="height:70px"></div>
     <a class="btn" style="position:fixed;bottom:20px;right:max(14px,calc(50% - 226px));width:auto;padding:13px 20px;border-radius:99px" href="/app/owner/${String(shop._id)}/add-dish">+ Add dish</a>`,
   });
 }
@@ -618,9 +690,13 @@ export async function handleApp(req, res, url) {
   }
 
   if (path === "/app" || path === "/app/") {
-    html(res, welcomePage());
+    html(res, welcomePage(req));
     return;
   }
+
+  if (path === "/app/terms") { html(res, termsPage()); return; }
+  if (path === "/app/privacy") { html(res, privacyPage()); return; }
+  if (path === "/app/support") { html(res, supportPage()); return; }
 
   if (path === "/app/home") {
     html(res, await homePage(req));
@@ -652,10 +728,14 @@ export async function handleApp(req, res, url) {
         kind: form.get("kind") === "homecook" ? "homecook" : "restaurant",
         signup: "App",
         listings: 0,
-        status: "pending",
-        open: false,
+        // Auto-approved: shops are live immediately; admin only blocks
+        // (suspends) on rule-breaking or via a support request.
+        status: "active",
+        open: true,
         createdAt: new Date(),
       });
+      // Auto-login: the owner's browser remembers their shop.
+      res.setHeader("Set-Cookie", `app_shop=${String(r.insertedId)}; Path=/app; Max-Age=31536000; SameSite=Lax`);
       html(res, registeredPage(String(r.insertedId), name));
     } else {
       html(res, registerPage());
