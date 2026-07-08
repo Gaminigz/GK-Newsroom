@@ -133,6 +133,8 @@ from Mongo. Deploy it as a **second service in the same Railway project**:
 4. **Settings → Networking → Generate Domain** → you get the public
    `*.up.railway.app` link to share on social media.
 
+Live at: **https://web-production-2b43c.up.railway.app**
+
 Routes: `/` (feed page, 5-min cache) · `/podcast/latest.wav` ·
 `/podcast/YYYY-MM-DD.wav` · `/healthz`.
 

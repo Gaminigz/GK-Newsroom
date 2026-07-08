@@ -10,7 +10,16 @@ service **newsroom** in project **gk-newsroom** (GK SMART's Projects,
 `gamini@ggmt.sg`) is ACTIVE, unexposed, US West, with the Cron Runs tab
 present — cron `0 22 * * *` UTC (5 AM ICT) picked up from `railway.json`.
 
-## ⚡ NEXT TASK: deploy the web reader service and give the user its public URL
+## ✅ LIVE (2026-07-08): the public reader page
+
+**https://web-production-2b43c.up.railway.app** — second service ("web") in
+the gk-newsroom Railway project, deployed from `railway.web.json` by the
+user's local desktop session. Verified serving today's feed (35 stories)
+and the daily podcast. Shareable publicly. Remaining niceties: custom
+domain, and rotate the Mongo password + Gemini key (they appeared on
+screen during setup), then update Railway variables + local `.env`.
+
+### (archived) deploy runbook
 
 The code is done and pushed on this branch (`serve-web.mjs`, `railway.web.json`,
 `npm run web` — see README "Second service"). What's left is pure Railway ops:
