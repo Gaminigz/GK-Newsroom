@@ -31,6 +31,7 @@ import http from "node:http";
 import { getDb } from "../lib/mongo.ts";
 import { getEpisodeAudio, listEpisodes } from "../lib/podcast.ts";
 import { handleAdmin } from "../lib/admin.mjs";
+import { handleApp } from "../lib/app.mjs";
 import { SPICES } from "../data/spices.ts";
 import { GOV_SOURCES } from "../data/gov-sources.ts";
 
@@ -830,6 +831,11 @@ const server = http.createServer(async (req, res) => {
 
     if (path === "/admin" || path.startsWith("/admin/")) {
       await handleAdmin(req, res, url);
+      return;
+    }
+
+    if (path === "/app" || path.startsWith("/app/")) {
+      await handleApp(req, res, url);
       return;
     }
 

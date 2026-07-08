@@ -307,7 +307,7 @@ async function shopTab(flash = "") {
       const id = esc(String(o._id));
       const next = o.status === "suspended" ? ["active", "Reactivate"] : o.status === "pending" ? ["active", "Approve"] : ["suspended", "Suspend"];
       return `<tr>
-      <td><strong>${esc(o.name)}</strong><br><span style="color:#8a827b;font-size:12px">${esc(o.owner)}</span></td>
+      <td><a href="/app/owner/${id}" style="color:inherit"><strong>${esc(o.name)}</strong></a><br><span style="color:#8a827b;font-size:12px">${esc(o.owner)}</span></td>
       <td>${esc(o.city)}, ${esc(o.country)}</td>
       <td>${esc(o.signup)}</td>
       <td>${o.listings ?? 0}</td>
