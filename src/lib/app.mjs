@@ -210,6 +210,7 @@ function welcomePage() {
       <button class="btn fb" style="margin-bottom:10px" onclick="alert('Facebook sign-in arrives with the native app — browse as guest for now')">Continue with Facebook</button>
       <button class="btn dark" style="margin-bottom:22px" onclick="alert('Apple sign-in arrives with the native app — browse as guest for now')">Continue with Apple</button>
       <a href="/app/home" style="font-weight:700;color:${ORANGE}">Browse as guest →</a>
+      <div style="margin-top:18px"><a href="/app/register" style="font-weight:700">🏪 Sell on 3una 5aha — register your shop</a></div>
       <div class="sub" style="font-size:11.5px;margin-top:26px">By continuing you agree to our Terms &amp; Privacy Policy</div>
     </div>`,
   });
@@ -452,6 +453,53 @@ function locationPage(req) {
   });
 }
 
+/* --------------------------------------- shop owner registration */
+
+function registerPage(error = "") {
+  return shell({
+    title: "Register your shop — 3una 5aha",
+    back: "/app",
+    body: `
+    <h1>Register your shop</h1>
+    <div class="sub si">ඔබේ කඩය ලියාපදිංචි කරන්න</div>
+    <p class="sub" style="margin:8px 0 4px">Restaurants &amp; home cooks welcome — worldwide. Your shop goes live after a quick review by the 3una 5aha team.</p>
+    ${error ? `<div class="card" style="background:#fdecea;border-color:#efc4bf;color:#b3261e">${esc(error)}</div>` : ""}
+    <form method="POST" action="/app/register">
+      <label>SHOP NAME</label>
+      <input type="text" name="name" required placeholder="Kamatha Kitchen">
+      <label>YOUR NAME</label>
+      <input type="text" name="owner" required placeholder="Nimasha Perera">
+      <label>EMAIL</label>
+      <input type="text" name="email" required placeholder="hello@kamatha.lk">
+      <label>PHONE</label>
+      <input type="tel" name="phone" placeholder="+61 412 555 210">
+      <div class="row" style="gap:10px">
+        <div style="flex:2"><label>CITY</label><input type="text" name="city" required placeholder="Melbourne"></div>
+        <div style="flex:1"><label>COUNTRY</label><input type="text" name="country" required placeholder="AU" maxlength="2" style="text-transform:uppercase"></div>
+      </div>
+      <div class="row" style="margin-top:16px;gap:10px">
+        <label class="chip" style="margin:0"><input type="radio" name="kind" value="restaurant" checked style="accent-color:${ORANGE}"> Restaurant</label>
+        <label class="chip" style="margin:0"><input type="radio" name="kind" value="homecook" style="accent-color:${ORANGE}"> Home cook</label>
+      </div>
+      <button class="btn" style="margin-top:20px">Submit for review</button>
+    </form>`,
+  });
+}
+
+function registeredPage(shopId, name) {
+  return shell({
+    title: "Shop submitted — 3una 5aha",
+    body: `
+    <div style="text-align:center;padding-top:10vh">
+      <div style="font-size:52px">🎉</div>
+      <h1 style="margin-top:10px">${esc(name)} is submitted!</h1>
+      <p class="sub" style="max-width:300px;margin:10px auto 26px">Your shop is <strong>pending review</strong>. The 3una 5aha team approves new shops quickly — you can already set up your menu while you wait.</p>
+      <a class="btn" href="/app/owner/${esc(shopId)}">Open my shop dashboard</a>
+      <div style="margin-top:14px"><a class="sub" href="/app/home">← back to browsing</a></div>
+    </div>`,
+  });
+}
+
 /* -------------------------------------------- 2.1 owner dashboard */
 
 async function ownerDash(id) {
@@ -492,6 +540,8 @@ async function ownerDash(id) {
         <div><strong>${esc(shop.name)}</strong><div class="sub" style="font-size:12px">Shop owner mode</div></div></div>
       <a class="chip" href="/app/shop/${String(shop._id)}">Buyer view</a>
     </div>
+    ${shop.status === "pending" ? `<div class="card" style="margin-top:14px;background:#fdf3d7;border-color:#efdba8"><strong style="color:#946200">⏳ Pending review</strong><div class="sub" style="font-size:12.5px">The 3una 5aha team is reviewing your shop. You can build your menu now — buyers see you once approved.</div></div>` : ""}
+    ${shop.status === "suspended" ? `<div class="card" style="margin-top:14px;background:#fdecea;border-color:#efc4bf"><strong style="color:#b3261e">⛔ Suspended</strong><div class="sub" style="font-size:12.5px">Your shop is hidden from buyers. Contact support@3una5aha.app.</div></div>` : ""}
     <form method="POST" action="/app/owner/${String(shop._id)}/toggle" class="card row" style="margin-top:14px;background:${open ? "#e9f7ec" : "#fdecea"};border-color:${open ? "#c9e8d0" : "#efc4bf"}">
       <div style="flex:1"><strong style="color:${open ? "#1d7a34" : "#b3261e"}">${open ? "You're open" : "You're closed"}</strong>
         <div class="sub" style="font-size:12.5px">${open ? "Accepting orders until 9:00 PM" : "Not accepting orders"}</div></div>
@@ -574,6 +624,42 @@ export async function handleApp(req, res, url) {
 
   if (path === "/app/home") {
     html(res, await homePage(req));
+    return;
+  }
+
+  if (path === "/app/register") {
+    if (req.method === "POST") {
+      const form = await readForm(req);
+      const name = String(form.get("name") || "").trim().slice(0, 80);
+      const owner = String(form.get("owner") || "").trim().slice(0, 60);
+      const email = String(form.get("email") || "").trim().slice(0, 80);
+      if (!name || !owner || !email) {
+        html(res, registerPage("Shop name, your name and email are required."), 400);
+        return;
+      }
+      const dupe = await (await col("shop_owners")).findOne({ email });
+      if (dupe) {
+        html(res, registerPage("A shop with this email already exists — check with the 3una 5aha team."), 409);
+        return;
+      }
+      const r = await (await col("shop_owners")).insertOne({
+        name,
+        owner,
+        email,
+        phone: String(form.get("phone") || "").slice(0, 24),
+        city: String(form.get("city") || "").trim().slice(0, 40),
+        country: String(form.get("country") || "").trim().toUpperCase().slice(0, 2),
+        kind: form.get("kind") === "homecook" ? "homecook" : "restaurant",
+        signup: "App",
+        listings: 0,
+        status: "pending",
+        open: false,
+        createdAt: new Date(),
+      });
+      html(res, registeredPage(String(r.insertedId), name));
+    } else {
+      html(res, registerPage());
+    }
     return;
   }
 
@@ -701,6 +787,8 @@ export async function handleApp(req, res, url) {
         special: form.get("special") === "1",
         createdAt: new Date(),
       });
+      const shopOid = await oid(m[1]);
+      if (shopOid) await (await col("shop_owners")).updateOne({ _id: shopOid }, { $inc: { listings: 1 } });
     }
     redirect(res, `/app/owner/${m[1]}`);
     return;

@@ -74,7 +74,7 @@ Follow-ups still open:
    `Gaminigz/GK-Newsroom` branch `main` with config `railway.web.json`.
    Push to main → Railway rebuilds. (The cron worker `newsroom` still
    deploys via CLI — connect it the same way if wanted.)
-3. **Rotate secrets** — the Mongo password and Gemini key appeared in
+3. **Rotate secrets (PRE-LAUNCH checklist — user deferred 2026-07-09)** — before the iOS/Android app goes public: new Gemini key + dedicated Atlas user for gk-newsroom (admin_gsk is shared with GDDE2026/qa-schedule — coordinate). Exposed in
    screen captures during setup. Rotate both (Atlas → Database Access;
    AI Studio → new key), then update Railway variables + local `.env`.
 
