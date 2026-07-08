@@ -104,14 +104,9 @@ function loginPage(error = "") {
 <meta name="robots" content="noindex">
 <style>
   * { box-sizing:border-box; margin:0; }
-  body { min-height:100vh; display:flex; font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:#191512; color:#e6edf3; }
-  .left { flex:1.1; display:flex; flex-direction:column; justify-content:space-between; padding:36px 40px; background:#191512; }
-  .brand { display:flex; align-items:center; gap:10px; font-weight:800; font-size:19px; color:#fff; }
+  body { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:#faf7f4; color:#1a1a1a; }
+  .brand { display:flex; align-items:center; gap:10px; font-weight:800; font-size:19px; color:#1a1a1a; margin-bottom:26px; }
   .brand .chip { background:#e05a33; color:#fff; border-radius:9px; padding:4px 8px; font-size:15px; }
-  .hero h1 { font-size:clamp(34px,5vw,52px); line-height:1.08; letter-spacing:-.02em; color:#fff; }
-  .hero p { color:#a99d94; margin-top:14px; max-width:340px; font-size:15px; }
-  .foot { color:#6f655d; font-size:12.5px; }
-  .right { flex:1; background:#faf7f4; color:#1a1a1a; border-radius:26px 0 0 26px; display:flex; align-items:center; justify-content:center; padding:32px; }
   .card { width:100%; max-width:340px; }
   .card h2 { font-size:26px; letter-spacing:-.01em; }
   .card .sub { color:#6b6560; font-size:14px; margin:4px 0 22px; }
@@ -125,20 +120,11 @@ function loginPage(error = "") {
   button { width:100%; margin-top:22px; padding:14px; font-size:15.5px; font-weight:700; color:#fff; background:#d9542b; border:0; border-radius:12px; cursor:pointer; }
   button:hover { background:#c4471f; }
   .forgot { display:block; text-align:center; color:#8a827b; font-size:13px; margin-top:14px; text-decoration:none; }
-  @media (max-width:760px){ body{flex-direction:column} .right{border-radius:26px 26px 0 0} .hero{margin:34px 0} }
 </style>
 </head>
 <body>
-  <div class="left">
-    <div class="brand"><span class="chip">35</span> 3una 5aha</div>
-    <div class="hero">
-      <h1>System<br>management<br>console</h1>
-      <p>NewsRoom (Ai brief · 3 subjects · voice streamer) and the worldwide Sri Lankan food marketplace.</p>
-    </div>
-    <div class="foot">Restricted access · super admins only</div>
-  </div>
-  <div class="right">
     <form class="card" method="POST" action="/admin/login" id="f">
+      <div class="brand"><span class="chip">35</span> 3una 5aha</div>
       <h2>Sign in</h2>
       <div class="sub">Use your admin credentials</div>
       ${error ? `<div class="err">${esc(error)}</div>` : ""}
@@ -155,7 +141,6 @@ function loginPage(error = "") {
       <button type="submit">Sign in to console</button>
       <a class="forgot" href="/admin">Forgot password?</a>
     </form>
-  </div>
 <script>
   const boxes = [...document.querySelectorAll('#code input')];
   boxes[0].focus();
