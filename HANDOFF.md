@@ -54,6 +54,18 @@ still unverified (follow-up 1). Original steps kept for reference:
 public shareable feed page (news + series + podcast player). Routes: `/`,
 `/podcast/latest.wav`, `/podcast/YYYY-MM-DD.wav`, `/healthz`.
 
+**GK SMART Accounting channel (2026-07-08):** `/accounting` shows Cambodian
+government announcements (GDT, ACAR, MEF, MoC, GDCE, NA, MoI) translated
+Khmer→English. Pipeline: `npm run gov` → `lib/gov-fetch.ts` scrapes each
+ministry's official WEBSITE news page (Facebook can't be read server-side),
+Gemini extracts + translates posts (thinkingBudget:0 gotcha applies), upserts
+into Mongo `gov_feed_items` keyed by URL. Wired into `npm run daily` (cron),
+failure-isolated per source with `|| true` so podcast still runs. The
+ministry URLs in `src/data/gov-sources.ts` are best-effort — VERIFY on the
+first real run (`npm run gov` on a machine with network) and fix any that
+404 or extract nothing. Logos load client-side from Wikimedia Commons with
+initials-badge fallback.
+
 Follow-ups still open:
 1. **Verify first cron run writes to Mongo** — after 5 AM ICT check
    `gk_newsroom.ai_feed_items` for today-dated docs and `ai_feed_podcast`

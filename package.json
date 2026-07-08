@@ -8,8 +8,9 @@
     "node": ">=20"
   },
   "scripts": {
-    "daily": "npm run fetch && npm run podcast",
+    "daily": "npm run fetch && (npm run gov || true) && npm run podcast",
     "fetch": "tsx src/scripts/run-fetch.mjs",
+    "gov": "tsx src/scripts/run-gov-fetch.mjs",
     "podcast": "tsx src/scripts/run-podcast.mjs",
     "seed": "tsx src/scripts/seed-history-and-timelines.mjs",
     "seed:rewrite": "tsx src/scripts/seed-history-and-timelines.mjs --rewrite",
