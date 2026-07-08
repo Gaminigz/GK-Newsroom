@@ -70,7 +70,7 @@ Follow-ups still open:
 1. **Verify first cron run writes to Mongo** — after 5 AM ICT check
    `gk_newsroom.ai_feed_items` for today-dated docs and `ai_feed_podcast`
    for today's `_id`.
-2. **`railway up` deploys the local folder, not GitHub** — the service is
+2. **GitHub auto-deploy** — connected 2026-07-08: service **web** deploys `Gaminigz/GK-Newsroom` branch `main` with config `railway.web.json`. Push to main → Railway rebuilds. (The cron worker `newsroom` still deploys via CLI — connect it the same way if wanted.)
    likely NOT linked to the repo, so `git push` won't auto-deploy. To fix:
    service Settings → Source → connect `Gaminigz/GK-Newsroom`, branch
    `claude/git-review-ja0lpn` (or main after merge).
