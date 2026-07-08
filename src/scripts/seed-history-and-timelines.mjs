@@ -110,7 +110,7 @@ async function main() {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const client = new MongoClient(process.env.MONGO_URL);
   await client.connect();
-  const col = client.db("yaikh").collection("ai_feed_items");
+  const col = client.db(process.env.MONGO_DB || "yaikh").collection("ai_feed_items");
 
   // ---- History ----
   const existingHistoryIds = new Set(
