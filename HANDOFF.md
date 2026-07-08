@@ -10,11 +10,31 @@ service **newsroom** in project **gk-newsroom** (GK SMART's Projects,
 `gamini@ggmt.sg`) is ACTIVE, unexposed, US West, with the Cron Runs tab
 present — cron `0 22 * * *` UTC (5 AM ICT) picked up from `railway.json`.
 
-**Web reader added (2026-07-08):** `npm run web` / `src/scripts/serve-web.mjs`
-is the public shareable feed page (news + series + podcast player). Deploy as
-a SECOND service in the same Railway project with config file
-`railway.web.json` + Generate Domain — full steps in README "Second service".
-Once live, record the public URL here.
+## ⚡ NEXT TASK: deploy the web reader service and give the user its public URL
+
+The code is done and pushed on this branch (`serve-web.mjs`, `railway.web.json`,
+`npm run web` — see README "Second service"). What's left is pure Railway ops:
+
+1. Check your access: is `RAILWAY_TOKEN` in env and can you reach
+   `backboard.railway.com`? Test:
+   `curl -s https://backboard.railway.com/graphql/v2 -H "Authorization: Bearer $RAILWAY_TOKEN" -H 'Content-Type: application/json' -d '{"query":"query { me { email } }"}'`
+   → expect `gamini@ggmt.sg`.
+2. If YES — via GraphQL API (or `npm i -g @railway/cli`): in project
+   **gk-newsroom** (id `78f4810c-8e60-49ee-8e14-2ee6036308ec`, env
+   `da9be3c8-...`) create a SECOND service from GitHub repo
+   `Gaminigz/GK-Newsroom`, branch `claude/git-review-ja0lpn`, with config
+   file path `railway.web.json` (NOT the root railway.json — that's the
+   cron worker's). Set service variables `MONGO_URL` (from env),
+   `MONGO_DB=gk_newsroom`. Create a service domain (`serviceDomainCreate`).
+3. Verify: GET `https://<domain>/healthz` → `{"ok":true}`, then `/` renders
+   real stories. Only then give the user the URL and record it HERE.
+4. If NO access — tell the user plainly that the environment settings
+   (RAILWAY_TOKEN + Full network) didn't save, and fall back to the local
+   desktop session route (it has a logged-in Railway CLI).
+
+**Web reader summary:** `npm run web` / `src/scripts/serve-web.mjs` is the
+public shareable feed page (news + series + podcast player). Routes: `/`,
+`/podcast/latest.wav`, `/podcast/YYYY-MM-DD.wav`, `/healthz`.
 
 Follow-ups still open:
 1. **Verify first cron run writes to Mongo** — after 5 AM ICT check
