@@ -30,6 +30,7 @@
 import http from "node:http";
 import { getDb } from "../lib/mongo.ts";
 import { getEpisodeAudio, listEpisodes } from "../lib/podcast.ts";
+import { SPICES } from "../data/spices.ts";
 
 const PORT = Number(process.env.PORT || 8080);
 const CACHE_MS = 5 * 60 * 1000;
@@ -195,6 +196,7 @@ function shell({ title, desc, body }) {
           box-shadow:0 4px 14px #0007; }
   .tile:active { filter:brightness(1.12); }
   .tile .emoji { font-size:34px; line-height:1; }
+  .tile .icon { line-height:1; filter:drop-shadow(0 5px 8px #0008); }
   .tile h2 { color:#fff; font-size:23px; letter-spacing:-.01em; }
   .tile p { color:#ffffffc9; font-size:14px; }
   .tile .go { color:#ffffffee; font-size:13px; font-weight:600; margin-top:4px; }
@@ -214,6 +216,53 @@ function shell({ title, desc, body }) {
 </html>`;
 }
 
+/* Glossy 3D-style tile icons — inline SVG, no external assets. */
+const ICONS = {
+  food: `<svg viewBox="0 0 64 64" width="54" height="54" aria-hidden="true">
+    <defs>
+      <radialGradient id="fBowl" cx="0.35" cy="0.25" r="1"><stop offset="0" stop-color="#ffd9a0"/><stop offset="0.55" stop-color="#e8801f"/><stop offset="1" stop-color="#96380c"/></radialGradient>
+      <linearGradient id="fRim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe9c4"/><stop offset="1" stop-color="#c2611c"/></linearGradient>
+    </defs>
+    <path d="M20 14c-2 5 3 6 1 11" stroke="#ffffff88" stroke-width="3.4" fill="none" stroke-linecap="round"/>
+    <path d="M32 10c-2 5 3 6 1 11" stroke="#ffffffaa" stroke-width="3.4" fill="none" stroke-linecap="round"/>
+    <path d="M44 14c-2 5 3 6 1 11" stroke="#ffffff88" stroke-width="3.4" fill="none" stroke-linecap="round"/>
+    <ellipse cx="32" cy="42" rx="24" ry="14" fill="url(#fBowl)"/>
+    <ellipse cx="32" cy="34" rx="24" ry="9" fill="url(#fRim)"/>
+    <ellipse cx="32" cy="34" rx="19" ry="6.5" fill="#8a3510"/>
+    <ellipse cx="28" cy="33" rx="9" ry="3" fill="#d96d1d"/>
+    <ellipse cx="24" cy="47" rx="7" ry="3.4" fill="#ffffff2e"/>
+  </svg>`,
+  ai: `<svg viewBox="0 0 64 64" width="54" height="54" aria-hidden="true">
+    <defs>
+      <radialGradient id="aHead" cx="0.32" cy="0.22" r="1.1"><stop offset="0" stop-color="#9dc4ff"/><stop offset="0.5" stop-color="#3f74d8"/><stop offset="1" stop-color="#122a63"/></radialGradient>
+      <radialGradient id="aEye" cx="0.4" cy="0.35" r="0.9"><stop offset="0" stop-color="#d8fff2"/><stop offset="1" stop-color="#27e0a5"/></radialGradient>
+    </defs>
+    <line x1="32" y1="6" x2="32" y2="14" stroke="#9dc4ff" stroke-width="3.2" stroke-linecap="round"/>
+    <circle cx="32" cy="6.5" r="3.4" fill="#ffd056"/>
+    <rect x="10" y="14" width="44" height="38" rx="12" fill="url(#aHead)"/>
+    <rect x="4" y="28" width="5" height="12" rx="2.5" fill="#2b52a8"/>
+    <rect x="55" y="28" width="5" height="12" rx="2.5" fill="#2b52a8"/>
+    <circle cx="23" cy="32" r="6" fill="url(#aEye)"/>
+    <circle cx="41" cy="32" r="6" fill="url(#aEye)"/>
+    <rect x="24" y="43" width="16" height="3.6" rx="1.8" fill="#0e2250"/>
+    <ellipse cx="21" cy="19.5" rx="10" ry="3.4" fill="#ffffff3a"/>
+  </svg>`,
+  acct: `<svg viewBox="0 0 64 64" width="54" height="54" aria-hidden="true">
+    <defs>
+      <linearGradient id="cBar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7dedb9"/><stop offset="1" stop-color="#0f7a4e"/></linearGradient>
+      <radialGradient id="cCoin" cx="0.35" cy="0.3" r="1"><stop offset="0" stop-color="#ffe9a3"/><stop offset="1" stop-color="#d99b16"/></radialGradient>
+    </defs>
+    <g>
+      <rect x="10" y="36" width="10" height="20" rx="2" fill="url(#cBar)"/><path d="M20 36l4-3v20l-4 3z" fill="#0a5c3a"/><path d="M10 36l4-3h10l-4 3z" fill="#a5f5cf"/>
+      <rect x="27" y="26" width="10" height="30" rx="2" fill="url(#cBar)"/><path d="M37 26l4-3v30l-4 3z" fill="#0a5c3a"/><path d="M27 26l4-3h10l-4 3z" fill="#a5f5cf"/>
+      <rect x="44" y="16" width="10" height="40" rx="2" fill="url(#cBar)"/><path d="M54 16l4-3v40l-4 3z" fill="#0a5c3a"/><path d="M44 16l4-3h10l-4 3z" fill="#a5f5cf"/>
+    </g>
+    <circle cx="18" cy="18" r="10" fill="url(#cCoin)"/>
+    <text x="18" y="23" text-anchor="middle" font-family="Arial" font-size="13" font-weight="800" fill="#8a5f00">$</text>
+    <ellipse cx="14.5" cy="14" rx="4.5" ry="2.6" fill="#ffffff55"/>
+  </svg>`,
+};
+
 function landingPage() {
   return shell({
     title: "GK Newsroom",
@@ -225,25 +274,114 @@ function landingPage() {
   </header>
   <nav class="tiles">
     <a class="tile t-food" href="/food">
-      <span class="emoji">\u{1F35B}</span>
+      <span class="icon">${ICONS.food}</span>
       <h2>3una5aha</h2>
-      <p>Sri Lankan food — tuna paha flavours, stories and recipes.</p>
+      <p>Sri Lankan food — the island's spices, stories and recipes.</p>
       <span class="go">Open →</span>
     </a>
     <a class="tile t-ai" href="/ai">
-      <span class="emoji">\u{1F916}</span>
+      <span class="icon">${ICONS.ai}</span>
       <h2>Ai News</h2>
       <p>The daily Ai brief — fresh stories every morning at 5 AM, plus the podcast.</p>
       <span class="go">Open →</span>
     </a>
     <a class="tile t-acct" href="/accounting">
-      <span class="emoji">\u{1F4CA}</span>
+      <span class="icon">${ICONS.acct}</span>
       <h2>GK SMART Accounting</h2>
       <p>Smart counting for your business — news and tools.</p>
       <span class="go">Open →</span>
     </a>
   </nav>`,
   });
+}
+
+/** 3una5aha — the Sri Lankan spice feed, served from src/data/spices.ts. */
+function spicesPage() {
+  const CAT_COLORS = {
+    "Blend": ["#e08a2e", "#8a3f12"],
+    "Seed": ["#c9a227", "#6b4e0a"],
+    "Bark & Root": ["#b3622a", "#5c2c0e"],
+    "Leaf & Herb": ["#3f9e4d", "#175226"],
+    "Fruit & Pod": ["#d0503a", "#6e1f14"],
+  };
+  const cats = [...new Set(SPICES.map((s) => s.category))];
+  const chips = ["All", ...cats]
+    .map(
+      (c, i) =>
+        `<button class="chip${i === 0 ? " on" : ""}" data-filter="${esc(c)}">${esc(c)}</button>`,
+    )
+    .join("");
+  const cards = SPICES.map((s) => {
+    const [c1, c2] = CAT_COLORS[s.category] ?? ["#888", "#444"];
+    return `<article class="scard" data-kind="${esc(s.category)}">
+      <div class="stile" style="background:linear-gradient(140deg,${c1},${c2})"><span>${s.emoji}</span></div>
+      <div class="sbody">
+        <div class="srow"><h2>${esc(s.name)}</h2><span class="sin">${esc(s.sinhala)}</span></div>
+        <span class="pill">${esc(s.category)}</span>
+        <p>${esc(s.post)}</p>
+      </div>
+    </article>`;
+  }).join("\n");
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3una5aha — Sri Lankan Spices</title>
+<meta name="description" content="Short posts on the spices behind Sri Lankan cooking — roots, seeds, barks, leaves and the blends they make.">
+<meta property="og:title" content="3una5aha — Sri Lankan Spices">
+<meta property="og:description" content="The island cooks with ~100 spices. Meet them one post at a time.">
+<meta property="og:type" content="website">
+<style>
+  * { box-sizing:border-box; margin:0; }
+  body { background:#140d08; color:#f3e9dd; font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  .wrap { max-width:680px; margin:0 auto; padding:16px 14px 60px; }
+  .back { display:inline-block; margin-bottom:8px; color:#b09a86; text-decoration:none; font-size:14px; }
+  .back:active, .back:hover { color:#e08a2e; }
+  header h1 { font-size:26px; letter-spacing:-.02em; }
+  header h1 em { color:#e08a2e; font-style:normal; }
+  header .sub { color:#b09a86; font-size:14px; margin-top:2px; }
+  .chips { display:flex; gap:8px; margin:14px 0 4px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .chip { flex:0 0 auto; background:#241811; color:#b09a86; border:1px solid #3a2a1e; border-radius:999px; padding:6px 14px; font-size:13px; cursor:pointer; }
+  .chip.on { color:#140d08; background:#e08a2e; border-color:#e08a2e; font-weight:600; }
+  .scard { display:flex; gap:12px; background:#1e140d; border:1px solid #33241a; border-radius:14px; padding:12px; margin-top:12px; }
+  .stile { flex:0 0 64px; height:64px; border-radius:14px; display:flex; align-items:center; justify-content:center;
+           font-size:32px; box-shadow:inset 0 -8px 14px #0006, inset 0 3px 6px #ffffff2e, 0 3px 8px #0007; }
+  .sbody { min-width:0; }
+  .srow { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+  h2 { font-size:17px; }
+  .sin { color:#c98f4e; font-size:14px; }
+  .pill { display:inline-block; font-size:11px; border-radius:999px; padding:2px 9px; border:1px solid #4a3624; color:#c9a984; margin-top:3px; }
+  .sbody p { color:#cbb8a4; font-size:14px; margin-top:6px; }
+  footer { color:#8f7b67; font-size:12px; text-align:center; margin-top:36px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/">← GK Newsroom</a>
+  <header>
+    <h1><em>3una5aha</em> · Sri Lankan Spices</h1>
+    <div class="sub">The island cooks with ~100 spices — meet them one post at a time. ${SPICES.length} so far, growing.</div>
+  </header>
+  <nav class="chips">${chips}</nav>
+  <main>${cards}</main>
+  <footer>3una5aha · GK Newsroom</footer>
+</div>
+<script>
+  document.querySelectorAll(".chip").forEach((c) => {
+    c.addEventListener("click", () => {
+      document.querySelectorAll(".chip").forEach((x) => x.classList.remove("on"));
+      c.classList.add("on");
+      const f = c.dataset.filter;
+      document.querySelectorAll(".scard").forEach((el) => {
+        el.style.display = f === "All" || el.dataset.kind === f ? "" : "none";
+      });
+    });
+  });
+</script>
+</body>
+</html>`;
 }
 
 function comingSoonPage({ emoji, name, blurb }) {
@@ -519,24 +657,27 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (path === "/food" || path === "/accounting") {
-      const props =
-        path === "/food"
-          ? {
-              emoji: "\u{1F35B}",
-              name: "3una5aha",
-              blurb: "Sri Lankan food — tuna paha flavours, stories and recipes.",
-            }
-          : {
-              emoji: "\u{1F4CA}",
-              name: "GK SMART Accounting",
-              blurb: "Smart counting for your business — news and tools.",
-            };
+    if (path === "/food") {
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "public, max-age=600",
       });
-      res.end(comingSoonPage(props));
+      res.end(spicesPage());
+      return;
+    }
+
+    if (path === "/accounting") {
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "public, max-age=600",
+      });
+      res.end(
+        comingSoonPage({
+          emoji: "\u{1F4CA}",
+          name: "GK SMART Accounting",
+          blurb: "Smart counting for your business — news and tools.",
+        }),
+      );
       return;
     }
 
