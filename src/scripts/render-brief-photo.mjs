@@ -7,9 +7,9 @@
  * Reads the latest classified stories from Mongo (ai_feed_items).
  */
 
-import { MongoClient } from "mongodb";
 import sharp from "sharp";
 import path from "node:path";
+import { getDb, closeDb } from "../lib/mongo.ts";
 
 const W = 1080;
 const H = 1920;
@@ -51,20 +51,21 @@ function wrap(text, maxChars, maxLines) {
 }
 
 async function main() {
-  const mongoUrl = process.env.MONGO_URL;
-  if (!mongoUrl) throw new Error("MONGO_URL not set");
   const out = process.argv[2] || path.join(process.cwd(), "brief-photo.png");
 
-  const client = new MongoClient(mongoUrl);
-  await client.connect();
-  const items = await client
-    .db("yaikh")
+  // getDb honors MONGO_DB (gk_newsroom on the GK stack) — the old
+  // hardcoded db("yaikh") silently read the wrong database.
+  const db = await getDb();
+  const items = await db
     .collection("ai_feed_items")
-    .find({}, { projection: { title: 1, source: 1, brands: 1, topics: 1, publishedAt: 1 } })
+    .find(
+      { series: { $exists: false } },
+      { projection: { title: 1, source: 1, brands: 1, topics: 1, publishedAt: 1 } }
+    )
     .sort({ publishedAt: -1 })
     .limit(MAX_STORIES)
     .toArray();
-  await client.close();
+  await closeDb();
 
   if (items.length === 0) throw new Error("no stories in ai_feed_items");
 
