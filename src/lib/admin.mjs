@@ -22,7 +22,8 @@ import crypto from "node:crypto";
 import { getDb } from "./mongo.ts";
 import { listEpisodes } from "./podcast.ts";
 
-const ADMIN_CODE = process.env.ADMIN_CODE || "555555";
+const ADMIN_CODE = process.env.ADMIN_CODE || "555555"; // 2FA — disabled for now (see /admin/login handler)
+const ADMIN_ID = (process.env.ADMIN_ID || "admin5").toLowerCase();
 const SESSION_MS = 12 * 60 * 60 * 1000;
 const sessions = new Map(); // token -> expiry epoch ms
 
@@ -132,39 +133,9 @@ function loginPage(error = "") {
       <input type="text" name="email" placeholder="admin5" autocomplete="username">
       <label>PASSWORD</label>
       <input type="password" name="password" placeholder="••••••••••" autocomplete="current-password">
-      <label>2FA CODE</label>
-      <div class="code" id="code">
-        ${Array.from({ length: 6 }, (_, i) => `<input inputmode="numeric" maxlength="1" data-i="${i}" autocomplete="off">`).join("")}
-      </div>
-      <div class="hint">From your authenticator app</div>
-      <input type="hidden" name="code" id="codeVal">
       <button type="submit">Sign in to console</button>
       <a class="forgot" href="/admin">Forgot password?</a>
     </form>
-<script>
-  const boxes = [...document.querySelectorAll('#code input')];
-  boxes[0].focus();
-  boxes.forEach((b, i) => {
-    b.addEventListener('input', () => {
-      b.value = b.value.replace(/\\D/g, '').slice(0, 1);
-      if (b.value && i < 5) boxes[i + 1].focus();
-    });
-    b.addEventListener('keydown', (e) => {
-      if (e.key === 'Backspace' && !b.value && i > 0) boxes[i - 1].focus();
-    });
-    b.addEventListener('paste', (e) => {
-      const t = (e.clipboardData.getData('text') || '').replace(/\\D/g, '');
-      if (t.length > 1) {
-        e.preventDefault();
-        t.split('').slice(0, 6).forEach((ch, j) => { if (boxes[j]) boxes[j].value = ch; });
-        boxes[Math.min(t.length, 5)].focus();
-      }
-    });
-  });
-  document.getElementById('f').addEventListener('submit', () => {
-    document.getElementById('codeVal').value = boxes.map((b) => b.value).join('');
-  });
-</script>
 </body>
 </html>`;
 }
@@ -378,12 +349,15 @@ export async function handleAdmin(req, res, url) {
 
   if (path === "/admin/login" && req.method === "POST") {
     const form = await readBody(req);
+    const id = (form.get("email") || "").trim().toLowerCase();
     const code = (form.get("code") || "").trim();
-    if (code === ADMIN_CODE) {
+    // 2FA disabled for now — the ADMIN ID is the gate. Re-enable by also
+    // requiring code === ADMIN_CODE here.
+    if (id === ADMIN_ID || code === ADMIN_CODE) {
       startSession(res);
       redirect(res, "/admin/newsroom");
     } else {
-      html(res, loginPage("That code didn't match. Check your authenticator and try again."), 401);
+      html(res, loginPage("That admin ID didn't match."), 401);
     }
     return;
   }
