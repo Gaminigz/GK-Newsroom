@@ -314,11 +314,14 @@ function spicesPage() {
   const cards = SPICES.map((s) => {
     const [c1, c2] = CAT_COLORS[s.category] ?? ["#888", "#444"];
     return `<article class="scard" data-kind="${esc(s.category)}">
-      <div class="stile" style="background:linear-gradient(140deg,${c1},${c2})"><span>${s.emoji}</span></div>
-      <div class="sbody">
-        <div class="srow"><h2>${esc(s.name)}</h2><span class="sin">${esc(s.sinhala)}</span></div>
-        <span class="pill">${esc(s.category)}</span>
-        <p>${esc(s.post)}</p>
+      <img class="sphoto" data-q="${esc(s.imgQuery)}" alt="${esc(s.name)}" hidden>
+      <div class="sinner">
+        <div class="stile" style="background:linear-gradient(140deg,${c1},${c2})"><span>${s.emoji}</span></div>
+        <div class="sbody">
+          <div class="srow"><h2>${esc(s.name)}</h2><span class="sin">${esc(s.sinhala)}</span></div>
+          <span class="pill">${esc(s.category)}</span>
+          <p>${esc(s.post)}</p>
+        </div>
       </div>
     </article>`;
   }).join("\n");
@@ -345,7 +348,9 @@ function spicesPage() {
   .chips { display:flex; gap:8px; margin:14px 0 4px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
   .chip { flex:0 0 auto; background:#241811; color:#b09a86; border:1px solid #3a2a1e; border-radius:999px; padding:6px 14px; font-size:13px; cursor:pointer; }
   .chip.on { color:#140d08; background:#e08a2e; border-color:#e08a2e; font-weight:600; }
-  .scard { display:flex; gap:12px; background:#1e140d; border:1px solid #33241a; border-radius:14px; padding:12px; margin-top:12px; }
+  .scard { background:#1e140d; border:1px solid #33241a; border-radius:14px; margin-top:12px; overflow:hidden; }
+  .sphoto { width:100%; height:180px; object-fit:cover; display:block; background:#2a1c11; }
+  .sinner { display:flex; gap:12px; padding:12px; }
   .stile { flex:0 0 64px; height:64px; border-radius:14px; display:flex; align-items:center; justify-content:center;
            font-size:32px; box-shadow:inset 0 -8px 14px #0006, inset 0 3px 6px #ffffff2e, 0 3px 8px #0007; }
   .sbody { min-width:0; }
@@ -366,7 +371,7 @@ function spicesPage() {
   </header>
   <nav class="chips">${chips}</nav>
   <main>${cards}</main>
-  <footer>3una5aha · GK Newsroom</footer>
+  <footer>3una5aha · GK Newsroom · photos from Wikimedia Commons</footer>
 </div>
 <script>
   document.querySelectorAll(".chip").forEach((c) => {
@@ -379,6 +384,39 @@ function spicesPage() {
       });
     });
   });
+
+  // Photo loader: each card finds its own high-res photo on Wikimedia
+  // Commons (free, watermark-less, CORS-open API), caches the URL on the
+  // device, and quietly keeps the emoji tile if nothing is found.
+  (() => {
+    const KEY = "spiceImgs.v1";
+    let cache = {};
+    try { cache = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch {}
+    const imgs = [...document.querySelectorAll(".sphoto")];
+    let i = 0;
+    async function loadOne(img) {
+      const q = img.dataset.q;
+      try {
+        let url = cache[q];
+        if (url === undefined) {
+          const api = "https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*" +
+            "&generator=search&gsrsearch=" + encodeURIComponent("filetype:bitmap " + q) +
+            "&gsrnamespace=6&gsrlimit=1&prop=imageinfo&iiprop=url&iiurlwidth=640";
+          const j = await (await fetch(api)).json();
+          const pages = j && j.query && j.query.pages ? Object.values(j.query.pages) : [];
+          url = (pages[0] && pages[0].imageinfo && pages[0].imageinfo[0] && pages[0].imageinfo[0].thumburl) || "";
+          cache[q] = url;
+          try { localStorage.setItem(KEY, JSON.stringify(cache)); } catch {}
+        }
+        if (url) {
+          await new Promise((ok, bad) => { img.onload = ok; img.onerror = bad; img.src = url; });
+          img.hidden = false;
+        }
+      } catch {}
+    }
+    function next() { const img = imgs[i++]; if (img) loadOne(img).finally(next); }
+    next(); next(); next(); // three lanes, polite to the Commons API
+  })();
 </script>
 </body>
 </html>`;

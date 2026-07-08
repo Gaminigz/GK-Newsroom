@@ -16,12 +16,15 @@ export type Spice = {
   sinhala: string;
   category: "Blend" | "Seed" | "Bark & Root" | "Leaf & Herb" | "Fruit & Pod";
   emoji: string;
+  /** Wikimedia Commons search term the page uses to find a photo. */
+  imgQuery: string;
   post: string;
 };
 
 export const SPICES: Spice[] = [
   {
     id: "thuna-paha",
+    imgQuery: "Sri Lankan curry powder spices",
     name: "Thuna Paha",
     sinhala: "තුන පහ",
     category: "Blend",
@@ -30,6 +33,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "roasted-curry-powder",
+    imgQuery: "roasted curry powder dark",
     name: "Roasted Curry Powder",
     sinhala: "බැදපු තුන පහ",
     category: "Blend",
@@ -38,6 +42,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "cinnamon",
+    imgQuery: "Ceylon cinnamon quills",
     name: "Ceylon Cinnamon",
     sinhala: "කුරුඳු",
     category: "Bark & Root",
@@ -46,6 +51,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "turmeric",
+    imgQuery: "turmeric powder root",
     name: "Turmeric",
     sinhala: "කහ",
     category: "Bark & Root",
@@ -54,6 +60,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "ginger",
+    imgQuery: "fresh ginger root",
     name: "Ginger",
     sinhala: "ඉඟුරු",
     category: "Bark & Root",
@@ -62,6 +69,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "cardamom",
+    imgQuery: "green cardamom pods",
     name: "Cardamom",
     sinhala: "එනසාල්",
     category: "Fruit & Pod",
@@ -70,6 +78,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "cloves",
+    imgQuery: "dried cloves spice",
     name: "Cloves",
     sinhala: "කරාබු නැටි",
     category: "Fruit & Pod",
@@ -78,6 +87,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "nutmeg",
+    imgQuery: "nutmeg seeds whole",
     name: "Nutmeg",
     sinhala: "සාදික්කා",
     category: "Fruit & Pod",
@@ -86,6 +96,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "mace",
+    imgQuery: "mace spice aril nutmeg",
     name: "Mace",
     sinhala: "වසාවාසි",
     category: "Fruit & Pod",
@@ -94,6 +105,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "black-pepper",
+    imgQuery: "black peppercorns",
     name: "Black Pepper",
     sinhala: "ගම්මිරිස්",
     category: "Seed",
@@ -102,6 +114,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "chili",
+    imgQuery: "dried red chili peppers",
     name: "Dried Chili",
     sinhala: "මිරිස්",
     category: "Fruit & Pod",
@@ -110,6 +123,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "coriander",
+    imgQuery: "coriander seeds",
     name: "Coriander Seed",
     sinhala: "කොත්තමල්ලි",
     category: "Seed",
@@ -118,6 +132,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "cumin",
+    imgQuery: "cumin seeds",
     name: "Cumin",
     sinhala: "සූදුරු",
     category: "Seed",
@@ -126,6 +141,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "fennel",
+    imgQuery: "fennel seeds",
     name: "Fennel Seed",
     sinhala: "මාදුරු",
     category: "Seed",
@@ -134,6 +150,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "fenugreek",
+    imgQuery: "fenugreek seeds",
     name: "Fenugreek",
     sinhala: "උළුහාල්",
     category: "Seed",
@@ -142,6 +159,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "mustard-seed",
+    imgQuery: "yellow mustard seeds",
     name: "Mustard Seed",
     sinhala: "අබ",
     category: "Seed",
@@ -150,6 +168,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "curry-leaves",
+    imgQuery: "curry leaves Murraya koenigii",
     name: "Curry Leaves",
     sinhala: "කරපිංචා",
     category: "Leaf & Herb",
@@ -158,6 +177,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "pandan",
+    imgQuery: "pandan leaves Pandanus amaryllifolius",
     name: "Pandan (Rampe)",
     sinhala: "රම්පෙ",
     category: "Leaf & Herb",
@@ -166,6 +186,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "lemongrass",
+    imgQuery: "lemongrass stalks Cymbopogon",
     name: "Lemongrass (Sera)",
     sinhala: "සේර",
     category: "Leaf & Herb",
@@ -174,6 +195,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "garlic",
+    imgQuery: "garlic bulbs cloves",
     name: "Garlic",
     sinhala: "සුදු ලූනු",
     category: "Bark & Root",
@@ -182,6 +204,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "tamarind",
+    imgQuery: "tamarind pods pulp",
     name: "Tamarind",
     sinhala: "සියඹලා",
     category: "Fruit & Pod",
@@ -190,6 +213,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "goraka",
+    imgQuery: "Garcinia gummi-gutta dried",
     name: "Goraka",
     sinhala: "ගොරකා",
     category: "Fruit & Pod",
@@ -198,6 +222,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "curry-powder-unroasted",
+    imgQuery: "curry powder bowl yellow",
     name: "White Curry Powder",
     sinhala: "සුදු කරි කුඩු",
     category: "Blend",
@@ -206,6 +231,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: "sweet-cumin",
+    imgQuery: "caraway seeds",
     name: "Caraway (Sweet Cumin)",
     sinhala: "සූදුරු මාදුරු",
     category: "Seed",
