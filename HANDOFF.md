@@ -10,10 +10,19 @@ service **newsroom** in project **gk-newsroom** (GK SMART's Projects,
 `gamini@ggmt.sg`) is ACTIVE, unexposed, US West, with the Cron Runs tab
 present — cron `0 22 * * *` UTC (5 AM ICT) picked up from `railway.json`.
 
-## ⚡ NEXT TASK: deploy the web reader service and give the user its public URL
+## ✅ RESOLVED (2026-07-08): web reader deployed — https://web-production-2b43c.up.railway.app
 
-The code is done and pushed on this branch (`serve-web.mjs`, `railway.web.json`,
-`npm run web` — see README "Second service"). What's left is pure Railway ops:
+Deployed by the local desktop session via `railway up` (service **web** in
+project gk-newsroom, staged copy with `railway.web.json` as the active
+`railway.json`, vars `MONGO_URL` + `MONGO_DB=gk_newsroom`). Verified live:
+`/healthz` → `{"ok":true}`, `/` renders today's stories, and
+`/podcast/latest.wav` → 200 (7.6 MB) after fixing `latestReadyDate()` in
+`serve-web.mjs` — `listEpisodes()` returns `{date}`, never `dateKey`/`_id`,
+so latest always resolved null → 404. The 2026-07-08 pipeline run was
+executed locally (`npm run daily` with `.env` sourced — the scripts do NOT
+auto-load `.env`; a bare `npm run daily` dies at the Mongo step): 35 items
++ the podcast episode landed in `gk_newsroom`. First unattended cron run
+still unverified (follow-up 1). Original steps kept for reference:
 
 1. Check your access: is `RAILWAY_TOKEN` in env and can you reach
    `backboard.railway.com`? Test:

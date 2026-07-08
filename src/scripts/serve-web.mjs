@@ -215,7 +215,7 @@ async function feedHtml() {
 
 async function latestReadyDate() {
   const eps = await listEpisodes(1);
-  return eps[0]?.dateKey ?? eps[0]?._id ?? null;
+  return eps[0]?.date ?? null;
 }
 
 /** Serve WAV with Range support so mobile players can seek. */
