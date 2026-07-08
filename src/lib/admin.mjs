@@ -116,7 +116,7 @@ function loginPage(error = "") {
   .card h2 { font-size:26px; letter-spacing:-.01em; }
   .card .sub { color:#6b6560; font-size:14px; margin:4px 0 22px; }
   label { display:block; font-size:11px; font-weight:700; letter-spacing:.08em; color:#6b6560; margin:16px 0 6px; }
-  input[type=email], input[type=password] { width:100%; padding:12px 13px; font-size:15px; border:1.5px solid #ddd5cd; border-radius:10px; background:#fff; }
+  input[type=text], input[type=password] { width:100%; padding:12px 13px; font-size:15px; border:1.5px solid #ddd5cd; border-radius:10px; background:#fff; }
   input:focus { outline:none; border-color:#e05a33; }
   .code { display:flex; gap:8px; }
   .code input { width:44px; height:50px; text-align:center; font-size:20px; font-weight:700; border:1.5px solid #ddd5cd; border-radius:10px; background:#fff; }
@@ -142,8 +142,8 @@ function loginPage(error = "") {
       <h2>Sign in</h2>
       <div class="sub">Use your admin credentials</div>
       ${error ? `<div class="err">${esc(error)}</div>` : ""}
-      <label>EMAIL</label>
-      <input type="email" name="email" value="admin@3una5aha.app" autocomplete="username">
+      <label>ADMIN ID</label>
+      <input type="text" name="email" placeholder="admin5" autocomplete="username">
       <label>PASSWORD</label>
       <input type="password" name="password" placeholder="••••••••••" autocomplete="current-password">
       <label>2FA CODE</label>
