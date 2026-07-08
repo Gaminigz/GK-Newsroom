@@ -4,8 +4,13 @@
  * A tiny zero-dependency HTTP server (node http + the mongodb driver we
  * already ship) that renders the daily feed straight from Mongo:
  *
- *   GET /                      the feed page (news + History/Timeline series
+ *   GET /                      landing page — three topic tiles, stacked
+ *                              mobile-first: 3una5aha (Sri Lankan food),
+ *                              Ai News, GK SMART Accounting
+ *   GET /ai                    the Ai feed (news + History/Timeline series
  *                              + Winamp-style podcast player), server-rendered
+ *   GET /food                  3una5aha — Sri Lankan food (coming soon)
+ *   GET /accounting            GK SMART Accounting (coming soon)
  *   GET /podcast/latest.wav    latest ready episode audio
  *   GET /podcast/<date>.wav    a specific episode ("YYYY-MM-DD")
  *   GET /healthz               JSON liveness probe for Railway
@@ -165,6 +170,97 @@ function player(episodes) {
   </section>`;
 }
 
+/** Shared page skeleton for landing + coming-soon pages (no Mongo needed). */
+function shell({ title, desc, body }) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)}</title>
+<meta name="description" content="${esc(desc)}">
+<meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${esc(desc)}">
+<meta property="og:type" content="website">
+<style>
+  * { box-sizing:border-box; margin:0; }
+  body { background:#0d1117; color:#e6edf3; font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  .wrap { max-width:680px; margin:0 auto; padding:20px 14px 40px; min-height:100vh; display:flex; flex-direction:column; }
+  header h1 { font-size:28px; letter-spacing:-.02em; }
+  header h1 em { color:#e3b341; font-style:normal; }
+  header .sub { color:#8b949e; font-size:14px; margin:2px 0 18px; }
+  .tiles { display:flex; flex-direction:column; gap:14px; flex:1; }
+  .tile { display:flex; flex-direction:column; justify-content:center; gap:6px; min-height:150px;
+          border-radius:18px; padding:22px 22px; text-decoration:none; border:1px solid #ffffff1c;
+          box-shadow:0 4px 14px #0007; }
+  .tile:active { filter:brightness(1.12); }
+  .tile .emoji { font-size:34px; line-height:1; }
+  .tile h2 { color:#fff; font-size:23px; letter-spacing:-.01em; }
+  .tile p { color:#ffffffc9; font-size:14px; }
+  .tile .go { color:#ffffffee; font-size:13px; font-weight:600; margin-top:4px; }
+  .t-food { background:linear-gradient(135deg,#8a3f12,#c2611c 55%,#e08a2e); }
+  .t-ai   { background:linear-gradient(135deg,#0a1f47,#173a7a 60%,#2a5cb8); }
+  .t-acct { background:linear-gradient(135deg,#0b3d2e,#14654a 60%,#1e8f66); }
+  .soon { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:10px; }
+  .soon .emoji { font-size:64px; }
+  .soon h2 { font-size:24px; }
+  .soon p { color:#8b949e; max-width:400px; }
+  .back { display:inline-block; margin-bottom:14px; color:#8b949e; text-decoration:none; font-size:14px; }
+  .back:active, .back:hover { color:#e3b341; }
+  footer { color:#8b949e; font-size:12px; text-align:center; margin-top:28px; }
+</style>
+</head>
+<body><div class="wrap">${body}<footer>GK Newsroom · ggmt.sg</footer></div></body>
+</html>`;
+}
+
+function landingPage() {
+  return shell({
+    title: "GK Newsroom",
+    desc: "3una5aha Sri Lankan food · the daily Ai brief · GK SMART accounting.",
+    body: `
+  <header>
+    <h1>GK <em>Newsroom</em></h1>
+    <div class="sub">Pick your channel.</div>
+  </header>
+  <nav class="tiles">
+    <a class="tile t-food" href="/food">
+      <span class="emoji">\u{1F35B}</span>
+      <h2>3una5aha</h2>
+      <p>Sri Lankan food — tuna paha flavours, stories and recipes.</p>
+      <span class="go">Open →</span>
+    </a>
+    <a class="tile t-ai" href="/ai">
+      <span class="emoji">\u{1F916}</span>
+      <h2>Ai News</h2>
+      <p>The daily Ai brief — fresh stories every morning at 5 AM, plus the podcast.</p>
+      <span class="go">Open →</span>
+    </a>
+    <a class="tile t-acct" href="/accounting">
+      <span class="emoji">\u{1F4CA}</span>
+      <h2>GK SMART Accounting</h2>
+      <p>Smart counting for your business — news and tools.</p>
+      <span class="go">Open →</span>
+    </a>
+  </nav>`,
+  });
+}
+
+function comingSoonPage({ emoji, name, blurb }) {
+  return shell({
+    title: `${name} — GK Newsroom`,
+    desc: blurb,
+    body: `
+  <a class="back" href="/">← GK Newsroom</a>
+  <div class="soon">
+    <span class="emoji">${emoji}</span>
+    <h2>${esc(name)}</h2>
+    <p>${esc(blurb)}</p>
+    <p><strong>Coming soon.</strong></p>
+  </div>`,
+  });
+}
+
 function page({ news, history, timeline, episodes }) {
   const top = news[0];
   const ogImage = firstShareImage(news);
@@ -254,6 +350,7 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
 <body>
 <div class="wrap">
   <header>
+    <a class="back" href="/" style="display:inline-block;margin-bottom:8px;color:#8b949e;text-decoration:none;font-size:14px">← GK Newsroom</a>
     <h1>GK <em>Ai</em> Newsroom</h1>
     <div class="sub">The daily Ai brief — fresh every morning at 5 AM.</div>
   </header>
@@ -404,12 +501,42 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (path === "/") {
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "public, max-age=600",
+      });
+      res.end(landingPage());
+      return;
+    }
+
+    if (path === "/ai") {
       const html = await feedHtml();
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "public, max-age=300",
       });
       res.end(html);
+      return;
+    }
+
+    if (path === "/food" || path === "/accounting") {
+      const props =
+        path === "/food"
+          ? {
+              emoji: "\u{1F35B}",
+              name: "3una5aha",
+              blurb: "Sri Lankan food — tuna paha flavours, stories and recipes.",
+            }
+          : {
+              emoji: "\u{1F4CA}",
+              name: "GK SMART Accounting",
+              blurb: "Smart counting for your business — news and tools.",
+            };
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "public, max-age=600",
+      });
+      res.end(comingSoonPage(props));
       return;
     }
 
