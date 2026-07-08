@@ -31,6 +31,7 @@ import http from "node:http";
 import { getDb } from "../lib/mongo.ts";
 import { getEpisodeAudio, listEpisodes } from "../lib/podcast.ts";
 import { SPICES } from "../data/spices.ts";
+import { GOV_SOURCES } from "../data/gov-sources.ts";
 
 const PORT = Number(process.env.PORT || 8080);
 const CACHE_MS = 5 * 60 * 1000;
@@ -288,7 +289,7 @@ function landingPage() {
     <a class="tile t-acct" href="/accounting">
       <span class="icon">${ICONS.acct}</span>
       <h2>GK SMART Accounting</h2>
-      <p>Smart counting for your business — news and tools.</p>
+      <p>Cambodia's tax, customs & business announcements — translated from Khmer, daily.</p>
       <span class="go">Open →</span>
     </a>
   </nav>`,
@@ -416,6 +417,155 @@ function spicesPage() {
     }
     function next() { const img = imgs[i++]; if (img) loadOne(img).finally(next); }
     next(); next(); next(); // three lanes, polite to the Commons API
+  })();
+</script>
+</body>
+</html>`;
+}
+
+/** GK SMART Accounting — translated Cambodian government feed from Mongo. */
+function govPage(posts) {
+  const bySrc = Object.fromEntries(GOV_SOURCES.map((s) => [s.abbrev, s]));
+  const chips = ["All", ...GOV_SOURCES.map((s) => s.abbrev)]
+    .map(
+      (c, i) =>
+        `<button class="chip${i === 0 ? " on" : ""}" data-filter="${esc(c)}">${esc(c)}</button>`,
+    )
+    .join("");
+
+  const cards = posts.length
+    ? posts
+        .map((p) => {
+          const src = bySrc[p.agency] ?? { colors: ["#666", "#333"], name: p.agency, logoQuery: "" };
+          const [c1, c2] = src.colors;
+          const when = p.postedAt ? `<span class="when">${fmtDate(new Date(p.postedAt).toISOString().slice(0, 10))}</span>` : "";
+          return `<article class="gcard" data-kind="${esc(p.agency)}">
+        <div class="gtile" style="background:linear-gradient(140deg,${c1},${c2})" data-logo="${esc(src.logoQuery)}"><span>${esc(p.agency)}</span></div>
+        <div class="gbody">
+          <div class="gmeta"><span class="pill agency">${esc(p.agency)}</span><span class="pill kind">${esc(p.kind ?? "News")}</span>${when}</div>
+          <h2><a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.title)}</a></h2>
+          <p>${esc(p.summary ?? "")}</p>
+          <div class="km">\u{1F1F0}\u{1F1ED} ${esc(p.titleKm ?? "")}</div>
+        </div>
+      </article>`;
+        })
+        .join("\n")
+    : `<div class="empty">
+         <p><strong>The feed is warming up.</strong></p>
+         <p>Posts from GDT, ACAR, MEF, MoC, GDCE, the National Assembly and MoI
+         are fetched and translated daily at 5 AM. Check back after the next run.</p>
+       </div>`;
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GK SMART Accounting — Cambodia Business & Tax Updates</title>
+<meta name="description" content="Daily announcements from Cambodia's GDT, ACAR, MEF, MoC, Customs, National Assembly and MoI — translated from Khmer to English.">
+<meta property="og:title" content="GK SMART Accounting — Cambodia Business & Tax Updates">
+<meta property="og:description" content="Government Prakas, training and announcements, translated daily.">
+<meta property="og:type" content="website">
+<style>
+  * { box-sizing:border-box; margin:0; }
+  body { background:#08120d; color:#e4f0e9; font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  .wrap { max-width:680px; margin:0 auto; padding:16px 14px 60px; }
+  .back { display:inline-block; margin-bottom:8px; color:#8fa89a; text-decoration:none; font-size:14px; }
+  .back:active, .back:hover { color:#35c98a; }
+  header h1 { font-size:24px; letter-spacing:-.02em; }
+  header h1 em { color:#35c98a; font-style:normal; }
+  header .sub { color:#8fa89a; font-size:14px; margin-top:2px; }
+  .chips { display:flex; gap:8px; margin:14px 0 4px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .chip { flex:0 0 auto; background:#10201a; color:#8fa89a; border:1px solid #1d3329; border-radius:999px; padding:6px 14px; font-size:13px; cursor:pointer; }
+  .chip.on { color:#08120d; background:#35c98a; border-color:#35c98a; font-weight:600; }
+  .gcard { display:flex; gap:12px; background:#0e1b14; border:1px solid #1d3329; border-radius:14px; padding:12px; margin-top:12px; }
+  .gtile { flex:0 0 56px; height:56px; border-radius:12px; display:flex; align-items:center; justify-content:center;
+           color:#fff; font-size:13px; font-weight:800; letter-spacing:.02em; overflow:hidden;
+           box-shadow:inset 0 -8px 14px #0006, inset 0 3px 6px #ffffff2e, 0 3px 8px #0007; }
+  .gtile img { width:100%; height:100%; object-fit:contain; background:#fff; }
+  .gbody { min-width:0; flex:1; }
+  .gmeta { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:5px; }
+  .when { color:#8fa89a; font-size:12px; }
+  h2 { font-size:16px; line-height:1.35; }
+  h2 a { color:#e4f0e9; text-decoration:none; }
+  h2 a:active, h2 a:hover { color:#35c98a; }
+  .gbody p { color:#a9c2b4; font-size:14px; margin-top:5px; }
+  .km { color:#6f8a7c; font-size:12.5px; margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pill { display:inline-block; font-size:11px; border-radius:999px; padding:2px 9px; border:1px solid #2a4636; color:#9fc2ae; }
+  .pill.agency { color:#35c98a; border-color:#35c98a55; }
+  .pill.kind { color:#d9b64a; border-color:#d9b64a44; }
+  .empty { background:#0e1b14; border:1px solid #1d3329; border-radius:14px; padding:26px 18px; margin-top:14px; text-align:center; color:#a9c2b4; }
+  .empty p + p { margin-top:8px; font-size:14px; }
+  footer { color:#6f8a7c; font-size:12px; text-align:center; margin-top:36px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/">← GK Newsroom</a>
+  <header>
+    <h1>GK <em>SMART</em> Accounting</h1>
+    <div class="sub">Cambodia's tax, customs & business announcements — translated from Khmer, daily.</div>
+  </header>
+  <nav class="chips">${chips}</nav>
+  <main>${cards}</main>
+  <footer>GK SMART Accounting · sources: GDT · ACAR · MEF · MoC · GDCE · NA · MoI</footer>
+</div>
+<script>
+  document.querySelectorAll(".chip").forEach((c) => {
+    c.addEventListener("click", () => {
+      document.querySelectorAll(".chip").forEach((x) => x.classList.remove("on"));
+      c.classList.add("on");
+      const f = c.dataset.filter;
+      document.querySelectorAll(".gcard").forEach((el) => {
+        el.style.display = f === "All" || el.dataset.kind === f ? "" : "none";
+      });
+    });
+  });
+
+  // Official ministry logos via the Wikimedia Commons CORS API — same
+  // self-healing loader as the spice photos; the initials badge stays
+  // if no logo is found.
+  (() => {
+    const KEY = "govLogos.v1";
+    let cache = {};
+    try { cache = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch {}
+    const seen = new Map();
+    document.querySelectorAll(".gtile[data-logo]").forEach((tile) => {
+      const q = tile.dataset.logo;
+      if (!q) return;
+      if (!seen.has(q)) seen.set(q, []);
+      seen.get(q).push(tile);
+    });
+    const queue = [...seen.entries()];
+    let i = 0;
+    async function next() {
+      const entry = queue[i++];
+      if (!entry) return;
+      const [q, tiles] = entry;
+      try {
+        let url = cache[q];
+        if (url === undefined) {
+          const api = "https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*" +
+            "&generator=search&gsrsearch=" + encodeURIComponent(q) +
+            "&gsrnamespace=6&gsrlimit=1&prop=imageinfo&iiprop=url&iiurlwidth=112";
+          const j = await (await fetch(api)).json();
+          const pages = j && j.query && j.query.pages ? Object.values(j.query.pages) : [];
+          url = (pages[0] && pages[0].imageinfo && pages[0].imageinfo[0] && pages[0].imageinfo[0].thumburl) || "";
+          cache[q] = url;
+          try { localStorage.setItem(KEY, JSON.stringify(cache)); } catch {}
+        }
+        if (url) {
+          await new Promise((ok, bad) => {
+            const img = new Image();
+            img.onload = () => { tiles.forEach((t) => { t.innerHTML = ""; t.appendChild(img.cloneNode()); }); ok(); };
+            img.onerror = bad;
+            img.src = url;
+          });
+        }
+      } catch {}
+      next();
+    }
+    next(); next();
   })();
 </script>
 </body>
@@ -624,6 +774,7 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
 /* -------------------------------------------------------------- server */
 
 let cache = { html: null, at: 0 };
+let govCache = { html: null, at: 0 };
 let audioCache = { key: null, buf: null, at: 0 };
 
 async function feedHtml() {
@@ -705,17 +856,26 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (path === "/accounting") {
+      if (!govCache.html || Date.now() - govCache.at > CACHE_MS) {
+        let posts = [];
+        try {
+          const db = await getDb();
+          posts = await db
+            .collection("gov_feed_items")
+            .find({})
+            .sort({ postedAt: -1, updatedAt: -1 })
+            .limit(60)
+            .toArray();
+        } catch (err) {
+          console.error("[web] gov feed query failed:", err instanceof Error ? err.message : err);
+        }
+        govCache = { html: govPage(posts), at: Date.now() };
+      }
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "public, max-age=600",
+        "Cache-Control": "public, max-age=300",
       });
-      res.end(
-        comingSoonPage({
-          emoji: "\u{1F4CA}",
-          name: "GK SMART Accounting",
-          blurb: "Smart counting for your business — news and tools.",
-        }),
-      );
+      res.end(govCache.html);
       return;
     }
 
