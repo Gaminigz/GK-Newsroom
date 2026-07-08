@@ -130,7 +130,7 @@ function loginPage(error = "") {
       <div class="sub">Use your admin credentials</div>
       ${error ? `<div class="err">${esc(error)}</div>` : ""}
       <label>ADMIN ID</label>
-      <input type="text" name="email" placeholder="admin5" autocomplete="username">
+      <input type="text" name="email" value="admin5" autocomplete="username">
       <label>PASSWORD</label>
       <input type="password" name="password" placeholder="••••••••••" autocomplete="current-password">
       <button type="submit">Sign in to console</button>
