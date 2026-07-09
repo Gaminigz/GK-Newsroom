@@ -390,6 +390,7 @@ async function homePage(req) {
   return shell({
     title: "3una 5aha — what's cooking nearby?",
     nav: buyerNav("home"),
+    noBack: true,
     body: `
     <div class="row" style="justify-content:space-between">
       <a href="/app/location"><span style="color:${ORANGE}">●</span> <strong style="font-size:13.5px">${esc(city)}</strong> <span class="sub">▾</span></a>
@@ -443,9 +444,10 @@ async function shopPage(id) {
   return shell({
     title: `${shop.name} — 3una 5aha`,
     back: "/app/home",
+    backFloat: true,
     nav: buyerNav("home"),
     body: `
-    ${shopThumb(shop, "width:100%;height:130px;font-size:34px", "🍛")}
+    ${shopThumb(shop, "width:calc(100% + 40px);height:150px;font-size:34px;margin:calc(-1 * (env(safe-area-inset-top, 0px) + 10px)) -20px 0;border-radius:0 0 22px 22px", "🍛")}
     <h1 style="margin-top:12px">${esc(shop.name)} <span class="si">කෑම</span></h1>
     <div class="sub">★ 4.8 · ${esc(shop.city)}, ${esc(shop.country)} · ${shop.open === false ? "closed now" : "open now"}</div>
     ${special ? `
@@ -522,10 +524,11 @@ async function orderPage(id, asShop = false) {
 
   return shell({
     title: `Order — ${shop?.name ?? ""}`,
-    back: asShop ? `/app/owner/${esc(order.shopId)}` : "/app/orders",
+    noBack: true,
     nav: asShop ? "" : buyerNav("orders"),
     body: `
     <div class="row">
+      <a class="back" style="margin:0" href="${asShop ? `/app/owner/${esc(order.shopId)}` : "/app/orders"}">‹</a>
       <div class="thumb" style="width:42px;height:42px">🍲</div>
       <div><strong>${esc(shop?.name ?? "Shop")}</strong><div class="sub" style="font-size:12px;color:#1d7a34">● Online · replies in ~5 min</div></div>
     </div>
@@ -565,6 +568,7 @@ async function ordersPage(req) {
   return shell({
     title: "My orders — 3una 5aha",
     nav: buyerNav("orders"),
+    noBack: true,
     body: `<h1>My orders</h1><div class="sub" style="margin-bottom:14px">Pickup orders from this phone</div>
     ${rows || `<div class="sub">No orders yet — find a shop on <a href="/app/home" style="color:${ORANGE};font-weight:700">Home</a>.</div>`}`,
   });
@@ -576,8 +580,8 @@ function locationPage(req) {
   const c = cookies(req);
   return shell({
     title: "Set your location — 3una 5aha",
-    back: "/app/home",
     nav: buyerNav("location"),
+    noBack: true,
     body: `
     <h1>Set your location</h1>
     <div class="sub si">ඔබේ ස්ථානය සකසන්න</div>
@@ -706,7 +710,7 @@ async function ownerDash(id) {
     <div class="row" style="gap:8px;margin-bottom:12px">
       <a class="back" style="margin:0;flex:0 0 auto" href="/app" onclick="if(history.length>1){history.back();return false}">‹</a>
       <a class="row" href="/app/owner/${String(shop._id)}/profile" style="flex:1;min-width:0;gap:8px">${shopThumb(shop, "width:40px;height:40px")}
-        <div style="min-width:0"><strong style="font-size:14px;line-height:1.25;display:block">${esc(shop.name)} <span class="sub" style="font-size:11px">✏️</span></strong><div class="sub" style="font-size:11.5px">${esc(shop.owner || "")}</div></div></a>
+        <div style="min-width:0"><strong style="font-size:14px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(shop.name)} <span class="sub" style="font-size:11px">✏️</span></strong><div class="sub" style="font-size:11.5px">${esc(shop.owner || "")}</div></div></a>
       <form method="POST" action="/app/owner/${String(shop._id)}/toggle" class="row" style="gap:5px;flex:0 0 auto">
         <span class="sub" style="font-size:11.5px;font-weight:700;color:${open ? "#1d7a34" : "#b3261e"}">${open ? "Open" : "Closed"}</span>
         <label class="toggle"><input type="checkbox" ${open ? "checked" : ""} onchange="this.form.submit()"><span></span></label>
@@ -733,7 +737,7 @@ async function ownerDash(id) {
       <span class="sub" style="font-size:12px">today ${todays.length} · ${lkr(revenue)} · ${chats} chats</span></div>
     <div style="margin-top:10px">${orderRows}</div>` : ""}
     <div style="height:70px"></div>
-    <a class="btn" style="position:fixed;bottom:20px;right:max(20px,calc(50% - 220px));width:auto;padding:13px 20px;border-radius:99px" href="/app/owner/${String(shop._id)}/add-dish">+ Add dish</a>`,
+    <a class="btn" style="position:fixed;bottom:calc(env(safe-area-inset-bottom, 0px) + 18px);right:max(20px,calc(50% - 220px));width:auto;padding:13px 20px;border-radius:99px" href="/app/owner/${String(shop._id)}/add-dish">+ Add dish</a>`,
   });
 }
 
