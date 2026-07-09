@@ -401,6 +401,7 @@ async function homePage(req) {
   const myCity = (c.app_city || "").toLowerCase();
   const flash = specials
     .map((d) => ({
+      id: String(d._id),
       shopId: d.shopId,
       name: d.name,
       nameSi: d.nameSi ?? "",
@@ -456,32 +457,62 @@ async function homePage(req) {
         <div class="sub" id="flashMeta" style="font-size:12.5px">${esc(flash[0].shop)} · ${esc(flash[0].window)}</div>
         <strong id="flashPrice" style="color:${ORANGE}">${esc(flash[0].price)}</strong> <span class="pill deal" id="flashDeal" ${flash[0].deal ? "" : "hidden"}>${esc(flash[0].deal)}</span>
       </div>
+      <div style="display:flex;flex-direction:column;gap:8px;padding:10px 12px 10px 0;flex:0 0 auto;justify-content:center">
+        <button id="flashNo" aria-label="Not for me" style="width:38px;height:38px;border-radius:99px;border:1.5px solid #f1c1bb;background:#fff;color:#d92d20;font-size:16px;font-weight:800;cursor:pointer">✕</button>
+        <button id="flashYes" aria-label="Like" style="width:38px;height:38px;border-radius:99px;border:1.5px solid #bfe5c8;background:#fff;color:#1d9d4b;font-size:17px;cursor:pointer">♥</button>
+      </div>
     </a>
     <script id="flashData" type="application/json">${JSON.stringify(flash)}</script>
     <script>
       (() => {
         const items = JSON.parse(document.getElementById('flashData').textContent);
-        if (items.length < 2) return;
-        let i = 0;
+        let i = 0, timer = null;
         const card = document.getElementById('flashCard');
-        setInterval(() => {
-          i = (i + 1) % items.length;
-          const d = items[i];
-          card.style.transition = 'opacity .35s';
-          card.style.opacity = '0.15';
+        const voted = JSON.parse(localStorage.getItem('dishVotes') || '{}');
+        function render(d) {
+          card.href = '/app/shop/' + d.shopId;
+          const img = document.getElementById('flashImg');
+          img.style.backgroundImage = d.photo ? 'url(' + d.photo + ')' : '';
+          img.textContent = d.photo ? '' : '🍛';
+          document.getElementById('flashName').textContent = d.name;
+          document.getElementById('flashMeta').textContent = d.shop + ' · ' + d.window;
+          document.getElementById('flashPrice').textContent = d.price;
+          const deal = document.getElementById('flashDeal');
+          deal.hidden = !d.deal; deal.textContent = d.deal;
+          document.getElementById('flashYes').style.opacity = voted[d.id] ? '.35' : '1';
+        }
+        function advance(dir) {
+          if (items.length < 2) return;
+          card.style.transition = 'transform .3s, opacity .3s';
+          card.style.transform = dir ? 'translateX(' + (dir * 90) + 'px)' : '';
+          card.style.opacity = '0.1';
           setTimeout(() => {
-            card.href = '/app/shop/' + d.shopId;
-            const img = document.getElementById('flashImg');
-            img.style.backgroundImage = d.photo ? 'url(' + d.photo + ')' : '';
-            img.textContent = d.photo ? '' : '🍛';
-            document.getElementById('flashName').textContent = d.name;
-            document.getElementById('flashMeta').textContent = d.shop + ' · ' + d.window;
-            document.getElementById('flashPrice').textContent = d.price;
-            const deal = document.getElementById('flashDeal');
-            deal.hidden = !d.deal; deal.textContent = d.deal;
+            i = (i + 1) % items.length;
+            render(items[i]);
+            card.style.transform = '';
             card.style.opacity = '1';
-          }, 360);
-        }, 3500);
+          }, 310);
+          restart();
+        }
+        function vote(kind) {
+          const d = items[i];
+          if (kind === 'like' && voted[d.id]) { advance(1); return; }
+          if (kind === 'like') { voted[d.id] = 1; localStorage.setItem('dishVotes', JSON.stringify(voted)); }
+          fetch('/app/dish/' + d.id + '/' + (kind === 'like' ? 'like' : 'pass'), { method: 'POST' }).catch(() => {});
+          advance(kind === 'like' ? 1 : -1);
+        }
+        function restart() { clearInterval(timer); timer = setInterval(() => advance(0), 3500); }
+        document.getElementById('flashYes').addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); vote('like'); });
+        document.getElementById('flashNo').addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); vote('pass'); });
+        let x0 = null;
+        card.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+        card.addEventListener('touchend', (e) => {
+          if (x0 === null) return;
+          const dx = e.changedTouches[0].clientX - x0; x0 = null;
+          if (dx > 55) vote('like'); else if (dx < -55) vote('pass');
+        }, { passive: true });
+        render(items[0]);
+        restart();
       })();
     </script>` : ""}
     <div class="chiprow">
@@ -825,7 +856,7 @@ async function ownerDash(id, toast = "") {
           <span class="pill" style="position:absolute;top:7px;right:7px;background:#fff;border:1px solid #ece3da">✏️ Edit</span>
           ${d.special ? `<span class="pill deal" style="position:absolute;top:7px;left:7px">Special</span>` : ""}
           <div style="padding:8px 10px"><strong style="font-size:13px;line-height:1.3;display:block">${esc(d.name)}</strong>
-          <div class="sub" style="font-size:12px">${lkr(d.price)}${d.discount && d.discount !== "none" ? ` · <span style=\"color:${ORANGE}\">${esc(d.discount)}</span>` : ""}</div></div></a>`;
+          <div class="sub" style="font-size:12px">${lkr(d.price)}${d.discount && d.discount !== "none" ? ` · <span style=\"color:${ORANGE}\">${esc(d.discount)}</span>` : ""} · <span style="color:#1d9d4b;font-weight:700">♥ ${Number(d.likes) || 0}</span></div></div></a>`;
       }).join("")}
     </div>
     ${orders.length ? `<div class="row" style="justify-content:space-between;margin-top:16px"><strong>Incoming orders</strong>
@@ -1283,6 +1314,16 @@ export async function handleApp(req, res, url) {
       await (await col("app_orders")).updateOne({ _id }, { $push: { messages: { from, text, at: new Date() } } });
     }
     redirect(res, `/app/order/${m[1]}${form.get("as") === "shop" ? "?as=shop" : ""}`);
+    return;
+  }
+
+  m = path.match(/^\/app\/dish\/([a-f0-9]{24})\/(like|pass)$/);
+  if (m && req.method === "POST") {
+    const _id = await oid(m[1]);
+    if (_id) {
+      await (await col("app_dishes")).updateOne({ _id }, { $inc: { [m[2] === "like" ? "likes" : "passes"]: 1 } });
+    }
+    res.writeHead(204).end();
     return;
   }
 
