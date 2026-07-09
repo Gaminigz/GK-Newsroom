@@ -137,7 +137,9 @@ function shell({ title, body, nav = "", back = "", noPad = false, backFloat = fa
   * { box-sizing:border-box; margin:0; -webkit-tap-highlight-color:transparent; }
   body { background:#faf7f4; color:#1a1a1a; font:15.5px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
          max-width:480px; margin:0 auto; min-height:100vh;
-         padding:${noPad ? "0" : "14px 20px"}; padding-top:calc(env(safe-area-inset-top, 0px) + 10px); padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 88px); }
+         padding:${noPad ? "0" : "14px 20px"}; padding-top:calc(env(safe-area-inset-top, 0px) + 30px); padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 88px); }
+  .logout { position:fixed; top:calc(env(safe-area-inset-top, 0px) + 6px); right:20px; z-index:80;
+            font-size:11.5px; font-weight:700; color:#d92d20; text-decoration:underline; }
   a { color:inherit; text-decoration:none; }
   h1 { font-size:24px; letter-spacing:-.02em; }
   .si { color:#b3672f; font-weight:400; font-size:.82em; }
@@ -172,7 +174,7 @@ function shell({ title, body, nav = "", back = "", noPad = false, backFloat = fa
   .toast { position:fixed; top:45%; left:50%; transform:translate(-50%,-50%); background:#191512; color:#fff;
            padding:15px 24px; border-radius:14px; font-weight:700; font-size:15.5px; z-index:100;
            box-shadow:0 10px 34px #0007; text-align:center; max-width:80vw; }
-  .back.float { position:absolute; z-index:10; top:calc(env(safe-area-inset-top, 0px) + 10px); left:20px; margin:0; box-shadow:0 2px 8px #0003; }
+  .back.float { position:absolute; z-index:10; top:calc(env(safe-area-inset-top, 0px) + 30px); left:20px; margin:0; box-shadow:0 2px 8px #0003; }
   .basketbar { position:fixed; bottom:calc(max(10px, env(safe-area-inset-bottom)) + 72px); left:50%; transform:translateX(-50%); width:calc(100% - 40px); max-width:440px;
                background:#191512; color:#fff; border-radius:14px; padding:14px 16px; display:none; justify-content:space-between; font-weight:700; }
   .stat { background:#fff; border:1px solid #ece3da; border-radius:14px; padding:11px 13px; flex:1; }
@@ -196,6 +198,7 @@ function shell({ title, body, nav = "", back = "", noPad = false, backFloat = fa
 </head>
 <body>
 ${toast ? `<div class="toast" id="toast">✓ ${esc(toast)}</div><script>setTimeout(()=>{const t=document.getElementById('toast');if(t){t.style.transition='opacity .4s';t.style.opacity='0';setTimeout(()=>t.remove(),450)}},2000)</script>` : ""}
+<a class="logout" href="/app/logout">Logout</a>
 ${noBack ? "" : `<a class="back${backFloat ? " float" : ""}" href="${back ? esc(back) : "/app"}" onclick="${back ? "" : "if(history.length>1){history.back();return false}"}">‹</a>`}
 ${body}
 ${nav}
@@ -260,7 +263,7 @@ function welcomePage(req) {
     body: `
     <div style="text-align:center">
       <img src="/assets/hero-welcome.jpg?v=2" alt="Sri Lankan spices and rice &amp; curry"
-           style="width:calc(100% + 40px);margin:calc(-1 * (env(safe-area-inset-top, 0px) + 10px)) -20px 14px;aspect-ratio:16/10;object-fit:cover;border-radius:0 0 26px 26px;display:block"
+           style="width:calc(100% + 40px);margin:calc(-1 * (env(safe-area-inset-top, 0px) + 30px)) -20px 14px;aspect-ratio:16/10;object-fit:cover;border-radius:0 0 26px 26px;display:block"
            onerror="this.remove()">
       <h1 style="font-size:30px"><span style="color:${ORANGE}">3</span>una <span style="color:${ORANGE}">5</span>aha <span style="font-weight:800">· තුන පහ</span></h1>
       <p class="sub" style="max-width:330px;margin:8px auto 4px;font-size:14.5px">
@@ -488,7 +491,7 @@ async function shopPage(id) {
     backFloat: true,
     nav: buyerNav("home"),
     body: `
-    ${shopThumb(shop, "width:calc(100% + 40px);height:150px;font-size:34px;margin:calc(-1 * (env(safe-area-inset-top, 0px) + 10px)) -20px 0;border-radius:0 0 22px 22px", "🍛")}
+    ${shopThumb(shop, "width:calc(100% + 40px);height:150px;font-size:34px;margin:calc(-1 * (env(safe-area-inset-top, 0px) + 30px)) -20px 0;border-radius:0 0 22px 22px", "🍛")}
     <h1 style="margin-top:12px">${esc(shop.name)} <span class="si">කෑම</span></h1>
     <div class="sub">★ 4.8 · ${esc(shop.city)}, ${esc(shop.country)} · ${shop.open === false ? "closed now" : "open now"}</div>
     ${special ? `
@@ -1031,7 +1034,14 @@ export async function handleApp(req, res, url) {
   }
 
   if (path === "/app/logout") {
-    res.setHeader("Set-Cookie", "app_user=; Path=/app; Max-Age=0");
+    res.setHeader("Set-Cookie", [
+      "app_user=; Path=/app; Max-Age=0",
+      "app_email=; Path=/app; Max-Age=0",
+      "app_shop=; Path=/app; Max-Age=0",
+      "app_phone=; Path=/app; Max-Age=0",
+      "app_city=; Path=/app; Max-Age=0",
+      "app_geo=; Path=/app; Max-Age=0",
+    ]);
     redirect(res, "/app");
     return;
   }
