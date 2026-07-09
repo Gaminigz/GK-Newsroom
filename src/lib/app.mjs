@@ -234,19 +234,41 @@ function legalFooter() {
 }
 
 function welcomePage(req) {
-  const myShop = cookies(req ?? { headers: {} }).app_shop;
+  const c = cookies(req ?? { headers: {} });
+  const myShop = c.app_shop;
+  const loggedIn = c.app_user;
+  const loginBtn = (via, style, svg, label) => `
+    <form method="POST" action="/app/login" style="margin-bottom:9px">
+      <input type="hidden" name="via" value="${via}">
+      <button class="btn ${style}" style="display:flex;align-items:center;justify-content:center;gap:9px">${svg}${label}</button>
+    </form>`;
   return shell({
-    title: "3una 5aha — the spice marketplace",
+    title: "3una 5aha — find Sri Lankan food near you",
     body: `
-    <div style="text-align:center; padding-top:7vh">
-      <div style="width:92px;height:92px;border-radius:26px;background:#f0e7de;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;font-size:38px">🌶</div>
-      <h1 style="font-size:32px"><span style="color:${ORANGE}">3</span>una <span style="color:${ORANGE}">5</span>aha</h1>
-      <div style="font-size:32px;font-weight:800;letter-spacing:-.01em;line-height:1.2">තුන පහ</div>
-      <div class="sub" style="margin:6px 0 4px">the spice marketplace</div>
-      <p class="sub" style="max-width:280px;margin:0 auto 30px">Find Sri Lankan dishes around the world — from restaurants &amp; home cooks near you</p>
-      <a class="btn" style="margin-bottom:10px" href="/app/home">Buyer<span style="display:block;font-size:12px;font-weight:400;opacity:.85">browse &amp; order — no sign-up needed</span></a>
-      ${myShop ? `<a class="btn dark" style="margin-bottom:10px" href="/app/owner/${esc(myShop)}">Seller<span style="display:block;font-size:12px;font-weight:400;opacity:.85">my shop dashboard</span></a>` : `<a class="btn ghost" style="margin-bottom:10px" href="/app/register">Seller<span style="display:block;font-size:12px;font-weight:400;opacity:.7">open your shop on 3una 5aha</span></a>`}
-      <div class="sub" style="font-size:12.5px;margin:16px 0 10px">Questions? Talk to a human:</div>
+    <div style="text-align:center">
+      <img src="/assets/hero-welcome.jpg" alt="Sri Lankan spices and rice &amp; curry"
+           style="width:100%;border-radius:20px;aspect-ratio:4/3;object-fit:cover;margin-bottom:16px"
+           onerror="this.remove()">
+      <h1 style="font-size:30px"><span style="color:${ORANGE}">3</span>una <span style="color:${ORANGE}">5</span>aha <span style="font-weight:800">· තුන පහ</span></h1>
+      <p class="sub" style="max-width:330px;margin:8px auto 4px;font-size:14.5px">
+        <strong>Find Sri Lankan restaurants near you.</strong> A non-commercial
+        community app where Sri Lankan restaurants and home cooks post their
+        dishes, deals and daily activities — so travellers anywhere in the
+        world can find real Sri Lankan food nearby.</p>
+      <div style="margin:18px 0 6px">
+      ${loggedIn
+        ? `<a class="btn" style="margin-bottom:10px" href="/app/home">Today's deals near you →</a>`
+        : loginBtn("google", "ghost", `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.2H12v4.1h6.5c-.1 1.1-.8 2.7-2.4 3.8l3.7 2.9c2.2-2 3.7-5 3.7-8.6z"/><path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.7-2.9c-1 .7-2.4 1.2-4.2 1.2-3.2 0-5.9-2.1-6.9-5.1L1.3 17.2C3.3 21.2 7.3 24 12 24z"/><path fill="#FBBC05" d="M5.1 14.3c-.2-.7-.4-1.5-.4-2.3s.1-1.6.4-2.3L1.3 6.8C.5 8.4 0 10.1 0 12s.5 3.6 1.3 5.2l3.8-2.9z"/><path fill="#EA4335" d="M12 4.7c1.8 0 3 .8 3.7 1.4l2.7-2.7C16.9 1.2 14.2 0 12 0 7.3 0 3.3 2.8 1.3 6.8l3.8 2.9c1-3 3.7-5 6.9-5z"/></svg>`, "Continue with Google")
+          + loginBtn("facebook", "fb", `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#fff" d="M24 12a12 12 0 1 0-13.9 11.9v-8.4h-3V12h3V9.4c0-3 1.8-4.7 4.6-4.7 1.3 0 2.7.2 2.7.2v3h-1.5c-1.5 0-2 .9-2 1.9V12h3.3l-.5 3.5h-2.8v8.4A12 12 0 0 0 24 12z"/></svg>`, "Continue with Facebook")
+          + loginBtn("apple", "dark", `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#fff" d="M16.4 12.7c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 2.9-.4 7.3 1.2 9.7.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8 2.2-1.2 3-2.4c.9-1.3 1.3-2.6 1.3-2.7 0 0-2.5-1-2.6-3.9zM14 5.6c.7-.8 1.1-1.9 1-3.1-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.4z"/></svg>`, "Continue with Apple")
+          + loginBtn("email", "ghost", "✉️", "Continue with Email")
+          + loginBtn("sms", "ghost", "💬", "Phone · SMS")}
+      </div>
+      ${loggedIn ? "" : `<a href="/app/home" class="sub" style="font-weight:700;text-decoration:underline">Browse as guest →</a>`}
+      <div style="margin-top:16px">${myShop
+        ? `<a href="/app/owner/${esc(myShop)}" style="font-weight:700">🏪 My restaurant dashboard →</a>`
+        : `<a href="/app/register" style="font-weight:700">🏪 List your restaurant — free, non-commercial</a>`}</div>
+      <div class="sub" style="font-size:12.5px;margin:18px 0 10px">Questions? Talk to a human:</div>
       ${supportLinks()}
       ${legalFooter()}
       <div class="sub" style="font-size:11.5px;margin-top:12px">By continuing you agree to our Terms &amp; Privacy Policy</div>
@@ -269,7 +291,7 @@ function legalShell(title, body) {
 
 function termsPage() {
   return legalShell("Terms of Service", `
-    <p><strong>1. The service.</strong> 3una 5aha is a marketplace connecting buyers with independent restaurants and home cooks ("shops"). Shops prepare and sell food; 3una 5aha provides the listing, ordering and chat platform and is not the seller, preparer or deliverer of any food.</p>
+    <p><strong>1. The service.</strong> 3una 5aha is a <strong>non-commercial community platform</strong> that hosts Sri Lankan restaurants and home cooks ("shops") who post their business activities — dishes, daily specials, deals and events — so travellers and locals can find Sri Lankan food nearby, based on their location. Listing is free: 3una 5aha charges no fees and takes no commission. Shops prepare and sell food directly to buyers; 3una 5aha provides the listing, discovery, ordering and chat platform and is not the seller, preparer or deliverer of any food.</p>
     <p style="margin-top:10px"><strong>2. Accounts.</strong> Browsing needs no account. Shops register with contact details and are live immediately. We may suspend or remove any shop or user that breaks these terms, posts objectionable content, or harms the community — without prior notice.</p>
     <p style="margin-top:10px"><strong>3. User content &amp; zero tolerance.</strong> Dish listings, photos and chat messages are user-generated. Objectionable content, abuse, fraud or illegal goods are not tolerated. Report any content or user via <a href="/app/support" style="text-decoration:underline">Support</a> — reports are reviewed within 24 hours and offending content or users removed or blocked.</p>
     <p style="margin-top:10px"><strong>4. Orders &amp; payment.</strong> Orders are agreements between buyer and shop. Payment is settled directly with the shop at pickup unless stated otherwise. Prices are set by shops in their local currency.</p>
@@ -283,7 +305,8 @@ function privacyPage() {
     <p><strong>What we collect.</strong> Buyers: name, phone number, city and order/chat history — only what you enter when ordering. Shops: shop name, owner name, email, phone, city and listings. No payment card data is collected or stored. No advertising trackers, no analytics SDKs, no selling of data — ever.</p>
     <p style="margin-top:10px"><strong>Why.</strong> Solely to run the marketplace: showing nearby shops, passing your order and pickup chat to the shop, and letting shops manage their menu.</p>
     <p style="margin-top:10px"><strong>Where it lives.</strong> Data is stored in MongoDB Atlas (cloud database) and served via Railway (hosting). It is visible only to you, the shop you order from, and the 3una 5aha operators.</p>
-    <p style="margin-top:10px"><strong>Cookies.</strong> A small number of functional cookies only (your city, your phone for order history, your shop id). No tracking cookies.</p>
+    <p style="margin-top:10px"><strong>Location.</strong> With your permission, your approximate location is used for one purpose only: showing Sri Lankan restaurants and today's deals near you. It is kept as a cookie on your device, never stored on our servers with your identity, and never shared or sold.</p>
+    <p style="margin-top:10px"><strong>Cookies.</strong> A small number of functional cookies only (your city/coordinates, your phone for order history, your shop id, your sign-in choice). No tracking cookies.</p>
     <p style="margin-top:10px"><strong>Your rights &amp; account deletion.</strong> You can request a copy of your data, correction, or <strong>full deletion of your account and data</strong> at any time — email <a href="mailto:${SUPPORT.email}?subject=Account%20deletion%20request" style="text-decoration:underline">${SUPPORT.email}</a> or message us on <a href="${SUPPORT.telegram}" style="text-decoration:underline">Telegram</a> / <a href="${SUPPORT.whatsapp}" style="text-decoration:underline">WhatsApp</a>. Deletion is completed within 30 days.</p>
     <p style="margin-top:10px"><strong>Children.</strong> The service is not directed at children under 13.</p>
     <p style="margin-top:10px"><strong>Contact.</strong> Data controller: GK SMART (GGMT PTE. LTD., Singapore) · <a href="mailto:${SUPPORT.email}" style="text-decoration:underline">${SUPPORT.email}</a>.</p>`);
@@ -302,7 +325,7 @@ function supportPage() {
 
 async function homePage(req) {
   const c = cookies(req);
-  const city = c.app_city || "Colombo 03";
+  const city = c.app_city || (c.app_geo ? "Near you" : "Set location");
   const shops = await activeShops();
   const specials = await (await col("app_dishes"))
     .find({ special: true })
@@ -355,8 +378,17 @@ async function homePage(req) {
     </div>
     <div class="row" style="justify-content:space-between"><strong>Today's promotions <span class="si">අද විශේෂ</span></strong><a class="sub" href="#">See all</a></div>
     <div class="chiprow" style="align-items:stretch">${promoCards || `<span class="sub">No specials yet — shop owners publish them from their dashboard.</span>`}</div>
-    <div class="row" style="justify-content:space-between;margin-top:4px"><strong>Nearby shops</strong><span class="sub">within 3 km</span></div>
-    <div style="margin-top:10px">${shopCards || `<span class="sub">No open shops yet.</span>`}</div>`,
+    <div class="row" style="justify-content:space-between;margin-top:4px"><strong>Nearby restaurants</strong><span class="sub">near your location</span></div>
+    <div style="margin-top:10px">${shopCards || `<span class="sub">No open restaurants yet.</span>`}</div>
+    <script>
+      // Geo capture: remembers coordinates so deals/restaurants can be
+      // sorted by real distance (Google Maps wiring lands with native GPS).
+      if (!document.cookie.includes("app_geo=") && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          document.cookie = "app_geo=" + pos.coords.latitude.toFixed(3) + "," + pos.coords.longitude.toFixed(3) + "; path=/app; max-age=86400; SameSite=Lax";
+        }, () => {}, { timeout: 8000 });
+      }
+    </script>`,
   });
 }
 
@@ -777,6 +809,16 @@ export async function handleApp(req, res, url) {
       const shop = await shopById(url.searchParams.get("shop") || "");
       html(res, reportPage(shop));
     }
+    return;
+  }
+
+  if (path === "/app/login" && req.method === "POST") {
+    // Development: static sign-in — records the chosen provider and lands
+    // on the deals page. Swapped for real OAuth/SMS in the native phase.
+    const form = await readForm(req);
+    const via = ["google", "facebook", "apple", "email", "sms"].includes(form.get("via")) ? form.get("via") : "guest";
+    res.setHeader("Set-Cookie", `app_user=${via}; Path=/app; Max-Age=31536000; SameSite=Lax`);
+    redirect(res, "/app/home");
     return;
   }
 

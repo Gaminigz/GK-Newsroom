@@ -6,22 +6,23 @@ lives in `ios-app/ios/App/App.xcodeproj` (Capacitor 8, SPM).
 ## Identity
 - **Bundle ID:** `sg.ggmt.una5aha` (register in App Store Connect → same id)
 - **App name:** 3una 5aha
-- **Subtitle (30 chars):** Sri Lankan food, worldwide
+- **Subtitle (30 chars):** Sri Lankan food near you
 - **Category:** Food & Drink (secondary: Shopping)
 - **Age rating:** 4+ (questionnaire: all "No")
 - **Company:** GGMT PTE. LTD. (Singapore)
 
 ## Description (draft)
-Find real Sri Lankan food anywhere in the world — cooked by restaurants
-and home cooks near you.
+Find Sri Lankan restaurants near you — anywhere in the world.
 
-3una 5aha (කුළුබඩු — "the spice marketplace") connects you with Sri Lankan
-kitchens in your city: browse nearby shops, today's specials and promotions,
-order for pickup, and chat directly with the cook about your order.
+3una 5aha (තුන පහ) is a non-commercial community app that hosts Sri Lankan
+restaurants and home cooks posting their business activities: dishes, daily
+specials, deals and events. Travelling? Open the app and see today's deals
+from Sri Lankan kitchens near your location. Order for pickup and chat
+directly with the cook.
 
-Selling your own cooking? Open your shop in one minute — publish dishes
-with prices, time windows and daily specials, manage incoming orders, and
-talk to your buyers. No fees during our launch period.
+Run a Sri Lankan restaurant or cook from home? List yourself in one
+minute — completely free. 3una 5aha charges no fees and takes no
+commission: it exists to connect the worldwide Sri Lankan food community.
 
 • Nearby shops and today's specials
 • Order for pickup, chat with the cook
@@ -42,12 +43,12 @@ ayubowan,rice and curry
 Data collected, linked to user, not used for tracking:
 - Contact info: name, phone (orders only)
 - User content: order messages, shop listings
-- Identifiers: none · Location: coarse city string user types (NOT device GPS — until the GPS plugin ships; update this answer when it does)
+- Identifiers: none · Location: approximate coordinates WITH user permission, used only to show nearby restaurants/deals; kept on device (cookie), not stored server-side with identity
 No third-party advertising, no tracking, no data sold.
 Account deletion: in-app link (Support page) + email — already required and live.
 
 ## Review notes (paste into App Review notes field)
-Marketplace app. No login required to browse. To see the seller side:
+Non-commercial community app (free listings, no fees/commission) hosting Sri Lankan restaurants; travellers find dishes nearby via location. Sign-in buttons are present; browsing works as guest with no login. To see the seller side:
 tap "Sell on 3una 5aha" and register a test shop (instant, no approval
 gate). Test order: open any shop, add a dish, checkout with any name and
 phone. Support/deletion: /app/support. Content moderation: operators
