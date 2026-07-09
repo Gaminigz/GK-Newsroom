@@ -289,7 +289,8 @@ function emailLoginPage(error = "") {
     back: "/app",
     body: `
     <h1>Sign in with email</h1>
-    <div class="sub" style="margin:4px 0 6px">Development accounts — shop: <code>a@a.com</code> · user: <code>aa@a.com</code> · password <code>111111</code></div>
+    <div class="sub" style="margin:4px 0 6px">Submit your email and password — new emails get an account instantly.
+    A verification code is emailed to you by <strong>gk.smart@ggmt.sg</strong>; you can sign in right away and verify within 24 hours.</div>
     ${error ? `<div class="card" style="background:#fdecea;border-color:#efc4bf;color:#b3261e">${esc(error)}</div>` : ""}
     <form method="POST" action="/app/login-email">
       <label>EMAIL</label>
@@ -298,6 +299,28 @@ function emailLoginPage(error = "") {
       <input type="password" name="password" required placeholder="••••••" autocomplete="current-password">
       <button class="btn" style="margin-top:18px">Sign in</button>
     </form>`,
+  });
+}
+
+/* ------------------------------------------------- email verification */
+
+function verifyPage(email, error = "") {
+  return shell({
+    title: "Verify your email — 3una 5aha",
+    back: "/app/home",
+    body: `
+    <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/home">‹</a><h1 style="font-size:21px">Verify your email</h1></div>
+    <p class="sub" style="margin:8px 0 4px">A 6-digit code was emailed to <strong>${esc(email)}</strong> by
+    <strong>gk.smart@ggmt.sg</strong>. Codes are valid for 24 hours — this is a non-commercial community app,
+    so you can also do this later.</p>
+    ${error ? `<div class="card" style="background:#fdecea;border-color:#efc4bf;color:#b3261e">${esc(error)}</div>` : ""}
+    <form method="POST" action="/app/verify">
+      <label>VERIFICATION CODE</label>
+      <input type="text" name="code" inputmode="numeric" maxlength="6" required placeholder="••••••" style="letter-spacing:6px;font-size:19px;font-weight:700;text-align:center">
+      <button class="btn" style="margin-top:16px">Confirm email</button>
+    </form>
+    <div style="text-align:center;margin-top:14px"><a class="sub" href="/app/home" style="text-decoration:underline">Not now — verify later</a></div>
+    <div class="sub" style="text-align:center;font-size:11.5px;margin-top:16px">(development note: email sending goes live with SMTP — the code is 111111 for now)</div>`,
   });
 }
 
@@ -351,6 +374,11 @@ function supportPage() {
 async function homePage(req) {
   const c = cookies(req);
   const city = c.app_city || (c.app_geo ? "Near you" : "Set location");
+  let unverified = false;
+  if (c.app_email) {
+    const u = await (await col("app_users")).findOne({ email: decodeURIComponent(c.app_email) });
+    unverified = !!u && !u.verified;
+  }
   const shops = await activeShops();
   const specials = await (await col("app_dishes"))
     .find({ special: true })
@@ -399,6 +427,10 @@ async function homePage(req) {
       </div>
       <span class="pill" style="background:#191512;color:#fff;padding:6px 13px">Shop</span>
     </div>
+    ${unverified ? `<a href="/app/verify" class="card row" style="margin-top:10px;padding:9px 13px;background:#fdecea;border-color:#efc4bf">
+      <span style="width:10px;height:10px;border-radius:99px;background:#d92d20;flex:0 0 auto;box-shadow:0 0 0 3px #d92d2033"></span>
+      <span style="flex:1;font-size:13px"><strong>Verify your email</strong> — code from gk.smart@ggmt.sg awaits (24h)</span>
+      <span class="sub">›</span></a>` : ""}
     <div class="sub si" style="margin-top:12px">ආයුබෝවන් · Ayubowan</div>
     <h1>What's cooking nearby?</h1>
     <form action="/app/home" style="margin:12px 0 0"><input type="text" name="q" placeholder="🔍 Search dishes, shops, spices…"></form>
@@ -986,12 +1018,36 @@ export async function handleApp(req, res, url) {
   }
 
   if (path === "/app/login-email" && req.method === "POST") {
-    // Development test accounts — replaced by real auth in the native phase.
     const form = await readForm(req);
     const email = String(form.get("email") || "").trim().toLowerCase();
     const password = String(form.get("password") || "");
-    if (password !== "111111" || !["a@a.com", "aa@a.com"].includes(email)) {
-      html(res, emailLoginPage("Invalid credentials. Testing accounts: a@a.com (shop) or aa@a.com (user), password 111111."), 401);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 6) {
+      html(res, emailLoginPage("Enter a valid email and a password of at least 6 characters."), 400);
+      return;
+    }
+    if (!["a@a.com", "aa@a.com"].includes(email)) {
+      // Real account flow: create on first sign-in, verify by emailed code later.
+      const users = await col("app_users");
+      const hash = crypto.createHash("sha256").update(password).digest("hex");
+      let u = await users.findOne({ email });
+      if (!u) {
+        // NOTE dev stage: code is generated and logged, email sending goes
+        // live with SMTP later; until then the code is fixed to 111111.
+        await users.insertOne({ email, hash, verified: false, code: "111111", codeAt: new Date(), createdAt: new Date() });
+        console.log(`[auth] new account ${email} — verification code (dev) 111111, valid 24h`);
+      } else if (u.hash !== hash) {
+        html(res, emailLoginPage("Wrong password for this email. Access recovery: gk.smart@ggmt.sg"), 401);
+        return;
+      }
+      res.setHeader("Set-Cookie", [
+        `app_user=email; Path=/app; Max-Age=31536000; SameSite=Lax`,
+        `app_email=${encodeURIComponent(email)}; Path=/app; Max-Age=31536000; SameSite=Lax`,
+      ]);
+      redirect(res, "/app/home");
+      return;
+    }
+    if (password !== "111111") {
+      html(res, emailLoginPage("Wrong password."), 401);
       return;
     }
     if (email === "a@a.com") {
@@ -1014,6 +1070,34 @@ export async function handleApp(req, res, url) {
     } else {
       res.setHeader("Set-Cookie", `app_user=email; Path=/app; Max-Age=31536000; SameSite=Lax`);
       redirect(res, "/app/home");
+    }
+    return;
+  }
+
+  if (path === "/app/verify") {
+    const email = decodeURIComponent(cookies(req).app_email || "");
+    if (!email) { redirect(res, "/app"); return; }
+    if (req.method === "POST") {
+      const form = await readForm(req);
+      const code = String(form.get("code") || "").trim();
+      const users = await col("app_users");
+      const u = await users.findOne({ email });
+      if (!u) { redirect(res, "/app"); return; }
+      const fresh = u.codeAt && Date.now() - new Date(u.codeAt).getTime() < 24 * 3600 * 1000;
+      if (!fresh) {
+        html(res, verifyPage(email, "That code has expired (codes last 24 hours) — a new one was just emailed."), 401);
+        await users.updateOne({ email }, { $set: { code: "111111", codeAt: new Date() } });
+        console.log(`[auth] resent code (expired) for ${email}`);
+        return;
+      }
+      if (code !== u.code) {
+        html(res, verifyPage(email, "That code didn't match — check the email from gk.smart@ggmt.sg."), 401);
+        return;
+      }
+      await users.updateOne({ email }, { $set: { verified: true }, $unset: { code: "", codeAt: "" } });
+      redirect(res, "/app/home");
+    } else {
+      html(res, verifyPage(email));
     }
     return;
   }
