@@ -758,7 +758,7 @@ function dishEditPage(shop, d) {
       </div>
     <form method="POST" action="/app/owner/${String(shop._id)}/dish/${String(d._id)}" id="dishEditForm">
       <label for="photoIn" class="thumb" id="photoBox" style="width:100%;height:150px;margin:10px 0;font-size:13px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative;${d.photo ? `background-image:url(${d.photo})` : ""}"><span id="photoHint">${d.photo ? "" : "add dish photo — tap to use camera or library"}</span><span style="position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
-      <input type="file" id="photoIn" accept="image/*" capture="environment" style="display:none">
+      <input type="file" id="photoIn" accept="image/*" style="display:none">
       <input type="hidden" name="photo" id="photoData">
       <label>DISH NAME</label>
       <input type="text" name="name" required value="${esc(d.name)}">
@@ -861,7 +861,7 @@ function addDishPage(shop) {
       </div>
     <form method="POST" action="/app/owner/${String(shop._id)}/publish" id="dishForm">
       <label for="photoIn" class="thumb" id="photoBox" style="width:100%;height:130px;margin:10px 0;font-size:13px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative"><span id="photoHint">add dish photo — tap to use camera or library</span><span style="position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
-      <input type="file" id="photoIn" accept="image/*" capture="environment" style="display:none">
+      <input type="file" id="photoIn" accept="image/*" style="display:none">
       <input type="hidden" name="photo" id="photoData">
       <label>DISH NAME</label>
       <input type="text" name="name" required placeholder="Ambul Thiyal (fish curry)">
