@@ -53,8 +53,8 @@ function readBody(req, limit = 20_000) {
   });
 }
 
-async function readForm(req) {
-  return new URLSearchParams(await readBody(req));
+async function readForm(req, limit) {
+  return new URLSearchParams(await readBody(req, limit));
 }
 
 function redirect(res, to) {
@@ -75,6 +75,13 @@ function cookies(req) {
 
 function lkr(n) {
   return "LKR " + Number(n ?? 0).toLocaleString("en-US");
+}
+
+/** Dish thumbnail — real photo when the owner uploaded one, emoji tile otherwise. */
+function dishThumb(d, extra = "", emoji = "🍛") {
+  return d?.photo
+    ? `<div class="thumb" style="${extra};background-image:url(${d.photo});background-size:cover;background-position:center"></div>`
+    : `<div class="thumb" style="${extra}">${emoji}</div>`;
 }
 
 async function oid(id) {
@@ -301,7 +308,7 @@ async function homePage(req) {
     .map(
       (d) => `<a class="card" style="flex:0 0 190px;margin:0" href="/app/shop/${esc(d.shopId)}">
       <span class="pill deal">${d.discount && d.discount !== "none" ? esc(d.discount) : "Special"}</span>
-      <div class="thumb" style="width:100%;height:84px;margin:9px 0">🍛</div>
+      ${dishThumb(d, "width:100%;height:84px;margin:9px 0")}
       <strong style="font-size:14px">${esc(d.name)}</strong>
       <div class="sub" style="font-size:12px">${esc(shopName.get(d.shopId) ?? "")} · until ${esc(d.window ?? "9 PM")}</div>
     </a>`,
@@ -358,7 +365,7 @@ async function shopPage(id) {
     .filter((d) => !d.special)
     .map(
       (d) => `<div class="card row">
-      <div class="thumb">🍛</div>
+      ${dishThumb(d)}
       <div style="flex:1">
         <strong style="font-size:14.5px">${esc(d.name)}</strong>${d.nameSi ? ` <span class="si">${esc(d.nameSi)}</span>` : ""}
         <div class="sub" style="font-size:12.5px">Available ${esc(d.window ?? "all day")}</div>
@@ -381,7 +388,7 @@ async function shopPage(id) {
     <div class="card" style="margin-top:14px">
       <span class="pill today">TODAY</span> <strong style="font-size:13.5px">Today's special package <span class="si">අද විශේෂ</span></strong>
       <div class="row" style="margin-top:10px">
-        <div class="thumb">🎁</div>
+        ${dishThumb(special, "", "🎁")}
         <div style="flex:1">
           <strong>${esc(special.name)}</strong>
           <div class="sub" style="font-size:12.5px">${esc(special.nameSi ?? "")}</div>
@@ -624,7 +631,7 @@ async function ownerDash(id) {
     <div class="row" style="justify-content:space-between"><strong>Incoming orders</strong></div>
     <div style="margin-top:10px">${orderRows || `<div class="sub card">No orders yet — they appear here the moment a buyer checks out.</div>`}</div>
     <strong style="display:block;margin:6px 0 10px">Today's special &amp; discounts</strong>
-    ${special ? `<div class="card row"><div class="thumb">🎁</div><div style="flex:1"><strong>${esc(special.name)}</strong>
+    ${special ? `<div class="card row">${dishThumb(special, "", "🎁")}<div style="flex:1"><strong>${esc(special.name)}</strong>
       <div class="sub" style="font-size:12.5px">${lkr(special.price)}${special.discount && special.discount !== "none" ? ` · <span style=\"color:${ORANGE}\">${esc(special.discount)}</span>` : ""} · showing in Today's promotions</div></div></div>`
       : `<div class="sub card">No special yet — publish one with the toggle in "Add dish".</div>`}
     <div class="sub" style="margin:18px 0 8px;text-align:center">Tech support, any problem — talk to a human:</div>
@@ -643,7 +650,9 @@ function addDishPage(shop) {
     body: `
     <h1 style="font-size:21px">Add a dish <span class="si">කෑමක් එකතු</span></h1>
     <form method="POST" action="/app/owner/${String(shop._id)}/publish">
-      <div class="thumb" style="width:100%;height:120px;margin:14px 0;font-size:13px;color:#8a827b">🖼 add dish photo — native app phase</div>
+      <label for="photoIn" class="thumb" id="photoBox" style="width:100%;height:130px;margin:14px 0;font-size:13px;color:#8a827b;cursor:pointer;overflow:hidden;background-size:cover;background-position:center">📷 add dish photo — tap to use camera or library</label>
+      <input type="file" id="photoIn" accept="image/*" capture="environment" style="display:none">
+      <input type="hidden" name="photo" id="photoData">
       <label>DISH NAME</label>
       <input type="text" name="name" required placeholder="Ambul Thiyal (fish curry)">
       <label>SINHALA NAME (OPTIONAL)</label>
@@ -666,7 +675,29 @@ function addDishPage(shop) {
         <label class="toggle"><input type="checkbox" name="special" value="1"><span></span></label>
       </div>
       <button class="btn" style="margin-top:18px">Publish dish</button>
-    </form>`,
+    </form>
+<script>
+  document.getElementById('photoIn').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const img = new Image();
+    img.onload = () => {
+      const max = 800;
+      const s = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * s);
+      c.height = Math.round(img.height * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      const data = c.toDataURL('image/jpeg', 0.8);
+      document.getElementById('photoData').value = data;
+      const box = document.getElementById('photoBox');
+      box.style.backgroundImage = 'url(' + data + ')';
+      box.textContent = '';
+      URL.revokeObjectURL(img.src);
+    };
+    img.src = URL.createObjectURL(f);
+  });
+</script>`,
   });
 }
 
@@ -853,13 +884,16 @@ export async function handleApp(req, res, url) {
 
   m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/publish$/);
   if (m && req.method === "POST") {
-    const form = await readForm(req);
+    const form = await readForm(req, 600_000); // base64 dish photo fits
     const name = String(form.get("name") || "").trim().slice(0, 80);
+    const photo = String(form.get("photo") || "");
+    const photoOk = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(photo) && photo.length < 500_000;
     if (name) {
       await (await col("app_dishes")).insertOne({
         shopId: m[1],
         name,
         nameSi: String(form.get("nameSi") || "").slice(0, 80),
+        ...(photoOk ? { photo } : {}),
         price: Math.max(0, Number(form.get("price")) || 0),
         portions: Math.max(1, Number(form.get("portions")) || 20),
         window: String(form.get("window") || "All day").slice(0, 20),
