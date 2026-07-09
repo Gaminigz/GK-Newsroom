@@ -158,8 +158,8 @@ function shell({ title, body, nav = "", back = "", noPad = false, backFloat = fa
   * { box-sizing:border-box; margin:0; -webkit-tap-highlight-color:transparent; }
   body { background:#faf7f4; color:#1a1a1a; font:15.5px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
          max-width:480px; margin:0 auto; min-height:100vh;
-         padding:${noPad ? "0" : "14px 20px"}; padding-top:calc(env(safe-area-inset-top, 0px) + 30px); padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 88px); }
-  .logout { position:fixed; top:calc(env(safe-area-inset-top, 0px) + 6px); right:20px; z-index:80;
+         padding:${noPad ? "0" : "14px 24px"}; padding-top:calc(env(safe-area-inset-top, 0px) + 30px); padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 88px); }
+  .logout { position:fixed; top:calc(env(safe-area-inset-top, 0px) + 6px); right:24px; z-index:80;
             font-size:11.5px; font-weight:700; color:#d92d20; text-decoration:underline; }
   a { color:inherit; text-decoration:none; }
   h1 { font-size:24px; letter-spacing:-.02em; }
@@ -197,8 +197,8 @@ function shell({ title, body, nav = "", back = "", noPad = false, backFloat = fa
   .toast { position:fixed; top:45%; left:50%; transform:translate(-50%,-50%); background:#191512; color:#fff;
            padding:15px 24px; border-radius:14px; font-weight:700; font-size:15.5px; z-index:100;
            box-shadow:0 10px 34px #0007; text-align:center; max-width:80vw; }
-  .back.float { position:absolute; z-index:10; top:calc(env(safe-area-inset-top, 0px) + 30px); left:20px; margin:0; box-shadow:0 2px 8px #0003; }
-  .basketbar { position:fixed; bottom:calc(max(10px, env(safe-area-inset-bottom)) + 72px); left:50%; transform:translateX(-50%); width:calc(100% - 40px); max-width:440px;
+  .back.float { position:absolute; z-index:10; top:calc(env(safe-area-inset-top, 0px) + 30px); left:24px; margin:0; box-shadow:0 2px 8px #0003; }
+  .basketbar { position:fixed; bottom:calc(max(10px, env(safe-area-inset-bottom)) + 72px); left:50%; transform:translateX(-50%); width:calc(100% - 48px); max-width:432px;
                background:#191512; color:#fff; border-radius:14px; padding:14px 16px; display:none; justify-content:space-between; font-weight:700; }
   .stat { background:#fff; border:1px solid #ece3da; border-radius:14px; padding:11px 13px; flex:1; }
   .stat .k { color:#6b6560; font-size:11.5px; }
@@ -286,7 +286,7 @@ function welcomePage(req) {
     body: `
     <div style="text-align:center">
       <img src="/assets/hero-welcome.jpg?v=2" alt="Sri Lankan spices and rice &amp; curry"
-           style="width:calc(100% + 40px);margin:calc(-1 * (env(safe-area-inset-top, 0px) + 30px)) -20px 14px;aspect-ratio:16/10;object-fit:cover;border-radius:0 0 26px 26px;display:block"
+           style="width:calc(100% + 48px);margin:calc(-1 * (env(safe-area-inset-top, 0px) + 30px)) -24px 14px;aspect-ratio:16/10;object-fit:cover;border-radius:0 0 26px 26px;display:block"
            onerror="this.remove()">
       <h1 style="font-size:30px"><span style="color:${ORANGE}">3</span>una <span style="color:${ORANGE}">5</span>aha <span style="font-weight:800">· තුන පහ</span></h1>
       <p class="sub" style="max-width:330px;margin:8px auto 4px;font-size:14.5px">
@@ -692,7 +692,7 @@ async function shopPage(id) {
     backFloat: true,
     nav: buyerNav("home"),
     body: `
-    ${shopThumb(shop, "width:calc(100% + 40px);height:150px;font-size:34px;margin:calc(-1 * (env(safe-area-inset-top, 0px) + 30px)) -20px 0;border-radius:0 0 22px 22px", "🍛")}
+    ${shopThumb(shop, "width:calc(100% + 48px);height:150px;font-size:34px;margin:calc(-1 * (env(safe-area-inset-top, 0px) + 30px)) -24px 0;border-radius:0 0 22px 22px", "🍛")}
     <h1 style="margin-top:12px">${esc(shop.name)} <span class="si">කෑම</span></h1>
     <div class="sub">★ 4.8 · ${esc(shop.city)}, ${esc(shop.country)} · ${shop.open === false ? "closed now" : "open now"}</div>
     ${special ? `
@@ -727,7 +727,7 @@ async function shopPage(id) {
     <div class="basketbar" id="bar" onclick="checkout()"><span id="barL">View basket</span><span id="barR"></span></div>
 
     <div id="sheet" style="display:none;position:fixed;inset:0;background:rgba(20,15,10,.45);z-index:9" onclick="if(event.target===this)this.style.display='none'">
-      <form method="POST" action="/app/order" style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:#faf7f4;border-radius:22px 22px 0 0;padding:20px 18px 30px">
+      <form method="POST" action="/app/order" style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:#faf7f4;border-radius:22px 22px 0 0;padding:20px 26px calc(env(safe-area-inset-bottom, 0px) + 28px)">
         <strong style="font-size:17px">Confirm pickup order</strong>
         <div class="sub" id="sum" style="margin:6px 0 2px"></div>
         <input type="hidden" name="shopId" value="${String(shop._id)}">
@@ -1066,7 +1066,7 @@ async function ownerDash(id, toast = "") {
       <span class="sub" style="font-size:12px">today ${todays.length} · ${lkr(revenue)} · ${chats} chats</span></div>
     <div style="margin-top:10px">${orderRows}</div>` : ""}
     <div style="height:70px"></div>
-    <a class="btn" style="position:fixed;bottom:calc(env(safe-area-inset-bottom, 0px) + 18px);right:max(20px,calc(50% - 220px));width:auto;padding:13px 20px;border-radius:99px" href="/app/owner/${String(shop._id)}/add-dish">+ Add dish</a>`,
+    <a class="btn" style="position:fixed;bottom:calc(env(safe-area-inset-bottom, 0px) + 18px);right:max(24px,calc(50% - 216px));width:auto;padding:13px 20px;border-radius:99px" href="/app/owner/${String(shop._id)}/add-dish">+ Add dish</a>`,
   });
 }
 
