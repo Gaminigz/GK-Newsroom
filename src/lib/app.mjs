@@ -238,8 +238,8 @@ function welcomePage(req) {
       <div style="font-size:32px;font-weight:800;letter-spacing:-.01em;line-height:1.2">කුළුබඩු</div>
       <div class="sub" style="margin:6px 0 4px">the spice marketplace</div>
       <p class="sub" style="max-width:280px;margin:0 auto 30px">Find Sri Lankan dishes around the world — from restaurants &amp; home cooks near you</p>
-      <a class="btn" style="margin-bottom:10px" href="/app/home">Start browsing — no sign-up needed</a>
-      ${myShop ? `<a class="btn dark" style="margin-bottom:10px" href="/app/owner/${esc(myShop)}">🏪 My shop dashboard</a>` : `<a class="btn ghost" style="margin-bottom:10px" href="/app/register">🏪 Sell on 3una 5aha — open your shop</a>`}
+      <a class="btn" style="margin-bottom:10px" href="/app/home">Buyer<span style="display:block;font-size:12px;font-weight:400;opacity:.85">browse &amp; order — no sign-up needed</span></a>
+      ${myShop ? `<a class="btn dark" style="margin-bottom:10px" href="/app/owner/${esc(myShop)}">Seller<span style="display:block;font-size:12px;font-weight:400;opacity:.85">my shop dashboard</span></a>` : `<a class="btn ghost" style="margin-bottom:10px" href="/app/register">Seller<span style="display:block;font-size:12px;font-weight:400;opacity:.7">open your shop on 3una 5aha</span></a>`}
       <div class="sub" style="font-size:12.5px;margin:16px 0 10px">Questions? Talk to a human:</div>
       ${supportLinks()}
       ${legalFooter()}
