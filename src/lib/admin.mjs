@@ -298,6 +298,21 @@ async function ownersCol() {
 async function shopTab(flash = "") {
   const col = await ownersCol();
   const owners = await col.find({}).sort({ createdAt: 1 }).toArray();
+  const db = await getDb();
+  const reports = await db.collection("app_reports").find({ status: "open" }).sort({ createdAt: -1 }).limit(20).toArray().catch(() => []);
+  const nameById = new Map(owners.map((o) => [String(o._id), o.name]));
+  const reportRows = reports
+    .map(
+      (r) => `<tr>
+      <td>${r.createdAt ? new Date(r.createdAt).toISOString().slice(0, 16).replace("T", " ") : ""}</td>
+      <td><strong>${esc(r.shopId ? nameById.get(r.shopId) ?? "(unknown shop)" : "(general)")}</strong></td>
+      <td style="max-width:380px">${esc(r.reason)}</td>
+      <td>${esc(r.contact ?? "")}</td>
+      <td><form class="inline" method="POST" action="/admin/report/resolve">
+        <input type="hidden" name="id" value="${esc(String(r._id))}"><button class="b go">Resolve</button></form></td>
+    </tr>`,
+    )
+    .join("");
   const active = owners.filter((o) => o.status === "active");
   const pending = owners.filter((o) => o.status === "pending");
   const listings = owners.reduce((a, o) => a + (o.listings ?? 0), 0);
@@ -328,6 +343,10 @@ async function shopTab(flash = "") {
     `<h1>Shop owners</h1>
     <div class="sub">Self-registered sellers · restaurants &amp; home cooks worldwide</div>
     ${flash ? `<div class="note">${flash}</div>` : ""}
+    ${reports.length ? `<section style="border-color:#efc4bf">
+      <h2>⚑ Open reports (${reports.length}) — review within 24h</h2>
+      <table><tr><th>WHEN</th><th>SHOP</th><th>REASON</th><th>CONTACT</th><th></th></tr>${reportRows}</table>
+    </section>` : ""}
     <div class="stats">
       <div class="stat"><div class="k">Total shop owners</div><div class="v">${owners.length}</div></div>
       <div class="stat"><div class="k">Pending review</div><div class="v">${pending.length}</div></div>
@@ -406,6 +425,20 @@ export async function handleAdmin(req, res, url) {
     const db = await getDb();
     await db.collection("ai_feed_podcast").deleteOne({ _id: form.get("id") });
     redirect(res, "/admin/newsroom");
+    return;
+  }
+
+  if (path === "/admin/report/resolve" && req.method === "POST") {
+    const form = await readBody(req);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+    try {
+      await db.collection("app_reports").updateOne(
+        { _id: new ObjectId(form.get("id")) },
+        { $set: { status: "resolved", resolvedAt: new Date() } },
+      );
+    } catch { /* bad id */ }
+    redirect(res, "/admin/shop");
     return;
   }
 

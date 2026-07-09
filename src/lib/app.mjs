@@ -400,6 +400,7 @@ async function shopPage(id) {
     <strong style="display:block;margin:14px 0 10px">Popular dishes</strong>
     ${dishRows || `<div class="sub">No dishes published yet.</div>`}
 
+    <div class="sub" style="text-align:center;margin:16px 0"><a href="/app/report?shop=${String(shop._id)}" style="text-decoration:underline">⚑ Report this shop</a></div>
     <div class="basketbar" id="bar" onclick="checkout()"><span id="barL">View basket</span><span id="barR"></span></div>
 
     <div id="sheet" style="display:none;position:fixed;inset:0;background:rgba(20,15,10,.45);z-index:9" onclick="if(event.target===this)this.style.display='none'">
@@ -525,6 +526,32 @@ function locationPage(req) {
       <div class="thumb" style="width:100%;height:150px;margin:16px 0;font-size:13px;color:#8a827b">🗺 map search — native app phase</div>
       <button class="btn">Save &amp; continue</button>
     </form>`,
+  });
+}
+
+/* ------------------------------------------------------ report abuse */
+
+function reportPage(shop, sent = false) {
+  return shell({
+    title: "Report — 3una 5aha",
+    back: shop ? `/app/shop/${String(shop._id)}` : "/app/home",
+    body: sent
+      ? `<div style="text-align:center;padding-top:12vh">
+          <div style="font-size:44px">✅</div>
+          <h1 style="margin-top:10px">Report received</h1>
+          <p class="sub" style="max-width:280px;margin:10px auto">Thank you — the 3una 5aha team reviews reports within 24 hours and removes offending content or users.</p>
+          <div style="margin-top:18px"><a class="btn" href="/app/home">Back to browsing</a></div>
+        </div>`
+      : `<h1>Report ${shop ? esc(shop.name) : "a problem"}</h1>
+        <p class="sub" style="margin:6px 0 4px">Objectionable content, abuse, fraud or a food-safety concern — tell us what's wrong. Reviewed within 24 hours.</p>
+        <form method="POST" action="/app/report">
+          <input type="hidden" name="shopId" value="${shop ? String(shop._id) : ""}">
+          <label>WHAT HAPPENED</label>
+          <textarea name="reason" required rows="5" maxlength="1000" style="width:100%;padding:12px 13px;font-size:15px;border:1.5px solid #ddd5cd;border-radius:11px;background:#fff;font-family:inherit"></textarea>
+          <label>YOUR CONTACT (OPTIONAL)</label>
+          <input type="text" name="contact" placeholder="email or phone — for follow-up">
+          <button class="btn" style="margin-top:18px">Send report</button>
+        </form>`,
   });
 }
 
@@ -722,6 +749,27 @@ export async function handleApp(req, res, url) {
 
   if (path === "/app" || path === "/app/") {
     html(res, welcomePage(req));
+    return;
+  }
+
+  if (path === "/app/report") {
+    if (req.method === "POST") {
+      const form = await readForm(req);
+      const reason = String(form.get("reason") || "").trim().slice(0, 1000);
+      if (reason) {
+        await (await col("app_reports")).insertOne({
+          shopId: String(form.get("shopId") || "").slice(0, 24) || null,
+          reason,
+          contact: String(form.get("contact") || "").slice(0, 80),
+          status: "open",
+          createdAt: new Date(),
+        });
+      }
+      html(res, reportPage(null, true));
+    } else {
+      const shop = await shopById(url.searchParams.get("shop") || "");
+      html(res, reportPage(shop));
+    }
     return;
   }
 
