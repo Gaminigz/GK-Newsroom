@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>3una 5aha</title>
+<style>
+  * { box-sizing:border-box; margin:0; }
+  body { min-height:100vh; display:flex; align-items:center; justify-content:center; background:#faf7f4; color:#1a1a1a;
+         font:16px/1.5 -apple-system,BlinkMacSystemFont,sans-serif; text-align:center; padding:24px; }
+  .chip { background:#e05a33; color:#fff; border-radius:9px; padding:4px 8px; font-weight:800; }
+  h1 { font-size:26px; margin:14px 0 6px; }
+  p { color:#6b6560; font-size:14.5px; max-width:260px; margin:0 auto; }
+</style>
+</head>
+<body>
+  <div>
+    <span class="chip" style="font-size:22px">35</span>
+    <h1>3una 5aha</h1>
+    <p>You're offline — the spice marketplace needs a connection. Retrying automatically…</p>
+  </div>
+<script>
+  setInterval(() => {
+    fetch('https://web-production-2b43c.up.railway.app/healthz', { mode: 'no-cors' })
+      .then(() => location.reload())
+      .catch(() => {});
+  }, 4000);
+</script>
+</body>
+</html>

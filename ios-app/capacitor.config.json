@@ -1,0 +1,16 @@
+{
+  "appId": "sg.ggmt.una5aha",
+  "appName": "3una 5aha",
+  "webDir": "www",
+  "backgroundColor": "#faf7f4",
+  "server": {
+    "url": "https://web-production-2b43c.up.railway.app/app",
+    "allowNavigation": [
+      "web-production-2b43c.up.railway.app"
+    ]
+  },
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#faf7f4"
+  }
+}
