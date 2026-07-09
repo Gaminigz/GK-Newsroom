@@ -393,7 +393,10 @@ async function homePage(req) {
     noBack: true,
     body: `
     <div class="row" style="justify-content:space-between">
-      <a href="/app/location"><span style="color:${ORANGE}">●</span> <strong style="font-size:13.5px">${esc(city)}</strong> <span class="sub">▾</span></a>
+      <div class="row" style="gap:8px">
+        <a class="back" style="margin:0;width:30px;height:30px" href="/app">‹</a>
+        <a href="/app/location"><span style="color:${ORANGE}">●</span> <strong style="font-size:13.5px">${esc(city)}</strong> <span class="sub">▾</span></a>
+      </div>
       <span class="pill" style="background:#191512;color:#fff;padding:6px 13px">Shop</span>
     </div>
     <div class="sub si" style="margin-top:12px">ආයුබෝවන් · Ayubowan</div>
@@ -580,7 +583,7 @@ async function ordersPage(req) {
     title: "My orders — 3una 5aha",
     nav: buyerNav("orders"),
     noBack: true,
-    body: `<h1>My orders</h1><div class="sub" style="margin-bottom:14px">Pickup orders from this phone</div>
+    body: `<div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/home">‹</a><h1>My orders</h1></div><div class="sub" style="margin-bottom:14px">Pickup orders from this phone</div>
     ${rows || `<div class="sub">No orders yet — find a shop on <a href="/app/home" style="color:${ORANGE};font-weight:700">Home</a>.</div>`}`,
   });
 }
@@ -594,7 +597,7 @@ function locationPage(req) {
     nav: buyerNav("location"),
     noBack: true,
     body: `
-    <h1>Set your location</h1>
+    <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/home">‹</a><h1>Set your location</h1></div>
     <div class="sub si">ඔබේ ස්ථානය සකසන්න</div>
     <p class="sub" style="margin:8px 0 4px">Find Sri Lankan food anywhere in the world — search your suburb or city.</p>
     <form method="POST" action="/app/location">
