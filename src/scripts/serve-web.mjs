@@ -213,7 +213,7 @@ function shell({ title, desc, body }) {
   footer { color:#8b949e; font-size:12px; text-align:center; margin-top:28px; }
 </style>
 </head>
-<body><div class="wrap">${body}<footer>GK Newsroom · ggmt.sg</footer></div></body>
+<body><div class="wrap">${body}<footer>GK Newsroom · ggmt.sg · build 8.7-eve</footer></div></body>
 </html>`;
 }
 
