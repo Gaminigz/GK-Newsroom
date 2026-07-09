@@ -122,7 +122,7 @@ async function dishesFor(shopId) {
 
 /* ---------------------------------------------------------------- shell */
 
-function shell({ title, body, nav = "", back = "", noPad = false, backFloat = false }) {
+function shell({ title, body, nav = "", back = "", noPad = false, backFloat = false, noBack = false }) {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -192,7 +192,7 @@ function shell({ title, body, nav = "", back = "", noPad = false, backFloat = fa
 </style>
 </head>
 <body>
-<a class="back${backFloat ? " float" : ""}" href="${back ? esc(back) : "/app"}" onclick="${back ? "" : "if(history.length>1){history.back();return false}"}">‹</a>
+${noBack ? "" : `<a class="back${backFloat ? " float" : ""}" href="${back ? esc(back) : "/app"}" onclick="${back ? "" : "if(history.length>1){history.back();return false}"}">‹</a>`}
 ${body}
 ${nav}
 </body>
@@ -701,16 +701,18 @@ async function ownerDash(id) {
 
   return shell({
     title: `${shop.name} — shop owner`,
+    noBack: true,
     body: `
-    <div class="row" style="justify-content:space-between">
-      <a class="row" href="/app/owner/${String(shop._id)}/profile" style="flex:1;min-width:0">${shopThumb(shop, "width:44px;height:44px")}
-        <div style="min-width:0"><strong>${esc(shop.name)}</strong> <span class="sub" style="font-size:11px">✏️</span><div class="sub" style="font-size:12px">${esc(shop.owner || "Shop owner mode")}</div></div></a>
-      <form method="POST" action="/app/owner/${String(shop._id)}/toggle" class="row" style="gap:7px">
-        <span class="sub" style="font-size:12px;font-weight:700;color:${open ? "#1d7a34" : "#b3261e"}">${open ? "Open" : "Closed"}</span>
+    <div class="row" style="gap:8px;margin-bottom:12px">
+      <a class="back" style="margin:0;flex:0 0 auto" href="/app" onclick="if(history.length>1){history.back();return false}">‹</a>
+      <a class="row" href="/app/owner/${String(shop._id)}/profile" style="flex:1;min-width:0;gap:8px">${shopThumb(shop, "width:40px;height:40px")}
+        <div style="min-width:0"><strong style="font-size:14px;line-height:1.25;display:block">${esc(shop.name)} <span class="sub" style="font-size:11px">✏️</span></strong><div class="sub" style="font-size:11.5px">${esc(shop.owner || "")}</div></div></a>
+      <form method="POST" action="/app/owner/${String(shop._id)}/toggle" class="row" style="gap:5px;flex:0 0 auto">
+        <span class="sub" style="font-size:11.5px;font-weight:700;color:${open ? "#1d7a34" : "#b3261e"}">${open ? "Open" : "Closed"}</span>
         <label class="toggle"><input type="checkbox" ${open ? "checked" : ""} onchange="this.form.submit()"><span></span></label>
       </form>
+      <a class="chip" href="/app/shop/${String(shop._id)}" style="flex:0 0 auto;padding:6px 11px;font-size:12px">Buyer view</a>
     </div>
-    <a class="chip" href="/app/shop/${String(shop._id)}" style="position:absolute;top:calc(env(safe-area-inset-top, 0px) + 12px);right:max(14px, calc(50% - 226px));z-index:5">Buyer view</a>
     ${shop.status === "pending" ? `<div class="card" style="background:#fdf3d7;border-color:#efdba8"><strong style="color:#946200">⏳ Pending review</strong><div class="sub" style="font-size:12.5px">The 3una 5aha team is reviewing your shop. You can build your menu now — buyers see you once approved.</div></div>` : ""}
     ${shop.status === "suspended" ? `<div class="card" style="background:#fdecea;border-color:#efc4bf"><strong style="color:#b3261e">⛔ Suspended</strong><div class="sub" style="font-size:12.5px">Your shop is hidden from buyers. Contact support via /app/support.</div></div>` : ""}
     <div class="row" style="gap:9px;margin-bottom:14px">
