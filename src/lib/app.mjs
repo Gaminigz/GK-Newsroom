@@ -710,9 +710,7 @@ async function ownerDash(id) {
         <label class="toggle"><input type="checkbox" ${open ? "checked" : ""} onchange="this.form.submit()"><span></span></label>
       </form>
     </div>
-    <div class="row" style="justify-content:flex-end;margin:8px 0 10px">
-      <a class="chip" href="/app/shop/${String(shop._id)}">Buyer view</a>
-    </div>
+    <a class="chip" href="/app/shop/${String(shop._id)}" style="position:absolute;top:calc(env(safe-area-inset-top, 0px) + 12px);right:max(14px, calc(50% - 226px));z-index:5">Buyer view</a>
     ${shop.status === "pending" ? `<div class="card" style="background:#fdf3d7;border-color:#efdba8"><strong style="color:#946200">⏳ Pending review</strong><div class="sub" style="font-size:12.5px">The 3una 5aha team is reviewing your shop. You can build your menu now — buyers see you once approved.</div></div>` : ""}
     ${shop.status === "suspended" ? `<div class="card" style="background:#fdecea;border-color:#efc4bf"><strong style="color:#b3261e">⛔ Suspended</strong><div class="sub" style="font-size:12.5px">Your shop is hidden from buyers. Contact support via /app/support.</div></div>` : ""}
     <div class="row" style="gap:9px;margin-bottom:14px">
