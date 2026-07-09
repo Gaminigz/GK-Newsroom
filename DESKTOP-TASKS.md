@@ -38,6 +38,11 @@ Gaminigz/GK-Newsroom branch claude/git-review-ja0lpn — web service with
 config `railway.web.json`, cron worker with default `railway.json`. Fix
 via Settings → Source if either is still a CLI snapshot.
 
+## TASK 6b — PENDING
+Generate the first GK SMART Brief episode: `npm run govcast` (run AFTER
+Task 3 so gov posts exist; ~$0.40, pre-approved). The /accounting
+streamer stays hidden until one exists.
+
 ## TASK 6 — PENDING
 Verify live at https://web-production-2b43c.up.railway.app — landing has
 the GK logo + generated icons; /food shows photos + working Listen pills;
