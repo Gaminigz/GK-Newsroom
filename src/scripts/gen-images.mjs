@@ -24,7 +24,7 @@ import { SPICES } from "../data/spices.ts";
 
 const FORCE = process.argv.includes("--force");
 const OUT = path.resolve("src/web-assets");
-const IMAGE_MODEL = "imagen-3.0-generate-002";
+const IMAGE_MODEL = "imagen-4.0-generate-001";
 const GK_LOGO_DRIVE_ID = "1btgfaoPGs-Et9nIym7mJluqYoHyKV9YH";
 
 // Spices whose name alone would mislead the image model.
