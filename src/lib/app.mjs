@@ -272,6 +272,8 @@ function welcomePage(req) {
           + loginBtn("sms", "ghost", "💬", "SMS")
           + `<a class="btn ghost" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px 6px;font-size:15px" href="/app/home">👀 Guest</a>`}
       </div>
+      <div class="sub" style="font-size:12.5px;margin:12px 0 8px">Support requests — email, Telegram or WhatsApp:</div>
+      ${supportLinks()}
       ${legalFooter()}
       <div class="sub" style="font-size:11.5px;margin-top:8px">By continuing you agree to our Terms &amp; Privacy Policy</div>
       <div class="sub" style="font-size:11.5px;margin-top:4px">Published by <a href="https://www.ggmt.sg" target="_blank" rel="noopener" style="text-decoration:underline;font-weight:700">www.ggmt.sg</a> · GGMT PTE. LTD.</div>
@@ -724,8 +726,6 @@ async function ownerDash(id) {
     ${special ? `<div class="card row">${dishThumb(special, "", "🎁")}<div style="flex:1"><strong>${esc(special.name)}</strong>
       <div class="sub" style="font-size:12.5px">${lkr(special.price)}${special.discount && special.discount !== "none" ? ` · <span style=\"color:${ORANGE}\">${esc(special.discount)}</span>` : ""} · showing in Today's promotions</div></div></div>`
       : `<div class="sub card">No special yet — publish one with the toggle in "Add dish".</div>`}
-    <div class="sub" style="margin:18px 0 8px;text-align:center">Support requests — email, Telegram or WhatsApp:</div>
-    ${supportLinks()}
     <div style="height:70px"></div>
     <a class="btn" style="position:fixed;bottom:20px;right:max(14px,calc(50% - 226px));width:auto;padding:13px 20px;border-radius:99px" href="/app/owner/${String(shop._id)}/add-dish">+ Add dish</a>`,
   });
