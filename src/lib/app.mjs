@@ -248,7 +248,7 @@ function welcomePage(req) {
     backFloat: true,
     body: `
     <div style="text-align:center">
-      <img src="/assets/hero-welcome.jpg" alt="Sri Lankan spices and rice &amp; curry"
+      <img src="/assets/hero-welcome.jpg?v=2" alt="Sri Lankan spices and rice &amp; curry"
            style="width:calc(100% + 28px);margin:calc(-1 * (env(safe-area-inset-top, 0px) + 10px)) -14px 14px;aspect-ratio:16/10;object-fit:cover;border-radius:0 0 26px 26px;display:block"
            onerror="this.remove()">
       <h1 style="font-size:30px"><span style="color:${ORANGE}">3</span>una <span style="color:${ORANGE}">5</span>aha <span style="font-weight:800">· තුන පහ</span></h1>
