@@ -233,11 +233,11 @@ function supportLinks() {
   </div>`;
 }
 
-function legalFooter() {
+function legalFooter(includeSupport = true) {
   return `<div class="sub" style="font-size:12px;margin-top:22px;text-align:center">
     <a href="/app/terms" style="text-decoration:underline">Terms of Service</a> ·
-    <a href="/app/privacy" style="text-decoration:underline">Privacy Policy</a> ·
-    <a href="/app/support" style="text-decoration:underline">Support &amp; Contact</a>
+    <a href="/app/privacy" style="text-decoration:underline">Privacy Policy</a>${includeSupport ? ` ·
+    <a href="/app/support" style="text-decoration:underline">Support &amp; Contact</a>` : ""}
   </div>`;
 }
 
@@ -272,9 +272,9 @@ function welcomePage(req) {
           + loginBtn("sms", "ghost", "💬", "SMS")
           + `<a class="btn ghost" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px 6px;font-size:15px" href="/app/home">👀 Guest</a>`}
       </div>
-      <div class="sub" style="font-size:12.5px;margin:12px 0 8px">Support requests — email, Telegram or WhatsApp:</div>
+      <div class="sub" style="font-size:12.5px;margin:12px 0 8px"><strong>Support &amp; Contact</strong> — email, Telegram or WhatsApp:</div>
       ${supportLinks()}
-      ${legalFooter()}
+      ${legalFooter(false)}
       <div class="sub" style="font-size:11.5px;margin-top:8px">By continuing you agree to our Terms &amp; Privacy Policy</div>
       <div class="sub" style="font-size:11.5px;margin-top:4px">Published by <a href="https://www.ggmt.sg" target="_blank" rel="noopener" style="text-decoration:underline;font-weight:700">www.ggmt.sg</a> · GGMT PTE. LTD.</div>
     </div>`,

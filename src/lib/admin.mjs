@@ -277,22 +277,9 @@ async function newsroomTab() {
 
 /* ------------------------------------------------- tab 2 Superadmin Shop */
 
-const SAMPLE_OWNERS = [
-  { name: "Kamatha Kitchen", owner: "Nimasha Perera", email: "hello@kamatha.lk", city: "Melbourne", country: "AU", signup: "Email", listings: 18, status: "active" },
-  { name: "Serendib Spice Co.", owner: "Saman Silva", email: "saman@serendibspice.lk", city: "Colombo", country: "LK", signup: "Google", listings: 32, status: "active" },
-  { name: "Pol Sambol House", owner: "Anoma Herath", email: "anoma@polsambol.house", city: "London", country: "GB", signup: "Email", listings: 9, status: "pending" },
-  { name: "Achcharu Corner", owner: "Ruwan Jayasuriya", email: "ruwan@achcharu.corner", city: "Toronto", country: "CA", signup: "Email", listings: 21, status: "active" },
-  { name: "Hela Kitchen (home cook)", owner: "Dilini Fernando", email: "dilini@hela.kitchen", city: "Dubai", country: "AE", signup: "Email", listings: 6, status: "pending" },
-  { name: "Lanka Curry Hut", owner: "Mohamed Rizwan", email: "rizwan@lankacurry.hut", city: "Doha", country: "QA", signup: "Google", listings: 14, status: "suspended" },
-];
-
 async function ownersCol() {
   const db = await getDb();
-  const col = db.collection("shop_owners");
-  if ((await col.countDocuments()) === 0) {
-    await col.insertMany(SAMPLE_OWNERS.map((o) => ({ ...o, createdAt: new Date(), sample: true })));
-  }
-  return col;
+  return db.collection("shop_owners");
 }
 
 async function shopTab(flash = "") {
