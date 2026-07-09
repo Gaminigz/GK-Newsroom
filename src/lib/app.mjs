@@ -275,6 +275,26 @@ function welcomePage(req) {
   });
 }
 
+/* ------------------------------------------------ email test login */
+
+function emailLoginPage(error = "") {
+  return shell({
+    title: "Sign in with email — 3una 5aha",
+    back: "/app",
+    body: `
+    <h1>Sign in with email</h1>
+    <div class="sub" style="margin:4px 0 6px">Development accounts — shop: <code>a@a.com</code> · user: <code>aa@a.com</code> · password <code>111111</code></div>
+    ${error ? `<div class="card" style="background:#fdecea;border-color:#efc4bf;color:#b3261e">${esc(error)}</div>` : ""}
+    <form method="POST" action="/app/login-email">
+      <label>EMAIL</label>
+      <input type="text" name="email" required placeholder="a@a.com" autocomplete="username">
+      <label>PASSWORD</label>
+      <input type="password" name="password" required placeholder="••••••" autocomplete="current-password">
+      <button class="btn" style="margin-top:18px">Sign in</button>
+    </form>`,
+  });
+}
+
 /* --------------------------------------------------- legal & support */
 
 function legalShell(title, body) {
@@ -822,8 +842,45 @@ export async function handleApp(req, res, url) {
     // on the deals page. Swapped for real OAuth/SMS in the native phase.
     const form = await readForm(req);
     const via = ["google", "facebook", "apple", "email", "sms"].includes(form.get("via")) ? form.get("via") : "guest";
+    if (via === "email") {
+      html(res, emailLoginPage());
+      return;
+    }
     res.setHeader("Set-Cookie", `app_user=${via}; Path=/app; Max-Age=31536000; SameSite=Lax`);
     redirect(res, "/app/home");
+    return;
+  }
+
+  if (path === "/app/login-email" && req.method === "POST") {
+    // Development test accounts — replaced by real auth in the native phase.
+    const form = await readForm(req);
+    const email = String(form.get("email") || "").trim().toLowerCase();
+    const password = String(form.get("password") || "");
+    if (password !== "111111" || !["a@a.com", "aa@a.com"].includes(email)) {
+      html(res, emailLoginPage("Invalid credentials. Testing accounts: a@a.com (shop) or aa@a.com (user), password 111111."), 401);
+      return;
+    }
+    if (email === "a@a.com") {
+      // Shop test account — ensure its shop exists, land on the dashboard.
+      const owners = await col("shop_owners");
+      let shop = await owners.findOne({ email });
+      if (!shop) {
+        const r = await owners.insertOne({
+          name: "Test Kitchen", owner: "Test Owner", email, phone: "",
+          city: "Colombo", country: "LK", kind: "restaurant", signup: "Email",
+          listings: 0, status: "active", open: true, createdAt: new Date(), testAccount: true,
+        });
+        shop = { _id: r.insertedId };
+      }
+      res.setHeader("Set-Cookie", [
+        `app_user=email; Path=/app; Max-Age=31536000; SameSite=Lax`,
+        `app_shop=${String(shop._id)}; Path=/app; Max-Age=31536000; SameSite=Lax`,
+      ]);
+      redirect(res, `/app/owner/${String(shop._id)}`);
+    } else {
+      res.setHeader("Set-Cookie", `app_user=email; Path=/app; Max-Age=31536000; SameSite=Lax`);
+      redirect(res, "/app/home");
+    }
     return;
   }
 
