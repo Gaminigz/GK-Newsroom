@@ -142,11 +142,11 @@ function shell({ title, body, nav = "", back = "", noPad = false, backFloat = fa
   h1 { font-size:24px; letter-spacing:-.02em; }
   .si { color:#b3672f; font-weight:400; font-size:.82em; }
   .sub { color:#6b6560; font-size:13.5px; }
-  .row { display:flex; align-items:center; gap:10px; }
   .chiprow { display:flex; gap:8px; overflow-x:auto; padding:12px 0; scrollbar-width:none; }
   .chip { flex:0 0 auto; border:1px solid #e0d6cc; background:#fff; border-radius:99px; padding:7px 14px; font-size:13px; font-weight:600; color:#4a443f; }
   .chip.on { background:#191512; border-color:#191512; color:#fff; }
   .card { background:#fff; border:1px solid #ece3da; border-radius:16px; padding:13px 14px; margin-bottom:11px; display:block; }
+  .row { display:flex; align-items:center; gap:10px; }
   .pill { display:inline-block; border-radius:99px; padding:2px 9px; font-size:11px; font-weight:700; }
   .pill.deal { background:${ORANGE}; color:#fff; }
   .pill.new { background:${ORANGE}; color:#fff; }
@@ -752,9 +752,8 @@ function dishEditPage(shop, d) {
     body: `
     <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/owner/${String(shop._id)}">‹</a>
       <h1 style="font-size:21px">Edit dish</h1></div>
-      <div class="card row" style="margin:10px 0 0;padding:10px 13px">
-        <div style="flex:1"><strong style="font-size:14px">Today's special package</strong>
-          <div class="sub" style="font-size:12px">Featured in the promotions row for buyers nearby</div></div>
+      <div class="card row" style="margin:10px 0 0;padding:8px 13px">
+        <div style="flex:1;min-width:0"><strong style="font-size:13.5px">Today's special package</strong> <span class="sub" style="font-size:11.5px">· shown in promotions</span></div>
         <label class="toggle"><input type="checkbox" name="special" value="1" form="dishEditForm" ${d.special ? "checked" : ""}><span></span></label>
       </div>
     <form method="POST" action="/app/owner/${String(shop._id)}/dish/${String(d._id)}" id="dishEditForm">
@@ -856,9 +855,8 @@ function addDishPage(shop) {
     body: `
     <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/owner/${String(shop._id)}">‹</a>
       <h1 style="font-size:21px">Add a dish <span class="si">කෑමක් එකතු</span></h1></div>
-      <div class="card row" style="margin:10px 0 0;padding:10px 13px">
-        <div style="flex:1"><strong style="font-size:14px">Today's special package</strong>
-          <div class="sub" style="font-size:12px">Featured in the promotions row for buyers nearby</div></div>
+      <div class="card row" style="margin:10px 0 0;padding:8px 13px">
+        <div style="flex:1;min-width:0"><strong style="font-size:13.5px">Today's special package</strong> <span class="sub" style="font-size:11.5px">· shown in promotions</span></div>
         <label class="toggle"><input type="checkbox" name="special" value="1" form="dishForm"><span></span></label>
       </div>
     <form method="POST" action="/app/owner/${String(shop._id)}/publish" id="dishForm">
