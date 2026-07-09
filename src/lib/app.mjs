@@ -267,14 +267,12 @@ function welcomePage(req) {
           + loginBtn("sms", "ghost", "💬", "SMS")
           + `<a class="btn ghost" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px 6px;font-size:15px" href="/app/home">👀 Guest</a>`}
       </div>
-      <div style="margin-top:14px">${myShop
-        ? `<a href="/app/owner/${esc(myShop)}" style="font-weight:700">🏪 My restaurant dashboard →</a>`
-        : `<a href="/app/register" style="font-weight:700">🏪 List your restaurant — free, non-commercial</a>`}</div>
-      <div class="sub" style="font-size:12.5px;margin:18px 0 10px">Support requests — email, Telegram or WhatsApp:</div>
+      ${myShop ? `<div style="margin-top:12px"><a href="/app/owner/${esc(myShop)}" style="font-weight:700">🏪 My restaurant dashboard →</a></div>` : ""}
+      <div class="sub" style="font-size:12.5px;margin:12px 0 8px">Support requests — email, Telegram or WhatsApp:</div>
       ${supportLinks()}
       ${legalFooter()}
-      <div class="sub" style="font-size:11.5px;margin-top:12px">By continuing you agree to our Terms &amp; Privacy Policy</div>
-      <div class="sub" style="font-size:11.5px;margin-top:6px">Published by <a href="https://www.ggmt.sg" target="_blank" rel="noopener" style="text-decoration:underline;font-weight:700">www.ggmt.sg</a> · GGMT PTE. LTD., Singapore</div>
+      <div class="sub" style="font-size:11.5px;margin-top:8px">By continuing you agree to our Terms &amp; Privacy Policy</div>
+      <div class="sub" style="font-size:11.5px;margin-top:4px">Published by <a href="https://www.ggmt.sg" target="_blank" rel="noopener" style="text-decoration:underline;font-weight:700">www.ggmt.sg</a> · GGMT PTE. LTD.</div>
     </div>`,
   });
 }
