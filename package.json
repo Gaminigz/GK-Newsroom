@@ -8,7 +8,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "daily": "npm run fetch && (npm run gov || true) && npm run podcast",
+    "daily": "npm run fetch && (npm run gov || true) && (npm run govcast || true) && npm run podcast",
+    "govcast": "tsx src/scripts/run-gov-podcast.mjs",
     "fetch": "tsx src/scripts/run-fetch.mjs",
     "gov": "tsx src/scripts/run-gov-fetch.mjs",
     "spicecast": "tsx src/scripts/run-spice-podcasts.mjs",

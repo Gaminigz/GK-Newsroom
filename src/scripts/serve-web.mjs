@@ -34,6 +34,7 @@ import { getEpisodeAudio, listEpisodes } from "../lib/podcast.ts";
 import { handleAdmin } from "../lib/admin.mjs";
 import { handleApp } from "../lib/app.mjs";
 import { getSpiceAudio, listSpiceEpisodes } from "../lib/spice-podcast.ts";
+import { getGovAudio, listGovEpisodes } from "../lib/gov-podcast.ts";
 import { SPICES } from "../data/spices.ts";
 import { GOV_SOURCES } from "../data/gov-sources.ts";
 
@@ -137,44 +138,145 @@ function card(it) {
 }
 
 /**
- * Winamp-style compact player. `episodes` come newest-first from Mongo;
- * Episode numbers count up from the oldest (EP1 = first ever generated).
+ * The "streamer" — one Winamp-style radio player pinned to the top of
+ * every channel. items: [{ k(audio key), t(LCD title), row(list label),
+ * d(duration str), card?(CSS selector to pull under the player when
+ * picked), subs?(lines shown in the pull-under panel) }]. base is the
+ * audio URL prefix; k + ".wav" is appended.
  */
-function player(episodes) {
-  if (!episodes?.length) return "";
-  const total = episodes.length;
-  const list = episodes.map((e, i) => ({
-    n: total - i,
-    date: e.date,
-    label: fmtDate(e.date),
-    dur: fmtDur(e.durationSec),
-  }));
-  const cur = list[0];
-
-  const rows = list
+function streamer({ items, base }) {
+  if (!items?.length) return "";
+  const cur = items[0];
+  const rows = items
     .map(
       (e, i) =>
-        `<li data-i="${i}"${i === 0 ? ' class="on"' : ""}><span class="n">Episode ${e.n}</span><span class="d">${e.label}</span><span class="t">${e.dur}</span></li>`,
+        `<li data-i="${i}"${i === 0 ? ' class="on"' : ""}><span class="n">${esc(e.row)}</span><span class="t">${esc(e.d)}</span></li>`,
     )
     .join("");
-
-  return `<section class="wa">
+  return `<section class="wa" id="wa">
     <div class="wa-row">
-      <button class="wa-b" id="waPrev" aria-label="Older episode">⏮</button>
+      <button class="wa-b" id="waPrev" aria-label="Previous">⏮</button>
       <button class="wa-b wa-main" id="waPlay" aria-label="Play">▶</button>
-      <button class="wa-b" id="waNext" aria-label="Newer episode">⏭</button>
+      <button class="wa-b" id="waNext" aria-label="Next">⏭</button>
       <div class="wa-lcd">
-        <div class="wa-lcd-top" id="waTitle">EP ${cur.n} · ${cur.label} · THE Ai BRIEF</div>
-        <div class="wa-lcd-sub"><span id="waCur">0:00</span> / <span id="waDur">${cur.dur}</span></div>
+        <div class="wa-lcd-top" id="waTitle">${esc(cur.t)}</div>
+        <div class="wa-lcd-sub"><span id="waCur">0:00</span> / <span id="waDur">${esc(cur.d)}</span></div>
       </div>
-      <button class="wa-b wa-drop" id="waDrop" aria-label="Episode list">▾</button>
+      <button class="wa-b wa-drop" id="waDrop" aria-label="Topics">▾</button>
     </div>
     <div class="wa-seek" id="waSeek"><div class="wa-fill" id="waFill"></div></div>
     <ol class="wa-list" id="waList" hidden>${rows}</ol>
+    <div class="wa-sub" id="waSub" hidden></div>
     <audio id="waAudio" preload="none"></audio>
-    <script id="waData" type="application/json">${JSON.stringify(list)}</script>
+    <script id="waData" type="application/json">${JSON.stringify({ base, items })}</script>
   </section>`;
 }
+
+/** Streamer CSS — shared by all three channels (sticky at top). */
+const WA_CSS = `
+  .wa { position:sticky; top:8px; z-index:40; margin:16px 0 6px; border:1px solid #14161b; border-radius:10px;
+        background:linear-gradient(#343a46,#20242c); box-shadow:0 4px 14px #000a; overflow:hidden; }
+  .wa-row { display:flex; align-items:center; gap:8px; padding:8px 10px 6px; }
+  .wa-b { flex:0 0 auto; width:34px; height:30px; border-radius:6px; cursor:pointer; color:#cdd3dd;
+          background:linear-gradient(#4a5160,#2b303a); border:1px solid #171a20;
+          box-shadow:inset 0 1px 0 #ffffff22; font-size:13px; line-height:1; }
+  .wa-b:active { background:linear-gradient(#2b303a,#4a5160); }
+  .wa-main { width:42px; font-size:15px; color:#e3b341; }
+  .wa-lcd { flex:1 1 auto; min-width:0; background:#080d09; border:1px solid #000;
+            border-radius:5px; padding:4px 10px 5px; box-shadow:inset 0 2px 6px #000c; }
+  .wa-lcd-top { color:#39ff88; font:600 12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
+                letter-spacing:.06em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+                text-shadow:0 0 6px #39ff8877; }
+  .wa-lcd-sub { color:#2bcf6e; font:11px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace; opacity:.9; }
+  .wa-drop { font-size:15px; transition:transform .18s; }
+  .wa-drop.open { transform:rotate(180deg); }
+  .wa-seek { height:8px; margin:0 10px 9px; border-radius:4px; background:#12151b;
+             box-shadow:inset 0 1px 3px #000a; cursor:pointer; }
+  .wa-fill { height:100%; width:0%; border-radius:4px;
+             background:linear-gradient(90deg,#e3b341,#f37021); box-shadow:0 0 6px #f3702188; }
+  .wa-list { list-style:none; max-height:224px; overflow-y:auto; border-top:1px solid #14161b;
+             background:#101318; padding:4px 0; margin:0; }
+  .wa-list li { display:flex; gap:10px; align-items:baseline; padding:8px 14px; cursor:pointer;
+                font:12.5px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace; color:#aab3bf; }
+  .wa-list li:hover { background:#181d25; }
+  .wa-list li.on { color:#39ff88; }
+  .wa-list li.on .n::before { content:"▸ "; }
+  .wa-list .n { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wa-list .t { width:44px; text-align:right; color:#6b7480; }
+  .wa-sub { border-top:1px solid #14161b; background:#0c1015; padding:9px 14px;
+            font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace; color:#8fe0b2; }
+  .wa-sub div::before { content:"· "; color:#4a7c60; }
+  .playing-card { outline:2px solid #e3b341; outline-offset:-1px; }
+`;
+
+/** Streamer behavior — pick a topic → play + pull its visual under the player. */
+const WA_JS = `
+  window.waPick = null;
+  (() => {
+    const data = document.getElementById("waData");
+    if (!data) return;
+    const { base, items } = JSON.parse(data.textContent);
+    const audio = document.getElementById("waAudio");
+    const play = document.getElementById("waPlay");
+    const prev = document.getElementById("waPrev");
+    const next = document.getElementById("waNext");
+    const drop = document.getElementById("waDrop");
+    const listEl = document.getElementById("waList");
+    const sub = document.getElementById("waSub");
+    const title = document.getElementById("waTitle");
+    const cur = document.getElementById("waCur");
+    const dur = document.getElementById("waDur");
+    const seek = document.getElementById("waSeek");
+    const fill = document.getElementById("waFill");
+    let i = 0, loaded = false;
+    const mmss = (s) => isFinite(s) ? Math.floor(s/60) + ":" + String(Math.floor(s%60)).padStart(2,"0") : "–:––";
+
+    function show(idx, pull) {
+      i = idx; loaded = false;
+      const e = items[i];
+      title.textContent = e.t;
+      dur.textContent = e.d; cur.textContent = "0:00"; fill.style.width = "0%";
+      listEl.querySelectorAll("li").forEach((li, k) => li.classList.toggle("on", k === i));
+      sub.hidden = !(e.subs && e.subs.length);
+      if (!sub.hidden) sub.innerHTML = e.subs.map((s) => "<div>" + s.replace(/</g,"&lt;") + "</div>").join("");
+      document.querySelectorAll(".playing-card").forEach((el) => el.classList.remove("playing-card"));
+      if (pull && e.card) {
+        const el = document.querySelector(e.card);
+        if (el) { el.classList.add("playing-card"); el.scrollIntoView({ behavior: "smooth", block: "start" }); }
+      }
+    }
+    function start(idx) {
+      show(idx, true);
+      audio.src = base + items[i].k + ".wav"; loaded = true;
+      listEl.hidden = true; drop.classList.remove("open");
+      audio.play();
+    }
+    window.waPick = (k) => { const idx = items.findIndex((e) => e.k === k); if (idx > -1) start(idx); };
+
+    play.addEventListener("click", () => {
+      if (!loaded) { start(i); return; }
+      if (audio.paused) audio.play(); else audio.pause();
+    });
+    audio.addEventListener("play",  () => { play.textContent = "⏸"; });
+    audio.addEventListener("pause", () => { play.textContent = "▶"; });
+    audio.addEventListener("ended", () => { if (i < items.length - 1) start(i + 1); });
+    audio.addEventListener("loadedmetadata", () => { dur.textContent = mmss(audio.duration); });
+    audio.addEventListener("timeupdate", () => {
+      cur.textContent = mmss(audio.currentTime);
+      if (audio.duration) fill.style.width = (audio.currentTime / audio.duration * 100) + "%";
+    });
+    prev.addEventListener("click", () => { if (i > 0) start(i - 1); });
+    next.addEventListener("click", () => { if (i < items.length - 1) start(i + 1); });
+    seek.addEventListener("click", (ev) => {
+      if (!audio.duration) return;
+      const r = seek.getBoundingClientRect();
+      audio.currentTime = ((ev.clientX - r.left) / r.width) * audio.duration;
+    });
+    drop.addEventListener("click", () => { listEl.hidden = !listEl.hidden; drop.classList.toggle("open", !listEl.hidden); });
+    listEl.addEventListener("click", (ev) => { const li = ev.target.closest("li"); if (li) start(Number(li.dataset.i)); });
+    show(0, false);
+  })();
+`;
 
 /** Shared page skeleton for landing + coming-soon pages (no Mongo needed). */
 function shell({ title, desc, body }) {
@@ -318,17 +420,23 @@ function spicesPage(episodes = {}) {
         `<button class="chip${i === 0 ? " on" : ""}" data-filter="${esc(c)}">${esc(c)}</button>`,
     )
     .join("");
+  const waItems = SPICES.filter((s) => episodes[s.id]).map((s) => ({
+    k: s.id,
+    t: `${s.name.toUpperCase()} · ${s.sinhala}`,
+    row: `${s.name} · ${s.sinhala}`,
+    d: fmtDur(episodes[s.id]),
+    card: `#sp-${s.id}`,
+  }));
+
   const cards = SPICES.map((s) => {
-    const [c1, c2] = CAT_COLORS[s.category] ?? ["#888", "#444"];
     const dur = episodes[s.id];
     const playRow = dur
-      ? `<div class="listen" data-id="${esc(s.id)}">
-           <button class="lbtn" aria-label="Play episode">▶</button>
-           <span class="ltxt">Listen · <span class="ltime">${fmtDur(dur)}</span></span>
-           <div class="lbar"><div class="lfill"></div></div>
+      ? `<div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('${esc(s.id)}')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · ${fmtDur(dur)}</span>
          </div>`
       : "";
-    return `<article class="scard" data-kind="${esc(s.category)}">
+    return `<article class="scard" id="sp-${esc(s.id)}" data-kind="${esc(s.category)}">
       <img class="sphoto" src="/assets/spices/${esc(s.id)}.jpg" alt="" loading="lazy" onerror="this.remove()">
       <div class="sinner">
         <div class="sbody">
@@ -363,7 +471,8 @@ function spicesPage(episodes = {}) {
   .chips { display:flex; gap:8px; margin:14px 0 4px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
   .chip { flex:0 0 auto; background:#241811; color:#b09a86; border:1px solid #3a2a1e; border-radius:999px; padding:6px 14px; font-size:13px; cursor:pointer; }
   .chip.on { color:#140d08; background:#e08a2e; border-color:#e08a2e; font-weight:600; }
-  .scard { background:#1e140d; border:1px solid #33241a; border-radius:14px; margin-top:12px; overflow:hidden; }
+  ${WA_CSS}
+  .scard { background:#1e140d; border:1px solid #33241a; border-radius:14px; margin-top:12px; overflow:hidden; scroll-margin-top:110px; }
   .sphoto { width:100%; height:190px; object-fit:cover; display:block; background:#2a1c11; }
   .sinner { display:flex; gap:12px; padding:12px; }
   .sbody { min-width:0; }
@@ -390,6 +499,7 @@ function spicesPage(episodes = {}) {
     <h1><em>3una5aha</em> · Sri Lankan Spices</h1>
     <div class="sub">The island cooks with ~100 spices — meet them one post at a time. ${SPICES.length} so far, growing.</div>
   </header>
+  ${streamer({ items: waItems, base: "/podcast/spice/" })}
   <nav class="chips">${chips}</nav>
   <main>${cards}</main>
   <footer>3una5aha · GK Newsroom · photos from Wikimedia Commons</footer>
@@ -409,47 +519,23 @@ function spicesPage(episodes = {}) {
   // Spice photos are Gemini-generated and shipped in the repo
   // (/assets/spices/<id>.jpg) — deterministic, always on-topic. A card
   // whose image is missing simply shows text (onerror removes the img).
-
-  // Mini-podcast players: one shared audio element; each card's pill
-  // streams its episode from Mongo via /podcast/spice/<id>.wav.
-  (() => {
-    const rows = [...document.querySelectorAll(".listen")];
-    if (!rows.length) return;
-    const audio = new Audio();
-    let current = null;
-    const mmss = (s) => isFinite(s) ? Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0") : "";
-    function stopUi() {
-      if (!current) return;
-      current.querySelector(".lbtn").textContent = "▶";
-    }
-    rows.forEach((row) => {
-      row.querySelector(".lbtn").addEventListener("click", () => {
-        if (current === row) {
-          if (audio.paused) { audio.play(); } else { audio.pause(); }
-          return;
-        }
-        stopUi();
-        current = row;
-        audio.src = "/podcast/spice/" + row.dataset.id + ".wav";
-        audio.play();
-      });
-    });
-    audio.addEventListener("play", () => { if (current) current.querySelector(".lbtn").textContent = "⏸"; });
-    audio.addEventListener("pause", stopUi);
-    audio.addEventListener("ended", () => { stopUi(); if (current) current.querySelector(".lfill").style.width = "0%"; });
-    audio.addEventListener("timeupdate", () => {
-      if (!current || !audio.duration) return;
-      current.querySelector(".lfill").style.width = (audio.currentTime / audio.duration * 100) + "%";
-      current.querySelector(".ltime").textContent = mmss(audio.currentTime) + " / " + mmss(audio.duration);
-    });
-  })();
+  // Card "Listen" pills delegate to the top streamer via waPick(id).
+  ${WA_JS}
 </script>
 </body>
 </html>`;
 }
 
-/** GK SMART Accounting — translated Cambodian government feed from Mongo. */
-function govPage(posts) {
+/** GK SMART Accounting — translated Cambodian government feed from Mongo.
+ *  `episodes` are ready GK SMART Brief days for the streamer. */
+function govPage(posts, episodes = []) {
+  const waItems = episodes.map((e) => ({
+    k: e.date,
+    t: `GK SMART BRIEF · ${fmtDate(e.date)}`,
+    row: `Brief · ${fmtDate(e.date)}`,
+    d: fmtDur(e.durationSec),
+    subs: (e.stories ?? []).slice(0, 6),
+  }));
   const bySrc = Object.fromEntries(GOV_SOURCES.map((s) => [s.abbrev, s]));
   const chips = ["All", ...GOV_SOURCES.map((s) => s.abbrev)]
     .map(
@@ -503,6 +589,7 @@ function govPage(posts) {
   .chips { display:flex; gap:8px; margin:14px 0 4px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
   .chip { flex:0 0 auto; background:#10201a; color:#8fa89a; border:1px solid #1d3329; border-radius:999px; padding:6px 14px; font-size:13px; cursor:pointer; }
   .chip.on { color:#08120d; background:#35c98a; border-color:#35c98a; font-weight:600; }
+  ${WA_CSS}
   .gcard { display:flex; gap:12px; background:#0e1b14; border:1px solid #1d3329; border-radius:14px; padding:12px; margin-top:12px; }
   .gtile { flex:0 0 56px; height:56px; border-radius:12px; display:flex; align-items:center; justify-content:center;
            color:#fff; font-size:13px; font-weight:800; letter-spacing:.02em; overflow:hidden;
@@ -531,6 +618,7 @@ function govPage(posts) {
     <h1>GK <em>SMART Ai</em> Accounting</h1>
     <div class="sub">Cambodia's tax, customs & business announcements — translated from Khmer, daily.</div>
   </header>
+  ${streamer({ items: waItems, base: "/podcast/gov/" })}
   <nav class="chips">${chips}</nav>
   <main>${cards}</main>
   <footer>GK SMART Accounting · sources: GDT · ACAR · MEF · MoC · GDCE · NA · MoI</footer>
@@ -592,6 +680,8 @@ function govPage(posts) {
     }
     next(); next();
   })();
+
+  ${WA_JS}
 </script>
 </body>
 </html>`;
@@ -615,6 +705,14 @@ function comingSoonPage({ emoji, name, blurb }) {
 function page({ news, history, timeline, episodes }) {
   const top = news[0];
   const ogImage = firstShareImage(news);
+  const total = episodes?.length ?? 0;
+  const waItems = (episodes ?? []).map((e, idx) => ({
+    k: e.date,
+    t: `EP ${total - idx} · ${fmtDate(e.date)} · THE Ai BRIEF`,
+    row: `Episode ${total - idx} · ${fmtDate(e.date)}`,
+    d: fmtDur(e.durationSec),
+    subs: (e.stories ?? []).slice(0, 6),
+  }));
 
   const chips = ["all", "news", "history", "timeline"]
     .map(
@@ -646,39 +744,7 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
   header h1 em { color:var(--acc); font-style:normal; }
   header .sub { color:var(--dim); font-size:14px; margin-top:2px; }
 
-  /* ---- Winamp-style player ---- */
-  .wa { margin:16px 0 6px; border:1px solid #14161b; border-radius:10px;
-        background:linear-gradient(#343a46,#20242c); box-shadow:0 2px 8px #0006; overflow:hidden; }
-  .wa-row { display:flex; align-items:center; gap:8px; padding:8px 10px 6px; }
-  .wa-b { flex:0 0 auto; width:34px; height:30px; border-radius:6px; cursor:pointer; color:#cdd3dd;
-          background:linear-gradient(#4a5160,#2b303a); border:1px solid #171a20;
-          box-shadow:inset 0 1px 0 #ffffff22; font-size:13px; line-height:1; }
-  .wa-b:active { background:linear-gradient(#2b303a,#4a5160); }
-  .wa-main { width:42px; font-size:15px; color:var(--acc); }
-  .wa-lcd { flex:1 1 auto; min-width:0; background:#080d09; border:1px solid #000;
-            border-radius:5px; padding:4px 10px 5px; box-shadow:inset 0 2px 6px #000c; }
-  .wa-lcd-top { color:var(--lcd); font:600 12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
-                letter-spacing:.06em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-                text-shadow:0 0 6px #39ff8877; }
-  .wa-lcd-sub { color:#2bcf6e; font:11px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace; opacity:.9; }
-  .wa-drop { font-size:15px; transition:transform .18s; }
-  .wa-drop.open { transform:rotate(180deg); }
-  .wa-seek { height:8px; margin:0 10px 9px; border-radius:4px; background:#12151b;
-             box-shadow:inset 0 1px 3px #000a; cursor:pointer; }
-  .wa-fill { height:100%; width:0%; border-radius:4px;
-             background:linear-gradient(90deg,#e3b341,#f37021); box-shadow:0 0 6px #f3702188; }
-  .wa-list { list-style:none; max-height:224px; overflow-y:auto; border-top:1px solid #14161b;
-             background:#101318; padding:4px 0; }
-  .wa-list li { display:flex; gap:10px; align-items:baseline; padding:8px 14px; cursor:pointer;
-                font:12.5px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace; color:#aab3bf; }
-  .wa-list li:hover { background:#181d25; }
-  .wa-list li.on { color:var(--lcd); }
-  .wa-list li.on .n::before { content:"▸ "; }
-  .wa-list .n { flex:1; }
-  .wa-list .d { color:#7f8894; }
-  .wa-list li.on .d { color:var(--lcd); opacity:.8; }
-  .wa-list .t { width:44px; text-align:right; color:#6b7480; }
-
+  ${WA_CSS}
   .chips { display:flex; gap:8px; margin:14px 0 4px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
   .chip { flex:0 0 auto; background:var(--card); color:var(--dim); border:1px solid var(--line); border-radius:999px; padding:6px 14px; font-size:13px; cursor:pointer; }
   .chip.on { color:#0d1117; background:var(--acc); border-color:var(--acc); font-weight:600; }
@@ -705,7 +771,7 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
     <h1>GK <em>Ai</em> Newsroom</h1>
     <div class="sub">The daily Ai brief — fresh every morning at 5 AM.</div>
   </header>
-  ${player(episodes)}
+  ${streamer({ items: waItems, base: "/podcast/" })}
   <nav class="chips">${chips}</nav>
   <main id="feed">
     ${news.map(card).join("\n")}
@@ -726,71 +792,7 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
     });
   });
 
-  // ---- Winamp player ----
-  (() => {
-    const data = document.getElementById("waData");
-    if (!data) return;
-    const eps = JSON.parse(data.textContent);          // newest first
-    const audio = document.getElementById("waAudio");
-    const play = document.getElementById("waPlay");
-    const prev = document.getElementById("waPrev");
-    const next = document.getElementById("waNext");
-    const drop = document.getElementById("waDrop");
-    const listEl = document.getElementById("waList");
-    const title = document.getElementById("waTitle");
-    const cur = document.getElementById("waCur");
-    const dur = document.getElementById("waDur");
-    const seek = document.getElementById("waSeek");
-    const fill = document.getElementById("waFill");
-    let i = 0, loaded = false;
-
-    const mmss = (s) => isFinite(s) ? Math.floor(s/60) + ":" + String(Math.floor(s%60)).padStart(2,"0") : "–:––";
-
-    function show(idx) {
-      i = idx; loaded = false;
-      const e = eps[i];
-      title.textContent = "EP " + e.n + " · " + e.label + " · THE Ai BRIEF";
-      dur.textContent = e.dur; cur.textContent = "0:00"; fill.style.width = "0%";
-      listEl.querySelectorAll("li").forEach((li, k) => li.classList.toggle("on", k === i));
-    }
-    function load() {
-      if (!loaded) { audio.src = "/podcast/" + eps[i].date + ".wav"; loaded = true; }
-    }
-    function start(idx) { show(idx); load(); audio.play(); }
-
-    play.addEventListener("click", () => {
-      load();
-      if (audio.paused) audio.play(); else audio.pause();
-    });
-    audio.addEventListener("play",  () => { play.textContent = "⏸"; });
-    audio.addEventListener("pause", () => { play.textContent = "▶"; });
-    audio.addEventListener("ended", () => { if (i > 0) start(i - 1); });   // roll into the next-newer day
-    audio.addEventListener("loadedmetadata", () => { dur.textContent = mmss(audio.duration); });
-    audio.addEventListener("timeupdate", () => {
-      cur.textContent = mmss(audio.currentTime);
-      if (audio.duration) fill.style.width = (audio.currentTime / audio.duration * 100) + "%";
-    });
-
-    prev.addEventListener("click", () => { if (i < eps.length - 1) start(i + 1); }); // older
-    next.addEventListener("click", () => { if (i > 0) start(i - 1); });              // newer
-
-    seek.addEventListener("click", (ev) => {
-      if (!audio.duration) return;
-      const r = seek.getBoundingClientRect();
-      audio.currentTime = ((ev.clientX - r.left) / r.width) * audio.duration;
-    });
-
-    drop.addEventListener("click", () => {
-      listEl.hidden = !listEl.hidden;
-      drop.classList.toggle("open", !listEl.hidden);
-    });
-    listEl.addEventListener("click", (ev) => {
-      const li = ev.target.closest("li");
-      if (li) start(Number(li.dataset.i));
-    });
-
-    show(0);
-  })();
+  ${WA_JS}
 </script>
 </body>
 </html>`;
@@ -915,6 +917,32 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    const gm = path.match(/^\/podcast\/gov\/(latest|\d{4}-\d{2}-\d{2})\.wav$/);
+    if (gm) {
+      let key = gm[1];
+      if (key === "latest") key = (await listGovEpisodes(1))[0]?.date ?? null;
+      if (!key) {
+        res.writeHead(404).end("no episode yet");
+        return;
+      }
+      const cacheKey = `gov:${key}`;
+      let entry = spiceAudioCache.get(cacheKey);
+      if (!entry || Date.now() - entry.at > CACHE_MS) {
+        const buf = await getGovAudio(key);
+        if (!buf) {
+          res.writeHead(404).end("episode not found");
+          return;
+        }
+        entry = { buf, at: Date.now() };
+        spiceAudioCache.set(cacheKey, entry);
+        if (spiceAudioCache.size > 6) {
+          spiceAudioCache.delete(spiceAudioCache.keys().next().value);
+        }
+      }
+      sendAudio(req, res, entry.buf);
+      return;
+    }
+
     const sm = path.match(/^\/podcast\/spice\/([a-z0-9-]+)\.wav$/);
     if (sm) {
       const id = sm[1];
@@ -938,18 +966,22 @@ const server = http.createServer(async (req, res) => {
     if (path === "/accounting") {
       if (!govCache.html || Date.now() - govCache.at > CACHE_MS) {
         let posts = [];
+        let episodes = [];
         try {
           const db = await getDb();
-          posts = await db
-            .collection("gov_feed_items")
-            .find({})
-            .sort({ postedAt: -1, updatedAt: -1 })
-            .limit(60)
-            .toArray();
+          [posts, episodes] = await Promise.all([
+            db
+              .collection("gov_feed_items")
+              .find({})
+              .sort({ postedAt: -1, updatedAt: -1 })
+              .limit(60)
+              .toArray(),
+            listGovEpisodes().catch(() => []),
+          ]);
         } catch (err) {
           console.error("[web] gov feed query failed:", err instanceof Error ? err.message : err);
         }
-        govCache = { html: govPage(posts), at: Date.now() };
+        govCache = { html: govPage(posts, episodes), at: Date.now() };
       }
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
