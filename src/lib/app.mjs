@@ -151,7 +151,7 @@ function shell({ title, body, nav = "", back = "", noPad = false, backFloat = fa
   .btn.ghost { background:#fff; color:#1a1a1a; border:1.5px solid #e0d6cc; }
   .btn.dark { background:#191512; }
   .btn.fb { background:#1877f2; }
-  input[type=text], input[type=tel], input[type=number], select {
+  input[type=text], input[type=tel], input[type=number], input[type=password], select {
     width:100%; padding:12px 13px; font-size:15px; border:1.5px solid #ddd5cd; border-radius:11px; background:#fff; }
   input:focus, select:focus { outline:none; border-color:${ORANGE}; }
   label { display:block; font-size:11px; font-weight:700; letter-spacing:.07em; color:#6b6560; margin:14px 0 6px; }
