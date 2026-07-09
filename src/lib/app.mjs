@@ -744,11 +744,12 @@ function dishEditPage(shop, d) {
     `<label><input type="radio" name="${name}" value="${o}" ${String(current) === o ? "checked" : ""}><span class="opt">${o === "none" ? "None" : o}</span></label>`).join("");
   return shell({
     title: "Edit dish — " + d.name,
-    back: `/app/owner/${String(shop._id)}`,
+    noBack: true,
     body: `
-    <h1 style="font-size:21px">Edit dish</h1>
+    <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/owner/${String(shop._id)}">‹</a>
+      <h1 style="font-size:21px">Edit dish</h1></div>
     <form method="POST" action="/app/owner/${String(shop._id)}/dish/${String(d._id)}">
-      <label for="photoIn" class="thumb" id="photoBox" style="width:100%;height:150px;margin:14px 0;font-size:13px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative;${d.photo ? `background-image:url(${d.photo})` : ""}"><span id="photoHint">${d.photo ? "" : "add dish photo — tap to use camera or library"}</span><span style="position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
+      <label for="photoIn" class="thumb" id="photoBox" style="width:100%;height:150px;margin:10px 0;font-size:13px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative;${d.photo ? `background-image:url(${d.photo})` : ""}"><span id="photoHint">${d.photo ? "" : "add dish photo — tap to use camera or library"}</span><span style="position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
       <input type="file" id="photoIn" accept="image/*" capture="environment" style="display:none">
       <input type="hidden" name="photo" id="photoData">
       <label>DISH NAME</label>
@@ -803,9 +804,10 @@ function dishEditPage(shop, d) {
 function profilePage(shop) {
   return shell({
     title: "Shop profile — " + shop.name,
-    back: `/app/owner/${String(shop._id)}`,
+    noBack: true,
     body: `
-    <h1 style="font-size:21px">Shop profile</h1>
+    <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/owner/${String(shop._id)}">‹</a>
+      <h1 style="font-size:21px">Shop profile</h1></div>
     <form method="POST" action="/app/owner/${String(shop._id)}/profile">
       <label>SHOP LOGO</label>
       <label for="logoIn" class="thumb" id="logoBox" style="width:110px;height:110px;font-size:13px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative;${shop.logo ? `background-image:url(${shop.logo})` : ""}"><span id="logoHint">${shop.logo ? "" : "tap to add"}</span><span style="position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
@@ -845,11 +847,12 @@ function profilePage(shop) {
 function addDishPage(shop) {
   return shell({
     title: "Add a dish — " + shop.name,
-    back: `/app/owner/${String(shop._id)}`,
+    noBack: true,
     body: `
-    <h1 style="font-size:21px">Add a dish <span class="si">කෑමක් එකතු</span></h1>
+    <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/owner/${String(shop._id)}">‹</a>
+      <h1 style="font-size:21px">Add a dish <span class="si">කෑමක් එකතු</span></h1></div>
     <form method="POST" action="/app/owner/${String(shop._id)}/publish">
-      <label for="photoIn" class="thumb" id="photoBox" style="width:100%;height:130px;margin:14px 0;font-size:13px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative"><span id="photoHint">add dish photo — tap to use camera or library</span><span style="position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
+      <label for="photoIn" class="thumb" id="photoBox" style="width:100%;height:130px;margin:10px 0;font-size:13px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative"><span id="photoHint">add dish photo — tap to use camera or library</span><span style="position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
       <input type="file" id="photoIn" accept="image/*" capture="environment" style="display:none">
       <input type="hidden" name="photo" id="photoData">
       <label>DISH NAME</label>
