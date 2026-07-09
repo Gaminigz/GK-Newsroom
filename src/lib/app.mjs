@@ -272,8 +272,6 @@ function welcomePage(req) {
           + loginBtn("sms", "ghost", "💬", "SMS")
           + `<a class="btn ghost" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px 6px;font-size:15px" href="/app/home">👀 Guest</a>`}
       </div>
-      <div class="sub" style="font-size:12.5px;margin:12px 0 8px">Support requests — email, Telegram or WhatsApp:</div>
-      ${supportLinks()}
       ${legalFooter()}
       <div class="sub" style="font-size:11.5px;margin-top:8px">By continuing you agree to our Terms &amp; Privacy Policy</div>
       <div class="sub" style="font-size:11.5px;margin-top:4px">Published by <a href="https://www.ggmt.sg" target="_blank" rel="noopener" style="text-decoration:underline;font-weight:700">www.ggmt.sg</a> · GGMT PTE. LTD.</div>
