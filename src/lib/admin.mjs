@@ -286,6 +286,7 @@ async function shopTab(flash = "") {
   const col = await ownersCol();
   const owners = await col.find({}).sort({ createdAt: 1 }).toArray();
   const db = await getDb();
+  const appUsers = await db.collection("app_users").countDocuments().catch(() => 0);
   const reports = await db.collection("app_reports").find({ status: "open" }).sort({ createdAt: -1 }).limit(20).toArray().catch(() => []);
   const nameById = new Map(owners.map((o) => [String(o._id), o.name]));
   const reportRows = reports
@@ -308,9 +309,17 @@ async function shopTab(flash = "") {
     .map((o) => {
       const id = esc(String(o._id));
       const next = o.status === "suspended" ? ["active", "Reactivate"] : o.status === "pending" ? ["active", "Approve"] : ["suspended", "Suspend"];
+      const contact = [
+        o.mapsUrl ? `<a href="${esc(o.mapsUrl)}" target="_blank" rel="noopener" title="Google Maps">📍</a>` : "",
+        o.phone ? `<a href="tel:${esc(o.phone)}" title="${esc(o.phone)}">📞</a>` : "",
+        o.whatsapp ? `<a href="https://wa.me/${esc(String(o.whatsapp).replace(/[^0-9]/g, ""))}" target="_blank" rel="noopener" title="WhatsApp ${esc(o.whatsapp)}">💬</a>` : "",
+        o.telegram ? `<a href="https://t.me/${esc(String(o.telegram).replace(/^@/, ""))}" target="_blank" rel="noopener" title="Telegram ${esc(o.telegram)}">✈️</a>` : "",
+        o.facebook ? `<a href="${esc(o.facebook)}" target="_blank" rel="noopener" title="Facebook">📘</a>` : "",
+        o.contactEmail ? `<a href="mailto:${esc(o.contactEmail)}" title="${esc(o.contactEmail)}">✉️</a>` : "",
+      ].filter(Boolean).join(" ");
       return `<tr>
-      <td><a href="/app/owner/${id}" style="color:inherit"><strong>${esc(o.name)}</strong></a><br><span style="color:#8a827b;font-size:12px">${esc(o.owner)}</span></td>
-      <td>${esc(o.city)}, ${esc(o.country)}</td>
+      <td style="white-space:nowrap">${o.frontPhoto || o.logo ? `<img src="${esc(o.frontPhoto || o.logo)}" alt="" style="width:52px;height:40px;object-fit:cover;border-radius:8px;vertical-align:middle;margin-right:8px">` : ""}<a href="/app/owner/${id}" style="color:inherit"><strong>${esc(o.name)}</strong></a><br><span style="color:#8a827b;font-size:12px">${esc(o.owner)}</span></td>
+      <td>${esc(o.city)}, ${esc(o.country)}<br><span style="font-size:15px">${contact || '<span style="color:#c9bfb7;font-size:11px">no contacts yet</span>'}</span></td>
       <td>${esc(o.signup)}</td>
       <td>${o.listings ?? 0}</td>
       <td><span class="pill ${esc(o.status)}">${esc(o.status)}</span></td>
@@ -339,10 +348,11 @@ async function shopTab(flash = "") {
       <div class="stat"><div class="k">Pending review</div><div class="v">${pending.length}</div></div>
       <div class="stat"><div class="k">Active shops</div><div class="v">${active.length}</div></div>
       <div class="stat"><div class="k">Active listings</div><div class="v">${listings}</div></div>
+      <div class="stat"><div class="k">App user accounts</div><div class="v">${appUsers}</div></div>
     </div>
     <section>
       <h2>Owners</h2>
-      <table><tr><th>SHOP / OWNER</th><th>CITY</th><th>SIGNUP</th><th>LISTINGS</th><th>STATUS</th><th>ACTIONS</th></tr>${rows}</table>
+      <table><tr><th>SHOP / OWNER</th><th>CITY · LOCATION &amp; CONTACT</th><th>SIGNUP</th><th>LISTINGS</th><th>STATUS</th><th>ACTIONS</th></tr>${rows}</table>
     </section>
     <div class="sub">iOS shop app + real owner sign-in come next — this console is the management side.</div>`,
   );

@@ -868,31 +868,59 @@ function profilePage(shop) {
       <label for="logoIn" class="thumb" id="logoBox" style="width:110px;height:110px;font-size:13px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative;${shop.logo ? `background-image:url(${shop.logo})` : ""}"><span id="logoHint">${shop.logo ? "" : "tap to add"}</span><span style="position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
       <input type="file" id="logoIn" accept="image/*" style="display:none">
       <input type="hidden" name="logo" id="logoData">
+      <label>SHOP FRONT PHOTO <span style="font-weight:400">— sign / shop number / door clearly visible</span></label>
+      <label for="frontIn" class="thumb" id="frontBox" style="width:100%;height:130px;font-size:13px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative;${shop.frontPhoto ? `background-image:url(${shop.frontPhoto})` : ""}"><span id="frontHint">${shop.frontPhoto ? "" : "tap to add — helps buyers and the 3una 5aha team find you"}</span><span style="position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
+      <input type="file" id="frontIn" accept="image/*" style="display:none">
+      <input type="hidden" name="frontPhoto" id="frontData">
       <label>SHOP NAME</label>
       <input type="text" name="name" required value="${esc(shop.name)}">
       <label>OWNER NAME</label>
       <input type="text" name="owner" value="${esc(shop.owner ?? "")}" placeholder="Your name">
+      <label>GOOGLE MAPS LOCATION <span style="font-weight:400">— Google Maps → Share → Copy link</span></label>
+      <input type="text" name="mapsUrl" value="${esc(shop.mapsUrl ?? "")}" placeholder="https://maps.app.goo.gl/…">
+      <label>PHONE</label>
+      <input type="tel" name="phone" value="${esc(shop.phone ?? "")}" placeholder="+94 77 123 4567">
+      <label>WHATSAPP</label>
+      <input type="tel" name="whatsapp" value="${esc(shop.whatsapp ?? "")}" placeholder="+94 77 123 4567">
+      <label>TELEGRAM</label>
+      <input type="text" name="telegram" value="${esc(shop.telegram ?? "")}" placeholder="@yourshop">
+      <label>FACEBOOK PAGE</label>
+      <input type="text" name="facebook" value="${esc(shop.facebook ?? "")}" placeholder="https://facebook.com/yourshop">
+      <label>CONTACT EMAIL</label>
+      <input type="text" name="contactEmail" value="${esc(shop.contactEmail ?? "")}" placeholder="hello@yourshop.lk">
       <button class="btn" style="margin-top:18px">Save profile</button>
     </form>
 <script>
-  document.getElementById('logoIn').addEventListener('change', (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    const img = new Image();
-    img.onload = () => {
-      const c = document.createElement('canvas');
-      const side = Math.min(img.width, img.height);
-      c.width = c.height = Math.min(400, side);
-      c.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, c.width, c.height);
-      const data = c.toDataURL('image/jpeg', 0.8);
-      document.getElementById('logoData').value = data;
-      const box = document.getElementById('logoBox');
-      box.style.backgroundImage = 'url(' + data + ')';
-      document.getElementById('logoHint').textContent = '';
-      URL.revokeObjectURL(img.src);
-    };
-    img.src = URL.createObjectURL(f);
-  });
+  function wirePhoto(inputId, boxId, hintId, dataId, square) {
+    document.getElementById(inputId).addEventListener('change', (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        if (square) {
+          const side = Math.min(img.width, img.height);
+          c.width = c.height = Math.min(400, side);
+          c.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, c.width, c.height);
+        } else {
+          const max = 800;
+          const sc = Math.min(1, max / Math.max(img.width, img.height));
+          c.width = Math.round(img.width * sc);
+          c.height = Math.round(img.height * sc);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        }
+        const data = c.toDataURL('image/jpeg', 0.8);
+        document.getElementById(dataId).value = data;
+        const box = document.getElementById(boxId);
+        box.style.backgroundImage = 'url(' + data + ')';
+        document.getElementById(hintId).textContent = '';
+        URL.revokeObjectURL(img.src);
+      };
+      img.src = URL.createObjectURL(f);
+    });
+  }
+  wirePhoto('logoIn', 'logoBox', 'logoHint', 'logoData', true);
+  wirePhoto('frontIn', 'frontBox', 'frontHint', 'frontData', false);
 </script>`,
   });
 }
@@ -1263,12 +1291,25 @@ export async function handleApp(req, res, url) {
     const shop = await shopById(m[1]);
     if (!shop) { res.writeHead(404).end("not found"); return; }
     if (req.method === "POST") {
-      const form = await readForm(req, 600_000);
+      const form = await readForm(req, 1_200_000);
       const name = String(form.get("name") || "").trim().slice(0, 80);
       const owner = String(form.get("owner") || "").trim().slice(0, 60);
       const logo = String(form.get("logo") || "");
       const logoOk = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(logo) && logo.length < 500_000;
-      const set = { ...(name ? { name } : {}), owner, ...(logoOk ? { logo } : {}) };
+      const front = String(form.get("frontPhoto") || "");
+      const frontOk = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(front) && front.length < 500_000;
+      const urlish = (v) => { v = String(v || "").trim().slice(0, 200); return v && !/^https?:\/\//.test(v) ? "https://" + v : v; };
+      const set = {
+        ...(name ? { name } : {}), owner,
+        ...(logoOk ? { logo } : {}),
+        ...(frontOk ? { frontPhoto: front } : {}),
+        mapsUrl: urlish(form.get("mapsUrl")),
+        facebook: urlish(form.get("facebook")),
+        telegram: String(form.get("telegram") || "").trim().slice(0, 60),
+        whatsapp: String(form.get("whatsapp") || "").trim().slice(0, 24),
+        phone: String(form.get("phone") || "").trim().slice(0, 24),
+        contactEmail: String(form.get("contactEmail") || "").trim().slice(0, 80),
+      };
       await (await col("shop_owners")).updateOne({ _id: shop._id }, { $set: set });
       redirect(res, `/app/owner/${m[1]}?msg=${encodeURIComponent("Profile saved")}`);
     } else {
