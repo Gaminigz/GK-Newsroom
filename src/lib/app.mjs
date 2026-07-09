@@ -729,7 +729,7 @@ async function shopPage(id) {
     <div id="sheet" style="display:none;position:fixed;inset:0;background:rgba(20,15,10,.45);z-index:9" onclick="if(event.target===this)this.style.display='none'">
       <form method="POST" action="/app/order" style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:#faf7f4;border-radius:22px 22px 0 0;padding:20px 26px calc(env(safe-area-inset-bottom, 0px) + 28px)">
         <strong style="font-size:17px">Confirm pickup order</strong>
-        <div class="sub" id="sum" style="margin:6px 0 2px"></div>
+        <div id="sheetItems" style="margin:10px 0 2px"></div>
         <input type="hidden" name="shopId" value="${String(shop._id)}">
         <input type="hidden" name="items" id="itemsField">
         <label>YOUR NAME</label><input type="text" name="buyer" required placeholder="Nimal P.">
@@ -748,11 +748,22 @@ async function shopPage(id) {
     document.getElementById('pvImg').src = m[1];
     document.getElementById('pv').style.display = 'flex';
   }
-  const basket = [];
+  const BKEY = 'basket_${String(shop._id)}';
+  let basket = [];
+  try { basket = JSON.parse(localStorage.getItem(BKEY) || '[]'); } catch {}
+  function persist() { localStorage.setItem(BKEY, JSON.stringify(basket)); }
   function add(id, name, price) {
     const f = basket.find((b) => b.id === id);
     if (f) f.qty++; else basket.push({ id, name, price, qty: 1 });
-    render();
+    persist(); render(); renderSheet();
+  }
+  function qty(id, d) {
+    const f = basket.find((b) => b.id === id);
+    if (!f) return;
+    f.qty += d;
+    if (f.qty <= 0) basket = basket.filter((b) => b.id !== id);
+    persist(); render(); renderSheet();
+    if (!basket.length) document.getElementById('sheet').style.display = 'none';
   }
   function render() {
     const n = basket.reduce((a, b) => a + b.qty, 0);
@@ -762,12 +773,27 @@ async function shopPage(id) {
     document.getElementById('barL').textContent = 'View basket · ' + n + ' item' + (n > 1 ? 's' : '');
     document.getElementById('barR').textContent = 'LKR ' + t.toLocaleString();
   }
-  function checkout() {
+  function renderSheet() {
+    const box = document.getElementById('sheetItems');
+    box.innerHTML = basket.map((b) =>
+      '<div style="display:flex;align-items:center;gap:9px;margin-bottom:8px">' +
+      '<span style="flex:1;min-width:0;font-size:14px"><b>' + b.name.replace(/</g, '&lt;') + '</b></span>' +
+      '<button type="button" onclick="qty(\\'' + b.id + '\\',-1)" style="width:30px;height:30px;border-radius:99px;border:1.5px solid #ddd5cd;background:#fff;font-weight:800;cursor:pointer">−</button>' +
+      '<span style="width:20px;text-align:center;font-weight:700">' + b.qty + '</span>' +
+      '<button type="button" onclick="qty(\\'' + b.id + '\\',1)" style="width:30px;height:30px;border-radius:99px;border:1.5px solid #ddd5cd;background:#fff;font-weight:800;cursor:pointer">＋</button>' +
+      '<span style="width:78px;text-align:right;font-size:13px;font-weight:700">LKR ' + (b.qty * b.price).toLocaleString() + '</span>' +
+      '<button type="button" onclick="qty(\\'' + b.id + '\\',-99)" aria-label="Remove" style="width:30px;height:30px;border-radius:99px;border:1.5px solid #f1c1bb;background:#fff;color:#d92d20;font-weight:800;cursor:pointer">✕</button>' +
+      '</div>').join('');
     document.getElementById('itemsField').value = JSON.stringify(basket);
-    document.getElementById('sum').textContent = basket.map((b) => b.qty + '× ' + b.name).join(' · ');
-    document.getElementById('sheetTotal').textContent = 'LKR ' + basket.reduce((a, b) => a + b.qty * b.price, 0).toLocaleString();
-    document.getElementById('sheet').style.display = 'block';
+    const tEl = document.getElementById('sheetTotal');
+    if (tEl) tEl.textContent = 'LKR ' + basket.reduce((a, b) => a + b.qty * b.price, 0).toLocaleString();
   }
+  function checkout() { renderSheet(); document.getElementById('sheet').style.display = 'block'; }
+  document.querySelector('#sheet form').addEventListener('submit', () => {
+    document.getElementById('itemsField').value = JSON.stringify(basket);
+    localStorage.removeItem(BKEY);
+  });
+  render();
 </script>`,
   });
 }
