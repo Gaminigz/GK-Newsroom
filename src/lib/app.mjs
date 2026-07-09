@@ -748,7 +748,12 @@ function dishEditPage(shop, d) {
     body: `
     <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/owner/${String(shop._id)}">‹</a>
       <h1 style="font-size:21px">Edit dish</h1></div>
-    <form method="POST" action="/app/owner/${String(shop._id)}/dish/${String(d._id)}">
+      <div class="card row" style="margin:10px 0 0;padding:10px 13px">
+        <div style="flex:1"><strong style="font-size:14px">Today's special package</strong>
+          <div class="sub" style="font-size:12px">Featured in the promotions row for buyers nearby</div></div>
+        <label class="toggle"><input type="checkbox" name="special" value="1" form="dishEditForm" ${d.special ? "checked" : ""}><span></span></label>
+      </div>
+    <form method="POST" action="/app/owner/${String(shop._id)}/dish/${String(d._id)}" id="dishEditForm">
       <label for="photoIn" class="thumb" id="photoBox" style="width:100%;height:150px;margin:10px 0;font-size:13px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative;${d.photo ? `background-image:url(${d.photo})` : ""}"><span id="photoHint">${d.photo ? "" : "add dish photo — tap to use camera or library"}</span><span style="position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
       <input type="file" id="photoIn" accept="image/*" capture="environment" style="display:none">
       <input type="hidden" name="photo" id="photoData">
@@ -764,11 +769,7 @@ function dishEditPage(shop, d) {
       <div class="seg">${seg("window", ["11 AM - 3 PM", "5 - 9 PM", "All day"], d.window ?? "All day")}</div>
       <label>DISCOUNT</label>
       <div class="seg">${seg("discount", ["none", "-10%", "-20%", "2 for 1"], d.discount ?? "none")}</div>
-      <div class="card row" style="margin-top:16px">
-        <div style="flex:1"><strong style="font-size:14px">Today's special package</strong>
-          <div class="sub" style="font-size:12.5px">Featured in the promotions row for buyers nearby</div></div>
-        <label class="toggle"><input type="checkbox" name="special" value="1" ${d.special ? "checked" : ""}><span></span></label>
-      </div>
+
       <div class="row" style="gap:10px;margin-top:18px">
         <button class="btn" style="flex:2">Save changes</button>
         <button class="btn ghost" style="flex:1;color:#b3261e" formaction="/app/owner/${String(shop._id)}/dish/${String(d._id)}/delete" onclick="return confirm('Remove this dish from your menu?')">Delete</button>
@@ -851,7 +852,12 @@ function addDishPage(shop) {
     body: `
     <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/owner/${String(shop._id)}">‹</a>
       <h1 style="font-size:21px">Add a dish <span class="si">කෑමක් එකතු</span></h1></div>
-    <form method="POST" action="/app/owner/${String(shop._id)}/publish">
+      <div class="card row" style="margin:10px 0 0;padding:10px 13px">
+        <div style="flex:1"><strong style="font-size:14px">Today's special package</strong>
+          <div class="sub" style="font-size:12px">Featured in the promotions row for buyers nearby</div></div>
+        <label class="toggle"><input type="checkbox" name="special" value="1" form="dishForm"><span></span></label>
+      </div>
+    <form method="POST" action="/app/owner/${String(shop._id)}/publish" id="dishForm">
       <label for="photoIn" class="thumb" id="photoBox" style="width:100%;height:130px;margin:10px 0;font-size:13px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative"><span id="photoHint">add dish photo — tap to use camera or library</span><span style="position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
       <input type="file" id="photoIn" accept="image/*" capture="environment" style="display:none">
       <input type="hidden" name="photo" id="photoData">
@@ -870,11 +876,6 @@ function addDishPage(shop) {
       <label>DISCOUNT</label>
       <div class="seg">
         ${["none", "-10%", "-20%", "2 for 1"].map((d, i) => `<label><input type="radio" name="discount" value="${d}" ${i === 0 ? "checked" : ""}><span class="opt">${d === "none" ? "None" : d}</span></label>`).join("")}
-      </div>
-      <div class="card row" style="margin-top:16px">
-        <div style="flex:1"><strong style="font-size:14px">Today's special package</strong>
-          <div class="sub" style="font-size:12.5px">Featured in the promotions row for buyers nearby</div></div>
-        <label class="toggle"><input type="checkbox" name="special" value="1"><span></span></label>
       </div>
       <button class="btn" style="margin-top:18px">Publish dish</button>
     </form>
