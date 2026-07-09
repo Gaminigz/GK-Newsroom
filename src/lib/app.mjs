@@ -721,7 +721,7 @@ async function ownerDash(id) {
     ${shop.status === "suspended" ? `<div class="card" style="background:#fdecea;border-color:#efc4bf"><strong style="color:#b3261e">⛔ Suspended</strong><div class="sub" style="font-size:12.5px">Your shop is hidden from buyers. Contact support via /app/support.</div></div>` : ""}
     <strong style="display:block;margin:2px 0 10px">My dishes <span class="sub" style="font-weight:400">— tap a tile to edit, buyers see these</span></strong>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      ${Array.from({ length: 6 }, (_, i) => {
+      ${Array.from({ length: Math.max(12, dishes.length + 2) }, (_, i) => {
         const d = dishes[i];
         if (!d) return `<a href="/app/owner/${String(shop._id)}/add-dish" class="card" style="margin:0;padding:0;overflow:hidden;border-style:dashed;border-width:2px;text-align:center">
           <div style="aspect-ratio:4/3;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#8a827b;font-size:12.5px;padding:8px"><span style="font-size:26px">＋</span>Add your dish<br><span style="font-size:11px">photo · price · time</span></div></a>`;
