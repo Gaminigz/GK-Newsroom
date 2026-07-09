@@ -28,10 +28,12 @@
  */
 
 import http from "node:http";
+import { readFile } from "node:fs/promises";
 import { getDb } from "../lib/mongo.ts";
 import { getEpisodeAudio, listEpisodes } from "../lib/podcast.ts";
 import { handleAdmin } from "../lib/admin.mjs";
 import { handleApp } from "../lib/app.mjs";
+import { getSpiceAudio, listSpiceEpisodes } from "../lib/spice-podcast.ts";
 import { SPICES } from "../data/spices.ts";
 import { GOV_SOURCES } from "../data/gov-sources.ts";
 
@@ -200,6 +202,7 @@ function shell({ title, desc, body }) {
   .tile:active { filter:brightness(1.12); }
   .tile .emoji { font-size:34px; line-height:1; }
   .tile .icon { line-height:1; filter:drop-shadow(0 5px 8px #0008); }
+  .tile .icon img { width:60px; height:60px; object-fit:contain; border-radius:14px; }
   .tile h2 { color:#fff; font-size:23px; letter-spacing:-.01em; }
   .tile p { color:#ffffffc9; font-size:14px; }
   .tile .go { color:#ffffffee; font-size:13px; font-weight:600; margin-top:4px; }
@@ -215,7 +218,7 @@ function shell({ title, desc, body }) {
   footer { color:#8b949e; font-size:12px; text-align:center; margin-top:28px; }
 </style>
 </head>
-<body><div class="wrap">${body}<footer>GK Newsroom · ggmt.sg</footer></div></body>
+<body><div class="wrap">${body}<footer>GK Newsroom · ggmt.sg · build 8.7-eve</footer></div></body>
 </html>`;
 }
 
@@ -277,20 +280,20 @@ function landingPage() {
   </header>
   <nav class="tiles">
     <a class="tile t-food" href="/food">
-      <span class="icon">${ICONS.food}</span>
+      <span class="icon"><img src="/assets/tile-food.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display=''"><span style="display:none">${ICONS.food}</span></span>
       <h2>3una5aha</h2>
       <p>Sri Lankan food — the island's spices, stories and recipes.</p>
       <span class="go">Open →</span>
     </a>
     <a class="tile t-ai" href="/ai">
-      <span class="icon">${ICONS.ai}</span>
+      <span class="icon"><img src="/assets/tile-ai.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display=''"><span style="display:none">${ICONS.ai}</span></span>
       <h2>Ai News</h2>
       <p>The daily Ai brief — fresh stories every morning at 5 AM, plus the podcast.</p>
       <span class="go">Open →</span>
     </a>
     <a class="tile t-acct" href="/accounting">
-      <span class="icon">${ICONS.acct}</span>
-      <h2>GK SMART Accounting</h2>
+      <span class="icon"><img src="/assets/tile-acct.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display=''"><span style="display:none">${ICONS.acct}</span></span>
+      <h2>GK SMART Ai Accounting</h2>
       <p>Cambodia's tax, customs & business announcements — translated from Khmer, daily.</p>
       <span class="go">Open →</span>
     </a>
@@ -298,8 +301,9 @@ function landingPage() {
   });
 }
 
-/** 3una5aha — the Sri Lankan spice feed, served from src/data/spices.ts. */
-function spicesPage() {
+/** 3una5aha — the Sri Lankan spice feed, served from src/data/spices.ts.
+ *  `episodes` maps spice id → durationSec for ready mini-podcasts. */
+function spicesPage(episodes = {}) {
   const CAT_COLORS = {
     "Blend": ["#e08a2e", "#8a3f12"],
     "Seed": ["#c9a227", "#6b4e0a"],
@@ -316,14 +320,22 @@ function spicesPage() {
     .join("");
   const cards = SPICES.map((s) => {
     const [c1, c2] = CAT_COLORS[s.category] ?? ["#888", "#444"];
+    const dur = episodes[s.id];
+    const playRow = dur
+      ? `<div class="listen" data-id="${esc(s.id)}">
+           <button class="lbtn" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · <span class="ltime">${fmtDur(dur)}</span></span>
+           <div class="lbar"><div class="lfill"></div></div>
+         </div>`
+      : "";
     return `<article class="scard" data-kind="${esc(s.category)}">
-      <img class="sphoto" data-q="${esc(s.imgQuery)}" alt="${esc(s.name)}" hidden>
+      <img class="sphoto" src="/assets/spices/${esc(s.id)}.jpg" alt="" loading="lazy" onerror="this.remove()">
       <div class="sinner">
-        <div class="stile" style="background:linear-gradient(140deg,${c1},${c2})"><span>${s.emoji}</span></div>
         <div class="sbody">
           <div class="srow"><h2>${esc(s.name)}</h2><span class="sin">${esc(s.sinhala)}</span></div>
           <span class="pill">${esc(s.category)}</span>
           <p>${esc(s.post)}</p>
+          ${playRow}
         </div>
       </div>
     </article>`;
@@ -352,16 +364,22 @@ function spicesPage() {
   .chip { flex:0 0 auto; background:#241811; color:#b09a86; border:1px solid #3a2a1e; border-radius:999px; padding:6px 14px; font-size:13px; cursor:pointer; }
   .chip.on { color:#140d08; background:#e08a2e; border-color:#e08a2e; font-weight:600; }
   .scard { background:#1e140d; border:1px solid #33241a; border-radius:14px; margin-top:12px; overflow:hidden; }
-  .sphoto { width:100%; height:180px; object-fit:cover; display:block; background:#2a1c11; }
+  .sphoto { width:100%; height:190px; object-fit:cover; display:block; background:#2a1c11; }
   .sinner { display:flex; gap:12px; padding:12px; }
-  .stile { flex:0 0 64px; height:64px; border-radius:14px; display:flex; align-items:center; justify-content:center;
-           font-size:32px; box-shadow:inset 0 -8px 14px #0006, inset 0 3px 6px #ffffff2e, 0 3px 8px #0007; }
   .sbody { min-width:0; }
   .srow { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
   h2 { font-size:17px; }
   .sin { color:#c98f4e; font-size:14px; }
   .pill { display:inline-block; font-size:11px; border-radius:999px; padding:2px 9px; border:1px solid #4a3624; color:#c9a984; margin-top:3px; }
   .sbody p { color:#cbb8a4; font-size:14px; margin-top:6px; }
+  .listen { display:flex; align-items:center; gap:10px; margin-top:10px; background:#241811;
+            border:1px solid #3a2a1e; border-radius:999px; padding:5px 12px 5px 5px; }
+  .lbtn { width:30px; height:30px; border-radius:50%; border:0; cursor:pointer; flex:0 0 auto;
+          background:linear-gradient(140deg,#f0a13e,#c2611c); color:#140d08; font-size:13px; font-weight:800;
+          box-shadow:0 2px 6px #0007, inset 0 1px 0 #ffffff55; }
+  .ltxt { color:#c9a984; font-size:12.5px; white-space:nowrap; }
+  .lbar { flex:1; height:5px; border-radius:3px; background:#140d08; overflow:hidden; }
+  .lfill { height:100%; width:0%; background:linear-gradient(90deg,#e08a2e,#f37021); }
   footer { color:#8f7b67; font-size:12px; text-align:center; margin-top:36px; }
 </style>
 </head>
@@ -388,37 +406,42 @@ function spicesPage() {
     });
   });
 
-  // Photo loader: each card finds its own high-res photo on Wikimedia
-  // Commons (free, watermark-less, CORS-open API), caches the URL on the
-  // device, and quietly keeps the emoji tile if nothing is found.
+  // Spice photos are Gemini-generated and shipped in the repo
+  // (/assets/spices/<id>.jpg) — deterministic, always on-topic. A card
+  // whose image is missing simply shows text (onerror removes the img).
+
+  // Mini-podcast players: one shared audio element; each card's pill
+  // streams its episode from Mongo via /podcast/spice/<id>.wav.
   (() => {
-    const KEY = "spiceImgs.v1";
-    let cache = {};
-    try { cache = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch {}
-    const imgs = [...document.querySelectorAll(".sphoto")];
-    let i = 0;
-    async function loadOne(img) {
-      const q = img.dataset.q;
-      try {
-        let url = cache[q];
-        if (url === undefined) {
-          const api = "https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*" +
-            "&generator=search&gsrsearch=" + encodeURIComponent("filetype:bitmap " + q) +
-            "&gsrnamespace=6&gsrlimit=1&prop=imageinfo&iiprop=url&iiurlwidth=640";
-          const j = await (await fetch(api)).json();
-          const pages = j && j.query && j.query.pages ? Object.values(j.query.pages) : [];
-          url = (pages[0] && pages[0].imageinfo && pages[0].imageinfo[0] && pages[0].imageinfo[0].thumburl) || "";
-          cache[q] = url;
-          try { localStorage.setItem(KEY, JSON.stringify(cache)); } catch {}
-        }
-        if (url) {
-          await new Promise((ok, bad) => { img.onload = ok; img.onerror = bad; img.src = url; });
-          img.hidden = false;
-        }
-      } catch {}
+    const rows = [...document.querySelectorAll(".listen")];
+    if (!rows.length) return;
+    const audio = new Audio();
+    let current = null;
+    const mmss = (s) => isFinite(s) ? Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0") : "";
+    function stopUi() {
+      if (!current) return;
+      current.querySelector(".lbtn").textContent = "▶";
     }
-    function next() { const img = imgs[i++]; if (img) loadOne(img).finally(next); }
-    next(); next(); next(); // three lanes, polite to the Commons API
+    rows.forEach((row) => {
+      row.querySelector(".lbtn").addEventListener("click", () => {
+        if (current === row) {
+          if (audio.paused) { audio.play(); } else { audio.pause(); }
+          return;
+        }
+        stopUi();
+        current = row;
+        audio.src = "/podcast/spice/" + row.dataset.id + ".wav";
+        audio.play();
+      });
+    });
+    audio.addEventListener("play", () => { if (current) current.querySelector(".lbtn").textContent = "⏸"; });
+    audio.addEventListener("pause", stopUi);
+    audio.addEventListener("ended", () => { stopUi(); if (current) current.querySelector(".lfill").style.width = "0%"; });
+    audio.addEventListener("timeupdate", () => {
+      if (!current || !audio.duration) return;
+      current.querySelector(".lfill").style.width = (audio.currentTime / audio.duration * 100) + "%";
+      current.querySelector(".ltime").textContent = mmss(audio.currentTime) + " / " + mmss(audio.duration);
+    });
   })();
 </script>
 </body>
@@ -505,7 +528,7 @@ function govPage(posts) {
 <div class="wrap">
   <a class="back" href="/">← GK Newsroom</a>
   <header>
-    <h1>GK <em>SMART</em> Accounting</h1>
+    <h1>GK <em>SMART Ai</em> Accounting</h1>
     <div class="sub">Cambodia's tax, customs & business announcements — translated from Khmer, daily.</div>
   </header>
   <nav class="chips">${chips}</nav>
@@ -777,7 +800,9 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
 
 let cache = { html: null, at: 0 };
 let govCache = { html: null, at: 0 };
+let spiceCache = { html: null, at: 0 };
 let audioCache = { key: null, buf: null, at: 0 };
+const spiceAudioCache = new Map(); // id → { buf, at }, small LRU
 
 async function feedHtml() {
   if (cache.html && Date.now() - cache.at < CACHE_MS) return cache.html;
@@ -823,6 +848,20 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://x");
     const path = url.pathname;
 
+    // Static assets shipped in the repo (Gemini-generated images, logos).
+    const am = path.match(/^\/assets\/([a-z0-9/_-]+\.(png|jpe?g|webp|svg))$/);
+    if (am && !am[1].includes("..")) {
+      try {
+        const buf = await readFile(new URL(`../web-assets/${am[1]}`, import.meta.url));
+        const type = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", svg: "image/svg+xml" }[am[2]];
+        res.writeHead(200, { "Content-Type": type, "Cache-Control": "public, max-age=86400" });
+        res.end(buf);
+      } catch {
+        res.writeHead(404).end("no asset");
+      }
+      return;
+    }
+
     if (path === "/healthz") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
@@ -859,11 +898,40 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (path === "/food") {
+      if (!spiceCache.html || Date.now() - spiceCache.at > CACHE_MS) {
+        let episodes = {};
+        try {
+          episodes = await listSpiceEpisodes();
+        } catch (err) {
+          console.error("[web] spice episodes query failed:", err instanceof Error ? err.message : err);
+        }
+        spiceCache = { html: spicesPage(episodes), at: Date.now() };
+      }
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "public, max-age=600",
+        "Cache-Control": "public, max-age=300",
       });
-      res.end(spicesPage());
+      res.end(spiceCache.html);
+      return;
+    }
+
+    const sm = path.match(/^\/podcast\/spice\/([a-z0-9-]+)\.wav$/);
+    if (sm) {
+      const id = sm[1];
+      let entry = spiceAudioCache.get(id);
+      if (!entry || Date.now() - entry.at > CACHE_MS) {
+        const buf = await getSpiceAudio(id);
+        if (!buf) {
+          res.writeHead(404).end("episode not found");
+          return;
+        }
+        entry = { buf, at: Date.now() };
+        spiceAudioCache.set(id, entry);
+        if (spiceAudioCache.size > 6) {
+          spiceAudioCache.delete(spiceAudioCache.keys().next().value); // oldest out
+        }
+      }
+      sendAudio(req, res, entry.buf);
       return;
     }
 
