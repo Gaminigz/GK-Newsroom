@@ -115,7 +115,7 @@ async function dishesFor(shopId) {
 
 /* ---------------------------------------------------------------- shell */
 
-function shell({ title, body, nav = "", back = "", noPad = false }) {
+function shell({ title, body, nav = "", back = "", noPad = false, backFloat = false }) {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -162,6 +162,7 @@ function shell({ title, body, nav = "", back = "", noPad = false }) {
   .nav a .i { display:block; font-size:19px; margin-bottom:1px; }
   .nav a.on { color:${ORANGE}; }
   .back { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:99px; background:#fff; border:1px solid #ece3da; margin-bottom:10px; }
+  .back.float { position:absolute; z-index:10; top:calc(env(safe-area-inset-top, 0px) + 10px); left:14px; margin:0; box-shadow:0 2px 8px #0003; }
   .basketbar { position:fixed; bottom:74px; left:50%; transform:translateX(-50%); width:calc(100% - 28px); max-width:452px;
                background:#191512; color:#fff; border-radius:14px; padding:14px 16px; display:none; justify-content:space-between; font-weight:700; }
   .stat { background:#fff; border:1px solid #ece3da; border-radius:14px; padding:11px 13px; flex:1; }
@@ -184,7 +185,7 @@ function shell({ title, body, nav = "", back = "", noPad = false }) {
 </style>
 </head>
 <body>
-<a class="back" href="${back ? esc(back) : "/app"}" onclick="${back ? "" : "if(history.length>1){history.back();return false}"}">‹</a>
+<a class="back${backFloat ? " float" : ""}" href="${back ? esc(back) : "/app"}" onclick="${back ? "" : "if(history.length>1){history.back();return false}"}">‹</a>
 ${body}
 ${nav}
 </body>
@@ -244,14 +245,15 @@ function welcomePage(req) {
     </form>`;
   return shell({
     title: "3una 5aha — find Sri Lankan food near you",
+    backFloat: true,
     body: `
     <div style="text-align:center">
       <img src="/assets/hero-welcome.jpg" alt="Sri Lankan spices and rice &amp; curry"
-           style="width:100%;border-radius:20px;aspect-ratio:4/3;object-fit:cover;margin-bottom:16px"
+           style="width:calc(100% + 28px);margin:calc(-1 * (env(safe-area-inset-top, 0px) + 10px)) -14px 14px;aspect-ratio:4/3.4;object-fit:cover;border-radius:0 0 26px 26px;display:block"
            onerror="this.remove()">
       <h1 style="font-size:30px"><span style="color:${ORANGE}">3</span>una <span style="color:${ORANGE}">5</span>aha <span style="font-weight:800">· තුන පහ</span></h1>
       <p class="sub" style="max-width:330px;margin:8px auto 4px;font-size:14.5px">
-        <strong>Find Sri Lankan restaurants near you.</strong> A non-commercial
+        <strong>Find Sri Lankan restaurants and home cooking near you.</strong> A non-commercial
         community app where Sri Lankan restaurants and home cooks post their
         dishes, deals and daily activities — so travellers anywhere in the
         world can find real Sri Lankan food nearby.</p>
