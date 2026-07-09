@@ -129,7 +129,8 @@ function shell({ title, body, nav = "", back = "", noPad = false }) {
 <style>
   * { box-sizing:border-box; margin:0; -webkit-tap-highlight-color:transparent; }
   body { background:#faf7f4; color:#1a1a1a; font:15.5px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-         max-width:480px; margin:0 auto; min-height:100vh; padding:${noPad ? "0" : "14px 14px"} ; padding-bottom:84px; }
+         max-width:480px; margin:0 auto; min-height:100vh;
+         padding:${noPad ? "0" : "14px"}; padding-top:calc(env(safe-area-inset-top, 0px) + 10px); padding-bottom:84px; }
   a { color:inherit; text-decoration:none; }
   h1 { font-size:24px; letter-spacing:-.02em; }
   .si { color:#b3672f; font-weight:400; font-size:.82em; }
@@ -183,7 +184,7 @@ function shell({ title, body, nav = "", back = "", noPad = false }) {
 </style>
 </head>
 <body>
-${back ? `<a class="back" href="${esc(back)}">‹</a>` : ""}
+<a class="back" href="${back ? esc(back) : "/app"}" onclick="${back ? "" : "if(history.length>1){history.back();return false}"}">‹</a>
 ${body}
 ${nav}
 </body>
