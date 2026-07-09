@@ -122,7 +122,7 @@ async function dishesFor(shopId) {
 
 /* ---------------------------------------------------------------- shell */
 
-function shell({ title, body, nav = "", back = "", noPad = false, backFloat = false, noBack = false }) {
+function shell({ title, body, nav = "", back = "", noPad = false, backFloat = false, noBack = false, toast = "" }) {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -169,6 +169,9 @@ function shell({ title, body, nav = "", back = "", noPad = false, backFloat = fa
   .nav a .i { display:block; font-size:19px; margin-bottom:1px; }
   .nav a.on { color:${ORANGE}; }
   .back { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:99px; background:#fff; border:1px solid #ece3da; margin-bottom:10px; }
+  .toast { position:fixed; top:45%; left:50%; transform:translate(-50%,-50%); background:#191512; color:#fff;
+           padding:15px 24px; border-radius:14px; font-weight:700; font-size:15.5px; z-index:100;
+           box-shadow:0 10px 34px #0007; text-align:center; max-width:80vw; }
   .back.float { position:absolute; z-index:10; top:calc(env(safe-area-inset-top, 0px) + 10px); left:20px; margin:0; box-shadow:0 2px 8px #0003; }
   .basketbar { position:fixed; bottom:calc(max(10px, env(safe-area-inset-bottom)) + 72px); left:50%; transform:translateX(-50%); width:calc(100% - 40px); max-width:440px;
                background:#191512; color:#fff; border-radius:14px; padding:14px 16px; display:none; justify-content:space-between; font-weight:700; }
@@ -192,6 +195,7 @@ function shell({ title, body, nav = "", back = "", noPad = false, backFloat = fa
 </style>
 </head>
 <body>
+${toast ? `<div class="toast" id="toast">✓ ${esc(toast)}</div><script>setTimeout(()=>{const t=document.getElementById('toast');if(t){t.style.transition='opacity .4s';t.style.opacity='0';setTimeout(()=>t.remove(),450)}},2000)</script>` : ""}
 ${noBack ? "" : `<a class="back${backFloat ? " float" : ""}" href="${back ? esc(back) : "/app"}" onclick="${back ? "" : "if(history.length>1){history.back();return false}"}">‹</a>`}
 ${body}
 ${nav}
@@ -719,7 +723,7 @@ function registeredPage(shopId, name) {
 
 /* -------------------------------------------- 2.1 owner dashboard */
 
-async function ownerDash(id) {
+async function ownerDash(id, toast = "") {
   const shop = await shopById(id);
   if (!shop) return null;
   const orders = await (await col("app_orders")).find({ shopId: String(shop._id) }).sort({ createdAt: -1 }).limit(15).toArray();
@@ -752,6 +756,7 @@ async function ownerDash(id) {
   return shell({
     title: `${shop.name} — shop owner`,
     noBack: true,
+    toast,
     body: `
     <div class="row" style="gap:8px;margin-bottom:12px">
       <a class="back" style="margin:0;flex:0 0 auto" href="/app" onclick="if(history.length>1){history.back();return false}">‹</a>
@@ -1225,7 +1230,7 @@ export async function handleApp(req, res, url) {
 
   m = path.match(/^\/app\/owner\/([a-f0-9]{24})$/);
   if (m) {
-    const page = await ownerDash(m[1]);
+    const page = await ownerDash(m[1], (url.searchParams.get("msg") || "").slice(0, 60));
     if (page) { html(res, page); return; }
   }
 
@@ -1234,7 +1239,7 @@ export async function handleApp(req, res, url) {
     const _id = await oid(m[1]);
     const shop = _id && (await (await col("shop_owners")).findOne({ _id }));
     if (shop) await (await col("shop_owners")).updateOne({ _id }, { $set: { open: shop.open === false } });
-    redirect(res, `/app/owner/${m[1]}`);
+    redirect(res, `/app/owner/${m[1]}?msg=${encodeURIComponent(shop && shop.open === false ? "You're open" : "You're closed")}`);
     return;
   }
 
@@ -1249,7 +1254,7 @@ export async function handleApp(req, res, url) {
         { $set: { status, ...(status === "preparing" ? { confirmedAt: new Date() } : {}) } },
       );
     }
-    redirect(res, `/app/owner/${m[1]}`);
+    redirect(res, `/app/owner/${m[1]}?msg=${encodeURIComponent("Order updated")}`);
     return;
   }
 
@@ -1265,7 +1270,7 @@ export async function handleApp(req, res, url) {
       const logoOk = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(logo) && logo.length < 500_000;
       const set = { ...(name ? { name } : {}), owner, ...(logoOk ? { logo } : {}) };
       await (await col("shop_owners")).updateOne({ _id: shop._id }, { $set: set });
-      redirect(res, `/app/owner/${m[1]}`);
+      redirect(res, `/app/owner/${m[1]}?msg=${encodeURIComponent("Profile saved")}`);
     } else {
       html(res, profilePage(shop));
     }
@@ -1294,7 +1299,7 @@ export async function handleApp(req, res, url) {
         special: form.get("special") === "1",
         updatedAt: new Date(),
       } });
-      redirect(res, `/app/owner/${m[1]}`);
+      redirect(res, `/app/owner/${m[1]}?msg=${encodeURIComponent("Dish saved")}`);
     } else {
       html(res, dishEditPage(shop, d));
     }
@@ -1311,7 +1316,7 @@ export async function handleApp(req, res, url) {
         if (shopOid) await (await col("shop_owners")).updateOne({ _id: shopOid }, { $inc: { listings: -1 } });
       }
     }
-    redirect(res, `/app/owner/${m[1]}`);
+    redirect(res, `/app/owner/${m[1]}?msg=${encodeURIComponent("Dish removed")}`);
     return;
   }
 
@@ -1343,7 +1348,7 @@ export async function handleApp(req, res, url) {
       const shopOid = await oid(m[1]);
       if (shopOid) await (await col("shop_owners")).updateOne({ _id: shopOid }, { $inc: { listings: 1 } });
     }
-    redirect(res, `/app/owner/${m[1]}`);
+    redirect(res, `/app/owner/${m[1]}?msg=${encodeURIComponent("Dish published")}`);
     return;
   }
 
