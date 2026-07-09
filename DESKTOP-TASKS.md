@@ -45,12 +45,12 @@ Gaminigz/GK-Newsroom branch claude/git-review-ja0lpn — web service with
 config `railway.web.json`, cron worker with default `railway.json`. Fix
 via Settings → Source if either is still a CLI snapshot.
 
-## TASK 6b — PENDING
+## TASK 6b — DONE 2026-07-09 — `npm run govcast`: first GK SMART Brief episode generated from the 8 GDT posts, stored in Mongo (streamer on /accounting now has content).
 Generate the first GK SMART Brief episode: `npm run govcast` (run AFTER
 Task 3 so gov posts exist; ~$0.40, pre-approved). The /accounting
 streamer stays hidden until one exists.
 
-## TASK 6 — PENDING
+## TASK 6 — DONE 2026-07-09 — verified live post-deploy: landing logo+tiles ✓, /food 25 photos + spice audio streaming ✓ (cinnamon 3.4MB/200), /ai 12 history + 47 timeline ✓, /accounting GDT posts ✓. Re-verified after streamer refactor deploy (see commit).
 Verify live at https://web-production-2b43c.up.railway.app — landing has
 the GK logo + generated icons; /food shows photos + working Listen pills;
 /ai shows History/Timeline cards; /accounting shows translated posts.
