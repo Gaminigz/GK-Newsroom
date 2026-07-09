@@ -234,7 +234,7 @@ function buyerNav(on) {
     ["home", "/app/home", "⌂", "Home"],
     ["orders", "/app/orders", "▤", "Orders"],
     ["location", "/app/location", "◎", "Location"],
-    ["profile", "/app", "○", "Profile"],
+    ["profile", "/app/profile", "○", "Profile"],
   ];
   return `<nav class="nav">${items
     .map(([k, href, i, label]) => `<a href="${href}" class="${k === on ? "on" : ""}"><span class="i">${i}</span>${label}</a>`)
@@ -329,6 +329,114 @@ function emailLoginPage(error = "") {
       <input type="password" name="password" required placeholder="••••••" autocomplete="current-password">
       <button class="btn" style="margin-top:18px">Sign in</button>
     </form>`,
+  });
+}
+
+/* ----------------------------------------------------- user profile */
+
+async function userProfilePage(req, flash = "") {
+  const c = cookies(req);
+  const email = decodeURIComponent(c.app_email || "");
+  const u = email ? await (await col("app_users")).findOne({ email }) : null;
+  const favIds = (c.app_favs || "").split("|").filter(Boolean);
+  const owners = await col("shop_owners");
+  const favShops = favIds.length
+    ? await owners.find({ _id: { $in: (await Promise.all(favIds.map(oid))).filter(Boolean) } }).toArray()
+    : [];
+  const phone = c.app_phone ? decodeURIComponent(c.app_phone) : "";
+  const ordered = phone
+    ? await (await col("app_orders")).find({ phone }).sort({ createdAt: -1 }).limit(30).toArray()
+    : [];
+  const orderedIds = [...new Set(ordered.map((o) => o.shopId))].filter((id) => !favIds.includes(id));
+  const usedShops = orderedIds.length
+    ? await owners.find({ _id: { $in: (await Promise.all(orderedIds.map(oid))).filter(Boolean) } }).toArray()
+    : [];
+  const shopRow = (sh, tag) => `<a class="card row" href="/app/shop/${String(sh._id)}" style="margin:0 0 8px">
+    ${shopThumb(sh)}
+    <div style="flex:1;min-width:0"><strong>${esc(sh.name)}</strong><div class="sub" style="font-size:12px">${esc(sh.city ?? "")} · ${tag}</div></div><span class="sub">›</span></a>`;
+
+  return shell({
+    title: "Profile — 3una 5aha",
+    nav: buyerNav("profile"),
+    noBack: true,
+    toast: flash,
+    body: `
+    <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/home">‹</a><h1>Profile</h1></div>
+    ${u ? `
+    <form method="POST" action="/app/profile">
+      <div class="row" style="gap:14px;margin-top:10px">
+        <label for="avIn" class="thumb" id="avBox" style="width:76px;height:76px;border-radius:99px;cursor:pointer;background-size:cover;background-position:center;position:relative;flex:0 0 auto;${u.avatar ? `background-image:url(${u.avatar})` : ""}"><span id="avHint" style="font-size:20px">${u.avatar ? "" : "👤"}</span><span style="position:absolute;right:-4px;bottom:-4px;width:26px;height:26px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;border:2px solid #faf7f4;pointer-events:none">📷</span></label>
+        <div style="flex:1;min-width:0">
+          <strong>${esc(u.name || email)}</strong>
+          <div class="sub" style="font-size:12.5px">${esc(email)} ${u.verified ? '<span style="color:#1d9d4b">✓ verified</span>' : '<a href="/app/verify" style="color:#d92d20;text-decoration:underline">● verify email</a>'}</div>
+        </div>
+      </div>
+      <input type="file" id="avIn" accept="image/*" style="display:none">
+      <input type="hidden" name="avatar" id="avData">
+      <label>NAME</label>
+      <input type="text" name="name" value="${esc(u.name ?? "")}" placeholder="Your name">
+      <label>PHONE</label>
+      <input type="tel" name="phone" value="${esc(u.phone ?? phone)}" placeholder="+94 77 123 4567">
+      <button class="btn" style="margin-top:14px">Save profile</button>
+    </form>
+    <strong style="display:block;margin:20px 0 8px">Change password — pick one</strong>
+    <form method="POST" action="/app/profile/password" class="card" style="padding:12px 14px">
+      <strong style="font-size:13.5px">1 · With your old password</strong>
+      <label>OLD PASSWORD</label><input type="password" name="old" required>
+      <label>NEW PASSWORD (6+)</label><input type="password" name="next" required minlength="6">
+      <button class="btn" style="margin-top:12px;padding:11px">Change password</button>
+    </form>
+    <form method="POST" action="/app/profile/reset-send" class="card row" style="padding:12px 14px">
+      <div style="flex:1"><strong style="font-size:13.5px">2 · Email me a reset code</strong>
+        <div class="sub" style="font-size:12px">Sent by gk.smart@ggmt.sg · valid 24h</div></div>
+      <button class="btn ghost" style="width:auto;padding:10px 14px">Send</button>
+    </form>
+    <a class="card row" href="mailto:gk.smart@ggmt.sg?subject=Password%20help%20—%203una%205aha" style="padding:12px 14px">
+      <div style="flex:1"><strong style="font-size:13.5px">3 · Ask GK SMART support</strong>
+        <div class="sub" style="font-size:12px">gk.smart@ggmt.sg — access recovery</div></div><span class="sub">›</span></a>
+    <script>
+      document.getElementById('avIn').addEventListener('change', (e) => {
+        const f = e.target.files[0]; if (!f) return;
+        const img = new Image();
+        img.onload = () => {
+          const c2 = document.createElement('canvas'); const side = Math.min(img.width, img.height);
+          c2.width = c2.height = Math.min(300, side);
+          c2.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, c2.width, c2.height);
+          const data = c2.toDataURL('image/jpeg', 0.8);
+          document.getElementById('avData').value = data;
+          const box = document.getElementById('avBox');
+          box.style.backgroundImage = 'url(' + data + ')';
+          document.getElementById('avHint').textContent = '';
+          URL.revokeObjectURL(img.src);
+        };
+        img.src = URL.createObjectURL(f);
+      });
+    </script>`
+    : `<div class="card" style="margin-top:10px"><strong>Sign in with email to manage your profile</strong>
+       <div class="sub" style="font-size:12.5px;margin:4px 0 10px">Photo, name, phone and password live on your email account.</div>
+       <form method="POST" action="/app/login"><input type="hidden" name="via" value="email"><button class="btn" style="padding:11px">Sign in with email</button></form></div>`}
+    <strong style="display:block;margin:20px 0 8px">★ My favourites</strong>
+    ${favShops.map((sh) => shopRow(sh, "★ favourite")).join("") || `<div class="sub card">Hold a shop pin on the map or tap ☆ on a shop page to save it here.</div>`}
+    ${usedShops.length ? `<strong style="display:block;margin:16px 0 8px">Ordered before</strong>${usedShops.map((sh) => shopRow(sh, "ordered before")).join("")}` : ""}`,
+  });
+}
+
+function resetPage(error = "") {
+  return shell({
+    title: "Reset password — 3una 5aha",
+    back: "/app/profile",
+    body: `
+    <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/profile">‹</a><h1 style="font-size:21px">Reset password</h1></div>
+    <p class="sub" style="margin:8px 0 4px">Enter the code emailed by <strong>gk.smart@ggmt.sg</strong> (valid 24h) and your new password.</p>
+    ${error ? `<div class="card" style="background:#fdecea;border-color:#efc4bf;color:#b3261e">${esc(error)}</div>` : ""}
+    <form method="POST" action="/app/profile/reset">
+      <label>RESET CODE</label>
+      <input type="text" name="code" inputmode="numeric" maxlength="6" required style="letter-spacing:6px;text-align:center;font-weight:700">
+      <label>NEW PASSWORD (6+)</label>
+      <input type="password" name="next" required minlength="6">
+      <button class="btn" style="margin-top:16px">Set new password</button>
+    </form>
+    <div class="sub" style="text-align:center;font-size:11.5px;margin-top:16px">(development note: the code is 111111 until email sending goes live)</div>`,
   });
 }
 
@@ -603,7 +711,19 @@ async function shopPage(id) {
     <strong style="display:block;margin:14px 0 10px">Popular dishes</strong>
     ${dishRows || `<div class="sub">No dishes published yet.</div>`}
 
-    <div class="sub" style="text-align:center;margin:16px 0"><a href="/app/report?shop=${String(shop._id)}" style="text-decoration:underline">⚑ Report this shop</a></div>
+    <div class="sub" style="text-align:center;margin:16px 0">
+      <a href="#" onclick="return favShop('${String(shop._id)}', this)" style="text-decoration:underline;font-weight:700" id="favLink">☆ Add to favourites</a>
+      &nbsp;·&nbsp; <a href="/app/report?shop=${String(shop._id)}" style="text-decoration:underline">⚑ Report this shop</a></div>
+    <script>
+      function favShop(id, el) {
+        fetch('/app/fav/' + id, { method: 'POST' }).then((r) => r.json()).then((j) => {
+          if (el) el.textContent = j.fav ? '★ In your favourites' : '☆ Add to favourites';
+        }).catch(() => {});
+        return false;
+      }
+      if ((document.cookie.match(/app_favs=([^;]*)/) || [])[1]?.includes('${String(shop._id)}'))
+        document.getElementById('favLink').textContent = '★ In your favourites';
+    </script>
     <div class="basketbar" id="bar" onclick="checkout()"><span id="barL">View basket</span><span id="barR"></span></div>
 
     <div id="sheet" style="display:none;position:fixed;inset:0;background:rgba(20,15,10,.45);z-index:9" onclick="if(event.target===this)this.style.display='none'">
@@ -767,8 +887,10 @@ async function locationPage(req) {
           shops.forEach((s) => {
             if (D(cc.lat, cc.lng, s.lat, s.lng) <= 10) {
               n++;
-              markers.push(L.marker([s.lat, s.lng]).addTo(map)
-                .bindPopup('<b>' + s.name + '</b><br><a href="/app/shop/' + s.id + '">Open shop →</a>'));
+              const mk = L.marker([s.lat, s.lng]).addTo(map)
+                .bindPopup('<b>' + s.name + '</b><br><a href="/app/shop/' + s.id + '">Open shop →</a><br><a href="#" onclick="return window.favShop(\'' + s.id + '\', this)">☆ Save favourite</a>');
+              mk.on('contextmenu', () => window.favShop(s.id));
+              markers.push(mk);
             }
           });
           document.getElementById('mapCount').textContent =
@@ -781,6 +903,13 @@ async function locationPage(req) {
           me = L.circleMarker(ll, { radius: 7, color: '#1d6ff2', fillColor: '#1d6ff2', fillOpacity: 0.9 }).addTo(map).bindPopup('You are here');
           map.setView(ll, 13);
         }, () => {}, { timeout: 8000 });
+        window.favShop = (id, el) => {
+          fetch('/app/fav/' + id, { method: 'POST' }).then((r) => r.json()).then((j) => {
+            if (el) el.textContent = j.fav ? '★ Saved to favourites' : '☆ Save favourite';
+            document.getElementById('mapCount').textContent = j.fav ? '★ Saved to your favourites (see Profile)' : 'Removed from favourites';
+          }).catch(() => {});
+          return false;
+        };
         document.getElementById('findBtn').addEventListener('click', async () => {
           const q = document.getElementById('cityIn').value.trim();
           if (!q) return;
@@ -1263,6 +1392,79 @@ export async function handleApp(req, res, url) {
     return;
   }
 
+  if (path === "/app/profile") {
+    if (req.method === "POST") {
+      const email = decodeURIComponent(cookies(req).app_email || "");
+      if (!email) { redirect(res, "/app/profile"); return; }
+      const form = await readForm(req, 600_000);
+      const avatar = String(form.get("avatar") || "");
+      const avatarOk = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(avatar) && avatar.length < 400_000;
+      const phone = String(form.get("phone") || "").trim().slice(0, 24);
+      await (await col("app_users")).updateOne({ email }, { $set: {
+        name: String(form.get("name") || "").trim().slice(0, 60),
+        phone,
+        ...(avatarOk ? { avatar } : {}),
+      } });
+      res.setHeader("Set-Cookie", `app_phone=${encodeURIComponent(phone)}; Path=/app; Max-Age=31536000; SameSite=Lax`);
+      html(res, await userProfilePage({ headers: { cookie: (req.headers.cookie || "").replace(/app_phone=[^;]*/, "app_phone=" + encodeURIComponent(phone)) } }, "Profile saved"));
+    } else {
+      html(res, await userProfilePage(req));
+    }
+    return;
+  }
+
+  if (path === "/app/profile/password" && req.method === "POST") {
+    const email = decodeURIComponent(cookies(req).app_email || "");
+    const form = await readForm(req);
+    const users = await col("app_users");
+    const u = email ? await users.findOne({ email }) : null;
+    const oldHash = crypto.createHash("sha256").update(String(form.get("old") || "")).digest("hex");
+    if (!u || u.hash !== oldHash) {
+      html(res, await userProfilePage(req, "Old password didn't match"));
+      return;
+    }
+    const next = String(form.get("next") || "");
+    if (next.length < 6) { html(res, await userProfilePage(req, "New password too short")); return; }
+    await users.updateOne({ email }, { $set: { hash: crypto.createHash("sha256").update(next).digest("hex") } });
+    html(res, await userProfilePage(req, "Password changed"));
+    return;
+  }
+
+  if (path === "/app/profile/reset-send" && req.method === "POST") {
+    const email = decodeURIComponent(cookies(req).app_email || "");
+    if (email) {
+      await (await col("app_users")).updateOne({ email }, { $set: { resetCode: "111111", resetAt: new Date() } });
+      console.log(`[auth] reset code (dev 111111) for ${email}`);
+    }
+    redirect(res, "/app/profile/reset");
+    return;
+  }
+
+  if (path === "/app/profile/reset") {
+    const email = decodeURIComponent(cookies(req).app_email || "");
+    if (!email) { redirect(res, "/app/profile"); return; }
+    if (req.method === "POST") {
+      const form = await readForm(req);
+      const users = await col("app_users");
+      const u = await users.findOne({ email });
+      const fresh = u?.resetAt && Date.now() - new Date(u.resetAt).getTime() < 24 * 3600 * 1000;
+      if (!u || !fresh || String(form.get("code") || "").trim() !== u.resetCode) {
+        html(res, resetPage("Code wrong or expired — send a fresh one from Profile."), 401);
+        return;
+      }
+      const next = String(form.get("next") || "");
+      if (next.length < 6) { html(res, resetPage("New password too short.")); return; }
+      await users.updateOne({ email }, {
+        $set: { hash: crypto.createHash("sha256").update(next).digest("hex") },
+        $unset: { resetCode: "", resetAt: "" },
+      });
+      html(res, await userProfilePage(req, "Password changed"));
+    } else {
+      html(res, resetPage());
+    }
+    return;
+  }
+
   if (path === "/app/verify") {
     const email = decodeURIComponent(cookies(req).app_email || "");
     if (!email) { redirect(res, "/app"); return; }
@@ -1398,6 +1600,17 @@ export async function handleApp(req, res, url) {
       await (await col("app_dishes")).updateOne({ _id }, { $inc: { [m[2] === "like" ? "likes" : "passes"]: 1 } });
     }
     res.writeHead(204).end();
+    return;
+  }
+
+  m = path.match(/^\/app\/fav\/([a-f0-9]{24})$/);
+  if (m && req.method === "POST") {
+    const favs = (cookies(req).app_favs || "").split("|").filter(Boolean);
+    const i = favs.indexOf(m[1]);
+    if (i >= 0) favs.splice(i, 1); else favs.unshift(m[1]);
+    res.setHeader("Set-Cookie", `app_favs=${favs.slice(0, 30).join("|")}; Path=/app; Max-Age=31536000; SameSite=Lax`);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ fav: i < 0 }));
     return;
   }
 
