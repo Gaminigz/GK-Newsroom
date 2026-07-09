@@ -235,7 +235,8 @@ function welcomePage(req) {
     <div style="text-align:center; padding-top:7vh">
       <div style="width:92px;height:92px;border-radius:26px;background:#f0e7de;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;font-size:38px">🌶</div>
       <h1 style="font-size:32px"><span style="color:${ORANGE}">3</span>una <span style="color:${ORANGE}">5</span>aha</h1>
-      <div class="sub" style="margin:6px 0 4px">කුළුබඩු · the spice marketplace</div>
+      <div style="font-size:32px;font-weight:800;letter-spacing:-.01em;line-height:1.2">කුළුබඩු</div>
+      <div class="sub" style="margin:6px 0 4px">the spice marketplace</div>
       <p class="sub" style="max-width:280px;margin:0 auto 30px">Find Sri Lankan dishes around the world — from restaurants &amp; home cooks near you</p>
       <a class="btn" style="margin-bottom:10px" href="/app/home">Start browsing — no sign-up needed</a>
       ${myShop ? `<a class="btn dark" style="margin-bottom:10px" href="/app/owner/${esc(myShop)}">🏪 My shop dashboard</a>` : `<a class="btn ghost" style="margin-bottom:10px" href="/app/register">🏪 Sell on 3una 5aha — open your shop</a>`}
