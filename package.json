@@ -12,6 +12,7 @@
     "fetch": "tsx src/scripts/run-fetch.mjs",
     "gov": "tsx src/scripts/run-gov-fetch.mjs",
     "spicecast": "tsx src/scripts/run-spice-podcasts.mjs",
+    "genimages": "tsx src/scripts/gen-images.mjs",
     "podcast": "tsx src/scripts/run-podcast.mjs",
     "seed": "tsx src/scripts/seed-history-and-timelines.mjs",
     "seed:rewrite": "tsx src/scripts/seed-history-and-timelines.mjs --rewrite",
