@@ -272,7 +272,6 @@ function welcomePage(req) {
           + loginBtn("sms", "ghost", "💬", "SMS")
           + `<a class="btn ghost" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px 6px;font-size:15px" href="/app/home">👀 Guest</a>`}
       </div>
-      ${myShop ? `<div style="margin-top:12px"><a href="/app/owner/${esc(myShop)}" style="font-weight:700">🏪 My restaurant dashboard →</a></div>` : ""}
       <div class="sub" style="font-size:12.5px;margin:12px 0 8px">Support requests — email, Telegram or WhatsApp:</div>
       ${supportLinks()}
       ${legalFooter()}
@@ -704,17 +703,18 @@ async function ownerDash(id) {
     title: `${shop.name} — shop owner`,
     body: `
     <div class="row" style="justify-content:space-between">
-      <a class="row" href="/app/owner/${String(shop._id)}/profile">${shopThumb(shop, "width:44px;height:44px")}
-        <div><strong>${esc(shop.name)}</strong> <span class="sub" style="font-size:11px">✏️ edit</span><div class="sub" style="font-size:12px">${esc(shop.owner || "Shop owner mode")}</div></div></a>
+      <a class="row" href="/app/owner/${String(shop._id)}/profile" style="flex:1;min-width:0">${shopThumb(shop, "width:44px;height:44px")}
+        <div style="min-width:0"><strong>${esc(shop.name)}</strong> <span class="sub" style="font-size:11px">✏️</span><div class="sub" style="font-size:12px">${esc(shop.owner || "Shop owner mode")}</div></div></a>
+      <form method="POST" action="/app/owner/${String(shop._id)}/toggle" class="row" style="gap:7px">
+        <span class="sub" style="font-size:12px;font-weight:700;color:${open ? "#1d7a34" : "#b3261e"}">${open ? "Open" : "Closed"}</span>
+        <label class="toggle"><input type="checkbox" ${open ? "checked" : ""} onchange="this.form.submit()"><span></span></label>
+      </form>
+    </div>
+    <div class="row" style="justify-content:flex-end;margin:8px 0 10px">
       <a class="chip" href="/app/shop/${String(shop._id)}">Buyer view</a>
     </div>
-    ${shop.status === "pending" ? `<div class="card" style="margin-top:14px;background:#fdf3d7;border-color:#efdba8"><strong style="color:#946200">⏳ Pending review</strong><div class="sub" style="font-size:12.5px">The 3una 5aha team is reviewing your shop. You can build your menu now — buyers see you once approved.</div></div>` : ""}
-    ${shop.status === "suspended" ? `<div class="card" style="margin-top:14px;background:#fdecea;border-color:#efc4bf"><strong style="color:#b3261e">⛔ Suspended</strong><div class="sub" style="font-size:12.5px">Your shop is hidden from buyers. Contact support@3una5aha.app.</div></div>` : ""}
-    <form method="POST" action="/app/owner/${String(shop._id)}/toggle" class="card row" style="margin-top:14px;background:${open ? "#e9f7ec" : "#fdecea"};border-color:${open ? "#c9e8d0" : "#efc4bf"}">
-      <div style="flex:1"><strong style="color:${open ? "#1d7a34" : "#b3261e"}">${open ? "You're open" : "You're closed"}</strong>
-        <div class="sub" style="font-size:12.5px">${open ? "Accepting orders until 9:00 PM" : "Not accepting orders"}</div></div>
-      <label class="toggle"><input type="checkbox" ${open ? "checked" : ""} onchange="this.form.submit()"><span></span></label>
-    </form>
+    ${shop.status === "pending" ? `<div class="card" style="background:#fdf3d7;border-color:#efdba8"><strong style="color:#946200">⏳ Pending review</strong><div class="sub" style="font-size:12.5px">The 3una 5aha team is reviewing your shop. You can build your menu now — buyers see you once approved.</div></div>` : ""}
+    ${shop.status === "suspended" ? `<div class="card" style="background:#fdecea;border-color:#efc4bf"><strong style="color:#b3261e">⛔ Suspended</strong><div class="sub" style="font-size:12.5px">Your shop is hidden from buyers. Contact support via /app/support.</div></div>` : ""}
     <div class="row" style="gap:9px;margin-bottom:14px">
       <div class="stat"><div class="k">Orders today</div><div class="v">${todays.length}</div></div>
       <div class="stat"><div class="k">Revenue</div><div class="v" style="font-size:16px">${lkr(revenue)}</div></div>
