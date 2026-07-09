@@ -715,19 +715,86 @@ async function ownerDash(id) {
     </div>
     ${shop.status === "pending" ? `<div class="card" style="background:#fdf3d7;border-color:#efdba8"><strong style="color:#946200">⏳ Pending review</strong><div class="sub" style="font-size:12.5px">The 3una 5aha team is reviewing your shop. You can build your menu now — buyers see you once approved.</div></div>` : ""}
     ${shop.status === "suspended" ? `<div class="card" style="background:#fdecea;border-color:#efc4bf"><strong style="color:#b3261e">⛔ Suspended</strong><div class="sub" style="font-size:12.5px">Your shop is hidden from buyers. Contact support via /app/support.</div></div>` : ""}
-    <div class="row" style="gap:9px;margin-bottom:14px">
-      <div class="stat"><div class="k">Orders today</div><div class="v">${todays.length}</div></div>
-      <div class="stat"><div class="k">Revenue</div><div class="v" style="font-size:16px">${lkr(revenue)}</div></div>
-      <div class="stat"><div class="k">Chats</div><div class="v" style="color:${ORANGE}">${chats}</div></div>
+    <strong style="display:block;margin:2px 0 10px">My dishes <span class="sub" style="font-weight:400">— tap a tile to edit, buyers see these</span></strong>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      ${Array.from({ length: 6 }, (_, i) => {
+        const d = dishes[i];
+        if (!d) return `<a href="/app/owner/${String(shop._id)}/add-dish" class="card" style="margin:0;padding:0;overflow:hidden;border-style:dashed;border-width:2px;text-align:center">
+          <div style="aspect-ratio:4/3;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#8a827b;font-size:12.5px;padding:8px"><span style="font-size:26px">＋</span>Add your dish<br><span style="font-size:11px">photo · price · time</span></div></a>`;
+        return `<a href="/app/owner/${String(shop._id)}/dish/${String(d._id)}" class="card" style="margin:0;padding:0;overflow:hidden;position:relative">
+          <div style="aspect-ratio:4/3;background:#f0e7de ${d.photo ? `url(${d.photo}) center/cover` : ""};display:flex;align-items:center;justify-content:center;font-size:30px">${d.photo ? "" : "🍛"}</div>
+          <span class="pill" style="position:absolute;top:7px;right:7px;background:#fff;border:1px solid #ece3da">✏️ Edit</span>
+          ${d.special ? `<span class="pill deal" style="position:absolute;top:7px;left:7px">Special</span>` : ""}
+          <div style="padding:8px 10px"><strong style="font-size:13px;line-height:1.3;display:block">${esc(d.name)}</strong>
+          <div class="sub" style="font-size:12px">${lkr(d.price)}${d.discount && d.discount !== "none" ? ` · <span style=\"color:${ORANGE}\">${esc(d.discount)}</span>` : ""}</div></div></a>`;
+      }).join("")}
     </div>
-    <div class="row" style="justify-content:space-between"><strong>Incoming orders</strong></div>
-    <div style="margin-top:10px">${orderRows || `<div class="sub card">No orders yet — they appear here the moment a buyer checks out.</div>`}</div>
-    <strong style="display:block;margin:6px 0 10px">Today's special &amp; discounts</strong>
-    ${special ? `<div class="card row">${dishThumb(special, "", "🎁")}<div style="flex:1"><strong>${esc(special.name)}</strong>
-      <div class="sub" style="font-size:12.5px">${lkr(special.price)}${special.discount && special.discount !== "none" ? ` · <span style=\"color:${ORANGE}\">${esc(special.discount)}</span>` : ""} · showing in Today's promotions</div></div></div>`
-      : `<div class="sub card">No special yet — publish one with the toggle in "Add dish".</div>`}
+    ${orders.length ? `<div class="row" style="justify-content:space-between;margin-top:16px"><strong>Incoming orders</strong>
+      <span class="sub" style="font-size:12px">today ${todays.length} · ${lkr(revenue)} · ${chats} chats</span></div>
+    <div style="margin-top:10px">${orderRows}</div>` : ""}
     <div style="height:70px"></div>
     <a class="btn" style="position:fixed;bottom:20px;right:max(14px,calc(50% - 226px));width:auto;padding:13px 20px;border-radius:99px" href="/app/owner/${String(shop._id)}/add-dish">+ Add dish</a>`,
+  });
+}
+
+/* ---------------------------------------------- dish edit (full) */
+
+function dishEditPage(shop, d) {
+  const seg = (name, opts, current) => opts.map((o) =>
+    `<label><input type="radio" name="${name}" value="${o}" ${String(current) === o ? "checked" : ""}><span class="opt">${o === "none" ? "None" : o}</span></label>`).join("");
+  return shell({
+    title: "Edit dish — " + d.name,
+    back: `/app/owner/${String(shop._id)}`,
+    body: `
+    <h1 style="font-size:21px">Edit dish</h1>
+    <form method="POST" action="/app/owner/${String(shop._id)}/dish/${String(d._id)}">
+      <label for="photoIn" class="thumb" id="photoBox" style="width:100%;height:150px;margin:14px 0;font-size:13px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative;${d.photo ? `background-image:url(${d.photo})` : ""}"><span id="photoHint">${d.photo ? "" : "add dish photo — tap to use camera or library"}</span><span style="position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
+      <input type="file" id="photoIn" accept="image/*" capture="environment" style="display:none">
+      <input type="hidden" name="photo" id="photoData">
+      <label>DISH NAME</label>
+      <input type="text" name="name" required value="${esc(d.name)}">
+      <label>SINHALA NAME (OPTIONAL)</label>
+      <input type="text" name="nameSi" value="${esc(d.nameSi ?? "")}">
+      <div class="row" style="gap:10px">
+        <div style="flex:1"><label>PRICE (LKR)</label><input type="number" name="price" required min="0" value="${Number(d.price) || 0}"></div>
+        <div style="flex:1"><label>PORTIONS / DAY</label><input type="number" name="portions" value="${Number(d.portions) || 20}" min="1"></div>
+      </div>
+      <label>AVAILABLE TIME</label>
+      <div class="seg">${seg("window", ["11 AM - 3 PM", "5 - 9 PM", "All day"], d.window ?? "All day")}</div>
+      <label>DISCOUNT</label>
+      <div class="seg">${seg("discount", ["none", "-10%", "-20%", "2 for 1"], d.discount ?? "none")}</div>
+      <div class="card row" style="margin-top:16px">
+        <div style="flex:1"><strong style="font-size:14px">Today's special package</strong>
+          <div class="sub" style="font-size:12.5px">Featured in the promotions row for buyers nearby</div></div>
+        <label class="toggle"><input type="checkbox" name="special" value="1" ${d.special ? "checked" : ""}><span></span></label>
+      </div>
+      <div class="row" style="gap:10px;margin-top:18px">
+        <button class="btn" style="flex:2">Save changes</button>
+        <button class="btn ghost" style="flex:1;color:#b3261e" formaction="/app/owner/${String(shop._id)}/dish/${String(d._id)}/delete" onclick="return confirm('Remove this dish from your menu?')">Delete</button>
+      </div>
+    </form>
+<script>
+  document.getElementById('photoIn').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const img = new Image();
+    img.onload = () => {
+      const max = 800;
+      const sc = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * sc);
+      c.height = Math.round(img.height * sc);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      const data = c.toDataURL('image/jpeg', 0.8);
+      document.getElementById('photoData').value = data;
+      const box = document.getElementById('photoBox');
+      box.style.backgroundImage = 'url(' + data + ')';
+      document.getElementById('photoHint').textContent = '';
+      URL.revokeObjectURL(img.src);
+    };
+    img.src = URL.createObjectURL(f);
+  });
+</script>`,
   });
 }
 
@@ -1098,6 +1165,49 @@ export async function handleApp(req, res, url) {
     } else {
       html(res, profilePage(shop));
     }
+    return;
+  }
+
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/dish\/([a-f0-9]{24})$/);
+  if (m) {
+    const shop = await shopById(m[1]);
+    const _id = await oid(m[2]);
+    const d = shop && _id ? await (await col("app_dishes")).findOne({ _id, shopId: m[1] }) : null;
+    if (!shop || !d) { res.writeHead(404).end("not found"); return; }
+    if (req.method === "POST") {
+      const form = await readForm(req, 600_000);
+      const name = String(form.get("name") || "").trim().slice(0, 80);
+      const photo = String(form.get("photo") || "");
+      const photoOk = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(photo) && photo.length < 500_000;
+      await (await col("app_dishes")).updateOne({ _id }, { $set: {
+        ...(name ? { name } : {}),
+        nameSi: String(form.get("nameSi") || "").slice(0, 80),
+        ...(photoOk ? { photo } : {}),
+        price: Math.max(0, Number(form.get("price")) || 0),
+        portions: Math.max(1, Number(form.get("portions")) || 20),
+        window: String(form.get("window") || "All day").slice(0, 20),
+        discount: String(form.get("discount") || "none").slice(0, 10),
+        special: form.get("special") === "1",
+        updatedAt: new Date(),
+      } });
+      redirect(res, `/app/owner/${m[1]}`);
+    } else {
+      html(res, dishEditPage(shop, d));
+    }
+    return;
+  }
+
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/dish\/([a-f0-9]{24})\/delete$/);
+  if (m && req.method === "POST") {
+    const _id = await oid(m[2]);
+    if (_id) {
+      const r = await (await col("app_dishes")).deleteOne({ _id, shopId: m[1] });
+      if (r.deletedCount) {
+        const shopOid = await oid(m[1]);
+        if (shopOid) await (await col("shop_owners")).updateOne({ _id: shopOid }, { $inc: { listings: -1 } });
+      }
+    }
+    redirect(res, `/app/owner/${m[1]}`);
     return;
   }
 
