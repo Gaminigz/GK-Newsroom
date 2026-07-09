@@ -259,7 +259,8 @@ function welcomePage(req) {
         world can find real Sri Lankan food nearby.</p>
       <div style="margin:16px 0 6px;${loggedIn ? "" : "display:grid;grid-template-columns:1fr 1fr;gap:9px"}">
       ${loggedIn
-        ? `<a class="btn" style="margin-bottom:10px" href="/app/home">Today's deals near you →</a>`
+        ? `<a class="btn" style="margin-bottom:8px" href="/app/home">Today's deals near you →</a>
+           <a class="sub" href="/app/logout" style="text-decoration:underline;font-size:12.5px">Sign out</a>`
         : loginBtn("google", "ghost", `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.2H12v4.1h6.5c-.1 1.1-.8 2.7-2.4 3.8l3.7 2.9c2.2-2 3.7-5 3.7-8.6z"/><path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.7-2.9c-1 .7-2.4 1.2-4.2 1.2-3.2 0-5.9-2.1-6.9-5.1L1.3 17.2C3.3 21.2 7.3 24 12 24z"/><path fill="#FBBC05" d="M5.1 14.3c-.2-.7-.4-1.5-.4-2.3s.1-1.6.4-2.3L1.3 6.8C.5 8.4 0 10.1 0 12s.5 3.6 1.3 5.2l3.8-2.9z"/><path fill="#EA4335" d="M12 4.7c1.8 0 3 .8 3.7 1.4l2.7-2.7C16.9 1.2 14.2 0 12 0 7.3 0 3.3 2.8 1.3 6.8l3.8 2.9c1-3 3.7-5 6.9-5z"/></svg>`, "Google")
           + loginBtn("facebook", "fb", `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#fff" d="M24 12a12 12 0 1 0-13.9 11.9v-8.4h-3V12h3V9.4c0-3 1.8-4.7 4.6-4.7 1.3 0 2.7.2 2.7.2v3h-1.5c-1.5 0-2 .9-2 1.9V12h3.3l-.5 3.5h-2.8v8.4A12 12 0 0 0 24 12z"/></svg>`, "Facebook")
           + loginBtn("apple", "dark", `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#fff" d="M16.4 12.7c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 2.9-.4 7.3 1.2 9.7.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8 2.2-1.2 3-2.4c.9-1.3 1.3-2.6 1.3-2.7 0 0-2.5-1-2.6-3.9zM14 5.6c.7-.8 1.1-1.9 1-3.1-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.4z"/></svg>`, "Apple")
@@ -810,6 +811,12 @@ export async function handleApp(req, res, url) {
       const shop = await shopById(url.searchParams.get("shop") || "");
       html(res, reportPage(shop));
     }
+    return;
+  }
+
+  if (path === "/app/logout") {
+    res.setHeader("Set-Cookie", "app_user=; Path=/app; Max-Age=0");
+    redirect(res, "/app");
     return;
   }
 
