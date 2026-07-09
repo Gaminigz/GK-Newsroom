@@ -239,9 +239,9 @@ function welcomePage(req) {
   const myShop = c.app_shop;
   const loggedIn = c.app_user;
   const loginBtn = (via, style, svg, label) => `
-    <form method="POST" action="/app/login" style="margin-bottom:9px">
+    <form method="POST" action="/app/login">
       <input type="hidden" name="via" value="${via}">
-      <button class="btn ${style}" style="display:flex;align-items:center;justify-content:center;gap:9px">${svg}${label}</button>
+      <button class="btn ${style}" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px 6px;font-size:15px">${svg}${label}</button>
     </form>`;
   return shell({
     title: "3una 5aha — find Sri Lankan food near you",
@@ -257,17 +257,17 @@ function welcomePage(req) {
         community app where Sri Lankan restaurants and home cooks post their
         dishes, deals and daily activities — so travellers anywhere in the
         world can find real Sri Lankan food nearby.</p>
-      <div style="margin:18px 0 6px">
+      <div style="margin:16px 0 6px;${loggedIn ? "" : "display:grid;grid-template-columns:1fr 1fr;gap:9px"}">
       ${loggedIn
         ? `<a class="btn" style="margin-bottom:10px" href="/app/home">Today's deals near you →</a>`
-        : loginBtn("google", "ghost", `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.2H12v4.1h6.5c-.1 1.1-.8 2.7-2.4 3.8l3.7 2.9c2.2-2 3.7-5 3.7-8.6z"/><path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.7-2.9c-1 .7-2.4 1.2-4.2 1.2-3.2 0-5.9-2.1-6.9-5.1L1.3 17.2C3.3 21.2 7.3 24 12 24z"/><path fill="#FBBC05" d="M5.1 14.3c-.2-.7-.4-1.5-.4-2.3s.1-1.6.4-2.3L1.3 6.8C.5 8.4 0 10.1 0 12s.5 3.6 1.3 5.2l3.8-2.9z"/><path fill="#EA4335" d="M12 4.7c1.8 0 3 .8 3.7 1.4l2.7-2.7C16.9 1.2 14.2 0 12 0 7.3 0 3.3 2.8 1.3 6.8l3.8 2.9c1-3 3.7-5 6.9-5z"/></svg>`, "Continue with Google")
-          + loginBtn("facebook", "fb", `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#fff" d="M24 12a12 12 0 1 0-13.9 11.9v-8.4h-3V12h3V9.4c0-3 1.8-4.7 4.6-4.7 1.3 0 2.7.2 2.7.2v3h-1.5c-1.5 0-2 .9-2 1.9V12h3.3l-.5 3.5h-2.8v8.4A12 12 0 0 0 24 12z"/></svg>`, "Continue with Facebook")
-          + loginBtn("apple", "dark", `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#fff" d="M16.4 12.7c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 2.9-.4 7.3 1.2 9.7.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8 2.2-1.2 3-2.4c.9-1.3 1.3-2.6 1.3-2.7 0 0-2.5-1-2.6-3.9zM14 5.6c.7-.8 1.1-1.9 1-3.1-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.4z"/></svg>`, "Continue with Apple")
-          + loginBtn("email", "ghost", "✉️", "Continue with Email")
-          + loginBtn("sms", "ghost", "💬", "Phone · SMS")}
+        : loginBtn("google", "ghost", `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.2H12v4.1h6.5c-.1 1.1-.8 2.7-2.4 3.8l3.7 2.9c2.2-2 3.7-5 3.7-8.6z"/><path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.7-2.9c-1 .7-2.4 1.2-4.2 1.2-3.2 0-5.9-2.1-6.9-5.1L1.3 17.2C3.3 21.2 7.3 24 12 24z"/><path fill="#FBBC05" d="M5.1 14.3c-.2-.7-.4-1.5-.4-2.3s.1-1.6.4-2.3L1.3 6.8C.5 8.4 0 10.1 0 12s.5 3.6 1.3 5.2l3.8-2.9z"/><path fill="#EA4335" d="M12 4.7c1.8 0 3 .8 3.7 1.4l2.7-2.7C16.9 1.2 14.2 0 12 0 7.3 0 3.3 2.8 1.3 6.8l3.8 2.9c1-3 3.7-5 6.9-5z"/></svg>`, "Google")
+          + loginBtn("facebook", "fb", `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#fff" d="M24 12a12 12 0 1 0-13.9 11.9v-8.4h-3V12h3V9.4c0-3 1.8-4.7 4.6-4.7 1.3 0 2.7.2 2.7.2v3h-1.5c-1.5 0-2 .9-2 1.9V12h3.3l-.5 3.5h-2.8v8.4A12 12 0 0 0 24 12z"/></svg>`, "Facebook")
+          + loginBtn("apple", "dark", `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#fff" d="M16.4 12.7c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 2.9-.4 7.3 1.2 9.7.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8 2.2-1.2 3-2.4c.9-1.3 1.3-2.6 1.3-2.7 0 0-2.5-1-2.6-3.9zM14 5.6c.7-.8 1.1-1.9 1-3.1-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.4z"/></svg>`, "Apple")
+          + loginBtn("email", "ghost", "✉️", "Email")
+          + loginBtn("sms", "ghost", "💬", "SMS")
+          + `<a class="btn ghost" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px 6px;font-size:15px" href="/app/home">👀 Guest</a>`}
       </div>
-      ${loggedIn ? "" : `<a href="/app/home" class="sub" style="font-weight:700;text-decoration:underline">Browse as guest →</a>`}
-      <div style="margin-top:16px">${myShop
+      <div style="margin-top:14px">${myShop
         ? `<a href="/app/owner/${esc(myShop)}" style="font-weight:700">🏪 My restaurant dashboard →</a>`
         : `<a href="/app/register" style="font-weight:700">🏪 List your restaurant — free, non-commercial</a>`}</div>
       <div class="sub" style="font-size:12.5px;margin:18px 0 10px">Support requests — email, Telegram or WhatsApp:</div>
