@@ -429,14 +429,16 @@ async function shopPage(id) {
   const dishRows = dishes
     .filter((d) => !d.special)
     .map(
-      (d) => `<div class="card row">
-      ${dishThumb(d)}
-      <div style="flex:1">
+      (d) => `<div class="card row" style="margin:0 0 8px;padding:0;overflow:hidden;gap:12px">
+      ${d.photo
+        ? `<div onclick="previewFrom(this)" style="width:100px;align-self:stretch;min-height:92px;flex:0 0 auto;background-image:url(${d.photo});background-size:cover;background-position:center;cursor:zoom-in"></div>`
+        : `<div class="thumb" style="width:100px;align-self:stretch;min-height:92px;border-radius:0">🍛</div>`}
+      <div style="flex:1;padding:10px 0;min-width:0">
         <strong style="font-size:14.5px">${esc(d.name)}</strong>${d.nameSi ? ` <span class="si">${esc(d.nameSi)}</span>` : ""}
         <div class="sub" style="font-size:12.5px">Available ${esc(d.window ?? "all day")}</div>
         <strong style="font-size:13.5px">${lkr(d.price)}</strong>
       </div>
-      <button class="btn" style="width:38px;padding:8px 0;border-radius:11px" onclick='add(${JSON.stringify(String(d._id))},${JSON.stringify(d.name)},${Number(d.price) || 0})'>+</button>
+      <button class="btn" style="width:38px;padding:8px 0;border-radius:11px;margin-right:12px;flex:0 0 auto" onclick='add(${JSON.stringify(String(d._id))},${JSON.stringify(d.name)},${Number(d.price) || 0})'>+</button>
     </div>`,
     )
     .join("");
@@ -481,7 +483,16 @@ async function shopPage(id) {
         <button class="btn" style="margin-top:18px">Place order · <span id="sheetTotal"></span></button>
       </form>
     </div>
+<div id="pv" onclick="this.style.display='none'" style="display:none;position:fixed;inset:0;background:rgba(15,10,5,.92);z-index:60;align-items:center;justify-content:center;cursor:zoom-out">
+      <img id="pvImg" style="max-width:94vw;max-height:88vh;border-radius:14px" alt="">
+    </div>
 <script>
+  function previewFrom(el) {
+    const m = (el.style.backgroundImage || '').match(/url\("?(.+?)"?\)$/);
+    if (!m) return;
+    document.getElementById('pvImg').src = m[1];
+    document.getElementById('pv').style.display = 'flex';
+  }
   const basket = [];
   function add(id, name, price) {
     const f = basket.find((b) => b.id === id);
