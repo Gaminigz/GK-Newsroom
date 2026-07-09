@@ -30,6 +30,7 @@
 import http from "node:http";
 import { getDb } from "../lib/mongo.ts";
 import { getEpisodeAudio, listEpisodes } from "../lib/podcast.ts";
+import { getSpiceAudio, listSpiceEpisodes } from "../lib/spice-podcast.ts";
 import { SPICES } from "../data/spices.ts";
 import { GOV_SOURCES } from "../data/gov-sources.ts";
 
@@ -296,8 +297,9 @@ function landingPage() {
   });
 }
 
-/** 3una5aha — the Sri Lankan spice feed, served from src/data/spices.ts. */
-function spicesPage() {
+/** 3una5aha — the Sri Lankan spice feed, served from src/data/spices.ts.
+ *  `episodes` maps spice id → durationSec for ready mini-podcasts. */
+function spicesPage(episodes = {}) {
   const CAT_COLORS = {
     "Blend": ["#e08a2e", "#8a3f12"],
     "Seed": ["#c9a227", "#6b4e0a"],
@@ -314,6 +316,14 @@ function spicesPage() {
     .join("");
   const cards = SPICES.map((s) => {
     const [c1, c2] = CAT_COLORS[s.category] ?? ["#888", "#444"];
+    const dur = episodes[s.id];
+    const playRow = dur
+      ? `<div class="listen" data-id="${esc(s.id)}">
+           <button class="lbtn" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · <span class="ltime">${fmtDur(dur)}</span></span>
+           <div class="lbar"><div class="lfill"></div></div>
+         </div>`
+      : "";
     return `<article class="scard" data-kind="${esc(s.category)}">
       <img class="sphoto" data-q="${esc(s.imgQuery)}" alt="${esc(s.name)}" hidden>
       <div class="sinner">
@@ -322,6 +332,7 @@ function spicesPage() {
           <div class="srow"><h2>${esc(s.name)}</h2><span class="sin">${esc(s.sinhala)}</span></div>
           <span class="pill">${esc(s.category)}</span>
           <p>${esc(s.post)}</p>
+          ${playRow}
         </div>
       </div>
     </article>`;
@@ -360,6 +371,14 @@ function spicesPage() {
   .sin { color:#c98f4e; font-size:14px; }
   .pill { display:inline-block; font-size:11px; border-radius:999px; padding:2px 9px; border:1px solid #4a3624; color:#c9a984; margin-top:3px; }
   .sbody p { color:#cbb8a4; font-size:14px; margin-top:6px; }
+  .listen { display:flex; align-items:center; gap:10px; margin-top:10px; background:#241811;
+            border:1px solid #3a2a1e; border-radius:999px; padding:5px 12px 5px 5px; }
+  .lbtn { width:30px; height:30px; border-radius:50%; border:0; cursor:pointer; flex:0 0 auto;
+          background:linear-gradient(140deg,#f0a13e,#c2611c); color:#140d08; font-size:13px; font-weight:800;
+          box-shadow:0 2px 6px #0007, inset 0 1px 0 #ffffff55; }
+  .ltxt { color:#c9a984; font-size:12.5px; white-space:nowrap; }
+  .lbar { flex:1; height:5px; border-radius:3px; background:#140d08; overflow:hidden; }
+  .lfill { height:100%; width:0%; background:linear-gradient(90deg,#e08a2e,#f37021); }
   footer { color:#8f7b67; font-size:12px; text-align:center; margin-top:36px; }
 </style>
 </head>
@@ -387,10 +406,12 @@ function spicesPage() {
   });
 
   // Photo loader: each card finds its own high-res photo on Wikimedia
-  // Commons (free, watermark-less, CORS-open API), caches the URL on the
-  // device, and quietly keeps the emoji tile if nothing is found.
+  // Commons (free, watermark-less, CORS-open API). Queries use intitle:
+  // filters so the spice's name must be in the FILE NAME — no more
+  // unrelated people/trees. Of the top results we prefer real .jpg
+  // photos over drawings. When a photo shows, the emoji tile hides.
   (() => {
-    const KEY = "spiceImgs.v1";
+    const KEY = "spiceImgs.v2";                 // v2: invalidate old bad picks
     let cache = {};
     try { cache = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch {}
     const imgs = [...document.querySelectorAll(".sphoto")];
@@ -402,21 +423,59 @@ function spicesPage() {
         if (url === undefined) {
           const api = "https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*" +
             "&generator=search&gsrsearch=" + encodeURIComponent("filetype:bitmap " + q) +
-            "&gsrnamespace=6&gsrlimit=1&prop=imageinfo&iiprop=url&iiurlwidth=640";
+            "&gsrnamespace=6&gsrlimit=6&prop=imageinfo&iiprop=url&iiurlwidth=640";
           const j = await (await fetch(api)).json();
           const pages = j && j.query && j.query.pages ? Object.values(j.query.pages) : [];
-          url = (pages[0] && pages[0].imageinfo && pages[0].imageinfo[0] && pages[0].imageinfo[0].thumburl) || "";
+          pages.sort((a, b) => (a.index ?? 9) - (b.index ?? 9));
+          const pick = pages.find((p) => /\.jpe?g$/i.test(p.title || "")) || pages[0];
+          url = (pick && pick.imageinfo && pick.imageinfo[0] && pick.imageinfo[0].thumburl) || "";
           cache[q] = url;
           try { localStorage.setItem(KEY, JSON.stringify(cache)); } catch {}
         }
         if (url) {
           await new Promise((ok, bad) => { img.onload = ok; img.onerror = bad; img.src = url; });
           img.hidden = false;
+          const tile = img.closest(".scard")?.querySelector(".stile");
+          if (tile) tile.style.display = "none";  // photo replaces the icon
         }
       } catch {}
     }
     function next() { const img = imgs[i++]; if (img) loadOne(img).finally(next); }
     next(); next(); next(); // three lanes, polite to the Commons API
+  })();
+
+  // Mini-podcast players: one shared audio element; each card's pill
+  // streams its episode from Mongo via /podcast/spice/<id>.wav.
+  (() => {
+    const rows = [...document.querySelectorAll(".listen")];
+    if (!rows.length) return;
+    const audio = new Audio();
+    let current = null;
+    const mmss = (s) => isFinite(s) ? Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0") : "";
+    function stopUi() {
+      if (!current) return;
+      current.querySelector(".lbtn").textContent = "▶";
+    }
+    rows.forEach((row) => {
+      row.querySelector(".lbtn").addEventListener("click", () => {
+        if (current === row) {
+          if (audio.paused) { audio.play(); } else { audio.pause(); }
+          return;
+        }
+        stopUi();
+        current = row;
+        audio.src = "/podcast/spice/" + row.dataset.id + ".wav";
+        audio.play();
+      });
+    });
+    audio.addEventListener("play", () => { if (current) current.querySelector(".lbtn").textContent = "⏸"; });
+    audio.addEventListener("pause", stopUi);
+    audio.addEventListener("ended", () => { stopUi(); if (current) current.querySelector(".lfill").style.width = "0%"; });
+    audio.addEventListener("timeupdate", () => {
+      if (!current || !audio.duration) return;
+      current.querySelector(".lfill").style.width = (audio.currentTime / audio.duration * 100) + "%";
+      current.querySelector(".ltime").textContent = mmss(audio.currentTime) + " / " + mmss(audio.duration);
+    });
   })();
 </script>
 </body>
@@ -775,7 +834,9 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
 
 let cache = { html: null, at: 0 };
 let govCache = { html: null, at: 0 };
+let spiceCache = { html: null, at: 0 };
 let audioCache = { key: null, buf: null, at: 0 };
+const spiceAudioCache = new Map(); // id → { buf, at }, small LRU
 
 async function feedHtml() {
   if (cache.html && Date.now() - cache.at < CACHE_MS) return cache.html;
@@ -847,11 +908,40 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (path === "/food") {
+      if (!spiceCache.html || Date.now() - spiceCache.at > CACHE_MS) {
+        let episodes = {};
+        try {
+          episodes = await listSpiceEpisodes();
+        } catch (err) {
+          console.error("[web] spice episodes query failed:", err instanceof Error ? err.message : err);
+        }
+        spiceCache = { html: spicesPage(episodes), at: Date.now() };
+      }
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "public, max-age=600",
+        "Cache-Control": "public, max-age=300",
       });
-      res.end(spicesPage());
+      res.end(spiceCache.html);
+      return;
+    }
+
+    const sm = path.match(/^\/podcast\/spice\/([a-z0-9-]+)\.wav$/);
+    if (sm) {
+      const id = sm[1];
+      let entry = spiceAudioCache.get(id);
+      if (!entry || Date.now() - entry.at > CACHE_MS) {
+        const buf = await getSpiceAudio(id);
+        if (!buf) {
+          res.writeHead(404).end("episode not found");
+          return;
+        }
+        entry = { buf, at: Date.now() };
+        spiceAudioCache.set(id, entry);
+        if (spiceAudioCache.size > 6) {
+          spiceAudioCache.delete(spiceAudioCache.keys().next().value); // oldest out
+        }
+      }
+      sendAudio(req, res, entry.buf);
       return;
     }
 
