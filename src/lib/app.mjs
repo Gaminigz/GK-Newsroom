@@ -212,10 +212,15 @@ const SUPPORT = {
 };
 
 function supportLinks() {
-  return `<div class="row" style="gap:8px;flex-wrap:wrap;justify-content:center">
-    <a class="chip" href="mailto:${SUPPORT.email}">✉️ ${SUPPORT.email}</a>
-    <a class="chip" href="${SUPPORT.telegram}" target="_blank" rel="noopener">✈️ @GKSmartbiz</a>
-    <a class="chip" href="${SUPPORT.whatsapp}" target="_blank" rel="noopener">💬 WhatsApp ${SUPPORT.whatsappLabel}</a>
+  // Logo-only — no address or number in the visible page (anti-spam).
+  const b = "display:inline-flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:99px";
+  return `<div class="row" style="gap:12px;justify-content:center">
+    <a style="${b};background:#6b6560" href="mailto:${SUPPORT.email}" aria-label="Email support">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="#fff" stroke-width="2"/><path d="M3 7l9 6 9-6" stroke="#fff" stroke-width="2" fill="none"/></svg></a>
+    <a style="${b};background:#229ED9" href="${SUPPORT.telegram}" target="_blank" rel="noopener" aria-label="Telegram support">
+      <svg width="22" height="22" viewBox="0 0 24 24"><path fill="#fff" d="M21.9 4.1c.3-1.1-.8-1.6-1.7-1.2L2.6 9.7c-1.1.4-1.1 1.6 0 1.9l4.5 1.4 1.7 5.3c.3.9 1.4 1.1 2 .4l2.4-2.3 4.6 3.4c.8.6 2 .2 2.2-.8l2-14.9zM8.5 12.6l9.3-5.7c.4-.2.8.3.4.6l-7.6 7-.3 3.2-1.8-5.1z"/></svg></a>
+    <a style="${b};background:#25D366" href="${SUPPORT.whatsapp}" target="_blank" rel="noopener" aria-label="WhatsApp support">
+      <svg width="22" height="22" viewBox="0 0 24 24"><path fill="#fff" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.6-6.1c-.3-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1-.2.3-.6.8-.8 1-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4 0-.5.1-.7l.5-.6c.1-.2.1-.3 0-.5l-.8-1.9c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.9.9-1.1 2.2-.2 3.9a11.6 11.6 0 0 0 4.5 4.3c1.7.8 2.5.9 3.3.7.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.1-1.2l-.5-.2z"/></svg></a>
   </div>`;
 }
 
@@ -235,7 +240,7 @@ function welcomePage(req) {
     <div style="text-align:center; padding-top:7vh">
       <div style="width:92px;height:92px;border-radius:26px;background:#f0e7de;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;font-size:38px">🌶</div>
       <h1 style="font-size:32px"><span style="color:${ORANGE}">3</span>una <span style="color:${ORANGE}">5</span>aha</h1>
-      <div style="font-size:32px;font-weight:800;letter-spacing:-.01em;line-height:1.2">කුළුබඩු</div>
+      <div style="font-size:32px;font-weight:800;letter-spacing:-.01em;line-height:1.2">තුන පහ</div>
       <div class="sub" style="margin:6px 0 4px">the spice marketplace</div>
       <p class="sub" style="max-width:280px;margin:0 auto 30px">Find Sri Lankan dishes around the world — from restaurants &amp; home cooks near you</p>
       <a class="btn" style="margin-bottom:10px" href="/app/home">Buyer<span style="display:block;font-size:12px;font-weight:400;opacity:.85">browse &amp; order — no sign-up needed</span></a>
