@@ -137,7 +137,7 @@ function shell({ title, body, nav = "", back = "", noPad = false, backFloat = fa
   * { box-sizing:border-box; margin:0; -webkit-tap-highlight-color:transparent; }
   body { background:#faf7f4; color:#1a1a1a; font:15.5px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
          max-width:480px; margin:0 auto; min-height:100vh;
-         padding:${noPad ? "0" : "14px 20px"}; padding-top:calc(env(safe-area-inset-top, 0px) + 10px); padding-bottom:84px; }
+         padding:${noPad ? "0" : "14px 20px"}; padding-top:calc(env(safe-area-inset-top, 0px) + 10px); padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 88px); }
   a { color:inherit; text-decoration:none; }
   h1 { font-size:24px; letter-spacing:-.02em; }
   .si { color:#b3672f; font-weight:400; font-size:.82em; }
@@ -170,7 +170,7 @@ function shell({ title, body, nav = "", back = "", noPad = false, backFloat = fa
   .nav a.on { color:${ORANGE}; }
   .back { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:99px; background:#fff; border:1px solid #ece3da; margin-bottom:10px; }
   .back.float { position:absolute; z-index:10; top:calc(env(safe-area-inset-top, 0px) + 10px); left:20px; margin:0; box-shadow:0 2px 8px #0003; }
-  .basketbar { position:fixed; bottom:74px; left:50%; transform:translateX(-50%); width:calc(100% - 40px); max-width:440px;
+  .basketbar { position:fixed; bottom:calc(max(10px, env(safe-area-inset-bottom)) + 72px); left:50%; transform:translateX(-50%); width:calc(100% - 40px); max-width:440px;
                background:#191512; color:#fff; border-radius:14px; padding:14px 16px; display:none; justify-content:space-between; font-weight:700; }
   .stat { background:#fff; border:1px solid #ece3da; border-radius:14px; padding:11px 13px; flex:1; }
   .stat .k { color:#6b6560; font-size:11.5px; }
