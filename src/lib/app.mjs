@@ -171,6 +171,8 @@ function shell({ title, body, nav = "", back = "", noPad = false, backFloat = fa
   .nav a .i { display:block; font-size:19px; margin-bottom:1px; }
   .nav a.on { color:${ORANGE}; }
   .back { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:99px; background:#fff; border:1px solid #ece3da; margin-bottom:10px; }
+  @keyframes flashpulse { 0%,100% { box-shadow:0 0 0 0 #d9542b00; } 50% { box-shadow:0 0 0 7px #d9542b1c, 0 6px 22px #d9542b38; } }
+  .flashcard { animation:flashpulse 2.6s ease-in-out infinite; border-color:#d9542b55; }
   .toast { position:fixed; top:45%; left:50%; transform:translate(-50%,-50%); background:#191512; color:#fff;
            padding:15px 24px; border-radius:14px; font-weight:700; font-size:15.5px; z-index:100;
            box-shadow:0 10px 34px #0007; text-align:center; max-width:80vw; }
@@ -394,16 +396,22 @@ async function homePage(req) {
     .toArray();
   const shopName = new Map(shops.map((s) => [String(s._id), s.name]));
 
-  const promoCards = specials
-    .map(
-      (d) => `<a class="card" style="flex:0 0 190px;margin:0" href="/app/shop/${esc(d.shopId)}">
-      <span class="pill deal">${d.discount && d.discount !== "none" ? esc(d.discount) : "Special"}</span>
-      ${dishThumb(d, "width:100%;height:84px;margin:9px 0")}
-      <strong style="font-size:14px">${esc(d.name)}</strong>
-      <div class="sub" style="font-size:12px">${esc(shopName.get(d.shopId) ?? "")} · ${esc(d.window ?? "today")}</div>
-    </a>`,
-    )
-    .join("");
+  // Flash card data: today's specials, user's city first (geo preference).
+  const shopCity = new Map(shops.map((sh) => [String(sh._id), sh.city ?? ""]));
+  const myCity = (c.app_city || "").toLowerCase();
+  const flash = specials
+    .map((d) => ({
+      shopId: d.shopId,
+      name: d.name,
+      nameSi: d.nameSi ?? "",
+      price: lkr(d.price),
+      deal: d.discount && d.discount !== "none" ? d.discount : "",
+      shop: shopName.get(d.shopId) ?? "",
+      window: d.window ?? "today",
+      photo: d.photo ?? "",
+      near: myCity && (shopCity.get(d.shopId) || "").toLowerCase().includes(myCity) ? 0 : 1,
+    }))
+    .sort((a, b) => a.near - b.near);
 
   const shopCards = (
     await Promise.all(
@@ -428,24 +436,57 @@ async function homePage(req) {
     noBack: true,
     body: `
     <div class="row" style="justify-content:space-between">
-      <div class="row" style="gap:8px">
-        <a class="back" style="margin:0;width:30px;height:30px" href="/app">‹</a>
-        <a href="/app/location"><span style="color:${ORANGE}">●</span> <strong style="font-size:13.5px">${esc(city)}</strong> <span class="sub">▾</span></a>
+      <div class="row" style="gap:8px;min-width:0">
+        <a class="back" style="margin:0;width:30px;height:30px;flex:0 0 auto" href="/app">‹</a>
+        <a href="/app/location" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="color:${ORANGE}">●</span> <strong style="font-size:13.5px">${esc(city)}</strong> <span class="sub">▾</span> <span class="sub si" style="font-size:12px">· ආයුබෝවන් Ayubowan</span></a>
       </div>
-      <span class="pill" style="background:#191512;color:#fff;padding:6px 13px">Shop</span>
+      <span class="pill" style="background:#191512;color:#fff;padding:6px 13px;flex:0 0 auto">Shop</span>
     </div>
     ${unverified ? `<a href="/app/verify" class="card row" style="margin-top:10px;padding:9px 13px;background:#fdecea;border-color:#efc4bf">
       <span style="width:10px;height:10px;border-radius:99px;background:#d92d20;flex:0 0 auto;box-shadow:0 0 0 3px #d92d2033"></span>
       <span style="flex:1;font-size:13px"><strong>Verify your email</strong> — code from gk.smart@ggmt.sg awaits (24h)</span>
       <span class="sub">›</span></a>` : ""}
-    <div class="sub si" style="margin-top:12px">ආයුබෝවන් · Ayubowan</div>
-    <h1>What's cooking nearby?</h1>
-    <form action="/app/home" style="margin:12px 0 0"><input type="text" name="q" placeholder="🔍 Search dishes, shops, spices…"></form>
+    <form action="/app/home" style="margin:16px 0 0"><input type="text" name="q" placeholder="🔍 Search dishes, shops, spices…"></form>
+    ${flash.length ? `
+    <a class="card row flashcard" id="flashCard" href="/app/shop/${esc(flash[0].shopId)}" style="margin:14px 0 0;padding:0;overflow:hidden;gap:12px">
+      <div id="flashImg" style="width:106px;align-self:stretch;min-height:100px;flex:0 0 auto;background:#f0e7de ${flash[0].photo ? `url(${flash[0].photo}) center/cover` : ""};display:flex;align-items:center;justify-content:center;font-size:30px">${flash[0].photo ? "" : "🍛"}</div>
+      <div style="flex:1;min-width:0;padding:10px 12px 10px 0">
+        <span class="pill today">TODAY <span class="si" style="color:#fff">අද විශේෂ</span></span>
+        <strong id="flashName" style="display:block;font-size:15px;margin-top:3px">${esc(flash[0].name)}</strong>
+        <div class="sub" id="flashMeta" style="font-size:12.5px">${esc(flash[0].shop)} · ${esc(flash[0].window)}</div>
+        <strong id="flashPrice" style="color:${ORANGE}">${esc(flash[0].price)}</strong> <span class="pill deal" id="flashDeal" ${flash[0].deal ? "" : "hidden"}>${esc(flash[0].deal)}</span>
+      </div>
+    </a>
+    <script id="flashData" type="application/json">${JSON.stringify(flash)}</script>
+    <script>
+      (() => {
+        const items = JSON.parse(document.getElementById('flashData').textContent);
+        if (items.length < 2) return;
+        let i = 0;
+        const card = document.getElementById('flashCard');
+        setInterval(() => {
+          i = (i + 1) % items.length;
+          const d = items[i];
+          card.style.transition = 'opacity .35s';
+          card.style.opacity = '0.15';
+          setTimeout(() => {
+            card.href = '/app/shop/' + d.shopId;
+            const img = document.getElementById('flashImg');
+            img.style.backgroundImage = d.photo ? 'url(' + d.photo + ')' : '';
+            img.textContent = d.photo ? '' : '🍛';
+            document.getElementById('flashName').textContent = d.name;
+            document.getElementById('flashMeta').textContent = d.shop + ' · ' + d.window;
+            document.getElementById('flashPrice').textContent = d.price;
+            const deal = document.getElementById('flashDeal');
+            deal.hidden = !d.deal; deal.textContent = d.deal;
+            card.style.opacity = '1';
+          }, 360);
+        }, 3500);
+      })();
+    </script>` : ""}
     <div class="chiprow">
       <span class="chip on">Nearby</span><span class="chip">Today's special</span><span class="chip">Promotions</span><span class="chip">Open now</span>
     </div>
-    <div class="row" style="justify-content:space-between"><strong>Today's promotions <span class="si">අද විශේෂ</span></strong><a class="sub" href="#">See all</a></div>
-    <div class="chiprow" style="align-items:stretch">${promoCards || `<span class="sub">No specials yet — shop owners publish them from their dashboard.</span>`}</div>
     <div class="row" style="justify-content:space-between;margin-top:4px"><strong>Nearby restaurants</strong><span class="sub">near your location</span></div>
     <div style="margin-top:10px">${shopCards || `<span class="sub">No open restaurants yet.</span>`}</div>
     <script>
