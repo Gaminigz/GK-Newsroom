@@ -317,7 +317,7 @@ async function homePage(req) {
       <span class="pill deal">${d.discount && d.discount !== "none" ? esc(d.discount) : "Special"}</span>
       ${dishThumb(d, "width:100%;height:84px;margin:9px 0")}
       <strong style="font-size:14px">${esc(d.name)}</strong>
-      <div class="sub" style="font-size:12px">${esc(shopName.get(d.shopId) ?? "")} · until ${esc(d.window ?? "9 PM")}</div>
+      <div class="sub" style="font-size:12px">${esc(shopName.get(d.shopId) ?? "")} · ${esc(d.window ?? "today")}</div>
     </a>`,
     )
     .join("");
@@ -399,7 +399,7 @@ async function shopPage(id) {
         <div style="flex:1">
           <strong>${esc(special.name)}</strong>
           <div class="sub" style="font-size:12.5px">${esc(special.nameSi ?? "")}</div>
-          <strong style="color:${ORANGE}">${lkr(special.price)}</strong> <span class="sub">· until ${esc(special.window ?? "8 PM")}</span>
+          <strong style="color:${ORANGE}">${lkr(special.price)}</strong> <span class="sub">· ${esc(special.window ?? "today")}</span>
         </div>
         <button class="btn" style="width:38px;padding:8px 0;border-radius:11px" onclick='add(${JSON.stringify(String(special._id))},${JSON.stringify(special.name)},${Number(special.price) || 0})'>+</button>
       </div>
