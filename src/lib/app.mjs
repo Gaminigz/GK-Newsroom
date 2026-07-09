@@ -116,6 +116,27 @@ async function shopById(id) {
   return _id ? (await col("shop_owners")).findOne({ _id }) : null;
 }
 
+/** Resolve a shop's coordinates: Google/Apple Maps link first, city geocode fallback. */
+async function resolveCoords(mapsUrl, city, country) {
+  try {
+    if (mapsUrl) {
+      const r = await fetch(mapsUrl, { redirect: "follow" });
+      const u = r.url || "";
+      const m = u.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) || u.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) || u.match(/[?&](?:q|ll|center)=(-?\d+\.\d+),(-?\d+\.\d+)/);
+      if (m) return { lat: Number(m[1]), lng: Number(m[2]) };
+    }
+  } catch { /* fall through to geocode */ }
+  try {
+    if (city) {
+      const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(city + ", " + (country || ""))}`,
+        { headers: { "User-Agent": "3una5aha/0.1 (gk.smart@ggmt.sg)" } });
+      const j = await r.json();
+      if (j?.[0]) return { lat: Number(j[0].lat), lng: Number(j[0].lon) };
+    }
+  } catch { /* no coords */ }
+  return null;
+}
+
 async function dishesFor(shopId) {
   return (await col("app_dishes")).find({ shopId: String(shopId) }).sort({ createdAt: -1 }).toArray();
 }
@@ -701,24 +722,77 @@ async function ordersPage(req) {
 
 /* ------------------------------------------------- 3.7 set location */
 
-function locationPage(req) {
+async function locationPage(req) {
   const c = cookies(req);
+  const shops = (await activeShops()).filter((sh) => Number.isFinite(sh.lat) && Number.isFinite(sh.lng));
+  const pins = shops.map((sh) => ({ id: String(sh._id), name: sh.name, lat: sh.lat, lng: sh.lng }));
+  const geo = (c.app_geo || "").split(",").map(Number);
+  const start = geo.length === 2 && Number.isFinite(geo[0]) ? geo : [6.9271, 79.8612];
   return shell({
     title: "Set your location — 3una 5aha",
     nav: buyerNav("location"),
     noBack: true,
     body: `
-    <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/home">‹</a><h1>Set your location</h1></div>
-    <div class="sub si">ඔබේ ස්ථානය සකසන්න</div>
-    <p class="sub" style="margin:8px 0 4px">Find Sri Lankan food anywhere in the world — search your suburb or city.</p>
-    <form method="POST" action="/app/location">
-      <label>CITY / SUBURB</label>
-      <input type="text" name="city" value="${esc(c.app_city ?? "")}" placeholder="Melbourne VIC, Australia">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <div class="row" style="gap:10px;margin-bottom:8px"><a class="back" style="margin:0" href="/app/home">‹</a><h1>Set your location</h1><span class="sub si">ඔබේ ස්ථානය</span></div>
+    <div id="map" style="height:42vh;border-radius:16px;border:1px solid #ece3da;z-index:1"></div>
+    <div class="sub" id="mapCount" style="text-align:center;margin:8px 0 4px">Loading map…</div>
+    <form method="POST" action="/app/location" id="locForm">
+      <label>CITY / SUBURB — search anywhere you're travelling</label>
+      <div class="row" style="gap:8px">
+        <input type="text" name="city" id="cityIn" value="${esc(c.app_city ?? "")}" placeholder="Melbourne VIC, Australia" style="flex:1">
+        <button type="button" class="btn" id="findBtn" style="width:auto;padding:12px 14px;flex:0 0 auto">Find</button>
+      </div>
+      <input type="hidden" name="geo" id="geoIn" value="${esc(c.app_geo ?? "")}">
       <label>CONTACT NUMBER FOR ORDERS</label>
       <input type="tel" name="phone" value="${esc(c.app_phone ?? "")}" placeholder="+61 412 555 210">
-      <div class="thumb" style="width:100%;height:150px;margin:16px 0;font-size:13px;color:#8a827b">🗺 map search — native app phase</div>
-      <button class="btn">Save &amp; continue</button>
-    </form>`,
+      <button class="btn" style="margin-top:16px">Save &amp; continue</button>
+    </form>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+      (() => {
+        const shops = ${JSON.stringify(pins)};
+        const map = L.map('map').setView([${start[0]}, ${start[1]}], 12);
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+        const circle = L.circle(map.getCenter(), { radius: 10000, color: '#d9542b', weight: 1.5, fillColor: '#d9542b', fillOpacity: 0.06 }).addTo(map);
+        let me = null, markers = [];
+        const D = (a, b, c2, d) => { const R = 6371, r = Math.PI / 180, x = (c2 - a) * r, y = (d - b) * r,
+          h = Math.sin(x/2)**2 + Math.cos(a*r) * Math.cos(c2*r) * Math.sin(y/2)**2; return 2 * R * Math.asin(Math.sqrt(h)); };
+        function refresh() {
+          const cc = map.getCenter();
+          circle.setLatLng(cc);
+          document.getElementById('geoIn').value = cc.lat.toFixed(4) + ',' + cc.lng.toFixed(4);
+          markers.forEach((m) => map.removeLayer(m)); markers = [];
+          let n = 0;
+          shops.forEach((s) => {
+            if (D(cc.lat, cc.lng, s.lat, s.lng) <= 10) {
+              n++;
+              markers.push(L.marker([s.lat, s.lng]).addTo(map)
+                .bindPopup('<b>' + s.name + '</b><br><a href="/app/shop/' + s.id + '">Open shop →</a>'));
+            }
+          });
+          document.getElementById('mapCount').textContent =
+            n + ' Sri Lankan shop' + (n === 1 ? '' : 's') + ' within 10 km — drag the map to explore';
+        }
+        map.on('moveend', refresh);
+        refresh();
+        if (navigator.geolocation) navigator.geolocation.getCurrentPosition((pos) => {
+          const ll = [pos.coords.latitude, pos.coords.longitude];
+          me = L.circleMarker(ll, { radius: 7, color: '#1d6ff2', fillColor: '#1d6ff2', fillOpacity: 0.9 }).addTo(map).bindPopup('You are here');
+          map.setView(ll, 13);
+        }, () => {}, { timeout: 8000 });
+        document.getElementById('findBtn').addEventListener('click', async () => {
+          const q = document.getElementById('cityIn').value.trim();
+          if (!q) return;
+          try {
+            const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q));
+            const j = await r.json();
+            if (j[0]) map.setView([Number(j[0].lat), Number(j[0].lon)], 12);
+            else document.getElementById('mapCount').textContent = 'Place not found — try a bigger city name';
+          } catch { document.getElementById('mapCount').textContent = 'Search unavailable — check connection'; }
+        });
+      })();
+    </script>`,
   });
 }
 
@@ -1337,13 +1411,15 @@ export async function handleApp(req, res, url) {
       const form = await readForm(req);
       const city = encodeURIComponent(String(form.get("city") || "").slice(0, 60));
       const phone = encodeURIComponent(String(form.get("phone") || "").slice(0, 24));
+      const geo = String(form.get("geo") || "").slice(0, 24);
       res.setHeader("Set-Cookie", [
         `app_city=${city}; Path=/app; Max-Age=31536000; SameSite=Lax`,
         `app_phone=${phone}; Path=/app; Max-Age=31536000; SameSite=Lax`,
+        ...(/^-?\d+\.\d+,-?\d+\.\d+$/.test(geo) ? [`app_geo=${geo}; Path=/app; Max-Age=31536000; SameSite=Lax`] : []),
       ]);
       redirect(res, "/app/home");
     } else {
-      html(res, locationPage(req));
+      html(res, await locationPage(req));
     }
     return;
   }
@@ -1402,6 +1478,8 @@ export async function handleApp(req, res, url) {
         phone: String(form.get("phone") || "").trim().slice(0, 24),
         contactEmail: String(form.get("contactEmail") || "").trim().slice(0, 80),
       };
+      const coords = await resolveCoords(set.mapsUrl, shop.city, shop.country);
+      if (coords) { set.lat = coords.lat; set.lng = coords.lng; }
       await (await col("shop_owners")).updateOne({ _id: shop._id }, { $set: set });
       redirect(res, `/app/owner/${m[1]}?msg=${encodeURIComponent("Profile saved")}`);
     } else {
