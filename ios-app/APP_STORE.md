@@ -9,7 +9,7 @@ lives in `ios-app/ios/App/App.xcodeproj` (Capacitor 8, SPM).
 - **Subtitle (30 chars):** Sri Lankan food near you
 - **Category:** Food & Drink (secondary: Shopping)
 - **Age rating:** 4+ (questionnaire: all "No")
-- **Company:** GGMT PTE. LTD. (Singapore)
+- **Company / Publisher:** GGMT PTE. LTD. (Singapore) — https://www.ggmt.sg
 
 ## Description (draft)
 Find Sri Lankan restaurants near you — anywhere in the world.
@@ -37,7 +37,7 @@ ayubowan,rice and curry
 ## Required URLs (all live)
 - **Support:** https://web-production-2b43c.up.railway.app/app/support
 - **Privacy Policy:** https://web-production-2b43c.up.railway.app/app/privacy
-- **Marketing (optional):** https://web-production-2b43c.up.railway.app
+- **Marketing:** https://www.ggmt.sg
 
 ## Privacy "nutrition label" answers (App Privacy section)
 Data collected, linked to user, not used for tracking:
@@ -51,7 +51,7 @@ Account deletion: in-app link (Support page) + email — already required and li
 Non-commercial community app (free listings, no fees/commission) hosting Sri Lankan restaurants; travellers find dishes nearby via location. Sign-in buttons are present; browsing works as guest with no login. To see the seller side:
 tap "Sell on 3una 5aha" and register a test shop (instant, no approval
 gate). Test order: open any shop, add a dish, checkout with any name and
-phone. Support/deletion: /app/support. Content moderation: operators
+phone. Support/deletion: /app/support (email, Telegram, WhatsApp). Publisher: GGMT PTE. LTD. — www.ggmt.sg. Content moderation: operators
 suspend shops/users via admin console; users report via Support (24h SLA
 stated in Terms).
 

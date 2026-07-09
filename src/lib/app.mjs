@@ -268,10 +268,11 @@ function welcomePage(req) {
       <div style="margin-top:16px">${myShop
         ? `<a href="/app/owner/${esc(myShop)}" style="font-weight:700">🏪 My restaurant dashboard →</a>`
         : `<a href="/app/register" style="font-weight:700">🏪 List your restaurant — free, non-commercial</a>`}</div>
-      <div class="sub" style="font-size:12.5px;margin:18px 0 10px">Questions? Talk to a human:</div>
+      <div class="sub" style="font-size:12.5px;margin:18px 0 10px">Support requests — email, Telegram or WhatsApp:</div>
       ${supportLinks()}
       ${legalFooter()}
       <div class="sub" style="font-size:11.5px;margin-top:12px">By continuing you agree to our Terms &amp; Privacy Policy</div>
+      <div class="sub" style="font-size:11.5px;margin-top:6px">Published by <a href="https://www.ggmt.sg" target="_blank" rel="noopener" style="text-decoration:underline;font-weight:700">www.ggmt.sg</a> · GGMT PTE. LTD., Singapore</div>
     </div>`,
   });
 }
@@ -283,7 +284,7 @@ function legalShell(title, body) {
     title: `${title} — 3una 5aha`,
     back: "/app",
     body: `<h1 style="font-size:21px">${esc(title)}</h1>
-    <div class="sub" style="margin-bottom:14px">3una 5aha · operated by GK SMART (GGMT PTE. LTD., Singapore) · last updated 9 July 2026</div>
+    <div class="sub" style="margin-bottom:14px">3una 5aha · published by <a href="https://www.ggmt.sg" target="_blank" rel="noopener" style="text-decoration:underline">www.ggmt.sg</a> (GGMT PTE. LTD., Singapore) · last updated 9 July 2026</div>
     <div class="card" style="line-height:1.65">${body}</div>
     ${legalFooter()}`,
   });
@@ -314,7 +315,7 @@ function privacyPage() {
 
 function supportPage() {
   return legalShell("Support & Contact", `
-    <p><strong>Talk to a human — buyers and shop owners.</strong> Tech support, order problems, password/access recovery, reports of bad content or behaviour, account deletion — all through any of these:</p>
+    <p><strong>Support requests — buyers and restaurant owners.</strong> All support goes through these three channels (email, Telegram, WhatsApp): tech support, order problems, password/access recovery, reports of bad content or behaviour, account deletion.</p>
     <p style="margin-top:12px">✉️ Email: <a href="mailto:${SUPPORT.email}" style="text-decoration:underline;font-weight:700">${SUPPORT.email}</a><br>
     ✈️ Telegram: <a href="${SUPPORT.telegram}" style="text-decoration:underline;font-weight:700">@GKSmartbiz</a><br>
     💬 WhatsApp: <a href="${SUPPORT.whatsapp}" style="text-decoration:underline;font-weight:700">${SUPPORT.whatsappLabel}</a></p>
@@ -700,7 +701,7 @@ async function ownerDash(id) {
     ${special ? `<div class="card row">${dishThumb(special, "", "🎁")}<div style="flex:1"><strong>${esc(special.name)}</strong>
       <div class="sub" style="font-size:12.5px">${lkr(special.price)}${special.discount && special.discount !== "none" ? ` · <span style=\"color:${ORANGE}\">${esc(special.discount)}</span>` : ""} · showing in Today's promotions</div></div></div>`
       : `<div class="sub card">No special yet — publish one with the toggle in "Add dish".</div>`}
-    <div class="sub" style="margin:18px 0 8px;text-align:center">Tech support, any problem — talk to a human:</div>
+    <div class="sub" style="margin:18px 0 8px;text-align:center">Support requests — email, Telegram or WhatsApp:</div>
     ${supportLinks()}
     <div style="height:70px"></div>
     <a class="btn" style="position:fixed;bottom:20px;right:max(14px,calc(50% - 226px));width:auto;padding:13px 20px;border-radius:99px" href="/app/owner/${String(shop._id)}/add-dish">+ Add dish</a>`,
