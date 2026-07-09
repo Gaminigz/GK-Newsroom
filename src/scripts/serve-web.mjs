@@ -166,10 +166,10 @@ function streamer({ items, base }) {
     </div>
     <div class="wa-seek" id="waSeek"><div class="wa-fill" id="waFill"></div></div>
     <ol class="wa-list" id="waList" hidden>${rows}</ol>
-    <div class="wa-sub" id="waSub" hidden></div>
     <audio id="waAudio" preload="none"></audio>
     <script id="waData" type="application/json">${JSON.stringify({ base, items })}</script>
-  </section>`;
+  </section>
+  <div class="wa-sub" id="waSub" hidden></div>`;
 }
 
 /** Streamer CSS — shared by all three channels (sticky at top). */
@@ -203,7 +203,7 @@ const WA_CSS = `
   .wa-list li.on .n::before { content:"▸ "; }
   .wa-list .n { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .wa-list .t { width:44px; text-align:right; color:#6b7480; }
-  .wa-sub { border-top:1px solid #14161b; background:#0c1015; padding:9px 14px;
+  .wa-sub { border:1px solid #14161b; border-radius:10px; margin:8px 0 4px; background:#0c1015; padding:9px 14px;
             font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace; color:#8fe0b2; }
   .wa-sub div::before { content:"· "; color:#4a7c60; }
   .playing-card { outline:2px solid #e3b341; outline-offset:-1px; }
@@ -238,7 +238,7 @@ const WA_JS = `
       dur.textContent = e.d; cur.textContent = "0:00"; fill.style.width = "0%";
       listEl.querySelectorAll("li").forEach((li, k) => li.classList.toggle("on", k === i));
       sub.hidden = !(e.subs && e.subs.length);
-      if (!sub.hidden) sub.innerHTML = e.subs.map((s) => "<div>" + s.replace(/</g,"&lt;") + "</div>").join("");
+      if (!sub.hidden) sub.innerHTML = [...new Set(e.subs)].map((s) => "<div>" + s.replace(/</g,"&lt;") + "</div>").join("");
       document.querySelectorAll(".playing-card").forEach((el) => el.classList.remove("playing-card"));
       if (pull && e.card) {
         const el = document.querySelector(e.card);
