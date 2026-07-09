@@ -743,7 +743,7 @@ function profilePage(shop) {
     <h1 style="font-size:21px">Shop profile</h1>
     <form method="POST" action="/app/owner/${String(shop._id)}/profile">
       <label>SHOP LOGO</label>
-      <label for="logoIn" class="thumb" id="logoBox" style="width:110px;height:110px;font-size:13px;color:#8a827b;cursor:pointer;overflow:hidden;background-size:cover;background-position:center;${shop.logo ? `background-image:url(${shop.logo})` : ""}">${shop.logo ? "" : "📷 tap to add"}</label>
+      <label for="logoIn" class="thumb" id="logoBox" style="width:110px;height:110px;font-size:13px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative;${shop.logo ? `background-image:url(${shop.logo})` : ""}"><span id="logoHint">${shop.logo ? "" : "tap to add"}</span><span style="position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
       <input type="file" id="logoIn" accept="image/*" style="display:none">
       <input type="hidden" name="logo" id="logoData">
       <label>SHOP NAME</label>
@@ -766,7 +766,7 @@ function profilePage(shop) {
       document.getElementById('logoData').value = data;
       const box = document.getElementById('logoBox');
       box.style.backgroundImage = 'url(' + data + ')';
-      box.textContent = '';
+      document.getElementById('logoHint').textContent = '';
       URL.revokeObjectURL(img.src);
     };
     img.src = URL.createObjectURL(f);
@@ -784,7 +784,7 @@ function addDishPage(shop) {
     body: `
     <h1 style="font-size:21px">Add a dish <span class="si">කෑමක් එකතු</span></h1>
     <form method="POST" action="/app/owner/${String(shop._id)}/publish">
-      <label for="photoIn" class="thumb" id="photoBox" style="width:100%;height:130px;margin:14px 0;font-size:13px;color:#8a827b;cursor:pointer;overflow:hidden;background-size:cover;background-position:center">📷 add dish photo — tap to use camera or library</label>
+      <label for="photoIn" class="thumb" id="photoBox" style="width:100%;height:130px;margin:14px 0;font-size:13px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative"><span id="photoHint">add dish photo — tap to use camera or library</span><span style="position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
       <input type="file" id="photoIn" accept="image/*" capture="environment" style="display:none">
       <input type="hidden" name="photo" id="photoData">
       <label>DISH NAME</label>
@@ -826,7 +826,7 @@ function addDishPage(shop) {
       document.getElementById('photoData').value = data;
       const box = document.getElementById('photoBox');
       box.style.backgroundImage = 'url(' + data + ')';
-      box.textContent = '';
+      document.getElementById('photoHint').textContent = '';
       URL.revokeObjectURL(img.src);
     };
     img.src = URL.createObjectURL(f);
