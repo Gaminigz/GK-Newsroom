@@ -568,7 +568,7 @@ async function homePage(req) {
     <div class="row" style="justify-content:space-between">
       <div class="row" style="gap:8px;min-width:0">
         <a class="back" style="margin:0;width:30px;height:30px;flex:0 0 auto" href="/app">‹</a>
-        <a href="/app/location" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="color:${ORANGE}">●</span> <strong style="font-size:13.5px">${esc(city)}</strong> <span class="sub">▾</span> <span class="sub si" style="font-size:12px">· ආයුබෝවන් Ayubowan</span></a>
+        <a href="/app/location" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="color:${ORANGE}">●</span> <strong style="font-size:13.5px">${esc(city)}</strong> <span class="sub">▾</span> <span class="si" style="font-size:14.5px;font-weight:800;color:#1a1a1a">· ආයුබෝවන් Ayubowan</span></a>
       </div>
       <span class="pill" style="background:#191512;color:#fff;padding:6px 13px;flex:0 0 auto">Shop</span>
     </div>
