@@ -137,7 +137,7 @@ function shell({ title, body, nav = "", back = "", noPad = false, backFloat = fa
   * { box-sizing:border-box; margin:0; -webkit-tap-highlight-color:transparent; }
   body { background:#faf7f4; color:#1a1a1a; font:15.5px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
          max-width:480px; margin:0 auto; min-height:100vh;
-         padding:${noPad ? "0" : "14px"}; padding-top:calc(env(safe-area-inset-top, 0px) + 10px); padding-bottom:84px; }
+         padding:${noPad ? "0" : "14px 20px"}; padding-top:calc(env(safe-area-inset-top, 0px) + 10px); padding-bottom:84px; }
   a { color:inherit; text-decoration:none; }
   h1 { font-size:24px; letter-spacing:-.02em; }
   .si { color:#b3672f; font-weight:400; font-size:.82em; }
@@ -169,8 +169,8 @@ function shell({ title, body, nav = "", back = "", noPad = false, backFloat = fa
   .nav a .i { display:block; font-size:19px; margin-bottom:1px; }
   .nav a.on { color:${ORANGE}; }
   .back { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:99px; background:#fff; border:1px solid #ece3da; margin-bottom:10px; }
-  .back.float { position:absolute; z-index:10; top:calc(env(safe-area-inset-top, 0px) + 10px); left:14px; margin:0; box-shadow:0 2px 8px #0003; }
-  .basketbar { position:fixed; bottom:74px; left:50%; transform:translateX(-50%); width:calc(100% - 28px); max-width:452px;
+  .back.float { position:absolute; z-index:10; top:calc(env(safe-area-inset-top, 0px) + 10px); left:20px; margin:0; box-shadow:0 2px 8px #0003; }
+  .basketbar { position:fixed; bottom:74px; left:50%; transform:translateX(-50%); width:calc(100% - 40px); max-width:440px;
                background:#191512; color:#fff; border-radius:14px; padding:14px 16px; display:none; justify-content:space-between; font-weight:700; }
   .stat { background:#fff; border:1px solid #ece3da; border-radius:14px; padding:11px 13px; flex:1; }
   .stat .k { color:#6b6560; font-size:11.5px; }
@@ -256,7 +256,7 @@ function welcomePage(req) {
     body: `
     <div style="text-align:center">
       <img src="/assets/hero-welcome.jpg?v=2" alt="Sri Lankan spices and rice &amp; curry"
-           style="width:calc(100% + 28px);margin:calc(-1 * (env(safe-area-inset-top, 0px) + 10px)) -14px 14px;aspect-ratio:16/10;object-fit:cover;border-radius:0 0 26px 26px;display:block"
+           style="width:calc(100% + 40px);margin:calc(-1 * (env(safe-area-inset-top, 0px) + 10px)) -20px 14px;aspect-ratio:16/10;object-fit:cover;border-radius:0 0 26px 26px;display:block"
            onerror="this.remove()">
       <h1 style="font-size:30px"><span style="color:${ORANGE}">3</span>una <span style="color:${ORANGE}">5</span>aha <span style="font-weight:800">· තුන පහ</span></h1>
       <p class="sub" style="max-width:330px;margin:8px auto 4px;font-size:14.5px">
@@ -733,7 +733,7 @@ async function ownerDash(id) {
       <span class="sub" style="font-size:12px">today ${todays.length} · ${lkr(revenue)} · ${chats} chats</span></div>
     <div style="margin-top:10px">${orderRows}</div>` : ""}
     <div style="height:70px"></div>
-    <a class="btn" style="position:fixed;bottom:20px;right:max(14px,calc(50% - 226px));width:auto;padding:13px 20px;border-radius:99px" href="/app/owner/${String(shop._id)}/add-dish">+ Add dish</a>`,
+    <a class="btn" style="position:fixed;bottom:20px;right:max(20px,calc(50% - 220px));width:auto;padding:13px 20px;border-radius:99px" href="/app/owner/${String(shop._id)}/add-dish">+ Add dish</a>`,
   });
 }
 
