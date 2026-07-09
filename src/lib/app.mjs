@@ -84,6 +84,13 @@ function dishThumb(d, extra = "", emoji = "🍛") {
     : `<div class="thumb" style="${extra}">${emoji}</div>`;
 }
 
+/** Shop logo thumb — uploaded logo when present, emoji tile otherwise. */
+function shopThumb(shop, extra = "", emoji = "🍲") {
+  return shop?.logo
+    ? `<div class="thumb" style="${extra};background-image:url(${shop.logo});background-size:cover;background-position:center"></div>`
+    : `<div class="thumb" style="${extra}">${emoji}</div>`;
+}
+
 async function oid(id) {
   const { ObjectId } = await import("mongodb");
   try {
@@ -370,7 +377,7 @@ async function homePage(req) {
         const dishes = await dishesFor(s._id);
         const deal = dishes.find((d) => d.discount && d.discount !== "none");
         return `<a class="card row" href="/app/shop/${String(s._id)}">
-        <div class="thumb">🍲</div>
+        ${shopThumb(s)}
         <div style="flex:1">
           <strong>${esc(s.name)}</strong> ${deal ? `<span class="pill deal">${esc(deal.discount)}</span>` : ""}
           <div class="sub" style="font-size:12.5px">★ 4.${(String(s._id).charCodeAt(10) % 5) + 4} · ${esc(s.city)} · ${dishes.length || s.listings || 0} dishes</div>
@@ -439,7 +446,7 @@ async function shopPage(id) {
     back: "/app/home",
     nav: buyerNav("home"),
     body: `
-    <div class="thumb" style="width:100%;height:130px;font-size:34px">🍛</div>
+    ${shopThumb(shop, "width:100%;height:130px;font-size:34px", "🍛")}
     <h1 style="margin-top:12px">${esc(shop.name)} <span class="si">කෑම</span></h1>
     <div class="sub">★ 4.8 · ${esc(shop.city)}, ${esc(shop.country)} · ${shop.open === false ? "closed now" : "open now"}</div>
     ${special ? `
@@ -697,8 +704,8 @@ async function ownerDash(id) {
     title: `${shop.name} — shop owner`,
     body: `
     <div class="row" style="justify-content:space-between">
-      <div class="row"><div class="thumb" style="width:44px;height:44px">🍲</div>
-        <div><strong>${esc(shop.name)}</strong><div class="sub" style="font-size:12px">Shop owner mode</div></div></div>
+      <a class="row" href="/app/owner/${String(shop._id)}/profile">${shopThumb(shop, "width:44px;height:44px")}
+        <div><strong>${esc(shop.name)}</strong> <span class="sub" style="font-size:11px">✏️ edit</span><div class="sub" style="font-size:12px">${esc(shop.owner || "Shop owner mode")}</div></div></a>
       <a class="chip" href="/app/shop/${String(shop._id)}">Buyer view</a>
     </div>
     ${shop.status === "pending" ? `<div class="card" style="margin-top:14px;background:#fdf3d7;border-color:#efdba8"><strong style="color:#946200">⏳ Pending review</strong><div class="sub" style="font-size:12.5px">The 3una 5aha team is reviewing your shop. You can build your menu now — buyers see you once approved.</div></div>` : ""}
@@ -723,6 +730,48 @@ async function ownerDash(id) {
     ${supportLinks()}
     <div style="height:70px"></div>
     <a class="btn" style="position:fixed;bottom:20px;right:max(14px,calc(50% - 226px));width:auto;padding:13px 20px;border-radius:99px" href="/app/owner/${String(shop._id)}/add-dish">+ Add dish</a>`,
+  });
+}
+
+/* --------------------------------------------- shop profile edit */
+
+function profilePage(shop) {
+  return shell({
+    title: "Shop profile — " + shop.name,
+    back: `/app/owner/${String(shop._id)}`,
+    body: `
+    <h1 style="font-size:21px">Shop profile</h1>
+    <form method="POST" action="/app/owner/${String(shop._id)}/profile">
+      <label>SHOP LOGO</label>
+      <label for="logoIn" class="thumb" id="logoBox" style="width:110px;height:110px;font-size:13px;color:#8a827b;cursor:pointer;overflow:hidden;background-size:cover;background-position:center;${shop.logo ? `background-image:url(${shop.logo})` : ""}">${shop.logo ? "" : "📷 tap to add"}</label>
+      <input type="file" id="logoIn" accept="image/*" style="display:none">
+      <input type="hidden" name="logo" id="logoData">
+      <label>SHOP NAME</label>
+      <input type="text" name="name" required value="${esc(shop.name)}">
+      <label>OWNER NAME</label>
+      <input type="text" name="owner" value="${esc(shop.owner ?? "")}" placeholder="Your name">
+      <button class="btn" style="margin-top:18px">Save profile</button>
+    </form>
+<script>
+  document.getElementById('logoIn').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      const side = Math.min(img.width, img.height);
+      c.width = c.height = Math.min(400, side);
+      c.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, c.width, c.height);
+      const data = c.toDataURL('image/jpeg', 0.8);
+      document.getElementById('logoData').value = data;
+      const box = document.getElementById('logoBox');
+      box.style.backgroundImage = 'url(' + data + ')';
+      box.textContent = '';
+      URL.revokeObjectURL(img.src);
+    };
+    img.src = URL.createObjectURL(f);
+  });
+</script>`,
   });
 }
 
@@ -1032,6 +1081,25 @@ export async function handleApp(req, res, url) {
       );
     }
     redirect(res, `/app/owner/${m[1]}`);
+    return;
+  }
+
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/profile$/);
+  if (m) {
+    const shop = await shopById(m[1]);
+    if (!shop) { res.writeHead(404).end("not found"); return; }
+    if (req.method === "POST") {
+      const form = await readForm(req, 600_000);
+      const name = String(form.get("name") || "").trim().slice(0, 80);
+      const owner = String(form.get("owner") || "").trim().slice(0, 60);
+      const logo = String(form.get("logo") || "");
+      const logoOk = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(logo) && logo.length < 500_000;
+      const set = { ...(name ? { name } : {}), owner, ...(logoOk ? { logo } : {}) };
+      await (await col("shop_owners")).updateOne({ _id: shop._id }, { $set: set });
+      redirect(res, `/app/owner/${m[1]}`);
+    } else {
+      html(res, profilePage(shop));
+    }
     return;
   }
 
