@@ -194,7 +194,7 @@ async function dishesFor(shopId) {
 
 /* ---------------------------------------------------------------- shell */
 
-function shell({ title, body, nav = "", back = "", noPad = false, backFloat = false, noBack = false, toast = "" }) {
+function shell({ title, body, nav = "", back = "", noPad = false, backFloat = false, noBack = false, toast = "", hideLogout = false }) {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -273,7 +273,7 @@ function shell({ title, body, nav = "", back = "", noPad = false, backFloat = fa
 </head>
 <body>
 ${toast ? `<div class="toast" id="toast">✓ ${esc(toast)}</div><script>setTimeout(()=>{const t=document.getElementById('toast');if(t){t.style.transition='opacity .4s';t.style.opacity='0';setTimeout(()=>t.remove(),450)}},2000)</script>` : ""}
-<a class="logout" href="/app/logout">Logout</a>
+${hideLogout ? "" : `<a class="logout" id="logoutBtn" href="/app/logout" hidden>Logout</a><script>if(document.cookie.includes('app_user='))document.getElementById('logoutBtn').hidden=false;</script>`}
 ${noBack ? "" : `<a class="back${backFloat ? " float" : ""}" href="${back ? esc(back) : "/app"}" onclick="${back ? "" : "if(history.length>1){history.back();return false}"}">‹</a>`}
 ${body}
 ${nav}
@@ -335,6 +335,7 @@ function welcomePage(req) {
   return shell({
     title: "3una 5aha — find Sri Lankan food near you",
     backFloat: true,
+    hideLogout: true,
     body: `
     <div style="text-align:center">
       <img src="/assets/hero-welcome.jpg?v=2" alt="Sri Lankan spices and rice &amp; curry"
@@ -369,6 +370,7 @@ function smsLoginPage(error = "") {
   return shell({
     title: "Sign in with phone — 3una 5aha",
     back: "/app",
+    hideLogout: true,
     body: `
     <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app">‹</a><h1 style="font-size:21px">Sign in with phone</h1></div>
     <div class="sub" style="margin:4px 0 6px">Enter your phone number and a password — you're in right away.
@@ -390,6 +392,7 @@ function emailLoginPage(error = "") {
   return shell({
     title: "Sign in with email — 3una 5aha",
     back: "/app",
+    hideLogout: true,
     body: `
     <h1>Sign in with email</h1>
     <div class="sub" style="margin:4px 0 6px">Submit your email and password — new emails get an account instantly.
