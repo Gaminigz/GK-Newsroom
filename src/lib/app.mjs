@@ -27,9 +27,11 @@
  */
 
 import crypto from "node:crypto";
+import QRCode from "qrcode";
 import { getDb } from "./mongo.ts";
 
 const ORANGE = "#d9542b";
+const PUBLIC_BASE = process.env.PUBLIC_BASE || "https://web-production-2b43c.up.railway.app";
 
 /* ------------------------------------------------------------- helpers */
 
@@ -1089,6 +1091,7 @@ async function ownerDash(id, toast = "") {
         <label class="toggle"><input type="checkbox" ${open ? "checked" : ""} onchange="this.form.submit()"><span></span></label>
       </form>
       <a class="chip" href="/app/shop/${String(shop._id)}" style="flex:0 0 auto;padding:6px 11px;font-size:12px">Buyer view</a>
+      <a class="chip" href="/app/owner/${String(shop._id)}/qr" style="flex:0 0 auto;padding:6px 11px;font-size:12px">▦ Table QR</a>
     </div>
     ${shop.status === "pending" ? `<div class="card" style="background:#fdf3d7;border-color:#efdba8"><strong style="color:#946200">⏳ Pending review</strong><div class="sub" style="font-size:12.5px">The 3una 5aha team is reviewing your shop. You can build your menu now — buyers see you once approved.</div></div>` : ""}
     ${shop.status === "suspended" ? `<div class="card" style="background:#fdecea;border-color:#efc4bf"><strong style="color:#b3261e">⛔ Suspended</strong><div class="sub" style="font-size:12.5px">Your shop is hidden from buyers. Contact support via /app/support.</div></div>` : ""}
@@ -1111,6 +1114,36 @@ async function ownerDash(id, toast = "") {
     <div style="margin-top:10px">${orderRows}</div>` : ""}
     <div style="height:70px"></div>
     <a class="btn" style="position:fixed;bottom:calc(env(safe-area-inset-bottom, 0px) + 18px);right:max(24px,calc(50% - 216px));width:auto;padding:13px 20px;border-radius:99px" href="/app/owner/${String(shop._id)}/add-dish">+ Add dish</a>`,
+  });
+}
+
+/* -------------------------------------------------- table QR page */
+
+async function qrPage(shop) {
+  const url = `${PUBLIC_BASE}/app/shop/${String(shop._id)}`;
+  const dataUri = await QRCode.toDataURL(url, { margin: 1, width: 520, color: { dark: "#1a1a1a", light: "#ffffff" } });
+  const contacts = [
+    shop.phone ? `📞 ${esc(shop.phone)}` : "",
+    shop.whatsapp ? `💬 ${esc(shop.whatsapp)}` : "",
+    shop.contactEmail ? `✉️ ${esc(shop.contactEmail)}` : "",
+  ].filter(Boolean).join("  ·  ");
+  return shell({
+    title: "Table QR — " + shop.name,
+    noBack: true,
+    body: `
+    <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/owner/${String(shop._id)}">‹</a><h1 style="font-size:21px">Table QR</h1></div>
+    <p class="sub" style="margin:8px 0 14px">Print this or make it a sticker for your table or shopfront. Customers scan it to open your live menu — no app install needed.</p>
+    <div id="card" style="background:#fff;border:1px solid #ece3da;border-radius:20px;padding:26px 22px;text-align:center">
+      <div style="font-weight:800;font-size:20px"><span style="color:${ORANGE}">3</span>una <span style="color:${ORANGE}">5</span>aha <span style="font-weight:800">තුන පහ</span></div>
+      <div style="font-size:22px;font-weight:800;margin:10px 0 2px">${esc(shop.name)}</div>
+      <div class="sub" style="font-size:13px">${esc(shop.city ?? "")}${shop.country ? ", " + esc(shop.country) : ""}</div>
+      <img src="${dataUri}" alt="Menu QR" style="width:78%;max-width:320px;margin:16px auto 8px;display:block">
+      <div style="font-weight:700;font-size:14px">📱 Scan for our menu</div>
+      ${contacts ? `<div class="sub" style="font-size:12.5px;margin-top:10px">${contacts}</div>` : ""}
+      <div class="sub" style="font-size:11px;margin-top:10px;color:#a99d94">the spice marketplace · ggmt.sg</div>
+    </div>
+    <a class="btn" id="dl" download="${esc(shop.name).replace(/[^a-zA-Z0-9]+/g, "-")}-QR.png" href="${dataUri}" style="margin-top:16px">⬇ Download QR image</a>
+    <div class="sub" style="text-align:center;font-size:12px;margin-top:8px">You can print it, laminate it, or turn it into a sticker.</div>`,
   });
 }
 
@@ -1792,6 +1825,12 @@ export async function handleApp(req, res, url) {
     }
     redirect(res, `/app/owner/${m[1]}?msg=${encodeURIComponent("Dish removed")}`);
     return;
+  }
+
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/qr$/);
+  if (m) {
+    const shop = await shopById(m[1]);
+    if (shop) { html(res, await qrPage(shop)); return; }
   }
 
   m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/add-dish$/);
