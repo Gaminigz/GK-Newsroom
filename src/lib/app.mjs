@@ -543,6 +543,23 @@ async function homePage(req) {
     }))
     .sort((a, b) => a.near - b.near);
 
+  // ---- DEMO flash cards (remove this block for production) ----
+  // Shown only when no shop has posted a real special yet, so the feature
+  // is visible during testing; auto-hides the moment a real special exists.
+  if (flash.length === 0) {
+    const dShop = shops[0] ? String(shops[0]._id) : "";
+    for (const [img, name, si, price, deal, win] of [
+      ["kottu", "Chicken Kottu Roti", "කොත්තු", "LKR 1,200", "-15%", "5 - 9 PM"],
+      ["hoppers", "Egg Hoppers (3)", "බිත්තර ආප්ප", "LKR 450", "", "6 - 10 AM"],
+      ["riceandcurry", "Rice & Curry Plate", "බත් කරි", "LKR 850", "2 for 1", "11 AM - 3 PM"],
+      ["watalappan", "Watalappan", "වටලප්පන්", "LKR 350", "", "all day"],
+    ]) {
+      flash.push({ id: "", shopId: dShop || "demo", name, nameSi: si, price, deal,
+        shop: "Sample menu · demo", window: win, photo: `/assets/demo/${img}.jpg`, near: 1, demo: true });
+    }
+  }
+  // ---- end DEMO block ----
+
   const shopCards = (
     await Promise.all(
       shops.map(async (s) => {
@@ -578,7 +595,7 @@ async function homePage(req) {
       <span class="sub">›</span></a>` : ""}
     <form action="/app/home" style="margin:16px 0 0"><input type="text" name="q" placeholder="🔍 Search dishes, shops, spices…"></form>
     ${flash.length ? `
-    <a class="card row flashcard" id="flashCard" href="/app/shop/${esc(flash[0].shopId)}" style="margin:14px 0 0;padding:0;overflow:hidden;gap:12px">
+    <a class="card row flashcard" id="flashCard" href="${flash[0].demo ? "#" : "/app/shop/" + esc(flash[0].shopId)}" style="margin:14px 0 0;padding:0;overflow:hidden;gap:12px">
       <div id="flashImg" style="width:106px;align-self:stretch;min-height:100px;flex:0 0 auto;background:#f0e7de ${flash[0].photo ? `url(${flash[0].photo}) center/cover` : ""};display:flex;align-items:center;justify-content:center;font-size:30px">${flash[0].photo ? "" : "🍛"}</div>
       <div style="flex:1;min-width:0;padding:10px 12px 10px 0">
         <span class="pill today">TODAY <span class="si" style="color:#fff">අද විශේෂ</span></span>
@@ -599,7 +616,7 @@ async function homePage(req) {
         const card = document.getElementById('flashCard');
         const voted = JSON.parse(localStorage.getItem('dishVotes') || '{}');
         function render(d) {
-          card.href = '/app/shop/' + d.shopId;
+          card.href = d.demo ? '#' : '/app/shop/' + d.shopId;
           const img = document.getElementById('flashImg');
           img.style.backgroundImage = d.photo ? 'url(' + d.photo + ')' : '';
           img.textContent = d.photo ? '' : '🍛';
@@ -625,6 +642,7 @@ async function homePage(req) {
         }
         function vote(kind) {
           const d = items[i];
+          if (d.demo) { advance(kind === 'like' ? 1 : -1); return; }
           if (kind === 'like' && voted[d.id]) { advance(1); return; }
           if (kind === 'like') { voted[d.id] = 1; localStorage.setItem('dishVotes', JSON.stringify(voted)); }
           fetch('/app/dish/' + d.id + '/' + (kind === 'like' ? 'like' : 'pass'), { method: 'POST' }).catch(() => {});
