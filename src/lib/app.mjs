@@ -210,8 +210,9 @@ function shell({ title, body, nav = "", back = "", noPad = false, backFloat = fa
   body { background:#faf7f4; color:#1a1a1a; font:15.5px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
          max-width:480px; margin:0 auto; min-height:100vh;
          padding:${noPad ? "0" : "14px 24px"}; padding-top:calc(env(safe-area-inset-top, 0px) + 30px); padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 88px); }
-  .logout { position:fixed; top:calc(env(safe-area-inset-top, 0px) + 6px); right:24px; z-index:80;
-            font-size:11.5px; font-weight:700; color:#d92d20; text-decoration:underline; }
+  .logout { position:fixed; top:calc(env(safe-area-inset-top, 0px) + 30px); right:16px; z-index:80;
+            font-size:12.5px; font-weight:700; color:#d92d20; background:#fff; border:1px solid #f1c1bb;
+            border-radius:99px; padding:6px 13px; box-shadow:0 2px 8px #0002; }
   a { color:inherit; text-decoration:none; }
   h1 { font-size:24px; letter-spacing:-.02em; }
   .si { color:#b3672f; font-weight:400; font-size:.82em; }
@@ -359,6 +360,27 @@ function welcomePage(req) {
       <div class="sub" style="font-size:11.5px;margin-top:8px">By continuing you agree to our Terms &amp; Privacy Policy</div>
       <div class="sub" style="font-size:11.5px;margin-top:4px">Published by <a href="https://www.ggmt.sg" target="_blank" rel="noopener" style="text-decoration:underline;font-weight:700">www.ggmt.sg</a> · GGMT PTE. LTD.</div>
     </div>`,
+  });
+}
+
+/* -------------------------------------------------- sms login page */
+
+function smsLoginPage(error = "") {
+  return shell({
+    title: "Sign in with phone — 3una 5aha",
+    back: "/app",
+    body: `
+    <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app">‹</a><h1 style="font-size:21px">Sign in with phone</h1></div>
+    <div class="sub" style="margin:4px 0 6px">Enter your phone number and a password — you're in right away.
+    We'll verify your number with a code (valid 24h) later; a red dot reminds you until then.</div>
+    ${error ? `<div class="card" style="background:#fdecea;border-color:#efc4bf;color:#b3261e">${esc(error)}</div>` : ""}
+    <form method="POST" action="/app/login-sms">
+      <label>PHONE NUMBER</label>
+      <input type="tel" name="phone" required placeholder="+94 77 123 4567" autocomplete="tel">
+      <label>PASSWORD</label>
+      <input type="password" name="password" required placeholder="••••••" autocomplete="current-password">
+      <button class="btn" style="margin-top:18px">Sign in</button>
+    </form>`,
   });
 }
 
@@ -563,10 +585,13 @@ function supportPage() {
 async function homePage(req) {
   const c = cookies(req);
   const city = c.app_city || (c.app_geo ? "Near you" : "Set location");
-  let unverified = false;
+  let unverified = false, verifyKind = "";
   if (c.app_email) {
     const u = await (await col("app_users")).findOne({ email: decodeURIComponent(c.app_email) });
-    unverified = !!u && !u.verified;
+    if (u && !u.verified) { unverified = true; verifyKind = "email"; }
+  } else if (c.app_user === "sms" && c.app_phone) {
+    const u = await (await col("app_users")).findOne({ phone: decodeURIComponent(c.app_phone) });
+    if (u && !u.verified) { unverified = true; verifyKind = "phone"; }
   }
   const shops = await activeShops();
   const specials = await (await col("app_dishes"))
@@ -642,7 +667,7 @@ async function homePage(req) {
     </div>
     ${unverified ? `<a href="/app/verify" class="card row" style="margin-top:10px;padding:9px 13px;background:#fdecea;border-color:#efc4bf">
       <span style="width:10px;height:10px;border-radius:99px;background:#d92d20;flex:0 0 auto;box-shadow:0 0 0 3px #d92d2033"></span>
-      <span style="flex:1;font-size:13px"><strong>Verify your email</strong> — code from gk.smart@ggmt.sg awaits (24h)</span>
+      <span style="flex:1;font-size:13px"><strong>Verify your ${verifyKind}</strong> — a 24h code will confirm your ${verifyKind}</span>
       <span class="sub">›</span></a>` : ""}
     <form action="/app/home" style="margin:16px 0 0"><input type="text" name="q" placeholder="🔍 Search dishes, shops, spices…"></form>
     ${flash.length ? `
@@ -1436,12 +1461,12 @@ export async function handleApp(req, res, url) {
 
   if (path === "/app/logout") {
     res.setHeader("Set-Cookie", [
-      "app_user=; Path=/app; Max-Age=0",
-      "app_email=; Path=/app; Max-Age=0",
-      "app_shop=; Path=/app; Max-Age=0",
-      "app_phone=; Path=/app; Max-Age=0",
-      "app_city=; Path=/app; Max-Age=0",
-      "app_geo=; Path=/app; Max-Age=0",
+      "app_user=; Path=/app; Max-Age=0; SameSite=Lax",
+      "app_email=; Path=/app; Max-Age=0; SameSite=Lax",
+      "app_shop=; Path=/app; Max-Age=0; SameSite=Lax",
+      "app_phone=; Path=/app; Max-Age=0; SameSite=Lax",
+      "app_city=; Path=/app; Max-Age=0; SameSite=Lax",
+      "app_geo=; Path=/app; Max-Age=0; SameSite=Lax",
     ]);
     redirect(res, "/app");
     return;
@@ -1452,11 +1477,36 @@ export async function handleApp(req, res, url) {
     // on the deals page. Swapped for real OAuth/SMS in the native phase.
     const form = await readForm(req);
     const via = ["google", "facebook", "apple", "email", "sms"].includes(form.get("via")) ? form.get("via") : "guest";
-    if (via === "email") {
-      html(res, emailLoginPage());
+    if (via === "email") { html(res, emailLoginPage()); return; }
+    if (via === "sms") { html(res, smsLoginPage()); return; }
+    res.setHeader("Set-Cookie", `app_user=${via}; Path=/app; Max-Age=31536000; SameSite=Lax`);
+    redirect(res, "/app/home");
+    return;
+  }
+
+  if (path === "/app/login-sms" && req.method === "POST") {
+    const form = await readForm(req);
+    const phone = String(form.get("phone") || "").replace(/[^0-9+]/g, "").slice(0, 20);
+    const password = String(form.get("password") || "");
+    if (phone.length < 7 || password.length < 6) {
+      html(res, smsLoginPage("Enter a valid phone number and a password of at least 6 characters."), 400);
       return;
     }
-    res.setHeader("Set-Cookie", `app_user=${via}; Path=/app; Max-Age=31536000; SameSite=Lax`);
+    // Dev stage: phone+password creates/signs in immediately; verification is a
+    // 24h code sent later (red-dot nag until done). No code sent right now.
+    const users = await col("app_users");
+    const hash = crypto.createHash("sha256").update(password).digest("hex");
+    let u = await users.findOne({ phone });
+    if (!u) {
+      await users.insertOne({ phone, hash, provider: "sms", verified: false, code: "111111", codeAt: new Date(), createdAt: new Date() });
+    } else if (u.hash !== hash) {
+      html(res, smsLoginPage("Wrong password for this number. Recovery: gk.smart@ggmt.sg"), 401);
+      return;
+    }
+    res.setHeader("Set-Cookie", [
+      `app_user=sms; Path=/app; Max-Age=31536000; SameSite=Lax`,
+      `app_phone=${encodeURIComponent(phone)}; Path=/app; Max-Age=31536000; SameSite=Lax`,
+    ]);
     redirect(res, "/app/home");
     return;
   }
