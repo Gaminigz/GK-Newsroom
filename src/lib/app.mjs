@@ -843,7 +843,7 @@ async function orderPage(id, asShop = false) {
       <div><strong>${esc(shop?.name ?? "Shop")}</strong><div class="sub" style="font-size:12px;color:#1d7a34">● Online · replies in ~5 min</div></div>
     </div>
     <div class="card" style="margin-top:14px">
-      <div class="row" style="justify-content:space-between"><strong style="color:${ORANGE};font-size:13px">ORDER #${String(order._id).slice(-4).toUpperCase()}</strong><span class="pill ${esc(order.status)}">${esc(order.status)}</span></div>
+      <div class="row" style="justify-content:space-between"><strong style="color:${ORANGE};font-size:13px">YOUR ORDER</strong><span class="pill ${esc(order.status)}">${esc(order.status)}</span></div>
       <div style="margin-top:8px">${items}</div>
       <div class="row" style="justify-content:space-between;border-top:1px solid #f0e7de;margin-top:8px;padding-top:8px"><strong>Total</strong><strong style="color:${ORANGE}">${lkr(order.total)}</strong></div>
     </div>
@@ -1601,7 +1601,13 @@ export async function handleApp(req, res, url) {
       .map((i) => ({ name: String(i.name).slice(0, 80), qty: Math.min(Number(i.qty), 50), price: Number(i.price) || 0 }));
     if (!items.length) { redirect(res, "/app/home"); return; }
     const phone = String(form.get("phone") || "").slice(0, 24);
+    // Global running order number — atomic counter, superadmin-visible only.
+    const counter = await (await col("counters")).findOneAndUpdate(
+      { _id: "orderNo" }, { $inc: { seq: 1 } }, { upsert: true, returnDocument: "after" },
+    );
+    const orderNo = counter?.seq ?? counter?.value?.seq ?? 1;
     const doc = {
+      orderNo,
       shopId: String(form.get("shopId") || ""),
       items,
       total: items.reduce((a, i) => a + i.qty * i.price, 0),

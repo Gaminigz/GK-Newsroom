@@ -146,6 +146,7 @@ function shell(tab, body) {
   const tabs = [
     ["newsroom", "NewsRoom"],
     ["shop", "Superadmin Shop"],
+    ["orders", "Orders"],
   ]
     .map(
       ([k, label]) =>
@@ -358,6 +359,49 @@ async function shopTab(flash = "") {
   );
 }
 
+/* --------------------------------------------------- tab 3 all orders */
+
+async function ordersTab() {
+  const db = await getDb();
+  const orders = await db.collection("app_orders").find({}).sort({ orderNo: -1, createdAt: -1 }).limit(200).toArray();
+  const shopIds = [...new Set(orders.map((o) => o.shopId))];
+  const { ObjectId } = await import("mongodb");
+  const shops = await db.collection("shop_owners")
+    .find({ _id: { $in: shopIds.map((x) => { try { return new ObjectId(x); } catch { return null; } }).filter(Boolean) } })
+    .toArray();
+  const shopName = new Map(shops.map((sh) => [String(sh._id), sh.name]));
+  const total = orders.reduce((a, o) => a + (o.total ?? 0), 0);
+  const today = new Date().toISOString().slice(0, 10);
+  const todays = orders.filter((o) => o.createdAt?.toISOString?.().slice(0, 10) === today);
+
+  const rows = orders
+    .map((o) => `<tr>
+      <td><strong>#${o.orderNo ?? "—"}</strong></td>
+      <td>${o.createdAt ? new Date(o.createdAt).toISOString().slice(0, 16).replace("T", " ") : ""}</td>
+      <td>${esc(shopName.get(o.shopId) ?? "(shop)")}</td>
+      <td>${esc((o.items ?? []).map((i) => `${i.qty}× ${i.name}`).join(", ").slice(0, 80))}</td>
+      <td>${esc(o.buyer ?? "")}<br><span style="color:#8a827b;font-size:12px">${esc(o.phone ?? "")}</span></td>
+      <td>LKR ${Number(o.total ?? 0).toLocaleString()}</td>
+      <td><span class="pill ${esc(o.status)}">${o.status === "pending" ? "New" : esc(o.status)}</span></td>
+    </tr>`)
+    .join("");
+
+  return shell(
+    "orders",
+    `<h1>Orders</h1>
+    <div class="sub">Master order log across every shop — one running number, superadmin only</div>
+    <div class="stats">
+      <div class="stat"><div class="k">Total orders</div><div class="v">${orders.length}</div></div>
+      <div class="stat"><div class="k">Today</div><div class="v">${todays.length}</div></div>
+      <div class="stat"><div class="k">Gross value</div><div class="v" style="font-size:18px">LKR ${total.toLocaleString()}</div></div>
+    </div>
+    <section>
+      <h2>All orders (latest 200)</h2>
+      <table><tr><th>#</th><th>WHEN</th><th>SHOP</th><th>ITEMS</th><th>BUYER</th><th>TOTAL</th><th>STATUS</th></tr>${rows || "<tr><td colspan=7>No orders yet</td></tr>"}</table>
+    </section>`,
+  );
+}
+
 /* ---------------------------------------------------------------- route */
 
 export async function handleAdmin(req, res, url) {
@@ -406,6 +450,11 @@ export async function handleAdmin(req, res, url) {
 
   if (path === "/admin/shop") {
     html(res, await shopTab());
+    return;
+  }
+
+  if (path === "/admin/orders") {
+    html(res, await ordersTab());
     return;
   }
 
