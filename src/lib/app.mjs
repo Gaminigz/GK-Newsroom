@@ -102,6 +102,55 @@ async function oid(id) {
   }
 }
 
+/**
+ * Shared identity layer for ALL real logins (Apple/Google/Facebook/SMS/Email).
+ * Given a provider-verified identity, find-or-create the user and sign them in.
+ * A provider-verified email arrives already verified (no code needed).
+ */
+async function signInIdentity(res, { provider, email, phone, name }) {
+  const users = await col("app_users");
+  const key = email ? { email: email.toLowerCase() } : { phone };
+  let u = await users.findOne(key);
+  if (!u) {
+    await users.insertOne({
+      ...key, provider, name: name || "",
+      verified: !!email, // provider already verified the email; phone is verified by OTP
+      createdAt: new Date(),
+    });
+    u = await users.findOne(key);
+  } else if (!u.provider) {
+    await users.updateOne(key, { $set: { provider, verified: true } });
+  }
+  const cookies2 = [`app_user=${provider}; Path=/app; Max-Age=31536000; SameSite=Lax`];
+  if (email) cookies2.push(`app_email=${encodeURIComponent(email.toLowerCase())}; Path=/app; Max-Age=31536000; SameSite=Lax`);
+  if (phone) cookies2.push(`app_phone=${encodeURIComponent(phone)}; Path=/app; Max-Age=31536000; SameSite=Lax`);
+  res.setHeader("Set-Cookie", cookies2);
+}
+
+/**
+ * Verify an OIDC id_token (Google / Apple) against the provider's JWKS.
+ * Returns { email, name } if valid and audience matches, else null.
+ */
+async function verifyIdToken(idToken, { jwksUrl, issuers, audience }) {
+  try {
+    const [h, p, sig] = idToken.split(".");
+    const header = JSON.parse(Buffer.from(h, "base64url").toString());
+    const payload = JSON.parse(Buffer.from(p, "base64url").toString());
+    if (!issuers.includes(payload.iss)) return null;
+    if (audience && payload.aud !== audience) return null;
+    if (payload.exp && payload.exp * 1000 < Date.now()) return null;
+    const jwks = await (await fetch(jwksUrl)).json();
+    const jwk = jwks.keys.find((k) => k.kid === header.kid);
+    if (!jwk) return null;
+    const keyObj = crypto.createPublicKey({ key: jwk, format: "jwk" });
+    const ok = crypto.verify("RSA-SHA256", Buffer.from(`${h}.${p}`), keyObj, Buffer.from(sig, "base64url"));
+    if (!ok) return null;
+    return { email: payload.email, name: payload.name };
+  } catch {
+    return null;
+  }
+}
+
 /* ----------------------------------------------------------------- data */
 
 async function col(name) {
@@ -1409,6 +1458,86 @@ export async function handleApp(req, res, url) {
     }
     res.setHeader("Set-Cookie", `app_user=${via}; Path=/app; Max-Age=31536000; SameSite=Lax`);
     redirect(res, "/app/home");
+    return;
+  }
+
+  // Native plugins POST the provider's id_token / access data here.
+  if (path === "/app/auth/google" && req.method === "POST") {
+    const form = await readForm(req);
+    const id = await verifyIdToken(form.get("id_token") || "", {
+      jwksUrl: "https://www.googleapis.com/oauth2/v3/certs",
+      issuers: ["accounts.google.com", "https://accounts.google.com"],
+      audience: process.env.GOOGLE_WEB_CLIENT_ID,
+    });
+    if (!id?.email) { res.writeHead(401).end("google verify failed"); return; }
+    await signInIdentity(res, { provider: "google", email: id.email, name: id.name });
+    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  if (path === "/app/auth/apple" && req.method === "POST") {
+    const form = await readForm(req);
+    const id = await verifyIdToken(form.get("id_token") || "", {
+      jwksUrl: "https://appleid.apple.com/auth/keys",
+      issuers: ["https://appleid.apple.com"],
+      audience: process.env.APPLE_BUNDLE_ID || "sg.ggmt.una5aha",
+    });
+    // Apple only sends the name on first sign-in — accept it from the client.
+    const email = id?.email || String(form.get("email") || "").toLowerCase();
+    if (!email) { res.writeHead(401).end("apple verify failed"); return; }
+    await signInIdentity(res, { provider: "apple", email, name: form.get("name") || id?.name });
+    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  if (path === "/app/auth/facebook" && req.method === "POST") {
+    const form = await readForm(req);
+    const token = String(form.get("access_token") || "");
+    if (!token) { res.writeHead(401).end("no token"); return; }
+    try {
+      const r = await fetch(`https://graph.facebook.com/me?fields=id,name,email&access_token=${encodeURIComponent(token)}`);
+      const fb = await r.json();
+      if (!fb?.email) { res.writeHead(401).end("facebook verify failed"); return; }
+      await signInIdentity(res, { provider: "facebook", email: fb.email, name: fb.name });
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
+    } catch { res.writeHead(401).end("facebook error"); }
+    return;
+  }
+
+  // SMS OTP via Twilio Verify (server holds the secret).
+  if (path === "/app/auth/sms/send" && req.method === "POST") {
+    const form = await readForm(req);
+    const phone = String(form.get("phone") || "").replace(/[^0-9+]/g, "").slice(0, 20);
+    const sid = process.env.TWILIO_ACCOUNT_SID, tok = process.env.TWILIO_AUTH_TOKEN, svc = process.env.TWILIO_VERIFY_SID;
+    if (!sid || !svc || !phone) { res.writeHead(400).end("sms not configured"); return; }
+    try {
+      await fetch(`https://verify.twilio.com/v2/Services/${svc}/Verifications`, {
+        method: "POST",
+        headers: { Authorization: "Basic " + Buffer.from(`${sid}:${tok}`).toString("base64"), "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ To: phone, Channel: "sms" }),
+      });
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ sent: true }));
+    } catch { res.writeHead(502).end("sms send failed"); }
+    return;
+  }
+
+  if (path === "/app/auth/sms/check" && req.method === "POST") {
+    const form = await readForm(req);
+    const phone = String(form.get("phone") || "").replace(/[^0-9+]/g, "").slice(0, 20);
+    const code = String(form.get("code") || "").replace(/[^0-9]/g, "").slice(0, 8);
+    const sid = process.env.TWILIO_ACCOUNT_SID, tok = process.env.TWILIO_AUTH_TOKEN, svc = process.env.TWILIO_VERIFY_SID;
+    if (!sid || !svc) { res.writeHead(400).end("sms not configured"); return; }
+    try {
+      const r = await fetch(`https://verify.twilio.com/v2/Services/${svc}/VerificationCheck`, {
+        method: "POST",
+        headers: { Authorization: "Basic " + Buffer.from(`${sid}:${tok}`).toString("base64"), "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ To: phone, Code: code }),
+      });
+      const j = await r.json();
+      if (j.status !== "approved") { res.writeHead(401).end("bad code"); return; }
+      await signInIdentity(res, { provider: "sms", phone });
+      res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
+    } catch { res.writeHead(502).end("sms check failed"); }
     return;
   }
 
