@@ -37,6 +37,7 @@ import { getSpiceAudio, listSpiceEpisodes } from "../lib/spice-podcast.ts";
 import { getGovAudio, listGovEpisodes } from "../lib/gov-podcast.ts";
 import { SPICES } from "../data/spices.ts";
 import { GOV_SOURCES } from "../data/gov-sources.ts";
+import { isoToFlag } from "../lib/ai-country-fetch.ts";
 
 const PORT = Number(process.env.PORT || 8080);
 const CACHE_MS = 5 * 60 * 1000;
@@ -60,6 +61,36 @@ async function loadFeed() {
   ]);
 
   return { news, history, timeline, episodes };
+}
+
+/* ---- country-by-country AI activity (ai_country_items) ---------------- */
+
+/** One row per country that has news, newest activity first. Auto-grows. */
+async function loadCountryIndex() {
+  const db = await getDb();
+  const rows = await db.collection("ai_country_items").aggregate([
+    { $group: {
+        _id: "$iso",
+        country: { $first: "$country" },
+        count: { $sum: 1 },
+        latest: { $max: "$publishedAt" },
+    } },
+    { $sort: { count: -1, latest: -1 } },
+  ]).toArray();
+  return rows.filter((r) => r._id);
+}
+
+/** All items for one country, split into funding vs government, newest first. */
+async function loadCountry(iso) {
+  const db = await getDb();
+  const items = await db.collection("ai_country_items")
+    .find({ iso }).sort({ publishedAt: -1 }).limit(120).toArray();
+  const country = items[0]?.country || iso;
+  return {
+    iso, country,
+    funding: items.filter((i) => i.topic === "funding"),
+    government: items.filter((i) => i.topic === "government"),
+  };
 }
 
 /* ------------------------------------------------------------- helpers */
@@ -771,6 +802,11 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
     <h1>GK <em>Ai</em> Newsroom</h1>
     <div class="sub">The daily Ai brief — fresh every morning at 5 AM.</div>
   </header>
+  <a href="/ai/world" style="display:flex;align-items:center;gap:10px;margin:14px 0 2px;padding:13px 15px;border-radius:14px;text-decoration:none;background:linear-gradient(135deg,#0a1f47,#173a7a 60%,#2a5cb8);border:1px solid #ffffff1f;box-shadow:0 4px 14px #0007">
+    <span style="font-size:26px;line-height:1">🌍</span>
+    <span style="flex:1"><span style="color:#fff;font-weight:600;letter-spacing:-.01em">AI around the world</span><br><span style="color:#ffffffc4;font-size:13px">Funding, startups &amp; government AI — country by country</span></span>
+    <span style="color:#fff;font-size:18px">›</span>
+  </a>
   ${streamer({ items: waItems, base: "/podcast/" })}
   <nav class="chips">${chips}</nav>
   <main id="feed">
@@ -805,6 +841,64 @@ let govCache = { html: null, at: 0 };
 let spiceCache = { html: null, at: 0 };
 let audioCache = { key: null, buf: null, at: 0 };
 const spiceAudioCache = new Map(); // id → { buf, at }, small LRU
+
+/* Country AI view — shared compact styling injected into the shell body. */
+const COUNTRY_CSS = `<style>
+  .cintro { color:#8b949e; font-size:14px; margin:2px 0 18px; }
+  .cgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; }
+  .ccard { display:block; text-decoration:none; background:#161b22; border:1px solid #ffffff14;
+           border-radius:14px; padding:14px 15px; color:#e6edf3; box-shadow:0 3px 10px #0006; }
+  .ccard:active { filter:brightness(1.15); }
+  .ccard .flag { font-size:30px; line-height:1; }
+  .ccard .nm { font-weight:600; margin-top:6px; letter-spacing:-.01em; }
+  .ccard .ct { color:#2a5cb8; font-weight:700; font-size:13px; margin-top:2px; }
+  .ccard .ct b { color:#5b8def; }
+  .csec { margin:26px 0 6px; font-size:18px; letter-spacing:-.01em; }
+  .cempty { color:#6e7681; font-size:14px; padding:6px 0 2px; }
+  .item { padding:13px 0; border-bottom:1px solid #ffffff10; }
+  .item a { color:#e6edf3; text-decoration:none; font-weight:600; letter-spacing:-.01em; }
+  .item a:active { color:#5b8def; }
+  .item .m { color:#8b949e; font-size:12.5px; margin-top:4px; }
+  .item .s { color:#e3b341; }
+</style>`;
+
+function countryItemRow(it) {
+  const href = it.url && /^https?:\/\//.test(it.url) ? esc(it.url) : null;
+  const title = href ? `<a href="${href}" target="_blank" rel="noopener">${esc(it.title)}</a>` : esc(it.title);
+  return `<div class="item">${title}
+    <div class="m"><span class="s">${esc(it.source || "")}</span>${it.source ? " · " : ""}${timeAgo(it.publishedAt)}</div>
+  </div>`;
+}
+
+function worldPage(index) {
+  const total = index.reduce((n, r) => n + r.count, 0);
+  const cards = index.map((r) =>
+    `<a class="ccard" href="/ai/country/${esc(r._id)}">
+       <div class="flag">${isoToFlag(r._id)}</div>
+       <div class="nm">${esc(r.country)}</div>
+       <div class="ct"><b>${r.count}</b> update${r.count === 1 ? "" : "s"}</div>
+     </a>`).join("");
+  const body = `${COUNTRY_CSS}
+    <a class="back" href="/ai">‹ AI newsroom</a>
+    <header><h1>AI around the <em>world</em></h1>
+      <p class="cintro">Funding, startups &amp; government AI programmes — country by country. ${total} update${total === 1 ? "" : "s"} tracked.</p></header>
+    ${index.length ? `<div class="cgrid">${cards}</div>`
+      : `<p class="cempty">Gathering each country's AI activity — check back after the next daily run.</p>`}`;
+  return shell({ title: "AI around the world — GK Newsroom", desc: "AI funding, startups and government programmes, country by country.", body });
+}
+
+function countryPage(data) {
+  const sec = (label, items) =>
+    `<h2 class="csec">${label}</h2>` +
+    (items.length ? items.map(countryItemRow).join("") : `<p class="cempty">No recent items yet.</p>`);
+  const body = `${COUNTRY_CSS}
+    <a class="back" href="/ai/world">‹ All countries</a>
+    <header><h1>${isoToFlag(data.iso)} ${esc(data.country)}</h1>
+      <p class="cintro">AI activity surfaced from public news &amp; announcements.</p></header>
+    ${sec("💰 Funding &amp; startups", data.funding)}
+    ${sec("🏛 Government AI programmes", data.government)}`;
+  return shell({ title: `${data.country} AI activity — GK Newsroom`, desc: `AI funding, startups and government programmes in ${data.country}.`, body });
+}
 
 async function feedHtml() {
   if (cache.html && Date.now() - cache.at < CACHE_MS) return cache.html;
@@ -850,12 +944,12 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://x");
     const path = url.pathname;
 
-    // Static assets shipped in the repo (Gemini-generated images, logos).
-    const am = path.match(/^\/assets\/([a-z0-9/_-]+\.(png|jpe?g|webp|svg))$/);
+    // Static assets shipped in the repo (Gemini-generated images, logos, vendored Leaflet).
+    const am = path.match(/^\/assets\/([a-z0-9/_-]+\.(png|jpe?g|webp|svg|css|js))$/);
     if (am && !am[1].includes("..")) {
       try {
         const buf = await readFile(new URL(`../web-assets/${am[1]}`, import.meta.url));
-        const type = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", svg: "image/svg+xml" }[am[2]];
+        const type = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", svg: "image/svg+xml", css: "text/css; charset=utf-8", js: "text/javascript; charset=utf-8" }[am[2]];
         res.writeHead(200, { "Content-Type": type, "Cache-Control": "public, max-age=86400" });
         res.end(buf);
       } catch {
@@ -896,6 +990,21 @@ const server = http.createServer(async (req, res) => {
         "Cache-Control": "public, max-age=300",
       });
       res.end(html);
+      return;
+    }
+
+    if (path === "/ai/world") {
+      const index = await loadCountryIndex();
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300" });
+      res.end(worldPage(index));
+      return;
+    }
+
+    const cm = path.match(/^\/ai\/country\/([A-Za-z]{2})$/);
+    if (cm) {
+      const data = await loadCountry(cm[1].toUpperCase());
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300" });
+      res.end(countryPage(data));
       return;
     }
 

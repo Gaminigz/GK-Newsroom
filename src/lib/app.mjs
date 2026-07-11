@@ -976,7 +976,7 @@ async function locationPage(req) {
     nav: buyerNav("location"),
     noBack: true,
     body: `
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="/assets/vendor/leaflet.css">
     <div class="row" style="gap:10px;margin-bottom:8px"><a class="back" style="margin:0" href="/app/home">‹</a><h1>Set your location</h1><span class="sub si">ඔබේ ස්ථානය</span></div>
     <div id="map" style="height:42vh;border-radius:16px;border:1px solid #ece3da;z-index:1"></div>
     <div class="sub" id="mapCount" style="text-align:center;margin:8px 0 4px">Loading map…</div>
@@ -991,12 +991,16 @@ async function locationPage(req) {
       <input type="tel" name="phone" value="${esc(c.app_phone ?? "")}" placeholder="+61 412 555 210">
       <button class="btn" style="margin-top:16px">Save &amp; continue</button>
     </form>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/assets/vendor/leaflet.js"></script>
     <script>
       (() => {
         const shops = ${JSON.stringify(pins)};
+        if (typeof L === 'undefined') {
+          document.getElementById('mapCount').textContent = 'Map could not load — you can still search a city below.';
+          return;
+        }
         const map = L.map('map').setView([${start[0]}, ${start[1]}], 12);
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+        L.tileLayer('/app/tiles/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(map);
         const circle = L.circle(map.getCenter(), { radius: 10000, color: '#d9542b', weight: 1.5, fillColor: '#d9542b', fillOpacity: 0.06 }).addTo(map);
         let me = null, markers = [];
         const D = (a, b, c2, d) => { const R = 6371, r = Math.PI / 180, x = (c2 - a) * r, y = (d - b) * r,
@@ -1010,7 +1014,7 @@ async function locationPage(req) {
           shops.forEach((s) => {
             if (D(cc.lat, cc.lng, s.lat, s.lng) <= 10) {
               n++;
-              const mk = L.marker([s.lat, s.lng]).addTo(map)
+              const mk = L.circleMarker([s.lat, s.lng], { radius: 9, color: '#fff', weight: 2, fillColor: '#d9542b', fillOpacity: 1 }).addTo(map)
                 .bindPopup('<b>' + s.name + '</b><br><a href="/app/shop/' + s.id + '">Open shop →</a><br><a href="#" onclick="return window.favShop(\'' + s.id + '\', this)">☆ Save favourite</a>');
               mk.on('contextmenu', () => window.favShop(s.id));
               markers.push(mk);
@@ -1037,7 +1041,7 @@ async function locationPage(req) {
           const q = document.getElementById('cityIn').value.trim();
           if (!q) return;
           try {
-            const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q));
+            const r = await fetch('/app/geocode?q=' + encodeURIComponent(q));
             const j = await r.json();
             if (j[0]) map.setView([Number(j[0].lat), Number(j[0].lon)], 12);
             else document.getElementById('mapCount').textContent = 'Place not found — try a bigger city name';
@@ -1438,6 +1442,44 @@ export async function handleApp(req, res, url) {
 
   if (path === "/app" || path === "/app/") {
     html(res, welcomePage(req));
+    return;
+  }
+
+  // Map tile proxy — OpenStreetMap blocks apps that omit a User-Agent, and a
+  // Capacitor webview can't set one; fetching server-side (same origin as the
+  // app) fixes both the "Loading map…" hang and the tile policy block.
+  {
+    const tm = path.match(/^\/app\/tiles\/(\d{1,2})\/(\d{1,7})\/(\d{1,7})\.png$/);
+    if (tm) {
+      const [z, x, y] = [tm[1], tm[2], tm[3]];
+      try {
+        const r = await fetch(`https://tile.openstreetmap.org/${z}/${x}/${y}.png`, {
+          headers: { "User-Agent": "3una5aha/1.0 (https://www.ggmt.sg; gk.smart@ggmt.sg)" },
+        });
+        if (!r.ok) { res.writeHead(r.status).end("tile error"); return; }
+        const buf = Buffer.from(await r.arrayBuffer());
+        res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "public, max-age=604800" });
+        res.end(buf);
+      } catch {
+        res.writeHead(502).end("tile fetch failed");
+      }
+      return;
+    }
+  }
+
+  // Geocode proxy — same reasoning: Nominatim needs a User-Agent, set it server-side.
+  if (path === "/app/geocode") {
+    const q = (url.searchParams.get("q") || "").trim().slice(0, 200);
+    if (!q) { res.writeHead(400, { "Content-Type": "application/json" }).end("[]"); return; }
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`,
+        { headers: { "User-Agent": "3una5aha/1.0 (https://www.ggmt.sg; gk.smart@ggmt.sg)" } });
+      const j = await r.json();
+      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "public, max-age=86400" });
+      res.end(JSON.stringify(j));
+    } catch {
+      res.writeHead(200, { "Content-Type": "application/json" }).end("[]");
+    }
     return;
   }
 
