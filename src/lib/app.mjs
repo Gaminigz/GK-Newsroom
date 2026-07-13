@@ -585,8 +585,9 @@ function supportPage() {
 
 /* ----------------------------------------------------------- 3.3 home */
 
-async function homePage(req) {
+async function homePage(req, url) {
   const c = cookies(req);
+  const q = (url?.searchParams.get("q") || "").trim().slice(0, 60);
   const city = c.app_city || (c.app_geo ? "Near you" : "Set location");
   let unverified = false, verifyKind = "";
   if (c.app_email) {
@@ -603,6 +604,19 @@ async function homePage(req) {
     .limit(8)
     .toArray();
   const shopName = new Map(shops.map((s) => [String(s._id), s.name]));
+
+  // Search: filter shops by name/city and surface matching dishes.
+  const searching = q.length > 0;
+  let shownShops = shops;
+  let dishHits = [];
+  if (searching) {
+    const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    const allDishes = await (await col("app_dishes")).find({}).limit(400).toArray();
+    dishHits = allDishes.filter((d) => rx.test(d.name || "") || rx.test(d.nameSi || ""));
+    const dishShopIds = new Set(dishHits.map((d) => String(d.shopId)));
+    shownShops = shops.filter((s) =>
+      rx.test(s.name || "") || rx.test(s.city || "") || dishShopIds.has(String(s._id)));
+  }
 
   // Flash card data: today's specials, user's city first (geo preference).
   const shopCity = new Map(shops.map((sh) => [String(sh._id), sh.city ?? ""]));
@@ -622,26 +636,9 @@ async function homePage(req) {
     }))
     .sort((a, b) => a.near - b.near);
 
-  // ---- DEMO flash cards (remove this block for production) ----
-  // Shown only when no shop has posted a real special yet, so the feature
-  // is visible during testing; auto-hides the moment a real special exists.
-  if (flash.length === 0) {
-    const dShop = shops[0] ? String(shops[0]._id) : "";
-    for (const [img, name, si, price, deal, win] of [
-      ["kottu", "Chicken Kottu Roti", "කොත්තු", "LKR 1,200", "-15%", "5 - 9 PM"],
-      ["hoppers", "Egg Hoppers (3)", "බිත්තර ආප්ප", "LKR 450", "", "6 - 10 AM"],
-      ["riceandcurry", "Rice & Curry Plate", "බත් කරි", "LKR 850", "2 for 1", "11 AM - 3 PM"],
-      ["watalappan", "Watalappan", "වටලප්පන්", "LKR 350", "", "all day"],
-    ]) {
-      flash.push({ id: "", shopId: dShop || "demo", name, nameSi: si, price, deal,
-        shop: "Sample menu · demo", window: win, photo: `/assets/demo/${img}.jpg`, near: 1, demo: true });
-    }
-  }
-  // ---- end DEMO block ----
-
   const shopCards = (
     await Promise.all(
-      shops.map(async (s) => {
+      shownShops.map(async (s) => {
         const dishes = await dishesFor(s._id);
         const deal = dishes.find((d) => d.discount && d.discount !== "none");
         return `<a class="card row" href="/app/shop/${String(s._id)}">
@@ -672,10 +669,29 @@ async function homePage(req) {
       <span style="width:10px;height:10px;border-radius:99px;background:#d92d20;flex:0 0 auto;box-shadow:0 0 0 3px #d92d2033"></span>
       <span style="flex:1;font-size:13px"><strong>Verify your ${verifyKind}</strong> — a 24h code will confirm your ${verifyKind}</span>
       <span class="sub">›</span></a>` : ""}
-    <form action="/app/home" style="margin:16px 0 0"><input type="text" name="q" placeholder="🔍 Search dishes, shops, spices…"></form>
-    ${flash.length ? `
+    <form action="/app/home" style="margin:16px 0 0"><input type="text" name="q" value="${esc(q)}" placeholder="🔍 Search dishes, shops, spices…"></form>
+    ${searching ? `
+    <div class="row" style="justify-content:space-between;margin-top:12px">
+      <strong>Results for “${esc(q)}”</strong>
+      <a class="sub" href="/app/home" style="text-decoration:underline">✕ clear</a>
+    </div>
+    ${dishHits.slice(0, 12).map((d) => `
+      <a class="card row" href="/app/shop/${esc(String(d.shopId))}" style="margin-top:10px">
+        ${dishThumb(d)}
+        <div style="flex:1;min-width:0">
+          <strong>${esc(d.name)}</strong>${d.nameSi ? ` <span class="si sub">${esc(d.nameSi)}</span>` : ""}
+          <div class="sub" style="font-size:12.5px">${esc(shopName.get(d.shopId) ?? "")}</div>
+          <strong style="color:${ORANGE};font-size:13.5px">${esc(lkr(d.price))}</strong>
+        </div><span style="color:#c9bfb7">›</span>
+      </a>`).join("")}
+    ${!dishHits.length && !shownShops.length ? `<div class="card" style="margin-top:10px;text-align:center;padding:22px 16px">
+      <div style="font-size:30px">🔍</div>
+      <strong style="display:block;margin-top:6px">Nothing found for “${esc(q)}”</strong>
+      <span class="sub" style="font-size:13px">Try a dish name like “kottu” or a city.</span>
+    </div>` : ""}` : ""}
+    ${!searching && flash.length ? `
     <a class="card row flashcard" id="flashCard" href="${flash[0].demo ? "#" : "/app/shop/" + esc(flash[0].shopId)}" style="margin:14px 0 0;padding:0;overflow:hidden;gap:12px">
-      <div id="flashImg" style="width:106px;align-self:stretch;min-height:100px;flex:0 0 auto;background:#f0e7de ${flash[0].photo ? `url(${flash[0].photo}) center/cover` : ""};display:flex;align-items:center;justify-content:center;font-size:30px">${flash[0].photo ? "" : "🍛"}</div>
+      <div id="flashImg" style="width:118px;align-self:stretch;min-height:104px;flex:0 0 auto;background:#f0e7de ${flash[0].photo ? `url('${flash[0].photo}') center/cover no-repeat` : ""};display:flex;align-items:center;justify-content:center;font-size:30px">${flash[0].photo ? "" : "🍛"}</div>
       <div style="flex:1;min-width:0;padding:10px 12px 10px 0">
         <span class="pill today">TODAY <span class="si" style="color:#fff">අද විශේෂ</span></span>
         <strong id="flashName" style="display:block;font-size:15px;margin-top:3px">${esc(flash[0].name)}</strong>
@@ -695,9 +711,9 @@ async function homePage(req) {
         const card = document.getElementById('flashCard');
         const voted = JSON.parse(localStorage.getItem('dishVotes') || '{}');
         function render(d) {
-          card.href = d.demo ? '#' : '/app/shop/' + d.shopId;
+          card.href = '/app/shop/' + d.shopId;
           const img = document.getElementById('flashImg');
-          img.style.backgroundImage = d.photo ? 'url(' + d.photo + ')' : '';
+          img.style.background = d.photo ? "#f0e7de url('" + d.photo + "') center/cover no-repeat" : '#f0e7de';
           img.textContent = d.photo ? '' : '🍛';
           document.getElementById('flashName').textContent = d.name;
           document.getElementById('flashMeta').textContent = d.shop + ' · ' + d.window;
@@ -721,7 +737,6 @@ async function homePage(req) {
         }
         function vote(kind) {
           const d = items[i];
-          if (d.demo) { advance(kind === 'like' ? 1 : -1); return; }
           if (kind === 'like' && voted[d.id]) { advance(1); return; }
           if (kind === 'like') { voted[d.id] = 1; localStorage.setItem('dishVotes', JSON.stringify(voted)); }
           fetch('/app/dish/' + d.id + '/' + (kind === 'like' ? 'like' : 'pass'), { method: 'POST' }).catch(() => {});
@@ -741,11 +756,16 @@ async function homePage(req) {
         restart();
       })();
     </script>` : ""}
-    <div class="chiprow">
+    ${searching ? "" : `<div class="chiprow">
       <span class="chip on">Nearby</span><span class="chip">Today's special</span><span class="chip">Promotions</span><span class="chip">Open now</span>
-    </div>
-    <div class="row" style="justify-content:space-between;margin-top:4px"><strong>Nearby restaurants</strong><span class="sub">near your location</span></div>
-    <div style="margin-top:10px">${shopCards || `<span class="sub">No open restaurants yet.</span>`}</div>
+    </div>`}
+    <div class="row" style="justify-content:space-between;margin-top:4px"><strong>${searching ? "Matching restaurants" : "Nearby restaurants"}</strong><span class="sub">${searching ? `${shownShops.length} found` : "near your location"}</span></div>
+    <div style="margin-top:10px">${shopCards || (searching ? "" : `<div class="card" style="text-align:center;padding:26px 16px">
+      <div style="font-size:34px">🍛</div>
+      <strong style="display:block;margin-top:8px">No restaurants near you yet</strong>
+      <span class="sub" style="display:block;font-size:13px;margin-top:4px">Try another city from <a href="/app/location" style="color:${ORANGE};font-weight:700">Set location</a> — or be the first:</span>
+      <a class="btn" href="/app/register" style="margin-top:14px;display:inline-block;width:auto;padding:12px 22px">List your kitchen — free</a>
+    </div>`)}</div>
     <script>
       // Geo capture: remembers coordinates so deals/restaurants can be
       // sorted by real distance (Google Maps wiring lands with native GPS).
@@ -1799,7 +1819,7 @@ export async function handleApp(req, res, url) {
   if (path === "/app/support") { html(res, supportPage()); return; }
 
   if (path === "/app/home") {
-    html(res, await homePage(req));
+    html(res, await homePage(req, url));
     return;
   }
 
