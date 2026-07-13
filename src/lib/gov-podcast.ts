@@ -84,7 +84,7 @@ export async function ensureGovEpisode(dateKey = todayKey(), force = false): Pro
 
   const posts = await db
     .collection("gov_feed_items")
-    .find({}, { projection: { agency: 1, title: 1, summary: 1, kind: 1, postedAt: 1 } })
+    .find({ relevant: { $ne: false } }, { projection: { agency: 1, title: 1, summary: 1, kind: 1, postedAt: 1 } })
     .sort({ postedAt: -1, updatedAt: -1 })
     .limit(10)
     .toArray();

@@ -69,6 +69,7 @@ async function loadFeed() {
 async function loadCountryIndex() {
   const db = await getDb();
   const rows = await db.collection("ai_country_items").aggregate([
+    { $match: { relevant: { $ne: false } } },
     { $group: {
         _id: "$iso",
         country: { $first: "$country" },
@@ -84,7 +85,7 @@ async function loadCountryIndex() {
 async function loadCountry(iso) {
   const db = await getDb();
   const items = await db.collection("ai_country_items")
-    .find({ iso }).sort({ publishedAt: -1 }).limit(120).toArray();
+    .find({ iso, relevant: { $ne: false } }).sort({ publishedAt: -1 }).limit(120).toArray();
   const country = items[0]?.country || iso;
   return {
     iso, country,
@@ -136,7 +137,7 @@ function firstShareImage(news) {
 
 /* -------------------------------------------------------------- render */
 
-function card(it) {
+function card(it, id) {
   const kind = it.series === "history" ? "history" : it.series === "timeline" ? "timeline" : "news";
   const seriesPill =
     it.series === "history"
@@ -157,7 +158,7 @@ function card(it) {
     ? `<a href="${href}" target="_blank" rel="noopener">${esc(it.title)}</a>`
     : esc(it.title);
 
-  return `<article class="card" data-kind="${kind}">
+  return `<article class="card"${id ? ` id="${id}"` : ""} data-kind="${kind}">
     ${img}
     <div class="body">
       <div class="meta">${seriesPill}${when}</div>
@@ -560,12 +561,19 @@ function spicesPage(episodes = {}) {
 /** GK SMART Accounting — translated Cambodian government feed from Mongo.
  *  `episodes` are ready GK SMART Brief days for the streamer. */
 function govPage(posts, episodes = []) {
+  // Like the spice page: playing a brief scrolls the feed to that day's
+  // posts instead of showing a story list under the player.
+  const postDates = posts.map((p) => (p.postedAt ? new Date(p.postedAt).toISOString().slice(0, 10) : null));
+  const cardFor = (date) => {
+    const i = postDates.findIndex((d) => d && d <= date);
+    return `#g-${i > -1 ? i : 0}`;
+  };
   const waItems = episodes.map((e) => ({
     k: e.date,
     t: `GK SMART BRIEF · ${fmtDate(e.date)}`,
     row: `Brief · ${fmtDate(e.date)}`,
     d: fmtDur(e.durationSec),
-    subs: (e.stories ?? []).slice(0, 6),
+    card: cardFor(e.date),
   }));
   const bySrc = Object.fromEntries(GOV_SOURCES.map((s) => [s.abbrev, s]));
   const chips = ["All", ...GOV_SOURCES.map((s) => s.abbrev)]
@@ -577,11 +585,11 @@ function govPage(posts, episodes = []) {
 
   const cards = posts.length
     ? posts
-        .map((p) => {
+        .map((p, idx) => {
           const src = bySrc[p.agency] ?? { colors: ["#666", "#333"], name: p.agency, logoQuery: "" };
           const [c1, c2] = src.colors;
           const when = p.postedAt ? `<span class="when">${fmtDate(new Date(p.postedAt).toISOString().slice(0, 10))}</span>` : "";
-          return `<article class="gcard" data-kind="${esc(p.agency)}">
+          return `<article class="gcard" id="g-${idx}" data-kind="${esc(p.agency)}">
         <div class="gtile" style="background:linear-gradient(140deg,${c1},${c2})" data-logo="${esc(src.logoQuery)}"><span>${esc(p.agency)}</span></div>
         <div class="gbody">
           <div class="gmeta"><span class="pill agency">${esc(p.agency)}</span><span class="pill kind">${esc(p.kind ?? "News")}</span>${when}</div>
@@ -737,12 +745,19 @@ function page({ news, history, timeline, episodes }) {
   const top = news[0];
   const ogImage = firstShareImage(news);
   const total = episodes?.length ?? 0;
+  // Like the spice page: playing an episode scrolls the feed to that day's
+  // stories instead of showing a story list under the player.
+  const newsDates = news.map((it) => (it.publishedAt ? new Date(it.publishedAt).toISOString().slice(0, 10) : null));
+  const cardFor = (date) => {
+    const i = newsDates.findIndex((d) => d && d <= date);
+    return `#n-${i > -1 ? i : 0}`;
+  };
   const waItems = (episodes ?? []).map((e, idx) => ({
     k: e.date,
     t: `EP ${total - idx} · ${fmtDate(e.date)} · THE Ai BRIEF`,
     row: `Episode ${total - idx} · ${fmtDate(e.date)}`,
     d: fmtDur(e.durationSec),
-    subs: (e.stories ?? []).slice(0, 6),
+    card: cardFor(e.date),
   }));
 
   const chips = ["all", "news", "history", "timeline"]
@@ -810,9 +825,9 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
   ${streamer({ items: waItems, base: "/podcast/" })}
   <nav class="chips">${chips}</nav>
   <main id="feed">
-    ${news.map(card).join("\n")}
-    ${timeline.map(card).join("\n")}
-    ${history.map(card).join("\n")}
+    ${news.map((it, i) => card(it, `n-${i}`)).join("\n")}
+    ${timeline.map((it) => card(it)).join("\n")}
+    ${history.map((it) => card(it)).join("\n")}
   </main>
   <footer>GK Ai Newsroom · powered by the GK newsroom pipeline</footer>
 </div>
@@ -1081,7 +1096,7 @@ const server = http.createServer(async (req, res) => {
           [posts, episodes] = await Promise.all([
             db
               .collection("gov_feed_items")
-              .find({})
+              .find({ relevant: { $ne: false } })
               .sort({ postedAt: -1, updatedAt: -1 })
               .limit(60)
               .toArray(),

@@ -74,7 +74,7 @@ export type TgPost = {
   postedAt: number | null;
 };
 
-type Translated = { titleKm: string; title: string; summary: string; kind: string };
+type Translated = { titleKm: string; title: string; summary: string; kind: string; relevant: boolean };
 
 function decodeEntities(s: string): string {
   return String(s)
@@ -158,6 +158,7 @@ For EACH post (in the same order, index 0..${posts.length - 1}) return:
 - title: faithful ENGLISH translation of that headline (<= 100 chars). Never invent facts.
 - summary: 1-2 sentence English summary of the post (<= 220 chars). No invented facts.
 - kind: one of Training, Event, Prakas, Announcement, News.
+- relevant: true only if the post carries ACTIONABLE information for an accounting/tax/business audience — tax/VAT/e-invoicing rules, customs, audit, accounting standards, business registration/regulation, deadlines, penalties, incentives, budget/economic policy, or professional trainings & business events one could attend. false for protocol & ceremony of ANY kind, even trade-related (officials presiding over/attending openings, anniversaries, courtesy visits, congratulations, festival greetings), sports, dinners/receptions, tourism promotion, local market/product promotions, job vacancies, and general diplomacy.
 Return exactly ${posts.length} items in order.
 
 POSTS:
@@ -177,8 +178,9 @@ ${list}`;
             title: { type: Type.STRING },
             summary: { type: Type.STRING },
             kind: { type: Type.STRING },
+            relevant: { type: Type.BOOLEAN },
           },
-          required: ["titleKm", "title", "summary", "kind"],
+          required: ["titleKm", "title", "summary", "kind", "relevant"],
         },
       },
     },
@@ -316,7 +318,7 @@ export async function fetchTelegram(): Promise<{
             $set: {
               agency: ch.label, titleKm: t.titleKm?.trim() || "", title: t.title.trim(),
               summary: t.summary?.trim() || "", kind: "Telegram", postedAt: p.postedAt,
-              via: "telegram", channel: ch.handle, updatedAt: now,
+              via: "telegram", channel: ch.handle, relevant: t.relevant !== false, updatedAt: now,
             },
             $setOnInsert: { url: p.url, createdAt: now },
           },

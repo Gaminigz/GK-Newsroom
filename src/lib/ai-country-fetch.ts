@@ -17,6 +17,7 @@
  */
 
 import Parser from "rss-parser";
+import { GoogleGenAI, Type } from "@google/genai";
 
 /** Countries we ask Google about. Display auto-grows from whatever returns. */
 export const COUNTRIES: { name: string; iso: string }[] = [
@@ -74,6 +75,73 @@ export function isoToFlag(iso: string): string {
 
 const parser = new Parser({ timeout: 15000 });
 
+/* ---------------- Gemini relevance judge ----------------
+ * Keyword search bleeds: a global roundup or an other-country story can match
+ * "<country> AI funding". Each stored item carries `relevant: boolean`; the
+ * web view hides `relevant: false`. Only items not yet judged cost a Gemini
+ * call — re-runs are free. No key / a failed call defaults to relevant (never
+ * blank the feed on an outage). */
+
+const JUDGE_MODEL = "gemini-2.5-flash";
+const JUDGE_BATCH = 40; // items per Gemini call
+const JUDGE_MAX_PER_RUN = 400; // backlog cap so one run can't burn the quota
+
+type Judgeable = { country: string; topic: Topic; title: string; summary: string };
+
+/** One batched call: true/false per item, in order. Throws on API failure. */
+async function judgeBatch(ai: GoogleGenAI, items: Judgeable[]): Promise<boolean[]> {
+  const list = items
+    .map((it, i) => `#${i} [${it.country} / ${it.topic}] ${it.title} — ${it.summary || "(no summary)"}`)
+    .join("\n");
+  const prompt = `You curate a per-country AI-industry news feed. Each story below was found by keyword search for the country and topic shown in [brackets]. Decide for EACH story whether it truly belongs there.
+
+relevant=true only if the story is specifically about AI in THAT country — its startups, companies, investors, or its government's AI programmes/policy/funding.
+relevant=false if the story is mainly about a different country, a global/multi-country roundup where the named country is incidental, or not about AI at all.
+
+Return exactly ${items.length} verdicts in order.
+
+STORIES:
+${list}`;
+
+  const resp = await ai.models.generateContent({
+    model: JUDGE_MODEL,
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: { relevant: { type: Type.BOOLEAN } },
+          required: ["relevant"],
+        },
+      },
+    },
+  });
+  const arr = JSON.parse(resp.text ?? "[]") as { relevant?: boolean }[];
+  if (!Array.isArray(arr) || arr.length !== items.length) throw new Error("judge: bad response shape");
+  return arr.map((v) => v.relevant !== false);
+}
+
+/** Judge up to `cap` items in batches; unjudged/failed batches default to relevant. */
+async function judgeAll(items: Judgeable[], cap: number, errors: string[]): Promise<boolean[]> {
+  const verdicts = items.map(() => true);
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || items.length === 0) return verdicts;
+  const ai = new GoogleGenAI({ apiKey });
+  const n = Math.min(items.length, cap);
+  for (let start = 0; start < n; start += JUDGE_BATCH) {
+    const batch = items.slice(start, Math.min(start + JUDGE_BATCH, n));
+    try {
+      const res = await judgeBatch(ai, batch);
+      for (let i = 0; i < batch.length; i++) verdicts[start + i] = res[i];
+    } catch (e) {
+      errors.push(`judge @${start}: ${(e as Error).message}`);
+    }
+  }
+  return verdicts;
+}
+
 function stripHtml(s: string): string {
   return String(s || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -129,7 +197,13 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R
  * `ai_country_items`. Returns a summary count. Failures are isolated per
  * query so one bad response never blanks the run.
  */
-export async function fetchCountryAi(): Promise<{ fetched: number; upserted: number; errors: string[] }> {
+export async function fetchCountryAi(): Promise<{
+  fetched: number;
+  upserted: number;
+  judged: number;
+  dropped: number;
+  errors: string[];
+}> {
   const jobs: { country: string; iso: string; topic: Topic; q: string }[] = [];
   for (const c of COUNTRIES) {
     for (const { topic, q } of QUERIES) jobs.push({ country: c.name, iso: c.iso, topic, q: q(c.name) });
@@ -155,6 +229,18 @@ export async function fetchCountryAi(): Promise<{ fetched: number; upserted: num
   const col = db.collection("ai_country_items");
   await col.createIndex({ iso: 1, topic: 1, publishedAt: -1 }).catch(() => {});
 
+  // Judge only URLs we haven't stored yet — stored items keep their verdict.
+  const known = new Set(
+    (await col.find({ url: { $in: items.map((i) => i.url) } }, { projection: { url: 1 } }).toArray()).map(
+      (d) => d.url as string,
+    ),
+  );
+  const fresh = items.filter((it) => !known.has(it.url));
+  const freshVerdicts = await judgeAll(fresh, JUDGE_MAX_PER_RUN, errors);
+  const verdictByUrl = new Map(fresh.map((it, i) => [it.url, freshVerdicts[i]]));
+  let judged = fresh.length;
+  let dropped = freshVerdicts.filter((v) => !v).length;
+
   let upserted = 0;
   const now = Date.now();
   for (const it of items) {
@@ -162,12 +248,44 @@ export async function fetchCountryAi(): Promise<{ fetched: number; upserted: num
       { url: it.url },
       {
         $set: { title: it.title, source: it.source, summary: it.summary, publishedAt: it.publishedAt, seenAt: now },
-        $setOnInsert: { url: it.url, country: it.country, iso: it.iso, topic: it.topic, createdAt: now },
+        $setOnInsert: {
+          url: it.url,
+          country: it.country,
+          iso: it.iso,
+          topic: it.topic,
+          createdAt: now,
+          relevant: verdictByUrl.get(it.url) ?? true,
+        },
       },
       { upsert: true },
     );
     if (r.upsertedCount) upserted++;
   }
 
-  return { fetched: items.length, upserted, errors };
+  // Backlog sweep: items stored before the judge existed have no `relevant`.
+  const budget = JUDGE_MAX_PER_RUN - Math.min(judged, JUDGE_MAX_PER_RUN);
+  if (budget > 0) {
+    const backlog = await col
+      .find(
+        { relevant: { $exists: false } },
+        { projection: { url: 1, country: 1, topic: 1, title: 1, summary: 1 } },
+      )
+      .limit(budget)
+      .toArray();
+    if (backlog.length) {
+      const verdicts = await judgeAll(
+        backlog.map((d) => ({ country: d.country, topic: d.topic, title: d.title, summary: d.summary ?? "" })),
+        budget,
+        errors,
+      );
+      const ops = backlog.map((d, i) => ({
+        updateOne: { filter: { _id: d._id }, update: { $set: { relevant: verdicts[i] } } },
+      }));
+      await col.bulkWrite(ops);
+      judged += backlog.length;
+      dropped += verdicts.filter((v) => !v).length;
+    }
+  }
+
+  return { fetched: items.length, upserted, judged, dropped, errors };
 }

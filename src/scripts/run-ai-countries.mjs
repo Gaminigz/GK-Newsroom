@@ -13,8 +13,10 @@ import { closeDb } from "../lib/mongo.ts";
 
 async function main() {
   const t0 = Date.now();
-  const { fetched, upserted, errors } = await fetchCountryAi();
-  console.log(`\ncountry-AI: ${fetched} items (${upserted} new) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  const { fetched, upserted, judged, dropped, errors } = await fetchCountryAi();
+  console.log(
+    `\ncountry-AI: ${fetched} items (${upserted} new), ${judged} judged / ${dropped} off-topic in ${((Date.now() - t0) / 1000).toFixed(1)}s`,
+  );
   if (errors.length) {
     console.log(`errors (${errors.length}):`);
     for (const e of errors.slice(0, 12)) console.log("  " + e);
