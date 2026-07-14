@@ -78,6 +78,27 @@ function cookies(req) {
 /** Support email as a mailto link — the phone offers the user's mail app. */
 const SUPPORT_MAILTO = `<a href="mailto:gk.smart@ggmt.sg?subject=3una%205aha%20support" style="color:#b3672f;font-weight:700;text-decoration:underline">gk.smart@ggmt.sg</a>`;
 
+/** Promo types a special can carry — buyers see the picked tag on the flash
+ *  card and shop banner, so they know what kind of deal it is. */
+const PROMO_TAGS = ["New promo", "Today special", "Holidays catch", "Drink bite",
+  "Weekend catch", "My treat", "Celebration", "Sports watch"];
+
+/** Small chip row under the special toggle; visible only while it's on. */
+function promoTagChips(formId, current = "") {
+  const cur = PROMO_TAGS.includes(current) ? current : "Today special";
+  return `<div class="seg" id="promoTags" style="display:none;gap:6px;margin:8px 0 2px">
+      ${PROMO_TAGS.map((t) => `<label><input type="radio" name="promoTag" value="${t}" form="${formId}" ${t === cur ? "checked" : ""}><span class="opt" style="font-size:11.5px;padding:5px 10px">${t}</span></label>`).join("")}
+    </div>
+    <script>
+      (() => {
+        const tgl = document.querySelector('input[name="special"]');
+        const row = document.getElementById('promoTags');
+        const sync = () => { row.style.display = tgl.checked ? 'flex' : 'none'; };
+        tgl.addEventListener('change', sync); sync();
+      })();
+    </script>`;
+}
+
 /** Indicative rate for the US$ display; dishes are priced in LKR. */
 const LKR_PER_USD = 300;
 
@@ -640,6 +661,7 @@ async function homePage(req, url) {
       shop: shopName.get(d.shopId) ?? "",
       window: d.window ?? "today",
       photo: d.photo ?? "",
+      tag: d.promoTag || "Today special",
       near: myCity && (shopCity.get(d.shopId) || "").toLowerCase().includes(myCity) ? 0 : 1,
     }))
     .sort((a, b) => a.near - b.near);
@@ -701,7 +723,7 @@ async function homePage(req, url) {
     <a class="card row flashcard" id="flashCard" href="${flash[0].demo ? "#" : "/app/shop/" + esc(flash[0].shopId)}" style="margin:14px 0 0;padding:0;overflow:hidden;gap:12px">
       <div id="flashImg" style="width:118px;align-self:stretch;min-height:104px;flex:0 0 auto;background:#f0e7de ${flash[0].photo ? `url('${flash[0].photo}') center/cover no-repeat` : ""};display:flex;align-items:center;justify-content:center;font-size:30px">${flash[0].photo ? "" : "🍛"}</div>
       <div style="flex:1;min-width:0;padding:10px 12px 10px 0">
-        <span class="pill today">TODAY <span class="si" style="color:#fff">අද විශේෂ</span></span>
+        <span class="pill today" id="flashTag">${esc(flash[0].tag.toUpperCase())} <span class="si" style="color:#fff">අද විශේෂ</span></span>
         <strong id="flashName" style="display:block;font-size:15px;margin-top:3px">${esc(flash[0].name)}</strong>
         <div class="sub" id="flashMeta" style="font-size:12.5px">${esc(flash[0].shop)} · ${esc(flash[0].window)}</div>
         <strong id="flashPrice" style="color:${ORANGE}">${esc(flash[0].price)}</strong> <span class="pill deal" id="flashDeal" ${flash[0].deal ? "" : "hidden"}>${esc(flash[0].deal)}</span>
@@ -720,6 +742,7 @@ async function homePage(req, url) {
         const voted = JSON.parse(localStorage.getItem('dishVotes') || '{}');
         function render(d) {
           card.href = '/app/shop/' + d.shopId;
+          document.getElementById('flashTag').textContent = (d.tag || 'Today special').toUpperCase();
           const img = document.getElementById('flashImg');
           img.style.background = d.photo ? "#f0e7de url('" + d.photo + "') center/cover no-repeat" : '#f0e7de';
           img.textContent = d.photo ? '' : '🍛';
@@ -822,7 +845,7 @@ async function shopPage(id) {
     <div class="sub">★ 4.8 · ${esc(shop.city)}, ${esc(shop.country)} · ${shop.open === false ? "closed now" : "open now"}</div>
     ${special ? `
     <div class="card" style="margin-top:14px">
-      <span class="pill today">TODAY</span> <strong style="font-size:13.5px">Today's special package <span class="si">අද විශේෂ</span></strong>
+      <span class="pill today">${esc((special.promoTag || "Today special").toUpperCase())}</span> <strong style="font-size:13.5px">Today's special package <span class="si">අද විශේෂ</span></strong>
       <div class="row" style="margin-top:10px">
         ${dishThumb(special, "", "🎁")}
         <div style="flex:1">
@@ -1275,6 +1298,7 @@ function dishEditPage(shop, d) {
         <div style="flex:1;min-width:0"><strong style="font-size:13.5px">Today's special package</strong> <span class="sub" style="font-size:11.5px">· shown in promotions</span></div>
         <label class="toggle"><input type="checkbox" name="special" value="1" form="dishEditForm" ${d.special ? "checked" : ""}><span></span></label>
       </div>
+      ${promoTagChips("dishEditForm", d.promoTag)}
     <form method="POST" action="/app/owner/${String(shop._id)}/dish/${String(d._id)}" id="dishEditForm">
       <label for="photoIn" class="thumb" id="photoBox" style="width:100%;height:150px;margin:10px 0;font-size:13px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative;${d.photo ? `background-image:url(${d.photo})` : ""}"><span id="photoHint">${d.photo ? "" : "add dish photo — tap to use camera or library"}</span><span style="position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
       <input type="file" id="photoIn" accept="image/*" style="display:none">
@@ -1406,6 +1430,7 @@ function addDishPage(shop) {
         <div style="flex:1;min-width:0"><strong style="font-size:13.5px">Today's special package</strong> <span class="sub" style="font-size:11.5px">· shown in promotions</span></div>
         <label class="toggle"><input type="checkbox" name="special" value="1" form="dishForm"><span></span></label>
       </div>
+      ${promoTagChips("dishForm")}
     <form method="POST" action="/app/owner/${String(shop._id)}/publish" id="dishForm">
       <label for="photoIn" class="thumb" id="photoBox" style="width:100%;height:130px;margin:10px 0;font-size:13px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative"><span id="photoHint">add dish photo — tap to use camera or library</span><span style="position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
       <input type="file" id="photoIn" accept="image/*" style="display:none">
@@ -1454,6 +1479,8 @@ function addDishPage(shop) {
 }
 
 /* ---------------------------------------------------------------- route */
+
+export { shell, esc, lkr };
 
 export async function handleApp(req, res, url) {
   const path = url.pathname;
@@ -1967,7 +1994,27 @@ export async function handleApp(req, res, url) {
     return;
   }
 
+  // Owner hub — 13 round buttons, one per shop function.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/suite\/([a-z]+)$/);
+  if (m) {
+    const { suitePage } = await import("./shop-suite.mjs");
+    const shop = await shopById(m[1]);
+    const pageHtml = shop ? suitePage(shop, m[2]) : null;
+    if (pageHtml) { html(res, pageHtml); return; }
+    res.writeHead(404).end("not found");
+    return;
+  }
+
   m = path.match(/^\/app\/owner\/([a-f0-9]{24})$/);
+  if (m) {
+    const { ownerHubPage } = await import("./shop-suite.mjs");
+    const shop = await shopById(m[1]);
+    if (!shop) { res.writeHead(404).end("not found"); return; }
+    html(res, ownerHubPage(shop, (url.searchParams.get("msg") || "").slice(0, 60)));
+    return;
+  }
+
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/dishes$/);
   if (m) {
     const page = await ownerDash(m[1], (url.searchParams.get("msg") || "").slice(0, 60));
     if (page) { html(res, page); return; }
@@ -1978,7 +2025,7 @@ export async function handleApp(req, res, url) {
     const _id = await oid(m[1]);
     const shop = _id && (await (await col("shop_owners")).findOne({ _id }));
     if (shop) await (await col("shop_owners")).updateOne({ _id }, { $set: { open: shop.open === false } });
-    redirect(res, `/app/owner/${m[1]}?msg=${encodeURIComponent(shop && shop.open === false ? "You're open" : "You're closed")}`);
+    redirect(res, `/app/owner/${m[1]}/dishes?msg=${encodeURIComponent(shop && shop.open === false ? "You're open" : "You're closed")}`);
     return;
   }
 
@@ -1993,7 +2040,7 @@ export async function handleApp(req, res, url) {
         { $set: { status, ...(status === "preparing" ? { confirmedAt: new Date() } : {}) } },
       );
     }
-    redirect(res, `/app/owner/${m[1]}?msg=${encodeURIComponent("Order updated")}`);
+    redirect(res, `/app/owner/${m[1]}/dishes?msg=${encodeURIComponent("Order updated")}`);
     return;
   }
 
@@ -2051,9 +2098,10 @@ export async function handleApp(req, res, url) {
         window: String(form.get("window") || "All day").slice(0, 20),
         discount: String(form.get("discount") || "none").slice(0, 10),
         special: form.get("special") === "1",
+        promoTag: PROMO_TAGS.includes(form.get("promoTag")) ? form.get("promoTag") : "Today special",
         updatedAt: new Date(),
       } });
-      redirect(res, `/app/owner/${m[1]}?msg=${encodeURIComponent("Dish saved")}`);
+      redirect(res, `/app/owner/${m[1]}/dishes?msg=${encodeURIComponent("Dish saved")}`);
     } else {
       html(res, dishEditPage(shop, d));
     }
@@ -2070,7 +2118,7 @@ export async function handleApp(req, res, url) {
         if (shopOid) await (await col("shop_owners")).updateOne({ _id: shopOid }, { $inc: { listings: -1 } });
       }
     }
-    redirect(res, `/app/owner/${m[1]}?msg=${encodeURIComponent("Dish removed")}`);
+    redirect(res, `/app/owner/${m[1]}/dishes?msg=${encodeURIComponent("Dish removed")}`);
     return;
   }
 
@@ -2103,12 +2151,13 @@ export async function handleApp(req, res, url) {
         window: String(form.get("window") || "All day").slice(0, 20),
         discount: String(form.get("discount") || "none").slice(0, 10),
         special: form.get("special") === "1",
+        promoTag: PROMO_TAGS.includes(form.get("promoTag")) ? form.get("promoTag") : "Today special",
         createdAt: new Date(),
       });
       const shopOid = await oid(m[1]);
       if (shopOid) await (await col("shop_owners")).updateOne({ _id: shopOid }, { $inc: { listings: 1 } });
     }
-    redirect(res, `/app/owner/${m[1]}?msg=${encodeURIComponent("Dish published")}`);
+    redirect(res, `/app/owner/${m[1]}/dishes?msg=${encodeURIComponent("Dish published")}`);
     return;
   }
 
