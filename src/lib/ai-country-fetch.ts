@@ -123,9 +123,11 @@ ${list}`;
   return arr.map((v) => v.relevant !== false);
 }
 
-/** Judge up to `cap` items in batches; unjudged/failed batches default to relevant. */
-async function judgeAll(items: Judgeable[], cap: number, errors: string[]): Promise<boolean[]> {
-  const verdicts = items.map(() => true);
+/** Judge up to `cap` items in batches. `null` = no verdict (no key, over cap,
+ * or the batch call failed) — callers keep those items visible but leave them
+ * unjudged so a later run retries them. */
+async function judgeAll(items: Judgeable[], cap: number, errors: string[]): Promise<(boolean | null)[]> {
+  const verdicts: (boolean | null)[] = items.map(() => null);
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || items.length === 0) return verdicts;
   const ai = new GoogleGenAI({ apiKey });
@@ -238,24 +240,23 @@ export async function fetchCountryAi(): Promise<{
   const fresh = items.filter((it) => !known.has(it.url));
   const freshVerdicts = await judgeAll(fresh, JUDGE_MAX_PER_RUN, errors);
   const verdictByUrl = new Map(fresh.map((it, i) => [it.url, freshVerdicts[i]]));
-  let judged = fresh.length;
-  let dropped = freshVerdicts.filter((v) => !v).length;
+  let judged = freshVerdicts.filter((v) => v !== null).length;
+  let dropped = freshVerdicts.filter((v) => v === false).length;
 
   let upserted = 0;
   const now = Date.now();
   for (const it of items) {
+    const verdict = verdictByUrl.get(it.url);
+    const insertFields: Record<string, unknown> = {
+      url: it.url, country: it.country, iso: it.iso, topic: it.topic, createdAt: now,
+    };
+    // No verdict → insert without `relevant` so the backlog sweep retries it.
+    if (verdict !== null && verdict !== undefined) insertFields.relevant = verdict;
     const r = await col.updateOne(
       { url: it.url },
       {
         $set: { title: it.title, source: it.source, summary: it.summary, publishedAt: it.publishedAt, seenAt: now },
-        $setOnInsert: {
-          url: it.url,
-          country: it.country,
-          iso: it.iso,
-          topic: it.topic,
-          createdAt: now,
-          relevant: verdictByUrl.get(it.url) ?? true,
-        },
+        $setOnInsert: insertFields,
       },
       { upsert: true },
     );
@@ -278,12 +279,14 @@ export async function fetchCountryAi(): Promise<{
         budget,
         errors,
       );
-      const ops = backlog.map((d, i) => ({
-        updateOne: { filter: { _id: d._id }, update: { $set: { relevant: verdicts[i] } } },
-      }));
-      await col.bulkWrite(ops);
-      judged += backlog.length;
-      dropped += verdicts.filter((v) => !v).length;
+      const ops = backlog
+        .map((d, i) => (verdicts[i] === null ? null : {
+          updateOne: { filter: { _id: d._id }, update: { $set: { relevant: verdicts[i] } } },
+        }))
+        .filter((op) => op !== null);
+      if (ops.length) await col.bulkWrite(ops as never);
+      judged += ops.length;
+      dropped += verdicts.filter((v) => v === false).length;
     }
   }
 

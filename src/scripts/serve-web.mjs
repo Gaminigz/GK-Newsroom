@@ -32,6 +32,7 @@ import { readFile } from "node:fs/promises";
 import { getDb } from "../lib/mongo.ts";
 import { getEpisodeAudio, listEpisodes } from "../lib/podcast.ts";
 import { handleAdmin } from "../lib/admin.mjs";
+import { handleLeads } from "../lib/leads.mjs";
 import { handleApp } from "../lib/app.mjs";
 import { getSpiceAudio, listSpiceEpisodes } from "../lib/spice-podcast.ts";
 import { getGovAudio, listGovEpisodes } from "../lib/gov-podcast.ts";
@@ -660,7 +661,7 @@ function govPage(posts, episodes = []) {
   ${streamer({ items: waItems, base: "/podcast/gov/" })}
   <nav class="chips">${chips}</nav>
   <main>${cards}</main>
-  <footer>GK SMART Accounting · sources: GDT · ACAR · MEF · MoC · GDCE · NA · MoI</footer>
+  <footer>GK SMART Accounting · sources: GDT · ACAR · MEF · MoC · GDCE · NA · MoI · <a href="/leads" style="color:#35c98a;text-decoration:none">Leads</a></footer>
 </div>
 <script>
   document.querySelectorAll(".chip").forEach((c) => {
@@ -981,6 +982,11 @@ const server = http.createServer(async (req, res) => {
 
     if (path === "/admin" || path.startsWith("/admin/")) {
       await handleAdmin(req, res, url);
+      return;
+    }
+
+    if (path === "/leads" || path.startsWith("/leads/")) {
+      await handleLeads(req, res, url);
       return;
     }
 

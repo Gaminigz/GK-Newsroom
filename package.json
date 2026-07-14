@@ -8,11 +8,13 @@
     "node": ">=20"
   },
   "scripts": {
-    "daily": "npm run fetch && (npm run ai-countries || true) && (npm run gov || true) && (npm run telegram || true) && (npm run govcast || true) && npm run podcast",
+    "daily": "npm run fetch && (npm run ai-countries || true) && (npm run gov || true) && (npm run telegram || true) && (npm run brands || true) && (npm run govcast || true) && npm run podcast",
     "govcast": "tsx src/scripts/run-gov-podcast.mjs",
     "fetch": "tsx src/scripts/run-fetch.mjs",
     "ai-countries": "tsx src/scripts/run-ai-countries.mjs",
     "telegram": "tsx src/scripts/run-telegram.mjs",
+    "brands": "tsx src/scripts/run-brand-scout.mjs",
+    "brands-page": "tsx src/scripts/serve-brands.mjs",
     "gov": "tsx src/scripts/run-gov-fetch.mjs",
     "spicecast": "tsx src/scripts/run-spice-podcasts.mjs",
     "genimages": "tsx src/scripts/gen-images.mjs",
