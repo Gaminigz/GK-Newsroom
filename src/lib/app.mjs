@@ -75,8 +75,16 @@ function cookies(req) {
   );
 }
 
+/** Support email as a mailto link — the phone offers the user's mail app. */
+const SUPPORT_MAILTO = `<a href="mailto:gk.smart@ggmt.sg?subject=3una%205aha%20support" style="color:#b3672f;font-weight:700;text-decoration:underline">gk.smart@ggmt.sg</a>`;
+
+/** Indicative rate for the US$ display; dishes are priced in LKR. */
+const LKR_PER_USD = 300;
+
+/** Travellers see US$ first, locals still get the exact LKR price. */
 function lkr(n) {
-  return "LKR " + Number(n ?? 0).toLocaleString("en-US");
+  const v = Number(n ?? 0);
+  return `US$${(v / LKR_PER_USD).toFixed(2)} · LKR ${v.toLocaleString("en-US")}`;
 }
 
 /** Dish thumbnail — real photo when the owner uploaded one, emoji tile otherwise. */
@@ -210,9 +218,9 @@ function shell({ title, body, nav = "", back = "", noPad = false, backFloat = fa
   body { background:#faf7f4; color:#1a1a1a; font:15.5px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
          max-width:480px; margin:0 auto; min-height:100vh;
          padding:${noPad ? "0" : "14px 24px"}; padding-top:calc(env(safe-area-inset-top, 0px) + 30px); padding-bottom:calc(env(safe-area-inset-bottom, 0px) + 88px); }
-  .logout { position:fixed; top:calc(env(safe-area-inset-top, 0px) + 30px); right:16px; z-index:80;
-            font-size:12.5px; font-weight:700; color:#d92d20; background:#fff; border:1px solid #f1c1bb;
-            border-radius:99px; padding:6px 13px; box-shadow:0 2px 8px #0002; }
+  .logout { position:fixed; top:calc(env(safe-area-inset-top, 0px) + 4px); right:16px; z-index:80;
+            font-size:12px; font-weight:700; color:#d92d20; background:#fff; border:1px solid #f1c1bb;
+            border-radius:99px; padding:5px 12px; box-shadow:0 2px 8px #0002; }
   a { color:inherit; text-decoration:none; }
   h1 { font-size:24px; letter-spacing:-.02em; }
   .si { color:#b3672f; font-weight:400; font-size:.82em; }
@@ -396,7 +404,7 @@ function emailLoginPage(error = "") {
     body: `
     <h1>Sign in with email</h1>
     <div class="sub" style="margin:4px 0 6px">Submit your email and password — new emails get an account instantly.
-    A verification code is emailed to you by <strong>gk.smart@ggmt.sg</strong>; you can sign in right away and verify within 24 hours.</div>
+    A verification code is emailed to you by ${SUPPORT_MAILTO}; you can sign in right away and verify within 24 hours.</div>
     ${error ? `<div class="card" style="background:#fdecea;border-color:#efc4bf;color:#b3261e">${esc(error)}</div>` : ""}
     <form method="POST" action="/app/login-email">
       <label>EMAIL</label>
@@ -464,7 +472,7 @@ async function userProfilePage(req, flash = "") {
     </form>
     <form method="POST" action="/app/profile/reset-send" class="card row" style="padding:12px 14px">
       <div style="flex:1"><strong style="font-size:13.5px">2 · Email me a reset code</strong>
-        <div class="sub" style="font-size:12px">Sent by gk.smart@ggmt.sg · valid 24h</div></div>
+        <div class="sub" style="font-size:12px">Sent by ${SUPPORT_MAILTO} · valid 24h</div></div>
       <button class="btn ghost" style="width:auto;padding:10px 14px">Send</button>
     </form>
     <a class="card row" href="mailto:gk.smart@ggmt.sg?subject=Password%20help%20—%203una%205aha" style="padding:12px 14px">
@@ -503,7 +511,7 @@ function resetPage(error = "") {
     back: "/app/profile",
     body: `
     <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/profile">‹</a><h1 style="font-size:21px">Reset password</h1></div>
-    <p class="sub" style="margin:8px 0 4px">Enter the code emailed by <strong>gk.smart@ggmt.sg</strong> (valid 24h) and your new password.</p>
+    <p class="sub" style="margin:8px 0 4px">Enter the code emailed by ${SUPPORT_MAILTO} (valid 24h) and your new password.</p>
     ${error ? `<div class="card" style="background:#fdecea;border-color:#efc4bf;color:#b3261e">${esc(error)}</div>` : ""}
     <form method="POST" action="/app/profile/reset">
       <label>RESET CODE</label>
@@ -525,7 +533,7 @@ function verifyPage(email, error = "") {
     body: `
     <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/home">‹</a><h1 style="font-size:21px">Verify your email</h1></div>
     <p class="sub" style="margin:8px 0 4px">A 6-digit code was emailed to <strong>${esc(email)}</strong> by
-    <strong>gk.smart@ggmt.sg</strong>. Codes are valid for 24 hours — this is a non-commercial community app,
+    ${SUPPORT_MAILTO}. Codes are valid for 24 hours — this is a non-commercial community app,
     so you can also do this later.</p>
     ${error ? `<div class="card" style="background:#fdecea;border-color:#efc4bf;color:#b3261e">${esc(error)}</div>` : ""}
     <form method="POST" action="/app/verify">
@@ -866,6 +874,7 @@ async function shopPage(id) {
     document.getElementById('pv').style.display = 'flex';
   }
   const BKEY = 'basket_${String(shop._id)}';
+  const money = (v) => 'US$' + (v / ${LKR_PER_USD}).toFixed(2) + ' \\u00b7 LKR ' + v.toLocaleString();
   let basket = [];
   try { basket = JSON.parse(localStorage.getItem(BKEY) || '[]'); } catch {}
   function persist() { localStorage.setItem(BKEY, JSON.stringify(basket)); }
@@ -888,7 +897,7 @@ async function shopPage(id) {
     const bar = document.getElementById('bar');
     bar.style.display = n ? 'flex' : 'none';
     document.getElementById('barL').textContent = 'View basket · ' + n + ' item' + (n > 1 ? 's' : '');
-    document.getElementById('barR').textContent = 'LKR ' + t.toLocaleString();
+    document.getElementById('barR').textContent = money(t);
   }
   function renderSheet() {
     const box = document.getElementById('sheetItems');
@@ -898,12 +907,12 @@ async function shopPage(id) {
       '<button type="button" onclick="qty(\\'' + b.id + '\\',-1)" style="width:30px;height:30px;border-radius:99px;border:1.5px solid #ddd5cd;background:#fff;font-weight:800;cursor:pointer">−</button>' +
       '<span style="width:20px;text-align:center;font-weight:700">' + b.qty + '</span>' +
       '<button type="button" onclick="qty(\\'' + b.id + '\\',1)" style="width:30px;height:30px;border-radius:99px;border:1.5px solid #ddd5cd;background:#fff;font-weight:800;cursor:pointer">＋</button>' +
-      '<span style="width:78px;text-align:right;font-size:13px;font-weight:700">LKR ' + (b.qty * b.price).toLocaleString() + '</span>' +
+      '<span style="width:132px;text-align:right;font-size:11.5px;font-weight:700">' + money(b.qty * b.price) + '</span>' +
       '<button type="button" onclick="qty(\\'' + b.id + '\\',-99)" aria-label="Remove" style="width:30px;height:30px;border-radius:99px;border:1.5px solid #f1c1bb;background:#fff;color:#d92d20;font-weight:800;cursor:pointer">✕</button>' +
       '</div>').join('');
     document.getElementById('itemsField').value = JSON.stringify(basket);
     const tEl = document.getElementById('sheetTotal');
-    if (tEl) tEl.textContent = 'LKR ' + basket.reduce((a, b) => a + b.qty * b.price, 0).toLocaleString();
+    if (tEl) tEl.textContent = money(basket.reduce((a, b) => a + b.qty * b.price, 0));
   }
   function checkout() { renderSheet(); document.getElementById('sheet').style.display = 'block'; }
   document.querySelector('#sheet form').addEventListener('submit', () => {
