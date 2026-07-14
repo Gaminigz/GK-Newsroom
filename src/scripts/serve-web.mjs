@@ -32,7 +32,7 @@ import { readFile } from "node:fs/promises";
 import { getDb } from "../lib/mongo.ts";
 import { getEpisodeAudio, listEpisodes } from "../lib/podcast.ts";
 import { handleAdmin } from "../lib/admin.mjs";
-import { handleLeads } from "../lib/leads.mjs";
+import { handleLeads, hasLeadsSession } from "../lib/leads.mjs";
 import { handleApp } from "../lib/app.mjs";
 import { getSpiceAudio, listSpiceEpisodes } from "../lib/spice-podcast.ts";
 import { getGovAudio, listGovEpisodes } from "../lib/gov-podcast.ts";
@@ -661,7 +661,7 @@ function govPage(posts, episodes = []) {
   ${streamer({ items: waItems, base: "/podcast/gov/" })}
   <nav class="chips">${chips}</nav>
   <main>${cards}</main>
-  <footer>GK SMART Accounting · sources: GDT · ACAR · MEF · MoC · GDCE · NA · MoI · <a href="/leads" style="color:#35c98a;text-decoration:none">Leads</a></footer>
+  <footer>GK SMART Accounting · sources: GDT · ACAR · MEF · MoC · GDCE · NA · MoI · <a href="/leads" style="color:#35c98a;text-decoration:none">Leads</a> · <a href="/ai/world" style="color:#35c98a;text-decoration:none">AI Funding</a></footer>
 </div>
 <script>
   document.querySelectorAll(".chip").forEach((c) => {
@@ -818,11 +818,6 @@ ${ogImage ? `<meta property="og:image" content="${esc(ogImage)}">` : ""}
     <h1>GK <em>Ai</em> Newsroom</h1>
     <div class="sub">The daily Ai brief — fresh every morning at 5 AM.</div>
   </header>
-  <a href="/ai/world" style="display:flex;align-items:center;gap:10px;margin:14px 0 2px;padding:13px 15px;border-radius:14px;text-decoration:none;background:linear-gradient(135deg,#0a1f47,#173a7a 60%,#2a5cb8);border:1px solid #ffffff1f;box-shadow:0 4px 14px #0007">
-    <span style="font-size:26px;line-height:1">🌍</span>
-    <span style="flex:1"><span style="color:#fff;font-weight:600;letter-spacing:-.01em">AI around the world</span><br><span style="color:#ffffffc4;font-size:13px">Funding, startups &amp; government AI — country by country</span></span>
-    <span style="color:#fff;font-size:18px">›</span>
-  </a>
   ${streamer({ items: waItems, base: "/podcast/" })}
   <nav class="chips">${chips}</nav>
   <main id="feed">
@@ -895,7 +890,7 @@ function worldPage(index) {
        <div class="ct"><b>${r.count}</b> update${r.count === 1 ? "" : "s"}</div>
      </a>`).join("");
   const body = `${COUNTRY_CSS}
-    <a class="back" href="/ai">‹ AI newsroom</a>
+    <a class="back" href="/accounting">‹ GK SMART Accounting</a>
     <header><h1>AI around the <em>world</em></h1>
       <p class="cintro">Funding, startups &amp; government AI programmes — country by country. ${total} update${total === 1 ? "" : "s"} tracked.</p></header>
     ${index.length ? `<div class="cgrid">${cards}</div>`
@@ -1014,17 +1009,26 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // AI Funding pages are private — same gate as /leads (LEADS_CODE).
     if (path === "/ai/world") {
+      if (!hasLeadsSession(req)) {
+        res.writeHead(303, { Location: "/leads" }).end();
+        return;
+      }
       const index = await loadCountryIndex();
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300" });
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
       res.end(worldPage(index));
       return;
     }
 
     const cm = path.match(/^\/ai\/country\/([A-Za-z]{2})$/);
     if (cm) {
+      if (!hasLeadsSession(req)) {
+        res.writeHead(303, { Location: "/leads" }).end();
+        return;
+      }
       const data = await loadCountry(cm[1].toUpperCase());
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300" });
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
       res.end(countryPage(data));
       return;
     }

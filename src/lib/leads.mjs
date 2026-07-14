@@ -158,7 +158,7 @@ export async function renderBrandsPage({ postPath = "/leads/status", logoutPath 
 <div class="wrap">
   <h1>🎯 Leads · Brand Scout</h1>
   <div class="sub">Garment brands ranked by AI-trendiness — ${brands.length} brands · ${totalSignals} signals ·
-    <a href="/accounting">← GK SMART Accounting</a> · <a href="${esc(logoutPath)}">sign out</a></div>
+    <a href="/accounting">← GK SMART Accounting</a> · <a href="/ai/world">🌍 AI Funding</a> · <a href="${esc(logoutPath)}">sign out</a></div>
   ${blocks.join("\n")}
   <div class="p">Score = Σ category-weight × strength × recency over the last 365 days.
   supply_chain/sourcing ×3 · esg/design/automation/investment/hiring ×2 · retail_ai ×1.</div>
@@ -227,7 +227,14 @@ function startSession(res) {
   const token = crypto.randomBytes(24).toString("hex");
   sessions.set(token, Date.now() + SESSION_MS);
   const secure = process.env.RAILWAY_ENVIRONMENT ? "; Secure" : "";
-  res.setHeader("Set-Cookie", `gk_leads=${token}; HttpOnly; Path=/leads; SameSite=Lax; Max-Age=${SESSION_MS / 1000}${secure}`);
+  // Path=/ — the same session also unlocks the private AI Funding pages
+  // (/ai/world, /ai/country/XX), gated in serve-web.mjs via hasLeadsSession.
+  res.setHeader("Set-Cookie", `gk_leads=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_MS / 1000}${secure}`);
+}
+
+/** True if the request carries a live leads session (used by serve-web to gate AI Funding). */
+export function hasLeadsSession(req) {
+  return !!getSession(req);
 }
 
 function html(res, body, status = 200) {
@@ -269,7 +276,7 @@ export async function handleLeads(req, res, url) {
   if (path === "/leads/logout") {
     const t = getSession(req);
     if (t) sessions.delete(t);
-    res.setHeader("Set-Cookie", "gk_leads=; Path=/leads; Max-Age=0");
+    res.setHeader("Set-Cookie", "gk_leads=; Path=/; Max-Age=0");
     res.writeHead(303, { Location: "/leads" });
     res.end();
     return;
