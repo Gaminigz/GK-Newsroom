@@ -1035,7 +1035,7 @@ async function locationPage(req) {
             if (D(cc.lat, cc.lng, s.lat, s.lng) <= 10) {
               n++;
               const mk = L.circleMarker([s.lat, s.lng], { radius: 9, color: '#fff', weight: 2, fillColor: '#d9542b', fillOpacity: 1 }).addTo(map)
-                .bindPopup('<b>' + s.name + '</b><br><a href="/app/shop/' + s.id + '">Open shop →</a><br><a href="#" onclick="return window.favShop(\'' + s.id + '\', this)">☆ Save favourite</a>');
+                .bindPopup('<b>' + s.name + '</b><br><a href="/app/shop/' + s.id + '">Open shop →</a><br><a href="#" data-id="' + s.id + '" onclick="return window.favShop(this.dataset.id, this)">☆ Save favourite</a>');
               mk.on('contextmenu', () => window.favShop(s.id));
               markers.push(mk);
             }
