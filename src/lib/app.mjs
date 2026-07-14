@@ -1698,23 +1698,14 @@ export async function handleApp(req, res, url) {
       html(res, emailLoginPage("Wrong password."), 401);
       return;
     }
-    if (email === "a@a.com") {
-      // Shop test account — ensure its shop exists, land on the dashboard.
-      const owners = await col("shop_owners");
-      let shop = await owners.findOne({ email });
-      if (!shop) {
-        const r = await owners.insertOne({
-          name: "Test Kitchen", owner: "Test Owner", email, phone: "",
-          city: "Colombo", country: "LK", kind: "restaurant", signup: "Email",
-          listings: 0, status: "active", open: true, createdAt: new Date(), testAccount: true,
-        });
-        shop = { _id: r.insertedId };
-      }
+    // If this email owns a shop, land on its dashboard; otherwise browse as buyer.
+    const ownShop = await (await col("shop_owners")).findOne({ email });
+    if (ownShop) {
       res.setHeader("Set-Cookie", [
         `app_user=email; Path=/app; Max-Age=31536000; SameSite=Lax`,
-        `app_shop=${String(shop._id)}; Path=/app; Max-Age=31536000; SameSite=Lax`,
+        `app_shop=${String(ownShop._id)}; Path=/app; Max-Age=31536000; SameSite=Lax`,
       ]);
-      redirect(res, `/app/owner/${String(shop._id)}`);
+      redirect(res, `/app/owner/${String(ownShop._id)}`);
     } else {
       res.setHeader("Set-Cookie", `app_user=email; Path=/app; Max-Age=31536000; SameSite=Lax`);
       redirect(res, "/app/home");
