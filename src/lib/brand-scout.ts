@@ -19,47 +19,364 @@
 import Parser from "rss-parser";
 import { GoogleGenAI, Type } from "@google/genai";
 
-/** Brands worth watching. `cambodia: true` = known/likely Cambodia sourcing. */
-export const BRANDS: { name: string; hq: string; cambodia: boolean }[] = [
-  { name: "Adidas", hq: "Germany", cambodia: true },
-  { name: "Nike", hq: "USA", cambodia: true },
-  { name: "Puma", hq: "Germany", cambodia: true },
-  { name: "H&M", hq: "Sweden", cambodia: true },
-  { name: "Inditex Zara", hq: "Spain", cambodia: false },
-  { name: "Uniqlo Fast Retailing", hq: "Japan", cambodia: true },
-  { name: "Levi Strauss", hq: "USA", cambodia: true },
-  { name: "Gap Inc", hq: "USA", cambodia: true },
-  { name: "Primark", hq: "Ireland", cambodia: true },
-  { name: "Next plc", hq: "UK", cambodia: true },
-  { name: "Marks & Spencer", hq: "UK", cambodia: true },
-  { name: "C&A", hq: "Netherlands", cambodia: true },
-  { name: "Bestseller", hq: "Denmark", cambodia: true },
-  { name: "Mango", hq: "Spain", cambodia: false },
-  { name: "Lululemon", hq: "Canada", cambodia: true },
-  { name: "Under Armour", hq: "USA", cambodia: true },
-  { name: "VF Corporation", hq: "USA", cambodia: true },
-  { name: "PVH Calvin Klein Tommy Hilfiger", hq: "USA", cambodia: true },
-  { name: "Ralph Lauren", hq: "USA", cambodia: false },
-  { name: "Hugo Boss", hq: "Germany", cambodia: false },
-  { name: "Decathlon", hq: "France", cambodia: true },
-  { name: "Columbia Sportswear", hq: "USA", cambodia: true },
-  { name: "New Balance", hq: "USA", cambodia: true },
-  { name: "ASICS", hq: "Japan", cambodia: true },
-  { name: "Patagonia", hq: "USA", cambodia: false },
-  { name: "Shein", hq: "Singapore", cambodia: false },
-  { name: "Target apparel", hq: "USA", cambodia: true },
-  { name: "Walmart apparel", hq: "USA", cambodia: true },
+export type Brand = { name: string; iso: string; sector: string; cambodia?: boolean };
+
+/** The brand universe: garment, footwear, bags/luggage, sportswear, outdoor,
+ * underwear, kids, homeware and private-label retail — worldwide.
+ * `cambodia: true` = known/likely Cambodia sourcing. Extend freely. */
+export const BRANDS: Brand[] = [
+  // — Sportswear & athletic footwear
+  { name: "Nike", iso: "US", sector: "sports", cambodia: true },
+  { name: "Adidas", iso: "DE", sector: "sports", cambodia: true },
+  { name: "Puma", iso: "DE", sector: "sports", cambodia: true },
+  { name: "Under Armour", iso: "US", sector: "sports", cambodia: true },
+  { name: "New Balance", iso: "US", sector: "sports", cambodia: true },
+  { name: "ASICS", iso: "JP", sector: "sports", cambodia: true },
+  { name: "Reebok", iso: "US", sector: "sports" },
+  { name: "Fila", iso: "KR", sector: "sports" },
+  { name: "Li-Ning", iso: "CN", sector: "sports" },
+  { name: "Anta Sports", iso: "CN", sector: "sports" },
+  { name: "Xtep", iso: "CN", sector: "sports" },
+  { name: "361 Degrees", iso: "CN", sector: "sports" },
+  { name: "Peak Sport", iso: "CN", sector: "sports" },
+  { name: "Mizuno", iso: "JP", sector: "sports" },
+  { name: "Umbro", iso: "GB", sector: "sports" },
+  { name: "Kappa", iso: "IT", sector: "sports" },
+  { name: "Le Coq Sportif", iso: "FR", sector: "sports" },
+  { name: "Diadora", iso: "IT", sector: "sports" },
+  { name: "Lotto Sport", iso: "IT", sector: "sports" },
+  { name: "Brooks Running", iso: "US", sector: "sports" },
+  { name: "Saucony", iso: "US", sector: "sports" },
+  { name: "Hoka", iso: "US", sector: "sports" },
+  { name: "On Running", iso: "CH", sector: "sports" },
+  { name: "Salomon", iso: "FR", sector: "outdoor" },
+  { name: "K-Swiss", iso: "US", sector: "sports" },
+  { name: "Lululemon", iso: "CA", sector: "sports", cambodia: true },
+  { name: "Gymshark", iso: "GB", sector: "sports" },
+  { name: "Fabletics", iso: "US", sector: "sports" },
+  { name: "Alo Yoga", iso: "US", sector: "sports" },
+  { name: "Vuori", iso: "US", sector: "sports" },
+  // — Footwear (casual / classic)
+  { name: "Skechers", iso: "US", sector: "footwear" },
+  { name: "Crocs", iso: "US", sector: "footwear" },
+  { name: "Birkenstock", iso: "DE", sector: "footwear" },
+  { name: "Dr. Martens", iso: "GB", sector: "footwear" },
+  { name: "Timberland", iso: "US", sector: "footwear" },
+  { name: "Vans", iso: "US", sector: "footwear" },
+  { name: "Converse", iso: "US", sector: "footwear" },
+  { name: "Clarks", iso: "GB", sector: "footwear" },
+  { name: "Ecco", iso: "DK", sector: "footwear" },
+  { name: "Geox", iso: "IT", sector: "footwear" },
+  { name: "Camper", iso: "ES", sector: "footwear" },
+  { name: "Toms", iso: "US", sector: "footwear" },
+  { name: "Allbirds", iso: "US", sector: "footwear" },
+  { name: "Veja", iso: "FR", sector: "footwear" },
+  { name: "Merrell", iso: "US", sector: "footwear" },
+  { name: "Wolverine Worldwide", iso: "US", sector: "footwear" },
+  { name: "Deckers Brands", iso: "US", sector: "footwear" },
+  { name: "UGG", iso: "US", sector: "footwear" },
+  { name: "Steve Madden", iso: "US", sector: "footwear" },
+  { name: "Aldo", iso: "CA", sector: "footwear" },
+  { name: "Bata", iso: "CH", sector: "footwear" },
+  { name: "Deichmann", iso: "DE", sector: "footwear" },
+  { name: "Kurt Geiger", iso: "GB", sector: "footwear" },
+  { name: "Charles & Keith", iso: "SG", sector: "footwear" },
+  // — Fast fashion & high street
+  { name: "H&M", iso: "SE", sector: "fashion", cambodia: true },
+  { name: "Inditex Zara", iso: "ES", sector: "fashion" },
+  { name: "Uniqlo Fast Retailing", iso: "JP", sector: "fashion", cambodia: true },
+  { name: "GU (Fast Retailing)", iso: "JP", sector: "fashion" },
+  { name: "Gap Inc", iso: "US", sector: "fashion", cambodia: true },
+  { name: "Primark", iso: "IE", sector: "fashion", cambodia: true },
+  { name: "C&A", iso: "NL", sector: "fashion", cambodia: true },
+  { name: "Next plc", iso: "GB", sector: "fashion", cambodia: true },
+  { name: "Marks & Spencer", iso: "GB", sector: "fashion", cambodia: true },
+  { name: "Bestseller", iso: "DK", sector: "fashion", cambodia: true },
+  { name: "Mango", iso: "ES", sector: "fashion" },
+  { name: "Shein", iso: "SG", sector: "fashion" },
+  { name: "Forever 21", iso: "US", sector: "fashion" },
+  { name: "American Eagle Outfitters", iso: "US", sector: "fashion" },
+  { name: "Abercrombie & Fitch", iso: "US", sector: "fashion" },
+  { name: "Urban Outfitters", iso: "US", sector: "fashion" },
+  { name: "J.Crew", iso: "US", sector: "fashion" },
+  { name: "Express", iso: "US", sector: "fashion" },
+  { name: "Chico's", iso: "US", sector: "fashion" },
+  { name: "Cotton On", iso: "AU", sector: "fashion" },
+  { name: "Boohoo", iso: "GB", sector: "fashion" },
+  { name: "ASOS", iso: "GB", sector: "fashion" },
+  { name: "New Look", iso: "GB", sector: "fashion" },
+  { name: "River Island", iso: "GB", sector: "fashion" },
+  { name: "Matalan", iso: "GB", sector: "fashion" },
+  { name: "George at ASDA", iso: "GB", sector: "fashion" },
+  { name: "Tesco F&F", iso: "GB", sector: "fashion" },
+  { name: "Sainsbury's Tu", iso: "GB", sector: "fashion" },
+  { name: "Zalando", iso: "DE", sector: "fashion" },
+  { name: "About You", iso: "DE", sector: "fashion" },
+  { name: "Otto Group", iso: "DE", sector: "fashion" },
+  { name: "Bonprix", iso: "DE", sector: "fashion" },
+  { name: "s.Oliver", iso: "DE", sector: "fashion" },
+  { name: "Tom Tailor", iso: "DE", sector: "fashion" },
+  { name: "Esprit", iso: "DE", sector: "fashion" },
+  { name: "Kiabi", iso: "FR", sector: "fashion" },
+  { name: "Celio", iso: "FR", sector: "fashion" },
+  { name: "Promod", iso: "FR", sector: "fashion" },
+  { name: "Etam", iso: "FR", sector: "underwear" },
+  { name: "Benetton", iso: "IT", sector: "fashion" },
+  { name: "OVS", iso: "IT", sector: "fashion" },
+  { name: "Calzedonia", iso: "IT", sector: "underwear" },
+  { name: "Terranova", iso: "IT", sector: "fashion" },
+  { name: "Desigual", iso: "ES", sector: "fashion" },
+  { name: "Tendam Cortefiel", iso: "ES", sector: "fashion" },
+  { name: "LPP Reserved", iso: "PL", sector: "fashion" },
+  { name: "Pepco", iso: "PL", sector: "fashion" },
+  { name: "Lindex", iso: "SE", sector: "fashion" },
+  { name: "KappAhl", iso: "SE", sector: "fashion" },
+  { name: "Gina Tricot", iso: "SE", sector: "fashion" },
+  { name: "Varner Group", iso: "NO", sector: "fashion" },
+  { name: "LC Waikiki", iso: "TR", sector: "fashion" },
+  { name: "DeFacto", iso: "TR", sector: "fashion" },
+  { name: "Koton", iso: "TR", sector: "fashion" },
+  { name: "Mavi", iso: "TR", sector: "denim" },
+  { name: "Giordano", iso: "HK", sector: "fashion" },
+  { name: "Bossini", iso: "HK", sector: "fashion" },
+  { name: "Semir", iso: "CN", sector: "fashion" },
+  { name: "Peacebird", iso: "CN", sector: "fashion" },
+  { name: "Heilan Home", iso: "CN", sector: "fashion" },
+  { name: "Urban Revivo", iso: "CN", sector: "fashion" },
+  { name: "Shimamura", iso: "JP", sector: "fashion" },
+  { name: "Adastria", iso: "JP", sector: "fashion" },
+  { name: "Muji", iso: "JP", sector: "homeware" },
+  { name: "E-Land", iso: "KR", sector: "fashion" },
+  { name: "Spao", iso: "KR", sector: "fashion" },
+  { name: "Splash Fashions", iso: "AE", sector: "fashion" },
+  { name: "Max Fashion", iso: "AE", sector: "fashion" },
+  { name: "Landmark Group", iso: "AE", sector: "retail" },
+  // — Denim & casual heritage
+  { name: "Levi Strauss", iso: "US", sector: "denim", cambodia: true },
+  { name: "Kontoor Wrangler Lee", iso: "US", sector: "denim" },
+  { name: "Guess", iso: "US", sector: "fashion" },
+  { name: "True Religion", iso: "US", sector: "denim" },
+  { name: "Diesel", iso: "IT", sector: "denim" },
+  { name: "Replay", iso: "IT", sector: "denim" },
+  { name: "Pepe Jeans", iso: "ES", sector: "denim" },
+  { name: "G-Star Raw", iso: "NL", sector: "denim" },
+  { name: "Scotch & Soda", iso: "NL", sector: "fashion" },
+  { name: "Lacoste", iso: "FR", sector: "fashion" },
+  { name: "Ralph Lauren", iso: "US", sector: "fashion" },
+  { name: "PVH Calvin Klein Tommy Hilfiger", iso: "US", sector: "fashion", cambodia: true },
+  { name: "VF Corporation", iso: "US", sector: "fashion", cambodia: true },
+  { name: "Hugo Boss", iso: "DE", sector: "fashion" },
+  { name: "Superdry", iso: "GB", sector: "fashion" },
+  { name: "Ted Baker", iso: "GB", sector: "fashion" },
+  { name: "Fred Perry", iso: "GB", sector: "fashion" },
+  { name: "Barbour", iso: "GB", sector: "fashion" },
+  { name: "Nautica", iso: "US", sector: "fashion" },
+  { name: "Perry Ellis", iso: "US", sector: "fashion" },
+  { name: "Oxford Industries", iso: "US", sector: "fashion" },
+  { name: "Tommy Bahama", iso: "US", sector: "fashion" },
+  // — Underwear & basics
+  { name: "Hanes", iso: "US", sector: "underwear" },
+  { name: "Fruit of the Loom", iso: "US", sector: "underwear" },
+  { name: "Gildan", iso: "CA", sector: "underwear" },
+  { name: "Jockey", iso: "US", sector: "underwear" },
+  { name: "Victoria's Secret", iso: "US", sector: "underwear" },
+  { name: "Triumph International", iso: "CH", sector: "underwear" },
+  { name: "Wacoal", iso: "JP", sector: "underwear" },
+  { name: "Cosmo Lady", iso: "CN", sector: "underwear" },
+  { name: "Aimer", iso: "CN", sector: "underwear" },
+  { name: "Skims", iso: "US", sector: "underwear" },
+  // — Outdoor & workwear
+  { name: "Patagonia", iso: "US", sector: "outdoor" },
+  { name: "The North Face", iso: "US", sector: "outdoor" },
+  { name: "Columbia Sportswear", iso: "US", sector: "outdoor", cambodia: true },
+  { name: "Arc'teryx", iso: "CA", sector: "outdoor" },
+  { name: "Mammut", iso: "CH", sector: "outdoor" },
+  { name: "Haglofs", iso: "SE", sector: "outdoor" },
+  { name: "Fjallraven", iso: "SE", sector: "outdoor" },
+  { name: "Jack Wolfskin", iso: "DE", sector: "outdoor" },
+  { name: "Vaude", iso: "DE", sector: "outdoor" },
+  { name: "Decathlon", iso: "FR", sector: "sports", cambodia: true },
+  { name: "REI Co-op", iso: "US", sector: "outdoor" },
+  { name: "Kathmandu", iso: "NZ", sector: "outdoor" },
+  { name: "Macpac", iso: "NZ", sector: "outdoor" },
+  { name: "Marmot", iso: "US", sector: "outdoor" },
+  { name: "Black Diamond", iso: "US", sector: "outdoor" },
+  { name: "Rab", iso: "GB", sector: "outdoor" },
+  { name: "Berghaus", iso: "GB", sector: "outdoor" },
+  { name: "Regatta", iso: "GB", sector: "outdoor" },
+  { name: "Helly Hansen", iso: "NO", sector: "outdoor" },
+  { name: "Bergans", iso: "NO", sector: "outdoor" },
+  { name: "Norrona", iso: "NO", sector: "outdoor" },
+  { name: "Eddie Bauer", iso: "US", sector: "outdoor" },
+  { name: "L.L.Bean", iso: "US", sector: "outdoor" },
+  { name: "Lands' End", iso: "US", sector: "fashion" },
+  { name: "Carhartt", iso: "US", sector: "workwear" },
+  { name: "Dickies", iso: "US", sector: "workwear" },
+  { name: "Duluth Trading", iso: "US", sector: "workwear" },
+  { name: "Engelbert Strauss", iso: "DE", sector: "workwear" },
+  { name: "Snickers Workwear", iso: "SE", sector: "workwear" },
+  // — Luxury & premium (apparel + leather goods)
+  { name: "LVMH Louis Vuitton", iso: "FR", sector: "luxury" },
+  { name: "Kering Gucci", iso: "FR", sector: "luxury" },
+  { name: "Hermes", iso: "FR", sector: "luxury" },
+  { name: "Chanel", iso: "FR", sector: "luxury" },
+  { name: "Prada", iso: "IT", sector: "luxury" },
+  { name: "Armani", iso: "IT", sector: "luxury" },
+  { name: "Zegna", iso: "IT", sector: "luxury" },
+  { name: "Ferragamo", iso: "IT", sector: "luxury" },
+  { name: "Moncler", iso: "IT", sector: "luxury" },
+  { name: "Max Mara", iso: "IT", sector: "luxury" },
+  { name: "Burberry", iso: "GB", sector: "luxury" },
+  { name: "Mulberry", iso: "GB", sector: "bags" },
+  { name: "Tapestry Coach Kate Spade", iso: "US", sector: "bags" },
+  { name: "Capri Michael Kors", iso: "US", sector: "bags" },
+  { name: "Tory Burch", iso: "US", sector: "bags" },
+  { name: "Furla", iso: "IT", sector: "bags" },
+  { name: "Longchamp", iso: "FR", sector: "bags" },
+  // — Bags & luggage
+  { name: "Samsonite", iso: "US", sector: "bags" },
+  { name: "Tumi", iso: "US", sector: "bags" },
+  { name: "American Tourister", iso: "US", sector: "bags" },
+  { name: "Rimowa", iso: "DE", sector: "bags" },
+  { name: "Delsey", iso: "FR", sector: "bags" },
+  { name: "Herschel Supply", iso: "CA", sector: "bags" },
+  { name: "Eastpak", iso: "US", sector: "bags" },
+  { name: "JanSport", iso: "US", sector: "bags" },
+  { name: "Kipling", iso: "BE", sector: "bags" },
+  { name: "Osprey Packs", iso: "US", sector: "bags" },
+  { name: "Deuter", iso: "DE", sector: "bags" },
+  { name: "Thule", iso: "SE", sector: "bags" },
+  { name: "Pacsafe", iso: "HK", sector: "bags" },
+  { name: "Anello", iso: "JP", sector: "bags" },
+  { name: "Porter Yoshida", iso: "JP", sector: "bags" },
+  { name: "Away Travel", iso: "US", sector: "bags" },
+  { name: "Monos", iso: "CA", sector: "bags" },
+  // — Homeware & home textiles
+  { name: "IKEA", iso: "SE", sector: "homeware" },
+  { name: "Williams-Sonoma", iso: "US", sector: "homeware" },
+  { name: "Pottery Barn", iso: "US", sector: "homeware" },
+  { name: "West Elm", iso: "US", sector: "homeware" },
+  { name: "Crate & Barrel", iso: "US", sector: "homeware" },
+  { name: "RH Restoration Hardware", iso: "US", sector: "homeware" },
+  { name: "Wayfair", iso: "US", sector: "homeware" },
+  { name: "Dunelm", iso: "GB", sector: "homeware" },
+  { name: "The White Company", iso: "GB", sector: "homeware" },
+  { name: "John Lewis", iso: "GB", sector: "retail" },
+  { name: "Habitat", iso: "GB", sector: "homeware" },
+  { name: "Maisons du Monde", iso: "FR", sector: "homeware" },
+  { name: "La Redoute", iso: "FR", sector: "homeware" },
+  { name: "JYSK", iso: "DK", sector: "homeware" },
+  { name: "Sostrene Grene", iso: "DK", sector: "homeware" },
+  { name: "Hema", iso: "NL", sector: "homeware" },
+  { name: "Action", iso: "NL", sector: "retail" },
+  { name: "Nitori", iso: "JP", sector: "homeware" },
+  { name: "Daiso", iso: "JP", sector: "homeware" },
+  { name: "Miniso", iso: "CN", sector: "homeware" },
+  { name: "Zara Home", iso: "ES", sector: "homeware" },
+  { name: "H&M Home", iso: "SE", sector: "homeware" },
+  { name: "Adairs", iso: "AU", sector: "homeware" },
+  { name: "Sheridan", iso: "AU", sector: "homeware" },
+  { name: "Temple & Webster", iso: "AU", sector: "homeware" },
+  { name: "Home Centre", iso: "AE", sector: "homeware" },
+  { name: "Brooklinen", iso: "US", sector: "homeware" },
+  { name: "Parachute Home", iso: "US", sector: "homeware" },
+  { name: "Boll & Branch", iso: "US", sector: "homeware" },
+  { name: "Casper", iso: "US", sector: "homeware" },
+  // — Kids
+  { name: "Carter's", iso: "US", sector: "kids" },
+  { name: "Children's Place", iso: "US", sector: "kids" },
+  { name: "Mothercare", iso: "GB", sector: "kids" },
+  { name: "Vertbaudet", iso: "FR", sector: "kids" },
+  { name: "Petit Bateau", iso: "FR", sector: "kids" },
+  { name: "Jacadi", iso: "FR", sector: "kids" },
+  { name: "Mayoral", iso: "ES", sector: "kids" },
+  { name: "Chicco", iso: "IT", sector: "kids" },
+  // — Department stores & big retail (private label)
+  { name: "Target apparel", iso: "US", sector: "retail", cambodia: true },
+  { name: "Walmart apparel", iso: "US", sector: "retail", cambodia: true },
+  { name: "Costco Kirkland", iso: "US", sector: "retail" },
+  { name: "TJX", iso: "US", sector: "retail" },
+  { name: "Ross Stores", iso: "US", sector: "retail" },
+  { name: "Macy's", iso: "US", sector: "retail" },
+  { name: "Nordstrom", iso: "US", sector: "retail" },
+  { name: "Kohl's", iso: "US", sector: "retail" },
+  { name: "JCPenney", iso: "US", sector: "retail" },
+  { name: "Dillard's", iso: "US", sector: "retail" },
+  { name: "El Corte Ingles", iso: "ES", sector: "retail" },
+  { name: "Galeries Lafayette", iso: "FR", sector: "retail" },
+  { name: "Selfridges", iso: "GB", sector: "retail" },
+  { name: "Myer", iso: "AU", sector: "retail" },
+  { name: "David Jones", iso: "AU", sector: "retail" },
+  { name: "Kmart Australia", iso: "AU", sector: "retail" },
+  { name: "Big W", iso: "AU", sector: "retail" },
+  { name: "Lotte Shopping", iso: "KR", sector: "retail" },
+  { name: "Shinsegae", iso: "KR", sector: "retail" },
+  { name: "Isetan Mitsukoshi", iso: "JP", sector: "retail" },
+  { name: "Takashimaya", iso: "JP", sector: "retail" },
+  { name: "Aeon", iso: "JP", sector: "retail" },
+  { name: "Falabella", iso: "CL", sector: "retail" },
+  { name: "Liverpool", iso: "MX", sector: "retail" },
+  { name: "Coppel", iso: "MX", sector: "retail" },
+  { name: "Lojas Renner", iso: "BR", sector: "retail" },
+  { name: "Riachuelo", iso: "BR", sector: "retail" },
+  { name: "Marisa", iso: "BR", sector: "retail" },
+  { name: "Woolworths SA", iso: "ZA", sector: "retail" },
+  { name: "Mr Price", iso: "ZA", sector: "retail" },
+  { name: "Truworths", iso: "ZA", sector: "retail" },
+  { name: "TFG Foschini", iso: "ZA", sector: "retail" },
+  { name: "Pepkor", iso: "ZA", sector: "retail" },
+  { name: "Myntra", iso: "IN", sector: "retail" },
+  { name: "Reliance Trends", iso: "IN", sector: "retail" },
+  { name: "Aditya Birla Fashion", iso: "IN", sector: "fashion" },
+  { name: "Tata Trent Westside", iso: "IN", sector: "retail" },
+  // — Sports retail (private label + supplier influence)
+  { name: "JD Sports", iso: "GB", sector: "retail" },
+  { name: "Foot Locker", iso: "US", sector: "retail" },
+  { name: "Dick's Sporting Goods", iso: "US", sector: "retail" },
+  { name: "Sports Direct Frasers", iso: "GB", sector: "retail" },
+  { name: "Intersport", iso: "CH", sector: "retail" },
+  { name: "XXL Sport", iso: "NO", sector: "retail" },
 ];
 
 export function brandSlug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
-/** Two keyless queries per brand — same net as the country-AI feed. */
+const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
+export function isoCountry(iso: string): string {
+  try {
+    return regionNames.of(iso.toUpperCase()) ?? iso;
+  } catch {
+    return iso;
+  }
+}
+
+/** ISO-3166 alpha-2 → flag emoji. */
+export function isoToFlag(iso: string): string {
+  if (!/^[A-Za-z]{2}$/.test(iso)) return "🏳️";
+  return String.fromCodePoint(...[...iso.toUpperCase()].map((ch) => 0x1f1e6 + ch.charCodeAt(0) - 65));
+}
+
+/** Keyless queries per brand: AI adoption, digital sourcing, and CSR/supplier moves. */
 const QUERIES = (b: string) => [
   `"${b}" AI supply chain manufacturing`,
   `"${b}" artificial intelligence digital sourcing factory`,
+  `"${b}" suppliers sustainability CSR traceability audit`,
 ];
+
+/** First-contact deep-search links per brand — opened by hand, no scraping. */
+export function contactLinks(name: string): { label: string; url: string }[] {
+  const q = encodeURIComponent(name);
+  return [
+    { label: "🔎 PR / press office", url: `https://www.google.com/search?q=${q}+press+office+media+contact` },
+    { label: "💼 LinkedIn people — sourcing", url: `https://www.linkedin.com/search/results/people/?keywords=${q}%20sourcing%20manager` },
+    { label: "💼 LinkedIn people — compliance/ESG", url: `https://www.linkedin.com/search/results/people/?keywords=${q}%20supplier%20compliance%20sustainability` },
+    { label: "📋 LinkedIn jobs — supply chain digital", url: `https://www.linkedin.com/jobs/search/?keywords=${q}%20supply%20chain%20digital` },
+    { label: "🧑‍💻 HR / careers page", url: `https://www.google.com/search?q=${q}+careers+supply+chain+digitalization` },
+    { label: "🌱 CSR / supplier list", url: `https://www.google.com/search?q=${q}+sustainability+report+supplier+list+factory` },
+    { label: "🇰🇭 Cambodia footprint", url: `https://www.google.com/search?q=${q}+Cambodia+factory+supplier` },
+  ];
+}
 
 /** Signal categories and how much they matter to a Yai (factory-side) sale. */
 export const CATEGORY_WEIGHT: Record<string, number> = {
@@ -76,9 +393,9 @@ export const CATEGORY_WEIGHT: Record<string, number> = {
 
 const MODEL = "gemini-2.5-flash";
 const JUDGE_BATCH = 30;
-const MAX_JUDGE = 300; // new stories judged per run
-const DOSSIER_CAP = 10; // dossiers (re)generated per run
-const PER_QUERY = 8; // stories taken per RSS query
+const MAX_JUDGE = 600; // new stories judged per run (backlog clears across runs)
+const DOSSIER_CAP = 15; // dossiers (re)generated per run
+const PER_QUERY = 6; // stories taken per RSS query
 const YEAR_MS = 365 * 24 * 3600 * 1000;
 
 const parser = new Parser({ timeout: 15000 });
@@ -177,6 +494,7 @@ type Dossier = {
   hook: string;
   opener: string;
   modules: string[];
+  firstContact: string;
 };
 
 async function writeDossier(
@@ -200,7 +518,8 @@ Write an approach dossier for the Yai sales team. Be specific to THIS brand's si
 - targetRoles: 3-4 job titles to contact (regional/sourcing/compliance side, not global CEO).
 - hook: the single strongest bridge between their AI agenda and Yai (1 sentence).
 - opener: a 2-3 sentence cold-outreach opener referencing their actual initiative. Professional, no hype, no "I hope this finds you well".
-- modules: 2-4 Yai modules most relevant to pitch (e.g. Digital Audit, YQMS, YPI, 4DP, Accounting/GDT).`;
+- modules: 2-4 Yai modules most relevant to pitch (e.g. Digital Audit, YQMS, YPI, 4DP, Accounting/GDT).
+- firstContact: 2-3 sentences — which DOOR to knock first for this brand (PR/press office, a named LinkedIn role, the CSR/sustainability team, or a live job posting that signals the initiative) and why that door, given their signals. Include the exact search phrase to find the person.`;
 
   const resp = await ai.models.generateContent({
     model: MODEL,
@@ -216,8 +535,9 @@ Write an approach dossier for the Yai sales team. Be specific to THIS brand's si
           hook: { type: Type.STRING },
           opener: { type: Type.STRING },
           modules: { type: Type.ARRAY, items: { type: Type.STRING } },
+          firstContact: { type: Type.STRING },
         },
-        required: ["whyNow", "cambodiaAngle", "targetRoles", "hook", "opener", "modules"],
+        required: ["whyNow", "cambodiaAngle", "targetRoles", "hook", "opener", "modules", "firstContact"],
       },
     },
   });
@@ -269,14 +589,14 @@ export async function scoutBrands(): Promise<{
       { _id: brandSlug(b.name) } as never,
       {
         $setOnInsert: { name: b.name, status: "new", notes: "", createdAt: now },
-        $set: { hq: b.hq, cambodia: b.cambodia },
+        $set: { iso: b.iso, hq: isoCountry(b.iso), sector: b.sector, cambodia: !!b.cambodia },
       },
       { upsert: true },
     );
   }
 
   // 1. Harvest.
-  const perBrand = await mapLimit(BRANDS, 4, async (b) => {
+  const perBrand = await mapLimit(BRANDS, 6, async (b) => {
     try {
       return await fetchBrandStories(b.name);
     } catch (e) {
