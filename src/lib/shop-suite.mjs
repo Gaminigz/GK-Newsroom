@@ -12,44 +12,57 @@ import { shell, esc } from "./app.mjs";
 
 const ORANGE = "#d9542b";
 
-/** One tile per function. `href(id)` = real page; suite previews use key. */
+/** One tile per function. `href(id)` = real page; suite previews use key.
+ *  Table QR is not in the grid — it sits top-right under the Logout pill. */
 export const SUITE_TILES = [
-  { key: "dishes", label: "My dishes", emoji: "🍛", real: (id) => `/app/owner/${id}/dishes` },
-  { key: "qr", label: "Table QR", emoji: "▦", real: (id) => `/app/owner/${id}/qr` },
+  { key: "dishes", label: "Food Menu", emoji: "🍛", real: (id) => `/app/owner/${id}/dishes` },
   { key: "dashboard", label: "Dashboard", emoji: "📊" },
   { key: "menu", label: "Menu setup", emoji: "🍱" },
   { key: "costs", label: "Cost sheet", emoji: "🧮" },
   { key: "stock", label: "Kitchen stock", emoji: "📦" },
   { key: "purchasing", label: "Purchasing", emoji: "🛒" },
   { key: "plan", label: "Purchase plan", emoji: "🧾" },
-  { key: "books", label: "Shop books", emoji: "📚" },
-  { key: "salaries", label: "Staff salaries", emoji: "💬" },
-  { key: "staff", label: "Staff", emoji: "👥" },
-  { key: "utilities", label: "Utilities", emoji: "💡" },
+  { key: "books", label: "Shop accounting", emoji: "📚" },
+  { key: "salaries", label: "Staff salaries entries", emoji: "💬" },
+  { key: "staff", label: "Staff Pay", emoji: "👥" },
+  { key: "utilities", label: "Utilities Pay", emoji: "💡" },
   { key: "health", label: "Business health", emoji: "❤️" },
 ];
 
 /* ------------------------------------------------------------- the hub */
 
+/** Round function button. Ready = green glow; locked = small padlock badge. */
+function hubCircle(emoji, size, ready) {
+  return `<span style="position:relative;width:${size}px;height:${size}px;border-radius:99px;background:#fff;
+      border:2px solid ${ready ? "#35c98a" : "#ece3da"};
+      box-shadow:${ready ? "0 0 0 5px #35c98a2e, 0 4px 16px #35c98a52" : "0 3px 10px #00000014"};
+      display:flex;align-items:center;justify-content:center;font-size:${Math.round(size * 0.42)}px">${emoji}${ready ? "" :
+      `<span style="position:absolute;bottom:-7px;left:50%;transform:translateX(-50%);width:22px;height:22px;border-radius:99px;background:#fff;border:1px solid #e3d9cf;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 1px 4px #0002">🔒</span>`}
+    </span>`;
+}
+
 export function ownerHubPage(shop, toast = "") {
   const id = String(shop._id);
   const tiles = SUITE_TILES.map((t) => `
-    <a href="${t.real ? t.real(id) : `/app/owner/${id}/suite/${t.key}`}" style="display:flex;flex-direction:column;align-items:center;gap:7px;text-decoration:none">
-      <span style="width:64px;height:64px;border-radius:99px;background:#fff;border:1.5px solid #ece3da;box-shadow:0 3px 10px #00000014;display:flex;align-items:center;justify-content:center;font-size:26px">${t.emoji}</span>
-      <span style="font-size:11px;font-weight:700;color:#1a1a1a;text-align:center;line-height:1.2">${t.label}${t.real ? "" : `<br><span style="color:#b3672f;font-weight:600">preview</span>`}</span>
+    <a href="${t.real ? t.real(id) : `/app/owner/${id}/suite/${t.key}`}" style="display:flex;flex-direction:column;align-items:center;gap:9px;text-decoration:none">
+      ${hubCircle(t.emoji, 80, !!t.real)}
+      <span style="font-size:11.5px;font-weight:700;color:#1a1a1a;text-align:center;line-height:1.2">${t.label}</span>
     </a>`).join("");
   return shell({
     title: `${shop.name} — shop`,
     noBack: true,
     toast,
     body: `
-    <div class="row" style="gap:9px;margin-bottom:4px">
+    <div class="row" style="gap:9px;margin-bottom:4px;align-items:flex-start">
       <a class="back" style="margin:0;flex:0 0 auto" href="/app/home">‹</a>
-      <div style="min-width:0"><strong style="font-size:17px">${esc(shop.name)}</strong>
+      <div style="flex:1;min-width:0"><strong style="font-size:17px">${esc(shop.name)}</strong>
       <div class="sub" style="font-size:11.5px">Shop owner mode · ${esc(shop.owner || "")}</div></div>
+      <a href="/app/owner/${id}/qr" style="flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:5px;text-decoration:none;margin-top:28px">
+        ${hubCircle("▦", 54, true)}
+        <span style="font-size:10px;font-weight:700;color:#1a1a1a">Table QR</span></a>
     </div>
     <div class="sub" style="font-size:12.5px;margin:6px 0 16px">All shop functions — tap a button. <span class="si">සියලු කාර්යයන්</span></div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px 8px">${tiles}</div>`,
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:22px 8px">${tiles}</div>`,
   });
 }
 
