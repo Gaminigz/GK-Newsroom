@@ -109,14 +109,23 @@ export async function renderDirectory({ brandPath = "/leads/b/", homeLinks = tru
   .hotchip .hs { background:linear-gradient(135deg,#e3b341,#f0883e); color:#0d1117; font-weight:800; border-radius:7px; padding:1px 7px; font-size:12px; }
   .filter { width:100%; background:#161b22; color:#fff; border:1px solid #30363d; border-radius:10px; padding:10px 14px; font-size:14px; margin-bottom:14px; }
   .boardwrap { position:relative; }
-  .board { display:flex; gap:12px; overflow-x:auto; align-items:flex-start; padding-bottom:16px; -webkit-overflow-scrolling:touch; }
+  .board { display:flex; gap:12px; overflow-x:scroll; align-items:stretch; padding-bottom:6px; -webkit-overflow-scrolling:touch;
+           height:calc(100vh - 265px); min-height:340px;
+           scrollbar-width:auto; scrollbar-color:#e3b341 #161b22; }
+  .board::-webkit-scrollbar { height:14px; }
+  .board::-webkit-scrollbar-track { background:#161b22; border-radius:9px; }
+  .board::-webkit-scrollbar-thumb { background:linear-gradient(90deg,#e3b341,#f0883e); border-radius:9px; border:3px solid #161b22; }
+  .board::-webkit-scrollbar-thumb:hover, .board::-webkit-scrollbar-thumb:active { background:#f0883e; }
   .nav { position:sticky; top:45vh; z-index:5; float:left; width:0; height:0; }
   .arrow { position:fixed; top:50%; transform:translateY(-50%); z-index:9; width:44px; height:44px; border-radius:99px;
            background:#161b22ee; border:1px solid #30363d; color:#e3b341; font-size:20px; font-weight:800;
            cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 14px #000a; }
   .arrow:hover { border-color:#e3b341; }
   .arrow.left { left:10px; } .arrow.right { right:10px; }
-  .col { flex:0 0 205px; background:#161b22; border:1px solid #21262d; border-radius:14px; padding:10px; }
+  .col { flex:0 0 205px; background:#161b22; border:1px solid #21262d; border-radius:14px; padding:10px;
+         max-height:100%; overflow-y:auto; align-self:flex-start; }
+  .col::-webkit-scrollbar { width:8px; }
+  .col::-webkit-scrollbar-thumb { background:#2a313c; border-radius:6px; }
   .letter { font-size:17px; font-weight:800; color:#e3b341; padding:2px 6px 8px; border-bottom:1px solid #21262d; margin-bottom:8px; }
   .bchip { display:flex; align-items:center; gap:7px; text-decoration:none; color:#c9d1d9; font-size:13px;
            padding:6px 7px; border-radius:9px; }
