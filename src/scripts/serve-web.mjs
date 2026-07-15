@@ -630,6 +630,12 @@ function govPage(posts, episodes = []) {
   .chip { flex:0 0 auto; background:#10201a; color:#8fa89a; border:1px solid #1d3329; border-radius:999px; padding:6px 14px; font-size:13px; cursor:pointer; }
   .chip.on { color:#08120d; background:#35c98a; border-color:#35c98a; font-weight:600; }
   ${WA_CSS}
+  .private-row { display:flex; gap:10px; margin:12px 0 2px; }
+  .pbtn { flex:1; display:flex; align-items:center; justify-content:center; gap:8px; text-decoration:none;
+          background:linear-gradient(135deg,#0e2418,#143523); color:#e4f0e9; font-size:14px; font-weight:600;
+          border:1px solid #35c98a44; border-radius:13px; padding:11px 12px; box-shadow:0 3px 10px #0006; }
+  .pbtn:active, .pbtn:hover { border-color:#35c98a; color:#35c98a; }
+  .pbtn .lock { font-size:11px; opacity:.7; }
   .gcard { display:flex; gap:12px; background:#0e1b14; border:1px solid #1d3329; border-radius:14px; padding:12px; margin-top:12px; }
   .gtile { flex:0 0 56px; height:56px; border-radius:12px; display:flex; align-items:center; justify-content:center;
            color:#fff; font-size:13px; font-weight:800; letter-spacing:.02em; overflow:hidden;
@@ -658,6 +664,10 @@ function govPage(posts, episodes = []) {
     <h1>GK <em>SMART Ai</em> Accounting</h1>
     <div class="sub">Cambodia's tax, customs & business announcements — translated from Khmer, daily.</div>
   </header>
+  <div class="private-row">
+    <a class="pbtn" href="/leads">🎯 Leads <span class="lock">🔒</span></a>
+    <a class="pbtn" href="/ai/world">🌍 AI Funding <span class="lock">🔒</span></a>
+  </div>
   ${streamer({ items: waItems, base: "/podcast/gov/" })}
   <nav class="chips">${chips}</nav>
   <main>${cards}</main>
