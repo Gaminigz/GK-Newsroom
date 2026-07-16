@@ -75,6 +75,28 @@ function cookies(req) {
   );
 }
 
+/* ---- native push (APNs) --------------------------------------------- */
+
+/** Push to every device registered for a shop; prunes dead tokens. */
+async function notifyShop(shopId, payload) {
+  const { apnsReady, sendPushAll } = await import("./apns.mjs");
+  if (!apnsReady() || !shopId) return;
+  const tokens = (await (await col("push_tokens")).find({ kind: "shop", shopId: String(shopId) }).toArray()).map((t) => t.token);
+  if (!tokens.length) return;
+  const { dead } = await sendPushAll(tokens, payload);
+  if (dead.length) await (await col("push_tokens")).deleteMany({ token: { $in: dead } });
+}
+
+/** Push to a buyer's devices, matched by the phone used at checkout. */
+async function notifyBuyer(phone, payload) {
+  const { apnsReady, sendPushAll } = await import("./apns.mjs");
+  if (!apnsReady() || !phone) return;
+  const tokens = (await (await col("push_tokens")).find({ kind: "buyer", phone: String(phone) }).toArray()).map((t) => t.token);
+  if (!tokens.length) return;
+  const { dead } = await sendPushAll(tokens, payload);
+  if (dead.length) await (await col("push_tokens")).deleteMany({ token: { $in: dead } });
+}
+
 /** Support email as a mailto link — the phone offers the user's mail app. */
 const SUPPORT_MAILTO = `<a href="mailto:gk.smart@ggmt.sg?subject=3una%205aha%20support" style="color:#b3672f;font-weight:700;text-decoration:underline">gk.smart@ggmt.sg</a>`;
 
@@ -306,9 +328,81 @@ ${hideLogout ? "" : `<a class="logout" id="logoutBtn" href="/app/logout" hidden>
 ${noBack ? "" : `<a class="back${backFloat ? " float" : ""}" href="${back ? esc(back) : "/app"}" onclick="${back ? "" : "if(history.length>1){history.back();return false}"}">‹</a>`}
 ${body}
 ${nav}
+${NATIVE_BRIDGE}
 </body>
 </html>`;
 }
+
+/**
+ * Native bridge — runs ONLY inside the Capacitor app (no-op in browsers).
+ * Push registration, haptic taps, offline banner, and a share helper.
+ */
+const NATIVE_BRIDGE = `<script>
+(() => {
+  const C = window.Capacitor;
+  if (!C || !C.isNativePlatform || !C.isNativePlatform()) return;
+  const P = C.Plugins || {};
+  try {
+    const Push = P.PushNotifications;
+    if (Push) {
+      Push.addListener('registration', (t) => {
+        localStorage.setItem('pushReg', String(Date.now()));
+        fetch('/app/push/register', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: t.value, platform: 'ios' }) }).catch(() => {});
+      });
+      Push.addListener('pushNotificationActionPerformed', (a) => {
+        const url = a && a.notification && a.notification.data && a.notification.data.url;
+        if (url && url.indexOf('/app') === 0) location.href = url;
+      });
+      if (Date.now() - Number(localStorage.getItem('pushReg') || 0) > 86400000) {
+        Push.requestPermissions().then((r) => { if (r.receive === 'granted') Push.register(); }).catch(() => {});
+      }
+    }
+  } catch (e) {}
+  try {
+    const H = P.Haptics;
+    if (H) document.addEventListener('click', (e) => {
+      if (e.target.closest('.btn, #flashYes, #flashNo, .chip, .toggle')) H.impact({ style: 'LIGHT' }).catch(() => {});
+    }, true);
+  } catch (e) {}
+  try {
+    const N = P.Network;
+    if (N) N.addListener('networkStatusChange', (s) => {
+      let b = document.getElementById('netBar');
+      if (!s.connected) {
+        if (!b) {
+          b = document.createElement('div');
+          b.id = 'netBar';
+          b.textContent = 'No connection — reconnecting…';
+          b.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:99;background:#b3261e;color:#fff;text-align:center;font:600 12px system-ui;padding:9px';
+          document.body.appendChild(b);
+        }
+      } else if (b) { b.remove(); location.reload(); }
+    });
+  } catch (e) {}
+  window.nativeShare = (title, url) => {
+    const S = P.Share;
+    if (S) { S.share({ title: title, url: url }).catch(() => {}); return false; }
+    if (navigator.share) { navigator.share({ title: title, url: url }).catch(() => {}); return false; }
+    return true;
+  };
+  try {
+    // Dish/shop photos: native camera-or-library sheet instead of the file input.
+    const Cam = P.Camera;
+    const box = document.getElementById('photoBox');
+    if (Cam && box) box.addEventListener('click', (e) => {
+      e.preventDefault();
+      Cam.getPhoto({ resultType: 'dataUrl', quality: 80, width: 800, source: 'PROMPT' }).then((ph) => {
+        const f = document.getElementById('photoData');
+        if (f) f.value = ph.dataUrl;
+        box.style.backgroundImage = 'url(' + ph.dataUrl + ')';
+        const hint = document.getElementById('photoHint');
+        if (hint) hint.textContent = '';
+      }).catch(() => {});
+    }, true);
+  } catch (e) {}
+})();
+</script>`;
 
 function buyerNav(on) {
   const items = [
@@ -861,6 +955,7 @@ async function shopPage(id) {
 
     <div class="sub" style="text-align:center;margin:16px 0">
       <a href="#" onclick="return favShop('${String(shop._id)}', this)" style="text-decoration:underline;font-weight:700" id="favLink">☆ Add to favourites</a>
+      &nbsp;·&nbsp; <a href="#" onclick="return window.nativeShare ? nativeShare('${esc(shop.name)} on 3una 5aha', 'https://web-production-2b43c.up.railway.app/app/shop/${String(shop._id)}') : true" style="text-decoration:underline">↗ Share</a>
       &nbsp;·&nbsp; <a href="/app/report?shop=${String(shop._id)}" style="text-decoration:underline">⚑ Report this shop</a></div>
     <script>
       function favShop(id, el) {
@@ -1279,6 +1374,7 @@ async function qrPage(shop) {
       <div class="sub" style="font-size:11px;margin-top:10px;color:#a99d94">the spice marketplace · ggmt.sg</div>
     </div>
     <a class="btn" id="dl" download="${esc(shop.name).replace(/[^a-zA-Z0-9]+/g, "-")}-QR.png" href="${dataUri}" style="margin-top:16px">⬇ Download QR image</a>
+    <a class="btn ghost" href="#" style="margin-top:10px" onclick="return window.nativeShare ? nativeShare('Table QR — ${esc(shop.name)}', 'https://web-production-2b43c.up.railway.app/app/shop/${String(shop._id)}') : true">↗ Share table link</a>
     <div class="sub" style="text-align:center;font-size:12px;margin-top:8px">You can print it, laminate it, or turn it into a sticker.</div>`,
   });
 }
@@ -1501,6 +1597,31 @@ export async function handleApp(req, res, url) {
 
   if (path === "/app" || path === "/app/") {
     html(res, welcomePage(req));
+    return;
+  }
+
+  // Native app registers its APNs device token here (see NATIVE_BRIDGE).
+  if (path === "/app/push/register" && req.method === "POST") {
+    let raw = "";
+    for await (const ch of req) { raw += ch; if (raw.length > 4096) break; }
+    let token = "";
+    try { token = String(JSON.parse(raw).token || "").slice(0, 200); } catch { /* bad json */ }
+    if (/^[a-f0-9]{32,200}$/i.test(token)) {
+      const c = cookies(req);
+      await (await col("push_tokens")).updateOne(
+        { token },
+        { $set: {
+            token, platform: "ios",
+            kind: c.app_shop ? "shop" : "buyer",
+            shopId: c.app_shop || null,
+            phone: c.app_phone ? decodeURIComponent(c.app_phone) : null,
+            email: c.app_email ? decodeURIComponent(c.app_email) : null,
+            updatedAt: new Date(),
+        } },
+        { upsert: true },
+      );
+    }
+    res.writeHead(204).end();
     return;
   }
 
@@ -1928,6 +2049,12 @@ export async function handleApp(req, res, url) {
     const r = await (await col("app_orders")).insertOne(doc);
     res.setHeader("Set-Cookie", `app_phone=${encodeURIComponent(phone)}; Path=/app; Max-Age=31536000; SameSite=Lax`);
     redirect(res, `/app/order/${r.insertedId}`);
+    // Native push to the shop owner's devices — fire-and-forget.
+    notifyShop(doc.shopId, {
+      title: "New order 🍛",
+      body: `${items.reduce((a, i) => a + i.qty, 0)} item(s) · ${lkr(doc.total)}${doc.buyer ? ` — ${doc.buyer}` : ""}`,
+      url: `/app/owner/${doc.shopId}/dishes`,
+    }).catch(() => {});
     return;
   }
 
@@ -2039,6 +2166,15 @@ export async function handleApp(req, res, url) {
         { _id, shopId: m[1] },
         { $set: { status, ...(status === "preparing" ? { confirmedAt: new Date() } : {}) } },
       );
+      // Tell the buyer's devices — fire-and-forget.
+      const order = await (await col("app_orders")).findOne({ _id });
+      if (order?.phone) {
+        notifyBuyer(order.phone, {
+          title: status === "done" ? "Order ready 🎉" : "Order confirmed 👨‍🍳",
+          body: status === "done" ? "Your order is ready for pickup." : "The kitchen is preparing your order.",
+          url: "/app/orders",
+        }).catch(() => {});
+      }
     }
     redirect(res, `/app/owner/${m[1]}/dishes?msg=${encodeURIComponent("Order updated")}`);
     return;
