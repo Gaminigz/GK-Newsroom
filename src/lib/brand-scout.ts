@@ -397,7 +397,7 @@ async function writeProfile(ai: GoogleGenAI, b: { name: string; hq: string; sect
 From your knowledge, give:
 - about: 1-2 sentences — what the company is, its main labels/positioning.
 - ownership: 1-2 sentences — parent group, controlling shareholder(s), listed exchange if public. Only what is well known.
-- keyPeople: up to 6 of the top managers you are confident about (CEO, CFO, chair; include supply-chain/sourcing/sustainability executives if known). Use {name, role}.
+- keyPeople: EVERY publicly known named person at the company you are confident about — ANY position: CEO/CFO/chair and board, EVPs/VPs, sourcing & supply-chain leaders, sustainability/ESG/compliance heads, PR & communications leads, regional (especially Asia) managers, HR/recruitment leads. As many as you actually know (up to 30). Use {name, role}. Confidence matters more than completeness — never invent a person.
 - contactMethod: the MOST PUBLIC corporate contact route — one of "press email", "media hub", "contact page", "corporate site", "unknown".
 - contactValue: the email address or URL for that route. STRICT: only if publicly well known — NEVER invent or guess an email; if unsure use the brand's most likely official domain root (e.g. https://www.example.com) and say so in contactNote, or method "unknown".
 - contactNote: one sentence of practical guidance (e.g. "press office responds to media requests; route partnership asks via the contact form").
