@@ -364,18 +364,178 @@ const QUERIES = (b: string) => [
   `"${b}" suppliers sustainability CSR traceability audit`,
 ];
 
-/** First-contact deep-search links per brand — opened by hand, no scraping. */
+/** Compact fallback deep-search links (shown small under the profile). */
 export function contactLinks(name: string): { label: string; url: string }[] {
   const q = encodeURIComponent(name);
   return [
-    { label: "🔎 PR / press office", url: `https://www.google.com/search?q=${q}+press+office+media+contact` },
-    { label: "💼 LinkedIn people — sourcing", url: `https://www.linkedin.com/search/results/people/?keywords=${q}%20sourcing%20manager` },
-    { label: "💼 LinkedIn people — compliance/ESG", url: `https://www.linkedin.com/search/results/people/?keywords=${q}%20supplier%20compliance%20sustainability` },
-    { label: "📋 LinkedIn jobs — supply chain digital", url: `https://www.linkedin.com/jobs/search/?keywords=${q}%20supply%20chain%20digital` },
-    { label: "🧑‍💻 HR / careers page", url: `https://www.google.com/search?q=${q}+careers+supply+chain+digitalization` },
-    { label: "🌱 CSR / supplier list", url: `https://www.google.com/search?q=${q}+sustainability+report+supplier+list+factory` },
+    { label: "🔎 verify PR contact", url: `https://www.google.com/search?q=${q}+press+office+media+contact` },
+    { label: "💼 LinkedIn sourcing people", url: `https://www.linkedin.com/search/results/people/?keywords=${q}%20sourcing%20manager` },
     { label: "🇰🇭 Cambodia footprint", url: `https://www.google.com/search?q=${q}+Cambodia+factory+supplier` },
   ];
+}
+
+/* ---------------- Brand profile (at-a-glance intel) ----------------
+ * One Gemini call per brand, generated once and kept (companies change
+ * slowly): what it is, who owns it, top managers, and the most PUBLIC
+ * contactable method (press email / media hub / contact page). The model is
+ * told to omit rather than guess — an invented email is worse than none. */
+
+export type BrandProfile = {
+  about: string;
+  ownership: string;
+  keyPeople: { name: string; role: string }[];
+  contactMethod: string;
+  contactValue: string;
+  contactNote: string;
+};
+
+const PROFILE_CAP = 60; // profiles generated per scout run (backfill clears in days)
+
+async function writeProfile(ai: GoogleGenAI, b: { name: string; hq: string; sector: string }): Promise<BrandProfile> {
+  const prompt = `Brand intelligence card for a B2B sales team. Company: "${b.name}" (${b.sector}; HQ ${b.hq}).
+
+From your knowledge, give:
+- about: 1-2 sentences — what the company is, its main labels/positioning.
+- ownership: 1-2 sentences — parent group, controlling shareholder(s), listed exchange if public. Only what is well known.
+- keyPeople: up to 6 of the top managers you are confident about (CEO, CFO, chair; include supply-chain/sourcing/sustainability executives if known). Use {name, role}.
+- contactMethod: the MOST PUBLIC corporate contact route — one of "press email", "media hub", "contact page", "corporate site", "unknown".
+- contactValue: the email address or URL for that route. STRICT: only if publicly well known — NEVER invent or guess an email; if unsure use the brand's most likely official domain root (e.g. https://www.example.com) and say so in contactNote, or method "unknown".
+- contactNote: one sentence of practical guidance (e.g. "press office responds to media requests; route partnership asks via the contact form").
+
+If you genuinely don't know a field, return an empty string / empty list rather than guessing.`;
+
+  const resp = await ai.models.generateContent({
+    model: MODEL,
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          about: { type: Type.STRING },
+          ownership: { type: Type.STRING },
+          keyPeople: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: { name: { type: Type.STRING }, role: { type: Type.STRING } },
+              required: ["name", "role"],
+            },
+          },
+          contactMethod: { type: Type.STRING },
+          contactValue: { type: Type.STRING },
+          contactNote: { type: Type.STRING },
+        },
+        required: ["about", "ownership", "keyPeople", "contactMethod", "contactValue", "contactNote"],
+      },
+    },
+  });
+  return JSON.parse(resp.text ?? "{}") as BrandProfile;
+}
+
+/* ---------------- Hiring info (tab 2: Hiring & CV) ---------------- */
+
+export type HiringInfo = {
+  summary: string;
+  careersUrl: string;
+  hiringContact: string;
+  note: string;
+};
+
+async function writeHiring(ai: GoogleGenAI, b: { name: string; hq: string; sector: string }): Promise<HiringInfo> {
+  const prompt = `Recruitment intelligence for company "${b.name}" (${b.sector}; HQ ${b.hq}).
+
+From your knowledge, give:
+- summary: 1-2 sentences — their typical recruitment focus (departments, hub cities) if well known.
+- careersUrl: the official careers/jobs portal URL if well known (root careers page only — never invent deep paths). Empty if unsure.
+- hiringContact: ONLY a publicly known recruitment email address (e.g. careers@…). NEVER guess or construct one; most large brands accept applications only through their portal — in that case return empty.
+- note: one practical sentence on how a CV/application actually reaches them (portal, LinkedIn Easy Apply, agency, email).
+
+Omit anything you are not confident about — empty string beats a guess.`;
+
+  const resp = await ai.models.generateContent({
+    model: MODEL,
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          summary: { type: Type.STRING },
+          careersUrl: { type: Type.STRING },
+          hiringContact: { type: Type.STRING },
+          note: { type: Type.STRING },
+        },
+        required: ["summary", "careersUrl", "hiringContact", "note"],
+      },
+    },
+  });
+  return JSON.parse(resp.text ?? "{}") as HiringInfo;
+}
+
+/** Generate hiring info for brands that don't have it yet (up to `max`). */
+export async function backfillHiring(max = PROFILE_CAP): Promise<{ written: number; errors: string[] }> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return { written: 0, errors: ["GEMINI_API_KEY not set"] };
+  const ai = new GoogleGenAI({ apiKey });
+  const { getDb } = await import("./mongo");
+  const db = await getDb();
+  const col = db.collection("brands");
+  const missing = await col
+    .find({ hiring: { $exists: false } }, { projection: { name: 1, hq: 1, sector: 1 } })
+    .sort({ score: -1 })
+    .limit(max)
+    .toArray();
+  const errors: string[] = [];
+  let written = 0;
+  await mapLimit(missing, 4, async (b) => {
+    try {
+      const hiring = await writeHiring(ai, { name: b.name as string, hq: (b.hq as string) ?? "", sector: (b.sector as string) ?? "" });
+      await col.updateOne({ _id: b._id } as never, { $set: { hiring, hiringAt: Date.now() } });
+      written++;
+    } catch (e) {
+      errors.push(`hiring ${b.name}: ${(e as Error).message}`);
+    }
+  });
+  return { written, errors };
+}
+
+/** Hiring-tab deep-search links. */
+export function hiringLinks(name: string): { label: string; url: string }[] {
+  const q = encodeURIComponent(name);
+  return [
+    { label: "📋 LinkedIn jobs", url: `https://www.linkedin.com/jobs/search/?keywords=${q}` },
+    { label: "🧑‍💻 careers portal", url: `https://www.google.com/search?q=${q}+careers+jobs+apply` },
+    { label: "✉️ recruitment email", url: `https://www.google.com/search?q=${q}+recruitment+careers+email+submit+CV` },
+    { label: "📰 recent appointments", url: `https://www.google.com/search?q=${q}+appoints+OR+hires+director&tbm=nws` },
+  ];
+}
+
+/** Generate profiles for brands that don't have one yet (up to `max`). */
+export async function backfillProfiles(max = PROFILE_CAP): Promise<{ written: number; errors: string[] }> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return { written: 0, errors: ["GEMINI_API_KEY not set"] };
+  const ai = new GoogleGenAI({ apiKey });
+  const { getDb } = await import("./mongo");
+  const db = await getDb();
+  const col = db.collection("brands");
+  const missing = await col
+    .find({ profile: { $exists: false } }, { projection: { name: 1, hq: 1, sector: 1 } })
+    .sort({ score: -1 })
+    .limit(max)
+    .toArray();
+  const errors: string[] = [];
+  let written = 0;
+  await mapLimit(missing, 4, async (b) => {
+    try {
+      const profile = await writeProfile(ai, { name: b.name as string, hq: (b.hq as string) ?? "", sector: (b.sector as string) ?? "" });
+      await col.updateOne({ _id: b._id } as never, { $set: { profile, profileAt: Date.now() } });
+      written++;
+    } catch (e) {
+      errors.push(`profile ${b.name}: ${(e as Error).message}`);
+    }
+  });
+  return { written, errors };
 }
 
 /** Signal categories and how much they matter to a Yai (factory-side) sale. */
@@ -571,7 +731,7 @@ function scoreSignals(signals: { category: string; strength: number; publishedAt
 }
 
 export async function scoutBrands(): Promise<{
-  brands: number; stories: number; newSignals: number; dossiers: number; errors: string[];
+  brands: number; stories: number; newSignals: number; dossiers: number; profiles: number; errors: string[];
 }> {
   const { getDb } = await import("./mongo");
   const db = await getDb();
@@ -697,5 +857,11 @@ export async function scoutBrands(): Promise<{
     }
   }
 
-  return { brands: BRANDS.length, stories: stories.length, newSignals, dossiers, errors };
+  // 5. Brand profiles + hiring info for brands still missing them.
+  const prof = await backfillProfiles(PROFILE_CAP);
+  errors.push(...prof.errors);
+  const hire = await backfillHiring(PROFILE_CAP);
+  errors.push(...hire.errors);
+
+  return { brands: BRANDS.length, stories: stories.length, newSignals, dossiers, profiles: prof.written + hire.written, errors };
 }

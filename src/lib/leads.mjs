@@ -13,7 +13,7 @@
 
 import crypto from "node:crypto";
 import { getDb } from "./mongo.ts";
-import { CATEGORY_WEIGHT, contactLinks, isoToFlag } from "./brand-scout.ts";
+import { CATEGORY_WEIGHT, contactLinks, hiringLinks, isoToFlag } from "./brand-scout.ts";
 
 const SESSION_MS = 12 * 3600 * 1000;
 const sessions = new Map(); // token → expiry
@@ -225,6 +225,75 @@ export async function renderBrandPage(slug, { backPath = "/leads", postPath = "/
     .map((l) => `<a class="clink" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)}</a>`)
     .join("");
 
+  const p = b.profile;
+  const isUrl = /^https?:\/\//.test(p?.contactValue ?? "");
+  const isMail = /@/.test(p?.contactValue ?? "") && !isUrl;
+  const contactHref = isUrl ? p.contactValue : isMail ? `mailto:${p.contactValue}` : null;
+  const people = (p?.keyPeople ?? [])
+    .map((k) => `<span class="person"><b>${esc(k.name)}</b> — ${esc(k.role)}</span>`)
+    .join("");
+  const aboutPane = p
+    ? `${p.about ? `<div class="drow"><span class="dk">About</span><span>${esc(p.about)}</span></div>` : ""}
+       ${p.ownership ? `<div class="drow"><span class="dk">Ownership</span><span>${esc(p.ownership)}</span></div>` : ""}
+       ${people ? `<div class="drow"><span class="dk">Top people</span><span class="people">${people}</span></div>` : ""}
+       <div class="drow"><span class="dk">Contact</span><span>
+         ${p.contactValue
+           ? `<span class="contactbox">${esc(p.contactMethod || "contact")}: ${
+               contactHref ? `<a href="${esc(contactHref)}" target="_blank" rel="noopener"><b>${esc(p.contactValue)}</b></a>` : `<b>${esc(p.contactValue)}</b>`
+             }</span>`
+           : `<span class="dim">No reliably public contact known.</span>`}
+         ${p.contactNote ? `<div class="note">${esc(p.contactNote)}</div>` : ""}
+         <div class="minilinks">${links}</div>
+       </span></div>`
+    : `<p class="dim">Profile not generated yet — profiles are written in batches each scout run; this brand's turn comes automatically.</p>
+       <div class="minilinks" style="margin-top:10px">${links}</div>`;
+
+  // Hiring pane: live hiring/appointment signals + portal/recruitment intel.
+  const h = b.hiring;
+  const hireSigs = await db
+    .collection("brand_signals")
+    .find({ brandSlug: slug, signal: true, category: "hiring" })
+    .sort({ publishedAt: -1 })
+    .limit(8)
+    .toArray();
+  const hireRows = hireSigs
+    .map(
+      (s) => `<tr><td class="when">${timeAgo(s.publishedAt)}</td>
+        <td><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a>
+        <div class="note">${esc(s.note)}</div></td></tr>`,
+    )
+    .join("");
+  const careersHref = /^https?:\/\//.test(h?.careersUrl ?? "") ? h.careersUrl : null;
+  const hLinks = hiringLinks(b.name)
+    .map((l) => `<a class="clink" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)}</a>`)
+    .join("");
+  const hiringPane = `
+    ${h?.summary ? `<div class="drow"><span class="dk">Hiring focus</span><span>${esc(h.summary)}</span></div>` : ""}
+    <div class="drow"><span class="dk">Apply / CV</span><span>
+      ${h?.hiringContact
+        ? `<span class="contactbox">✉️ <a href="mailto:${esc(h.hiringContact)}"><b>${esc(h.hiringContact)}</b></a></span>`
+        : careersHref
+          ? `<span class="contactbox">🧑‍💻 <a href="${esc(careersHref)}" target="_blank" rel="noopener"><b>${esc(h.careersUrl)}</b></a></span>`
+          : `<span class="dim">No public recruitment email known — applications go via portal/LinkedIn.</span>`}
+      ${h?.hiringContact && careersHref ? `<div class="note">Portal: <a href="${esc(careersHref)}" target="_blank" rel="noopener">${esc(h.careersUrl)}</a></div>` : ""}
+      ${h?.note ? `<div class="note">${esc(h.note)}</div>` : ""}
+      <div class="minilinks">${hLinks}</div>
+    </span></div>
+    <div class="drow"><span class="dk">Recent hires in news</span><span>
+      ${hireRows ? `<table class="minitable">${hireRows}</table>` : `<span class="dim">No hiring/appointment stories captured yet — the daily scout adds them as they appear.</span>`}
+    </span></div>
+    ${!h ? `<p class="dim" style="margin-top:8px">Hiring intel not generated yet — written in batches each scout run.</p>` : ""}`;
+
+  const profileBlock = `
+    <section>
+      <div class="tabbar">
+        <button class="tabbtn on" data-pane="pane-about">About &amp; PR</button>
+        <button class="tabbtn" data-pane="pane-hiring">Hiring &amp; CV</button>
+      </div>
+      <div id="pane-about" class="pane">${aboutPane}</div>
+      <div id="pane-hiring" class="pane" hidden>${hiringPane}</div>
+    </section>`;
+
   const opts = STATUSES.map(
     (s) => `<option value="${s}"${s === (b.status || "new") ? " selected" : ""}>${s}</option>`,
   ).join("");
@@ -251,9 +320,20 @@ export async function renderBrandPage(slug, { backPath = "/leads", postPath = "/
   .track select, .track input, .track button { background:#0d1117; color:#c9d1d9; border:1px solid #30363d; border-radius:8px; padding:7px 10px; font-size:13px; }
   .track .notes { flex:1; min-width:220px; }
   .track button { background:#238636; color:#fff; border-color:#238636; font-weight:700; cursor:pointer; }
-  .clinks { display:flex; gap:8px; flex-wrap:wrap; }
-  .clink { display:inline-block; background:#0d1117; border:1px solid #30363d; border-radius:99px; padding:7px 14px;
-           font-size:13px; color:#c9d1d9; text-decoration:none; }
+  .tabbar { display:flex; gap:0; margin:-16px -18px 14px; border-bottom:1px solid #21262d; }
+  .tabbtn { flex:0 0 auto; background:none; border:none; border-bottom:2px solid transparent; color:#8b949e;
+            font:600 14px/1 inherit; padding:14px 20px; cursor:pointer; border-radius:6px 6px 0 0; }
+  .tabbtn.on { color:#fff; background:#1c2129; border-bottom-color:#e3b341; }
+  .minitable { min-width:0 !important; }
+  .minitable td { border-top:none; border-bottom:1px solid #1c2129; padding:6px 8px 6px 0; }
+  .contactbox { display:inline-block; background:#101a10; border:1px solid #23863655; border-radius:10px; padding:8px 13px; color:#7ee2a8; }
+  .contactbox a { color:#7ee2a8; text-decoration:none; }
+  .person { display:inline-block; background:#21262d; border-radius:9px; padding:3px 10px; font-size:12.5px; margin:2px 3px 2px 0; }
+  .person b { color:#fff; }
+  .people { line-height:1.9; }
+  .minilinks { margin-top:8px; }
+  .clink { display:inline-block; background:#0d1117; border:1px solid #30363d; border-radius:99px; padding:4px 11px;
+           font-size:12px; color:#8b949e; text-decoration:none; margin:2px 4px 2px 0; }
   .clink:hover { border-color:#58a6ff; color:#58a6ff; }
   .drow { display:grid; grid-template-columns:130px 1fr; gap:10px; margin-bottom:8px; }
   .dk { color:#8b949e; font-size:11.5px; letter-spacing:.06em; text-transform:uppercase; padding-top:2px; }
@@ -293,10 +373,7 @@ export async function renderBrandPage(slug, { backPath = "/leads", postPath = "/
     </form>
   </section>
 
-  <section>
-    <h2>Find the first contact</h2>
-    <div class="clinks">${links}</div>
-  </section>
+  ${profileBlock}
 
   ${dossierBlock}
 
@@ -308,6 +385,14 @@ export async function renderBrandPage(slug, { backPath = "/leads", postPath = "/
     </table>
   </section>
 </div>
+<script>
+  document.querySelectorAll(".tabbtn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tabbtn").forEach((x) => x.classList.toggle("on", x === btn));
+      document.querySelectorAll(".pane").forEach((pn) => { pn.hidden = pn.id !== btn.dataset.pane; });
+    });
+  });
+</script>
 </body>
 </html>`;
 }

@@ -13,9 +13,9 @@ import { closeDb } from "../lib/mongo.ts";
 
 async function main() {
   const t0 = Date.now();
-  const { brands, stories, newSignals, dossiers, errors } = await scoutBrands();
+  const { brands, stories, newSignals, dossiers, profiles, errors } = await scoutBrands();
   console.log(
-    `\nbrand-scout: ${brands} brands, ${stories} stories seen, ${newSignals} new signals, ${dossiers} dossiers updated in ${((Date.now() - t0) / 1000).toFixed(1)}s`,
+    `\nbrand-scout: ${brands} brands, ${stories} stories seen, ${newSignals} new signals, ${dossiers} dossiers, ${profiles} profiles in ${((Date.now() - t0) / 1000).toFixed(1)}s`,
   );
   if (errors.length) {
     console.log(`errors (${errors.length}):`);
