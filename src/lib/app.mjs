@@ -455,6 +455,7 @@ function welcomePage(req) {
       <input type="hidden" name="via" value="${via}">
       <button class="btn ${style}" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px 6px;font-size:15px">${svg}${label}</button>
     </form>`;
+  const APPLE_SVG = `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#fff" d="M16.4 12.7c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 2.9-.4 7.3 1.2 9.7.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8 2.2-1.2 3-2.4c.9-1.3 1.3-2.6 1.3-2.7 0 0-2.5-1-2.6-3.9zM14 5.6c.7-.8 1.1-1.9 1-3.1-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.4z"/></svg>`;
   return shell({
     title: "3una 5aha — find Sri Lankan food near you",
     backFloat: true,
@@ -471,19 +472,54 @@ function welcomePage(req) {
         dishes, deals and daily activities — so travellers anywhere in the
         world can find Sri Lankan dishes nearby.</p>
       <div style="margin:16px 0 6px;display:grid;grid-template-columns:1fr 1fr;gap:9px">
-      ${loginBtn("google", "ghost", `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.5 12.3c0-.9-.1-1.5-.3-2.2H12v4.1h6.5c-.1 1.1-.8 2.7-2.4 3.8l3.7 2.9c2.2-2 3.7-5 3.7-8.6z"/><path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.7-2.9c-1 .7-2.4 1.2-4.2 1.2-3.2 0-5.9-2.1-6.9-5.1L1.3 17.2C3.3 21.2 7.3 24 12 24z"/><path fill="#FBBC05" d="M5.1 14.3c-.2-.7-.4-1.5-.4-2.3s.1-1.6.4-2.3L1.3 6.8C.5 8.4 0 10.1 0 12s.5 3.6 1.3 5.2l3.8-2.9z"/><path fill="#EA4335" d="M12 4.7c1.8 0 3 .8 3.7 1.4l2.7-2.7C16.9 1.2 14.2 0 12 0 7.3 0 3.3 2.8 1.3 6.8l3.8 2.9c1-3 3.7-5 6.9-5z"/></svg>`, "Google")
-          + loginBtn("facebook", "fb", `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#fff" d="M24 12a12 12 0 1 0-13.9 11.9v-8.4h-3V12h3V9.4c0-3 1.8-4.7 4.6-4.7 1.3 0 2.7.2 2.7.2v3h-1.5c-1.5 0-2 .9-2 1.9V12h3.3l-.5 3.5h-2.8v8.4A12 12 0 0 0 24 12z"/></svg>`, "Facebook")
-          + loginBtn("apple", "dark", `<svg width="18" height="18" viewBox="0 0 24 24"><path fill="#fff" d="M16.4 12.7c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 2.9-.4 7.3 1.2 9.7.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8 2.2-1.2 3-2.4c.9-1.3 1.3-2.6 1.3-2.7 0 0-2.5-1-2.6-3.9zM14 5.6c.7-.8 1.1-1.9 1-3.1-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.4z"/></svg>`, "Apple")
-          + loginBtn("email", "ghost", "✉️", "Email")
+      <button type="button" id="appleSignInBtn" class="btn dark" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px 6px;font-size:15px">${APPLE_SVG}Apple</button>
+      ${loginBtn("email", "ghost", "✉️", "Email")
           + loginBtn("sms", "ghost", "💬", "SMS")
           + `<a class="btn ghost" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px 6px;font-size:15px" href="/app/home">👀 Guest</a>`}
       </div>
+      <!-- Web-only fallback for the Apple button (native app always uses the JS handler below). -->
+      <form id="appleWebFallback" method="POST" action="/app/login" style="display:none">
+        <input type="hidden" name="via" value="apple">
+      </form>
       <div class="sub" style="font-size:12.5px;margin:12px 0 8px"><strong>Support &amp; Contact</strong> — email, Telegram or WhatsApp:</div>
       ${supportLinks()}
       ${legalFooter(false)}
       <div class="sub" style="font-size:11.5px;margin-top:8px">By continuing you agree to our Terms &amp; Privacy Policy</div>
       <div class="sub" style="font-size:11.5px;margin-top:4px">Published by <a href="https://www.ggmt.sg" target="_blank" rel="noopener" style="text-decoration:underline;font-weight:700">www.ggmt.sg</a> · GGMT PTE. LTD.</div>
-    </div>`,
+    </div>
+    <script>
+      document.getElementById('appleSignInBtn').addEventListener('click', async () => {
+        const cap = window.Capacitor;
+        const SIWA = cap && cap.Plugins && cap.Plugins.SignInWithApple;
+        if (!cap || !cap.isNativePlatform || !cap.isNativePlatform() || !SIWA) {
+          // Not running in the native app (e.g. testing in a desktop browser) —
+          // fall back to the dev-static path so local/web testing still works.
+          document.getElementById('appleWebFallback').submit();
+          return;
+        }
+        try {
+          const result = await SIWA.authorize({
+            clientId: 'sg.ggmt.una5aha',
+            redirectURI: 'https://web-production-2b43c.up.railway.app/app',
+            scopes: 'email name',
+            state: 'una5aha',
+          });
+          const r = result.response || result;
+          if (!r || !r.identityToken) throw new Error('no identity token');
+          const body = new URLSearchParams();
+          body.set('id_token', r.identityToken);
+          const name = [r.givenName, r.familyName].filter(Boolean).join(' ');
+          if (name) body.set('name', name);
+          if (r.email) body.set('email', r.email);
+          const resp = await fetch('/app/auth/apple', { method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() });
+          if (resp.ok) location.href = '/app/home';
+          else alert('Sign in with Apple failed — please try again.');
+        } catch (err) {
+          // User cancelled the native sheet, or a transient error — do nothing.
+        }
+      });
+    </script>`,
   });
 }
 
