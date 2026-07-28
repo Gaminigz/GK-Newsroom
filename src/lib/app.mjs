@@ -492,9 +492,13 @@ function welcomePage(req) {
         const cap = window.Capacitor;
         const SIWA = cap && cap.Plugins && cap.Plugins.SignInWithApple;
         if (!cap || !cap.isNativePlatform || !cap.isNativePlatform() || !SIWA) {
-          // Not running in the native app (e.g. testing in a desktop browser) —
-          // fall back to the dev-static path so local/web testing still works.
-          document.getElementById('appleWebFallback').submit();
+          // Outside the native app there is no real Apple sign-in — offer the
+          // email form instead of any shortcut.
+          document.querySelector('#appleWebFallback').action = '/app/login';
+          const via = document.createElement('input');
+          via.type = 'hidden'; via.name = 'via'; via.value = 'email';
+          const f = document.getElementById('appleWebFallback');
+          f.innerHTML = ''; f.appendChild(via); f.submit();
           return;
         }
         try {
@@ -1696,6 +1700,97 @@ export async function handleApp(req, res, url) {
     } catch {
       res.writeHead(200, { "Content-Type": "application/json" }).end("[]");
     }
+    return;
+  }
+
+  /* ---- JSON API for the native app (Home / Shop / Orders screens) -----
+   * Same data the server-rendered pages use, reshaped as JSON. Public and
+   * read-only — no auth beyond an optional buyer phone for order history,
+   * matching the existing cookie-free, guest-first design. */
+
+  if (path === "/app/api/home") {
+    const q = (url.searchParams.get("q") || "").trim().slice(0, 60);
+    const city = url.searchParams.get("city") || "";
+    const shops = await activeShops();
+    const specials = await (await col("app_dishes")).find({ special: true }).sort({ createdAt: -1 }).limit(8).toArray();
+    const shopName = new Map(shops.map((s) => [String(s._id), s.name]));
+    const shopCity = new Map(shops.map((s) => [String(s._id), s.city ?? ""]));
+    const myCity = city.toLowerCase();
+
+    const flash = specials.map((d) => ({
+      id: String(d._id), shopId: d.shopId, name: d.name, nameSi: d.nameSi ?? "",
+      price: Number(d.price) || 0, deal: d.discount && d.discount !== "none" ? d.discount : "",
+      shop: shopName.get(d.shopId) ?? "", window: d.window ?? "today", photo: d.photo ?? "",
+      tag: d.promoTag || "Today special",
+      near: myCity && (shopCity.get(d.shopId) || "").toLowerCase().includes(myCity) ? 0 : 1,
+    })).sort((a, b) => a.near - b.near);
+
+    let shownShops = shops;
+    if (q) {
+      const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      const allDishes = await (await col("app_dishes")).find({}).limit(400).toArray();
+      const dishShopIds = new Set(allDishes.filter((d) => rx.test(d.name || "") || rx.test(d.nameSi || "")).map((d) => String(d.shopId)));
+      shownShops = shops.filter((s) => rx.test(s.name || "") || rx.test(s.city || "") || dishShopIds.has(String(s._id)));
+    }
+    const shopList = await Promise.all(shownShops.map(async (s) => {
+      const dishes = await dishesFor(s._id);
+      const deal = dishes.find((d) => d.discount && d.discount !== "none");
+      return {
+        id: String(s._id), name: s.name, city: s.city ?? "", logo: s.logo ?? "",
+        rating: 4 + ((String(s._id).charCodeAt(10) % 5) + 4) / 10,
+        dishes: dishes.length || s.listings || 0, open: s.open !== false,
+        deal: deal ? deal.discount : "",
+        lat: Number.isFinite(s.lat) ? s.lat : null,
+        lng: Number.isFinite(s.lng) ? s.lng : null,
+      };
+    }));
+
+    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ city: city || null, flash, shops: shopList }));
+    return;
+  }
+
+  const apiShopMatch = path.match(/^\/app\/api\/shop\/([a-f0-9]{24})$/);
+  if (apiShopMatch) {
+    const shop = await shopById(apiShopMatch[1]);
+    if (!shop) { res.writeHead(404, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "not found" })); return; }
+    const dishes = await dishesFor(shop._id);
+    const special = dishes.find((d) => d.special) || null;
+    const toDish = (d) => ({
+      id: String(d._id), name: d.name, nameSi: d.nameSi ?? "", price: Number(d.price) || 0,
+      photo: d.photo ?? "", window: d.window ?? "all day", discount: d.discount && d.discount !== "none" ? d.discount : "",
+    });
+    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({
+      shop: {
+        id: String(shop._id), name: shop.name, city: shop.city ?? "", country: shop.country ?? "",
+        logo: shop.logo ?? "", frontPhoto: shop.frontPhoto ?? "", open: shop.open !== false,
+      },
+      special: special ? { ...toDish(special), tag: special.promoTag || "Today special" } : null,
+      dishes: dishes.filter((d) => !d.special).map(toDish),
+    }));
+    return;
+  }
+
+  if (path === "/app/api/orders") {
+    const phone = (url.searchParams.get("phone") || "").trim().slice(0, 24);
+    const list = phone
+      ? await (await col("app_orders")).find({ phone }).sort({ createdAt: -1 }).limit(20).toArray()
+      : [];
+    const shopIds = [...new Set(list.map((o) => o.shopId))];
+    const shopOids = (await Promise.all(shopIds.map(oid))).filter(Boolean);
+    const shopNames = new Map(
+      (shopOids.length ? await (await col("shop_owners")).find({ _id: { $in: shopOids } }).toArray() : [])
+        .map((s) => [String(s._id), s.name]),
+    );
+    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({
+      orders: list.map((o) => ({
+        id: String(o._id), orderNo: o.orderNo, shop: shopNames.get(o.shopId) ?? "Shop",
+        items: o.items ?? [], total: o.total, status: o.status, pickupAt: o.pickupAt ?? "",
+        createdAt: o.createdAt,
+      })),
+    }));
     return;
   }
 
