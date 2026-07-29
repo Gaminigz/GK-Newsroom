@@ -1,4 +1,5 @@
 import UIKit
+import SwiftUI
 import Capacitor
 
 @UIApplicationMain
@@ -7,7 +8,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Native SwiftUI root (guideline 4.2): the buyer experience is fully
+        // native; webviews remain only for secondary flows (see WebSheet).
+        let win = UIWindow(frame: UIScreen.main.bounds)
+        win.rootViewController = UIHostingController(rootView: RootView())
+        win.makeKeyAndVisible()
+        window = win
+
+        PushRegistrar.shared.requestAndRegister()
         return true
     }
 
@@ -46,8 +54,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
-    // Forward APNs registration to the Capacitor Push Notifications plugin.
+    // APNs registration — handled natively (PushRegistrar) and still forwarded
+    // to the Capacitor plugin for any webview-based flows.
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        PushRegistrar.shared.didReceive(tokenData: deviceToken)
         NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)
     }
 
