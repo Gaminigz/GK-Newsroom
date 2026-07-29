@@ -15,9 +15,9 @@ const ORANGE = "#d9542b";
 /** One tile per function. `href(id)` = real page; suite previews use key.
  *  Table QR is not in the grid — it sits top-right under the Logout pill. */
 export const SUITE_TILES = [
-  { key: "dishes", label: "Food Menu", emoji: "🍛", real: (id) => `/app/owner/${id}/dishes` },
+  { key: "dishes", label: "Setup Daily Menu", emoji: "🍛", real: (id) => `/app/owner/${id}/dishes` },
   { key: "dashboard", label: "Dashboard", emoji: "📊" },
-  { key: "menu", label: "Menu setup", emoji: "🍱" },
+  { key: "menu", label: "Plan Menu", emoji: "🍱" },
   { key: "costs", label: "Cost sheet", emoji: "🧮" },
   { key: "stock", label: "Kitchen stock", emoji: "📦" },
   { key: "purchasing", label: "Purchasing", emoji: "🛒" },
