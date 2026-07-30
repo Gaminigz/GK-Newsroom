@@ -18,6 +18,28 @@ import { getDb } from "./mongo";
 
 const MODEL = "gemini-2.5-flash";
 const FETCH_TIMEOUT_MS = 20_000;
+
+/**
+ * Free machine translation (no API key, no cost) — Google's public "gtx"
+ * endpoint, the same one used by many open-source translate tools. Used only
+ * as a fallback when Gemini is unavailable (quota/credits/outage), so posts
+ * still show up on the page already in English on refresh, instead of
+ * depending on the reader's own browser to notice and offer to translate.
+ * Lower quality than Gemini (literal, no summary/classification) but real
+ * English, generated automatically, at zero cost.
+ */
+async function freeTranslate(text: string): Promise<string | null> {
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=km&tl=en&dt=t&q=${encodeURIComponent(text)}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!res.ok) return null;
+    const data = (await res.json()) as [string, string][][];
+    const joined = (data[0] ?? []).map((seg) => seg[0]).join("").trim();
+    return joined || null;
+  } catch {
+    return null;
+  }
+}
 const MAX_CHANNELS_PER_RUN = 60;   // cap active fetches
 const MAX_NEW_CANDIDATES = 25;     // cap crawl probes per run
 const POSTS_PER_CHANNEL = 5;       // keep the newest N relevant posts
@@ -221,7 +243,7 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R
  * blanks the run.
  */
 export async function fetchTelegram(): Promise<{
-  channels: number; posts: number; raw: number; carried: number; discovered: number; errors: string[];
+  channels: number; posts: number; free: number; raw: number; carried: number; discovered: number; errors: string[];
 }> {
   const db = await getDb();
   const reg = db.collection("tg_channels");
@@ -301,6 +323,7 @@ export async function fetchTelegram(): Promise<{
   let budget = MAX_TRANSLATE;
   let postCount = 0;
   let rawCount = 0;
+  let freeTranslateCount = 0;
   let carried = 0;
   for (const ch of kept) {
     if (budget <= 0) break;
@@ -315,27 +338,49 @@ export async function fetchTelegram(): Promise<{
       tr = await translatePosts(ch.label, posts);
     } catch (e) {
       errors.push(`${ch.handle}: ${(e as Error).message}`);
-      // Gemini is down (or quota exhausted) — post the raw Khmer text now
-      // rather than losing the post for a whole cycle. `lang="km"` on the
-      // web page lets the reader's own browser (Chrome's built-in
-      // translate) read it immediately; `translated:false` means the next
-      // successful run silently upgrades it to a real AI translation.
-      const ops = posts.map((p) => ({
-        updateOne: {
-          filter: { url: p.url },
-          update: {
-            $set: {
-              agency: ch.label, titleKm: p.text.slice(0, 200), title: p.text.slice(0, 200),
-              summary: "", kind: "Telegram", postedAt: p.postedAt, lang: "km",
-              via: "telegram", channel: ch.handle, relevant: true, translated: false, updatedAt: now,
+      // Gemini is down (quota/credits/outage) — try the free Google
+      // Translate endpoint per post so the page already shows real English
+      // on the next refresh, no reliance on the reader's browser. Only if
+      // that's also unreachable do we fall back to posting raw Khmer with
+      // lang="km" (Chrome's own translate as the last resort).
+      const ops = await mapLimit(posts, 3, async (p) => {
+        const free = await freeTranslate(p.text);
+        if (free) {
+          return {
+            updateOne: {
+              filter: { url: p.url },
+              update: {
+                $set: {
+                  agency: ch.label, titleKm: p.text.slice(0, 200), title: free.slice(0, 100),
+                  summary: free.length > 100 ? free.slice(0, 220) : "", kind: "Telegram", postedAt: p.postedAt,
+                  via: "telegram", channel: ch.handle, relevant: true, translated: true, translateVia: "free", updatedAt: now,
+                },
+                $unset: { lang: "" },
+                $setOnInsert: { url: p.url, createdAt: now },
+              },
+              upsert: true,
             },
-            $setOnInsert: { url: p.url, createdAt: now },
+          };
+        }
+        return {
+          updateOne: {
+            filter: { url: p.url },
+            update: {
+              $set: {
+                agency: ch.label, titleKm: p.text.slice(0, 200), title: p.text.slice(0, 200),
+                summary: "", kind: "Telegram", postedAt: p.postedAt, lang: "km",
+                via: "telegram", channel: ch.handle, relevant: true, translated: false, updatedAt: now,
+              },
+              $setOnInsert: { url: p.url, createdAt: now },
+            },
+            upsert: true,
           },
-          upsert: true,
-        },
-      }));
+        };
+      });
       await feed.bulkWrite(ops as never);
-      rawCount += ops.length;
+      const freeCount = ops.filter((o) => (o.updateOne.update as { $set: { translateVia?: string } }).$set.translateVia === "free").length;
+      rawCount += ops.length - freeCount;
+      freeTranslateCount += freeCount;
       continue;
     }
     const ops = posts.map((p, i) => {
@@ -363,5 +408,5 @@ export async function fetchTelegram(): Promise<{
     }
   }
 
-  return { channels: kept.length, posts: postCount, raw: rawCount, carried, discovered, errors };
+  return { channels: kept.length, posts: postCount, free: freeTranslateCount, raw: rawCount, carried, discovered, errors };
 }

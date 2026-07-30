@@ -591,11 +591,13 @@ function govPage(posts, episodes = []) {
           const [c1, c2] = src.colors;
           const when = p.postedAt ? `<span class="when">${fmtDate(new Date(p.postedAt).toISOString().slice(0, 10))}</span>` : "";
           const raw = p.translated === false;
+          const freeMt = p.translateVia === "free";
           return `<article class="gcard" id="g-${idx}" data-kind="${esc(p.agency)}">
         <div class="gtile" style="background:linear-gradient(140deg,${c1},${c2})" data-logo="${esc(src.logoQuery)}"><span>${esc(p.agency)}</span></div>
         <div class="gbody">
           <div class="gmeta"><span class="pill agency">${esc(p.agency)}</span><span class="pill kind">${esc(p.kind ?? "News")}</span>${when}
-            ${raw ? `<span class="pill raw" title="AI translation pending — this is the original Khmer text. Right-click → Translate to English, or wait for the next update.">\u{1F310} raw \u{00B7} tap to translate</span>` : ""}</div>
+            ${raw ? `<span class="pill raw" title="AI translation pending — this is the original Khmer text. Right-click → Translate to English, or wait for the next update.">\u{1F310} raw \u{00B7} tap to translate</span>` : ""}
+            ${freeMt ? `<span class="pill raw" title="Machine-translated (Gemini was unavailable) — a fuller AI rewrite replaces this automatically once available again.">\u{1F310} auto-translated</span>` : ""}</div>
           <h2${raw ? ` lang="km" translate="yes"` : ""}><a href="${esc(p.url)}" target="_blank" rel="noopener"${raw ? ` lang="km"` : ""}>${esc(p.title)}</a></h2>
           <p>${esc(p.summary ?? "")}</p>
           ${!raw ? `<div class="km">\u{1F1F0}\u{1F1ED} ${esc(p.titleKm ?? "")}</div>` : ""}
