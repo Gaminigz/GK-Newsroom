@@ -8,7 +8,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "daily": "npm run fetch && (npm run ai-countries || true) && (npm run gov || true) && (npm run telegram || true) && (npm run brands || true) && (npm run govcast || true) && npm run podcast",
+    "daily": "node src/scripts/run-daily.mjs",
     "govcast": "tsx src/scripts/run-gov-podcast.mjs",
     "fetch": "tsx src/scripts/run-fetch.mjs",
     "ai-countries": "tsx src/scripts/run-ai-countries.mjs",
