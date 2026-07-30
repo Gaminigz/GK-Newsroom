@@ -34,6 +34,7 @@ import { getEpisodeAudio, listEpisodes } from "../lib/podcast.ts";
 import { handleAdmin } from "../lib/admin.mjs";
 import { handleLeads, hasLeadsSession } from "../lib/leads.mjs";
 import { handleGarments } from "../lib/garment-directory.mjs";
+import { handleAssociations } from "../lib/garment-associations.mjs";
 import { handleApp } from "../lib/app.mjs";
 import { getSpiceAudio, listSpiceEpisodes } from "../lib/spice-podcast.ts";
 import { getGovAudio, listGovEpisodes } from "../lib/gov-podcast.ts";
@@ -1002,11 +1003,15 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Garments (trade-press outreach) shares the Leads/AI-Funding gate —
-    // one login unlocks all three (same Path=/ session cookie).
+    // Garments (trade-press + associations outreach) shares the
+    // Leads/AI-Funding gate — one login unlocks all (same Path=/ cookie).
     if (path === "/garments" || path.startsWith("/garments/")) {
       if (!hasLeadsSession(req)) {
         res.writeHead(303, { Location: "/leads" }).end();
+        return;
+      }
+      if (path.startsWith("/garments/assoc") || path === "/garments/associations") {
+        await handleAssociations(req, res, url);
         return;
       }
       await handleGarments(req, res, url);
