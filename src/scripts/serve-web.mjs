@@ -33,6 +33,7 @@ import { getDb } from "../lib/mongo.ts";
 import { getEpisodeAudio, listEpisodes } from "../lib/podcast.ts";
 import { handleAdmin } from "../lib/admin.mjs";
 import { handleLeads, hasLeadsSession } from "../lib/leads.mjs";
+import { handleGarments } from "../lib/garment-directory.mjs";
 import { handleApp } from "../lib/app.mjs";
 import { getSpiceAudio, listSpiceEpisodes } from "../lib/spice-podcast.ts";
 import { getGovAudio, listGovEpisodes } from "../lib/gov-podcast.ts";
@@ -672,11 +673,12 @@ function govPage(posts, episodes = []) {
   <div class="private-row">
     <a class="pbtn" href="/leads">🎯 Leads <span class="lock">🔒</span></a>
     <a class="pbtn" href="/ai/world">🌍 AI Funding <span class="lock">🔒</span></a>
+    <a class="pbtn" href="/garments">📰 Garments <span class="lock">🔒</span></a>
   </div>
   ${streamer({ items: waItems, base: "/podcast/gov/" })}
   <nav class="chips">${chips}</nav>
   <main>${cards}</main>
-  <footer>GK SMART Accounting · sources: GDT · ACAR · MEF · MoC · GDCE · NA · MoI · <a href="/leads" style="color:#35c98a;text-decoration:none">Leads</a> · <a href="/ai/world" style="color:#35c98a;text-decoration:none">AI Funding</a></footer>
+  <footer>GK SMART Accounting · sources: GDT · ACAR · MEF · MoC · GDCE · NA · MoI · <a href="/leads" style="color:#35c98a;text-decoration:none">Leads</a> · <a href="/ai/world" style="color:#35c98a;text-decoration:none">AI Funding</a> · <a href="/garments" style="color:#35c98a;text-decoration:none">Garments</a></footer>
 </div>
 <script>
   document.querySelectorAll(".chip").forEach((c) => {
@@ -997,6 +999,17 @@ const server = http.createServer(async (req, res) => {
 
     if (path === "/leads" || path.startsWith("/leads/")) {
       await handleLeads(req, res, url);
+      return;
+    }
+
+    // Garments (trade-press outreach) shares the Leads/AI-Funding gate —
+    // one login unlocks all three (same Path=/ session cookie).
+    if (path === "/garments" || path.startsWith("/garments/")) {
+      if (!hasLeadsSession(req)) {
+        res.writeHead(303, { Location: "/leads" }).end();
+        return;
+      }
+      await handleGarments(req, res, url);
       return;
     }
 

@@ -19,6 +19,7 @@ const STAGES = [
   { name: "gov", script: "npm run gov", maxMs: 5 * 60_000 },
   { name: "telegram", script: "npm run telegram", maxMs: 5 * 60_000 },
   { name: "brands", script: "npm run brands", maxMs: 15 * 60_000 },
+  { name: "garment-press", script: "npm run garment-press", maxMs: 5 * 60_000 },
   { name: "govcast", script: "npm run govcast", maxMs: 3 * 60_000 },
   { name: "podcast", script: "npm run podcast", maxMs: 3 * 60_000 },
 ];

@@ -14,6 +14,7 @@
     "ai-countries": "tsx src/scripts/run-ai-countries.mjs",
     "telegram": "tsx src/scripts/run-telegram.mjs",
     "brands": "tsx src/scripts/run-brand-scout.mjs",
+    "garment-press": "tsx src/scripts/run-garment-press.mjs",
     "brands-page": "tsx src/scripts/serve-brands.mjs",
     "gov": "tsx src/scripts/run-gov-fetch.mjs",
     "spicecast": "tsx src/scripts/run-spice-podcasts.mjs",

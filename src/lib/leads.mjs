@@ -141,7 +141,7 @@ export async function renderDirectory({ brandPath = "/leads/b/", homeLinks = tru
 <div class="wrap">
   <h1>🎯 Leads · Brand Scout</h1>
   <div class="sub">${brands.length} brands A→Z · ${totalSignals} AI signals ·
-    ${homeLinks ? `<a href="/accounting">← GK SMART Accounting</a> · <a href="/ai/world">🌍 AI Funding</a> · <a href="/leads/logout">sign out</a>` : "local"}</div>
+    ${homeLinks ? `<a href="/accounting">← GK SMART Accounting</a> · <a href="/ai/world">🌍 AI Funding</a> · <a href="/garments">📰 Garments</a> · <a href="/leads/logout">sign out</a>` : "local"}</div>
   ${hot.length ? `<div class="hotrow">${hotRow}</div>` : ""}
   <input class="filter" id="filter" placeholder="filter brands… (name, country, sector)">
   <div class="boardwrap">
