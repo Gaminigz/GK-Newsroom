@@ -81,11 +81,16 @@ function decodeEntities(s: string): string {
     .replace(/<br\s*\/?>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&#x27;/g, "'")
+    // Generic numeric entities (&#33; / &#x21;) — matters more now that
+    // raw (untranslated-fallback) posts go straight to the page instead of
+    // through Gemini, which used to clean these up as a side effect.
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#0?39;|&#x27;/g, "'")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -216,7 +221,7 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R
  * blanks the run.
  */
 export async function fetchTelegram(): Promise<{
-  channels: number; posts: number; carried: number; discovered: number; errors: string[];
+  channels: number; posts: number; raw: number; carried: number; discovered: number; errors: string[];
 }> {
   const db = await getDb();
   const reg = db.collection("tg_channels");
@@ -281,17 +286,21 @@ export async function fetchTelegram(): Promise<{
     discovered++;
   });
 
-  // Only translate posts we haven't seen before. A repeated announcement is
-  // already in the feed (keyed by url) — no need to spend a Gemini call on it;
-  // it just stays/resurfaces on its own.
+  // Only translate posts that don't have a REAL translation yet. A post that
+  // only ever got the raw fallback (translated:false, e.g. Gemini was down)
+  // stays eligible for retry so it gets upgraded the moment Gemini works
+  // again — same URL, so the upsert just replaces the raw text in place.
   const allUrls = kept.flatMap((ch) => ch.posts.map((p) => p.url));
   const existing = new Set(
-    (await feed.find({ url: { $in: allUrls } }, { projection: { url: 1 } }).toArray()).map((d) => d.url as string),
+    (await feed.find({ url: { $in: allUrls }, translated: true }, { projection: { url: 1 } }).toArray()).map(
+      (d) => d.url as string,
+    ),
   );
 
-  // Translate + upsert, bounded by MAX_TRANSLATE (applies to NEW posts only).
+  // Translate + upsert, bounded by MAX_TRANSLATE (applies to NEW/untranslated posts only).
   let budget = MAX_TRANSLATE;
   let postCount = 0;
+  let rawCount = 0;
   let carried = 0;
   for (const ch of kept) {
     if (budget <= 0) break;
@@ -300,14 +309,35 @@ export async function fetchTelegram(): Promise<{
     if (!fresh.length) continue;
     const posts = fresh.slice(0, budget);
     budget -= posts.length;
+    const now = Date.now();
     let tr: Translated[] = [];
     try {
       tr = await translatePosts(ch.label, posts);
     } catch (e) {
       errors.push(`${ch.handle}: ${(e as Error).message}`);
+      // Gemini is down (or quota exhausted) — post the raw Khmer text now
+      // rather than losing the post for a whole cycle. `lang="km"` on the
+      // web page lets the reader's own browser (Chrome's built-in
+      // translate) read it immediately; `translated:false` means the next
+      // successful run silently upgrades it to a real AI translation.
+      const ops = posts.map((p) => ({
+        updateOne: {
+          filter: { url: p.url },
+          update: {
+            $set: {
+              agency: ch.label, titleKm: p.text.slice(0, 200), title: p.text.slice(0, 200),
+              summary: "", kind: "Telegram", postedAt: p.postedAt, lang: "km",
+              via: "telegram", channel: ch.handle, relevant: true, translated: false, updatedAt: now,
+            },
+            $setOnInsert: { url: p.url, createdAt: now },
+          },
+          upsert: true,
+        },
+      }));
+      await feed.bulkWrite(ops as never);
+      rawCount += ops.length;
       continue;
     }
-    const now = Date.now();
     const ops = posts.map((p, i) => {
       const t = tr[i];
       if (!t || !t.title?.trim()) return null;
@@ -318,8 +348,9 @@ export async function fetchTelegram(): Promise<{
             $set: {
               agency: ch.label, titleKm: t.titleKm?.trim() || "", title: t.title.trim(),
               summary: t.summary?.trim() || "", kind: "Telegram", postedAt: p.postedAt,
-              via: "telegram", channel: ch.handle, relevant: t.relevant !== false, updatedAt: now,
+              via: "telegram", channel: ch.handle, relevant: t.relevant !== false, translated: true, updatedAt: now,
             },
+            $unset: { lang: "" },
             $setOnInsert: { url: p.url, createdAt: now },
           },
           upsert: true,
@@ -332,5 +363,5 @@ export async function fetchTelegram(): Promise<{
     }
   }
 
-  return { channels: kept.length, posts: postCount, carried, discovered, errors };
+  return { channels: kept.length, posts: postCount, raw: rawCount, carried, discovered, errors };
 }

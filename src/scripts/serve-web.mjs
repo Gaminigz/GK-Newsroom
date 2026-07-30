@@ -590,13 +590,15 @@ function govPage(posts, episodes = []) {
           const src = bySrc[p.agency] ?? { colors: ["#666", "#333"], name: p.agency, logoQuery: "" };
           const [c1, c2] = src.colors;
           const when = p.postedAt ? `<span class="when">${fmtDate(new Date(p.postedAt).toISOString().slice(0, 10))}</span>` : "";
+          const raw = p.translated === false;
           return `<article class="gcard" id="g-${idx}" data-kind="${esc(p.agency)}">
         <div class="gtile" style="background:linear-gradient(140deg,${c1},${c2})" data-logo="${esc(src.logoQuery)}"><span>${esc(p.agency)}</span></div>
         <div class="gbody">
-          <div class="gmeta"><span class="pill agency">${esc(p.agency)}</span><span class="pill kind">${esc(p.kind ?? "News")}</span>${when}</div>
-          <h2><a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.title)}</a></h2>
+          <div class="gmeta"><span class="pill agency">${esc(p.agency)}</span><span class="pill kind">${esc(p.kind ?? "News")}</span>${when}
+            ${raw ? `<span class="pill raw" title="AI translation pending — this is the original Khmer text. Right-click → Translate to English, or wait for the next update.">\u{1F310} raw \u{00B7} tap to translate</span>` : ""}</div>
+          <h2${raw ? ` lang="km" translate="yes"` : ""}><a href="${esc(p.url)}" target="_blank" rel="noopener"${raw ? ` lang="km"` : ""}>${esc(p.title)}</a></h2>
           <p>${esc(p.summary ?? "")}</p>
-          <div class="km">\u{1F1F0}\u{1F1ED} ${esc(p.titleKm ?? "")}</div>
+          ${!raw ? `<div class="km">\u{1F1F0}\u{1F1ED} ${esc(p.titleKm ?? "")}</div>` : ""}
         </div>
       </article>`;
         })
@@ -652,6 +654,7 @@ function govPage(posts, episodes = []) {
   .pill { display:inline-block; font-size:11px; border-radius:999px; padding:2px 9px; border:1px solid #2a4636; color:#9fc2ae; }
   .pill.agency { color:#35c98a; border-color:#35c98a55; }
   .pill.kind { color:#d9b64a; border-color:#d9b64a44; }
+  .pill.raw { color:#8fb4e0; border-color:#8fb4e044; cursor:help; }
   .empty { background:#0e1b14; border:1px solid #1d3329; border-radius:14px; padding:26px 18px; margin-top:14px; text-align:center; color:#a9c2b4; }
   .empty p + p { margin-top:8px; font-size:14px; }
   footer { color:#6f8a7c; font-size:12px; text-align:center; margin-top:36px; }
