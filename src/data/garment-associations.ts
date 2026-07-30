@@ -320,6 +320,24 @@ export const ASSOCIATIONS: Association[] = [
     what: "European apparel and textile industry confederation.",
     topic: "Europe apparel textile manufacturing industry",
   },
+  {
+    slug: "caf-canada",
+    name: "CAF — Canadian Apparel Federation (Fédération canadienne du vêtement)",
+    iso: "CA",
+    url: "https://www.caf-fcv.ca",
+    sectors: ["garment"],
+    what: "Canada's national apparel-industry body — active (trade missions, CUSMA/USMCA lobbying), spans small suppliers through national brands and retailers, not purely manufacturers.",
+    topic: "Canada apparel garment manufacturing industry",
+  },
+  {
+    slug: "ctia-canada",
+    name: "CTIA — Canadian Textiles Industry Association",
+    iso: "CA",
+    url: "https://www.canadatextiles.ca",
+    sectors: ["garment", "softgoods"],
+    what: "Canada's primary textile producers/manufacturers association (fabric, not finished apparel), founded 2009 — active, held its Outlook Conference Oct 2025 on US tariff pressure.",
+    topic: "Canada textile manufacturing industry",
+  },
 
   // ---------------- Footwear associations ----------------
   {
@@ -503,6 +521,15 @@ export const ASSOCIATIONS: Association[] = [
     sectors: ["footwear"],
     what: "Asia-Pacific regional confederation of footwear associations (HK, Japan, Korea, Taiwan, Indonesia, Thailand, China, Vietnam, Malaysia, Philippines, India).",
     topic: "Asia footwear shoe manufacturing industry",
+  },
+  {
+    slug: "smac-canada",
+    name: "SMAC — Shoe Manufacturers Association of Canada",
+    iso: "CA",
+    url: "",
+    sectors: ["footwear"],
+    what: "Canada's footwear manufacturers association (Baie-d'Urfé/Kirkland, QC) — active per 2025 tariff commentary, but no confirmed live official website. A regional sister body, the Western Canadian Shoe Association (wcsa.ca), also exists.",
+    topic: "Canada footwear shoe manufacturing industry",
   },
 
   // ---------------- Bags / luggage associations ----------------
