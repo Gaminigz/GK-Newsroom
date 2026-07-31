@@ -29,6 +29,7 @@
 import crypto from "node:crypto";
 import QRCode from "qrcode";
 import { getDb } from "./mongo.ts";
+import { newCode, sendVerificationEmail, sendPasswordResetEmail } from "./mail.mjs";
 
 const ORANGE = "#d9542b";
 const PUBLIC_BASE = process.env.PUBLIC_BASE || "https://web-production-2b43c.up.railway.app";
@@ -697,7 +698,7 @@ function verifyPage(email, error = "") {
       <button class="btn" style="margin-top:16px">Confirm email</button>
     </form>
     <div style="text-align:center;margin-top:14px"><a class="sub" href="/app/home" style="text-decoration:underline">Not now — verify later</a></div>
-    <div class="sub" style="text-align:center;font-size:11.5px;margin-top:16px">(development note: email sending goes live with SMTP — the code is 111111 for now)</div>`,
+    <div class="sub" style="text-align:center;font-size:11.5px;margin-top:16px">Didn't get the email? Check spam, or wait a minute — first-time delivery can be slow.</div>`,
   });
 }
 
@@ -1961,10 +1962,10 @@ export async function handleApp(req, res, url) {
       const hash = crypto.createHash("sha256").update(password).digest("hex");
       let u = await users.findOne({ email });
       if (!u) {
-        // NOTE dev stage: code is generated and logged, email sending goes
-        // live with SMTP later; until then the code is fixed to 111111.
-        await users.insertOne({ email, hash, verified: false, code: "111111", codeAt: new Date(), createdAt: new Date() });
-        console.log(`[auth] new account ${email} — verification code (dev) 111111, valid 24h`);
+        const code = newCode();
+        await users.insertOne({ email, hash, verified: false, code, codeAt: new Date(), createdAt: new Date() });
+        sendVerificationEmail(email, code).catch((e) => console.error(`[auth] verify send error for ${email}: ${e.message}`));
+        console.log(`[auth] new account ${email} — verification code emailed, valid 24h`);
       } else if (u.hash !== hash) {
         html(res, emailLoginPage("Wrong password for this email. Access recovery: gk.smart@ggmt.sg"), 401);
         return;
@@ -2036,8 +2037,10 @@ export async function handleApp(req, res, url) {
   if (path === "/app/profile/reset-send" && req.method === "POST") {
     const email = decodeURIComponent(cookies(req).app_email || "");
     if (email) {
-      await (await col("app_users")).updateOne({ email }, { $set: { resetCode: "111111", resetAt: new Date() } });
-      console.log(`[auth] reset code (dev 111111) for ${email}`);
+      const rc = newCode();
+      await (await col("app_users")).updateOne({ email }, { $set: { resetCode: rc, resetAt: new Date() } });
+      sendPasswordResetEmail(email, rc).catch((e) => console.error(`[auth] reset send error for ${email}: ${e.message}`));
+      console.log(`[auth] password reset code emailed to ${email}`);
     }
     redirect(res, "/app/profile/reset");
     return;
@@ -2079,9 +2082,11 @@ export async function handleApp(req, res, url) {
       if (!u) { redirect(res, "/app"); return; }
       const fresh = u.codeAt && Date.now() - new Date(u.codeAt).getTime() < 24 * 3600 * 1000;
       if (!fresh) {
+        const fresh6 = newCode();
+        await users.updateOne({ email }, { $set: { code: fresh6, codeAt: new Date() } });
+        sendVerificationEmail(email, fresh6).catch((e) => console.error(`[auth] verify resend error for ${email}: ${e.message}`));
         html(res, verifyPage(email, "That code has expired (codes last 24 hours) — a new one was just emailed."), 401);
-        await users.updateOne({ email }, { $set: { code: "111111", codeAt: new Date() } });
-        console.log(`[auth] resent code (expired) for ${email}`);
+        console.log(`[auth] resent verification code to ${email}`);
         return;
       }
       if (code !== u.code) {
