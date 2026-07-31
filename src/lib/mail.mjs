@@ -1,34 +1,23 @@
 /**
  * Transactional email sender for the 3una 5aha app.
  *
- * Configured via env vars (set on Railway `web` service):
- *   SMTP_HOST  — smtp.zoho.com
- *   SMTP_PORT  — 465 (SSL) or 587 (STARTTLS); defaults to 465
- *   SMTP_USER  — gk.smart@ggmt.sg
- *   SMTP_PASS  — the Zoho account password (or app password if TFA on)
- *   SMTP_FROM  — optional; defaults to SMTP_USER
+ * Uses Resend's HTTP API (works from Railway, unlike SMTP which Railway
+ * blocks). Configured via a single env var on the Railway `web` service:
  *
- * When any of SMTP_HOST/USER/PASS is missing (typical local dev), the
- * send stubs to console.log and returns { ok:true, dev:true } so the
- * app keeps working end-to-end without failing the sign-up flow.
+ *   RESEND_API_KEY   — from resend.com/api-keys
+ *   RESEND_FROM      — optional; defaults to "onboarding@resend.dev".
+ *                       Set to "3una 5aha <verify@ggmt.sg>" once the
+ *                       ggmt.sg domain is verified in Resend.
+ *
+ * When RESEND_API_KEY is missing (local dev), the send stubs to
+ * console.log and returns { ok:true, dev:true } so the sign-up flow
+ * keeps working end-to-end without failing.
  */
 
-import nodemailer from "nodemailer";
+const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
-let cached = null;
-
-function getTransporter() {
-  if (cached) return cached;
-  const { SMTP_HOST, SMTP_USER, SMTP_PASS } = process.env;
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return null;
-  const port = Number(process.env.SMTP_PORT || 465);
-  cached = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port,
-    secure: port === 465, // SSL for 465, STARTTLS for 587
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-  });
-  return cached;
+function fromAddress() {
+  return process.env.RESEND_FROM || "3una 5aha <onboarding@resend.dev>";
 }
 
 /** 6-digit numeric code, first digit ≥1 so display never looks truncated. */
@@ -36,7 +25,7 @@ export function newCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-function codeEmail({ heading, sub, code, footer }) {
+function codeEmailHtml({ heading, sub, code, footer }) {
   return `<div style="font-family:-apple-system,'Segoe UI',Roboto,sans-serif;max-width:480px;margin:0 auto;padding:22px;color:#222">
     <h2 style="margin:0 0 8px;font-size:22px">${heading}</h2>
     <p style="color:#555;margin:0 0 6px">${sub}</p>
@@ -47,50 +36,56 @@ function codeEmail({ heading, sub, code, footer }) {
   </div>`;
 }
 
-/** Send the 6-digit signup/verify code. */
-export async function sendVerificationEmail(to, code) {
-  const t = getTransporter();
-  if (!t) { console.log(`[mail:dev] verification code ${code} → ${to}`); return { ok: true, dev: true }; }
+async function sendViaResend({ to, subject, text, html }) {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) { console.log(`[mail:dev] would send "${subject}" → ${to}`); return { ok: true, dev: true }; }
   try {
-    await t.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
-      to,
-      subject: `${code} — verify your 3una 5aha email`,
-      text: `Your 3una 5aha verification code is: ${code}\n\nEnter it in the app within 24 hours to verify your email. If you didn't sign up, you can ignore this message.\n\n— 3una 5aha · GGMT PTE. LTD.`,
-      html: codeEmail({
-        heading: "Verify your email",
-        sub: "Your 3una 5aha verification code:",
-        code,
-        footer: "Enter it in the app within 24 hours. If you didn't sign up for 3una 5aha, you can ignore this message.",
-      }),
+    const r = await fetch(RESEND_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ from: fromAddress(), to: [to], subject, text, html }),
     });
+    if (!r.ok) {
+      const body = await r.text().catch(() => "");
+      console.error(`[mail] Resend HTTP ${r.status} for ${to}: ${body.slice(0, 300)}`);
+      return { ok: false, error: `Resend HTTP ${r.status}` };
+    }
     return { ok: true };
   } catch (e) {
-    console.error(`[mail] verification send failed for ${to}: ${e.message}`);
+    console.error(`[mail] Resend send failed for ${to}: ${e.message}`);
     return { ok: false, error: e.message };
   }
 }
 
+/** Send the 6-digit signup/verify code. */
+export async function sendVerificationEmail(to, code) {
+  return sendViaResend({
+    to,
+    subject: `${code} — verify your 3una 5aha email`,
+    text: `Your 3una 5aha verification code is: ${code}\n\nEnter it in the app within 24 hours to verify your email. If you didn't sign up, you can ignore this message.\n\n— 3una 5aha · GGMT PTE. LTD.`,
+    html: codeEmailHtml({
+      heading: "Verify your email",
+      sub: "Your 3una 5aha verification code:",
+      code,
+      footer: "Enter it in the app within 24 hours. If you didn't sign up for 3una 5aha, you can ignore this message.",
+    }),
+  });
+}
+
 /** Send the 6-digit password-reset code. */
 export async function sendPasswordResetEmail(to, code) {
-  const t = getTransporter();
-  if (!t) { console.log(`[mail:dev] reset code ${code} → ${to}`); return { ok: true, dev: true }; }
-  try {
-    await t.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
-      to,
-      subject: `${code} — reset your 3una 5aha password`,
-      text: `Your 3una 5aha password reset code is: ${code}\n\nEnter it on the reset page within 24 hours to set a new password. If you didn't request this, ignore this message and your password stays the same.\n\n— 3una 5aha · GGMT PTE. LTD.`,
-      html: codeEmail({
-        heading: "Reset your password",
-        sub: "Your 3una 5aha password reset code:",
-        code,
-        footer: "Enter it on the reset page within 24 hours. If you didn't request this, ignore this message and your password stays the same.",
-      }),
-    });
-    return { ok: true };
-  } catch (e) {
-    console.error(`[mail] reset send failed for ${to}: ${e.message}`);
-    return { ok: false, error: e.message };
-  }
+  return sendViaResend({
+    to,
+    subject: `${code} — reset your 3una 5aha password`,
+    text: `Your 3una 5aha password reset code is: ${code}\n\nEnter it on the reset page within 24 hours to set a new password. If you didn't request this, ignore this message and your password stays the same.\n\n— 3una 5aha · GGMT PTE. LTD.`,
+    html: codeEmailHtml({
+      heading: "Reset your password",
+      sub: "Your 3una 5aha password reset code:",
+      code,
+      footer: "Enter it on the reset page within 24 hours. If you didn't request this, ignore this message and your password stays the same.",
+    }),
+  });
 }
