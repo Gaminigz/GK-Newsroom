@@ -14,7 +14,8 @@
  *   POST /admin/shop/status      approve / suspend / reactivate an owner
  *   POST /admin/shop/resetpass   temp password ("kola-35-pittu" style)
  *
- * Auth: the 2FA-style code is the gate — ADMIN_CODE env, default 555555.
+ * Auth: single access code from the ADMIN_CODE env var — NO default, NEVER
+ * in the repo (public). If ADMIN_CODE is unset, login always fails closed.
  * Sessions are in-memory (a Railway redeploy signs everyone out — fine).
  */
 
@@ -22,8 +23,7 @@ import crypto from "node:crypto";
 import { getDb } from "./mongo.ts";
 import { listEpisodes } from "./podcast.ts";
 
-const ADMIN_CODE = process.env.ADMIN_CODE || "555555"; // 2FA — disabled for now (see /admin/login handler)
-const ADMIN_ID = (process.env.ADMIN_ID || "admin5").toLowerCase();
+const ADMIN_CODE = process.env.ADMIN_CODE || "";
 const SESSION_MS = 12 * 60 * 60 * 1000;
 const sessions = new Map(); // token -> expiry epoch ms
 
@@ -135,13 +135,11 @@ function loginPage(error = "") {
 <body>
     <form class="card" method="POST" action="/admin/login" id="f">
       <div class="brand"><span class="chip">35</span> 3una 5aha</div>
-      <h2>Sign in</h2>
-      <div class="sub">Use your admin credentials</div>
+      <h2>Superadmin</h2>
+      <div class="sub">Enter the access code</div>
       ${error ? `<div class="err">${esc(error)}</div>` : ""}
-      <label>ADMIN ID</label>
-      <input type="text" name="email" value="admin5" autocomplete="username">
-      <label>PASSWORD</label>
-      <input type="password" name="password" placeholder="••••••••••" autocomplete="current-password">
+      <label>ACCESS CODE</label>
+      <input type="password" name="code" placeholder="••••••" inputmode="numeric" autocomplete="off" autofocus>
       <button type="submit">Sign in to console</button>
       <a class="forgot" href="mailto:gk.smart@ggmt.sg?subject=Admin%20access%20request">Forgot password? Email gk.smart@ggmt.sg</a>
     </form>
@@ -556,15 +554,12 @@ export async function handleAdmin(req, res, url) {
 
   if (path === "/admin/login" && req.method === "POST") {
     const form = await readBody(req);
-    const id = (form.get("email") || "").trim().toLowerCase();
     const code = (form.get("code") || "").trim();
-    // 2FA disabled for now — the ADMIN ID is the gate. Re-enable by also
-    // requiring code === ADMIN_CODE here.
-    if (id === ADMIN_ID || code === ADMIN_CODE) {
+    if (code && code === ADMIN_CODE) {
       startSession(res);
       redirect(res, "/admin/newsroom");
     } else {
-      html(res, loginPage("That admin ID didn't match."), 401);
+      html(res, loginPage("Wrong code."), 401);
     }
     return;
   }

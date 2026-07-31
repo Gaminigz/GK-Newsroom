@@ -346,6 +346,8 @@ function shell({ title, desc, body }) {
   .t-food { background:linear-gradient(135deg,#8a3f12,#c2611c 55%,#e08a2e); }
   .t-ai   { background:linear-gradient(135deg,#0a1f47,#173a7a 60%,#2a5cb8); }
   .t-acct { background:linear-gradient(135deg,#0b3d2e,#14654a 60%,#1e8f66); }
+  .t-admin { background:linear-gradient(135deg,#1a1a1a,#2e2a26 55%,#4a443c); }
+  .tile .lock { font-size:13px; opacity:.75; margin-left:6px; }
   .soon { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:10px; }
   .soon .emoji { font-size:64px; }
   .soon h2 { font-size:24px; }
@@ -404,6 +406,15 @@ const ICONS = {
     <text x="18" y="23" text-anchor="middle" font-family="Arial" font-size="13" font-weight="800" fill="#8a5f00">$</text>
     <ellipse cx="14.5" cy="14" rx="4.5" ry="2.6" fill="#ffffff55"/>
   </svg>`,
+  admin: `<svg viewBox="0 0 64 64" width="54" height="54" aria-hidden="true">
+    <defs>
+      <linearGradient id="lBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3d675"/><stop offset="1" stop-color="#c99a2e"/></linearGradient>
+    </defs>
+    <rect x="14" y="28" width="36" height="28" rx="8" fill="url(#lBody)"/>
+    <path d="M20 28v-6a12 12 0 0 1 24 0v6" fill="none" stroke="#c99a2e" stroke-width="6" stroke-linecap="round"/>
+    <circle cx="32" cy="40" r="6" fill="#5c4416"/>
+    <rect x="29" y="44" width="6" height="9" rx="3" fill="#5c4416"/>
+  </svg>`,
 };
 
 function landingPage() {
@@ -432,6 +443,12 @@ function landingPage() {
       <span class="icon"><img src="/assets/tile-acct.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display=''"><span style="display:none">${ICONS.acct}</span></span>
       <h2>GK SMART Ai Accounting</h2>
       <p>Cambodia's tax, customs & business announcements — translated from Khmer, daily.</p>
+      <span class="go">Open →</span>
+    </a>
+    <a class="tile t-admin" href="/admin">
+      <span class="icon">${ICONS.admin}</span>
+      <h2>35 <span class="lock">🔒</span></h2>
+      <p>Superadmin control panel — shops, orders, activity, chats.</p>
       <span class="go">Open →</span>
     </a>
   </nav>`,
