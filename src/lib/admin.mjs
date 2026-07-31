@@ -84,6 +84,15 @@ function html(res, body, status = 200) {
   res.end(body);
 }
 
+/** Append one row to the superadmin audit trail. Never throws — logging
+ *  must never break the action it's recording. */
+async function logActivity(action, { target = "", detail = "" } = {}) {
+  try {
+    const db = await getDb();
+    await db.collection("admin_activity").insertOne({ action, target, detail, actor: "admin5", at: new Date() });
+  } catch { /* audit log is best-effort */ }
+}
+
 const TEMP_WORDS = ["kola", "pittu", "kottu", "polos", "ambula", "parippu", "sambol", "achcharu", "watalappan", "hoppers"];
 function tempPassword() {
   const pick = () => TEMP_WORDS[crypto.randomInt(TEMP_WORDS.length)];
@@ -147,6 +156,9 @@ function shell(tab, body) {
     ["newsroom", "NewsRoom"],
     ["shop", "Superadmin Shop"],
     ["orders", "Orders"],
+    ["menus", "Menus"],
+    ["chats", "Chats"],
+    ["activity", "Activity"],
   ]
     .map(
       ([k, label]) =>
@@ -306,6 +318,26 @@ async function shopTab(flash = "") {
   const pending = owners.filter((o) => o.status === "pending");
   const listings = owners.reduce((a, o) => a + (o.listings ?? 0), 0);
 
+  // Multi-country / multi-location breakdown.
+  const byCountry = new Map();
+  for (const o of owners) {
+    const key = o.country || "(unset)";
+    if (!byCountry.has(key)) byCountry.set(key, { country: key, shops: 0, active: 0, cities: new Set() });
+    const c = byCountry.get(key);
+    c.shops++;
+    if (o.status === "active") c.active++;
+    if (o.city) c.cities.add(o.city);
+  }
+  const countryRows = [...byCountry.values()]
+    .sort((a, b) => b.shops - a.shops)
+    .map((c) => `<tr>
+      <td><strong>${esc(c.country)}</strong></td>
+      <td>${c.cities.size} location${c.cities.size === 1 ? "" : "s"} <span style="color:#8a827b;font-size:12px">${esc([...c.cities].slice(0, 4).join(", "))}${c.cities.size > 4 ? "…" : ""}</span></td>
+      <td>${c.shops}</td>
+      <td>${c.active}</td>
+    </tr>`)
+    .join("");
+
   const rows = owners
     .map((o) => {
       const id = esc(String(o._id));
@@ -352,10 +384,14 @@ async function shopTab(flash = "") {
       <div class="stat"><div class="k">App user accounts</div><div class="v">${appUsers}</div></div>
     </div>
     <section>
+      <h2>🌍 By country</h2>
+      <table><tr><th>COUNTRY</th><th>LOCATIONS</th><th>SHOPS</th><th>ACTIVE</th></tr>${countryRows || "<tr><td colspan=4>No shops yet</td></tr>"}</table>
+    </section>
+    <section>
       <h2>Owners</h2>
       <table><tr><th>SHOP / OWNER</th><th>CITY · LOCATION &amp; CONTACT</th><th>SIGNUP</th><th>LISTINGS</th><th>STATUS</th><th>ACTIONS</th></tr>${rows}</table>
     </section>
-    <div class="sub">iOS shop app + real owner sign-in come next — this console is the management side.</div>`,
+    <div class="sub">iOS is live on the App Store; Android is next — this console is the management side.</div>`,
   );
 }
 
@@ -398,6 +434,117 @@ async function ordersTab() {
     <section>
       <h2>All orders (latest 200)</h2>
       <table><tr><th>#</th><th>WHEN</th><th>SHOP</th><th>ITEMS</th><th>BUYER</th><th>TOTAL</th><th>STATUS</th></tr>${rows || "<tr><td colspan=7>No orders yet</td></tr>"}</table>
+    </section>`,
+  );
+}
+
+/* ------------------------------------------------ tab 4 Menus (dishes) */
+
+async function menusTab() {
+  const db = await getDb();
+  const [dishes, shops] = await Promise.all([
+    db.collection("app_dishes").find({}).sort({ createdAt: -1 }).limit(300).toArray(),
+    db.collection("shop_owners").find({}, { projection: { name: 1, country: 1, city: 1 } }).toArray(),
+  ]);
+  const shopById = new Map(shops.map((s) => [String(s._id), s]));
+  const specials = dishes.filter((d) => d.special).length;
+
+  const rows = dishes
+    .map((d) => {
+      const sh = shopById.get(String(d.shopId));
+      return `<tr>
+      <td style="white-space:nowrap">${d.photo ? `<img src="${esc(d.photo)}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:8px;vertical-align:middle;margin-right:8px">` : ""}<strong>${esc(d.name)}</strong>${d.special ? ' <span class="pill active">special</span>' : ""}</td>
+      <td>${sh ? `<a href="/app/owner/${esc(String(d.shopId))}" style="color:inherit">${esc(sh.name)}</a><br><span style="color:#8a827b;font-size:12px">${esc(sh.city ?? "")}, ${esc(sh.country ?? "")}</span>` : `<span style="color:#c9bfb7">(shop removed)</span>`}</td>
+      <td>LKR ${Number(d.price ?? 0).toLocaleString()}</td>
+      <td>${esc(d.discount && d.discount !== "none" ? d.discount : "—")}</td>
+      <td>${d.createdAt ? new Date(d.createdAt).toISOString().slice(0, 10) : ""}</td>
+      <td><form class="inline" method="POST" action="/admin/menu/delete" onsubmit="return confirm('Remove ${esc(d.name)} from the menu?')">
+        <input type="hidden" name="id" value="${esc(String(d._id))}"><button class="b warn">Remove</button></form></td>
+    </tr>`;
+    })
+    .join("");
+
+  return shell(
+    "menus",
+    `<h1>Menus</h1>
+    <div class="sub">Every dish posted across every shop — moderate listings here</div>
+    <div class="stats">
+      <div class="stat"><div class="k">Total dishes</div><div class="v">${dishes.length}</div></div>
+      <div class="stat"><div class="k">Today's specials live</div><div class="v">${specials}</div></div>
+    </div>
+    <section>
+      <h2>All dishes (latest 300)</h2>
+      <table><tr><th>DISH</th><th>SHOP</th><th>PRICE</th><th>DEAL</th><th>POSTED</th><th></th></tr>${rows || "<tr><td colspan=6>No dishes posted yet</td></tr>"}</table>
+    </section>`,
+  );
+}
+
+/* ------------------------------------------------ tab 5 Chats (watcher) */
+
+async function chatsTab() {
+  const db = await getDb();
+  const orders = await db.collection("app_orders")
+    .find({ "messages.0": { $exists: true } })
+    .sort({ createdAt: -1 })
+    .limit(100)
+    .toArray();
+  const shopIds = [...new Set(orders.map((o) => o.shopId))];
+  const { ObjectId } = await import("mongodb");
+  const shops = await db.collection("shop_owners")
+    .find({ _id: { $in: shopIds.map((x) => { try { return new ObjectId(x); } catch { return null; } }).filter(Boolean) } })
+    .toArray();
+  const shopName = new Map(shops.map((s) => [String(s._id), s.name]));
+  const totalMsgs = orders.reduce((a, o) => a + (o.messages?.length ?? 0), 0);
+
+  const threads = orders
+    .map((o) => {
+      const bubbles = (o.messages ?? [])
+        .slice(-8)
+        .map((m) => `<div style="margin:5px 0"><span style="font-weight:700;color:${m.from === "buyer" ? "#1a1a1a" : "#d9542b"}">${m.from === "buyer" ? esc(o.buyer || "Buyer") : "Shop"}:</span> ${esc(m.text)} <span style="color:#c9bfb7;font-size:11px">${m.at ? new Date(m.at).toISOString().slice(11, 16) : ""}</span></div>`)
+        .join("");
+      return `<section>
+        <h2 style="display:flex;justify-content:space-between;align-items:center">
+          <span>#${o.orderNo ?? "—"} · ${esc(shopName.get(o.shopId) ?? "(shop)")}</span>
+          <span class="sub" style="margin:0">${(o.messages ?? []).length} message${(o.messages ?? []).length === 1 ? "" : "s"}</span>
+        </h2>
+        ${bubbles}
+      </section>`;
+    })
+    .join("");
+
+  return shell(
+    "chats",
+    `<h1>Chats</h1>
+    <div class="sub">Buyer ↔ shop messages across every order — the moderation watcher</div>
+    <div class="stats">
+      <div class="stat"><div class="k">Active threads</div><div class="v">${orders.length}</div></div>
+      <div class="stat"><div class="k">Total messages</div><div class="v">${totalMsgs}</div></div>
+    </div>
+    ${threads || `<section><p class="sub">No chat messages yet.</p></section>`}`,
+  );
+}
+
+/* ------------------------------------------------ tab 6 Activity log */
+
+async function activityTab() {
+  const db = await getDb();
+  const log = await db.collection("admin_activity").find({}).sort({ at: -1 }).limit(300).toArray().catch(() => []);
+  const rows = log
+    .map((e) => `<tr>
+      <td style="white-space:nowrap">${e.at ? new Date(e.at).toISOString().slice(0, 16).replace("T", " ") : ""}</td>
+      <td><span class="pill active">${esc(e.action)}</span></td>
+      <td>${esc(e.target)}</td>
+      <td style="color:#8a827b">${esc(e.detail)}</td>
+    </tr>`)
+    .join("");
+
+  return shell(
+    "activity",
+    `<h1>Activity log</h1>
+    <div class="sub">Audit trail of every superadmin action — shop status changes, password resets, report resolutions</div>
+    <section>
+      <h2>Latest 300 actions</h2>
+      <table><tr><th>WHEN</th><th>ACTION</th><th>TARGET</th><th>DETAIL</th></tr>${rows || "<tr><td colspan=4>No activity recorded yet</td></tr>"}</table>
     </section>`,
   );
 }
@@ -479,10 +626,12 @@ export async function handleAdmin(req, res, url) {
     const { ObjectId } = await import("mongodb");
     const db = await getDb();
     try {
-      await db.collection("app_reports").updateOne(
+      const r = await db.collection("app_reports").findOneAndUpdate(
         { _id: new ObjectId(form.get("id")) },
         { $set: { status: "resolved", resolvedAt: new Date() } },
       );
+      const rep = r?.value ?? r;
+      await logActivity("report_resolved", { target: rep?.shopId || "(general)", detail: rep?.reason || "" });
     } catch { /* bad id */ }
     redirect(res, "/admin/shop");
     return;
@@ -493,7 +642,9 @@ export async function handleAdmin(req, res, url) {
     const { ObjectId } = await import("mongodb");
     const status = ["active", "pending", "suspended"].includes(form.get("status")) ? form.get("status") : "pending";
     const col = await ownersCol();
-    await col.updateOne({ _id: new ObjectId(form.get("id")) }, { $set: { status } });
+    const r = await col.findOneAndUpdate({ _id: new ObjectId(form.get("id")) }, { $set: { status } });
+    const name = r?.value?.name ?? r?.name ?? form.get("id");
+    await logActivity(`shop_${status}`, { target: name, detail: `status → ${status}` });
     redirect(res, "/admin/shop");
     return;
   }
@@ -508,7 +659,36 @@ export async function handleAdmin(req, res, url) {
       { $set: { tempPassword: pass, mustReset: true, tempPasswordAt: new Date() } },
     );
     const name = r?.name ?? r?.value?.name ?? "owner";
+    await logActivity("shop_password_reset", { target: name });
     html(res, await shopTab(`New temporary password for <strong>${esc(name)}</strong>: <code>${esc(pass)}</code> — they must set a new password at next sign-in (notified by email and SMS).`));
+    return;
+  }
+
+  if (path === "/admin/menu/delete" && req.method === "POST") {
+    const form = await readBody(req);
+    const { ObjectId } = await import("mongodb");
+    const db = await getDb();
+    try {
+      const d = await db.collection("app_dishes").findOneAndDelete({ _id: new ObjectId(form.get("id")) });
+      const dish = d?.value ?? d;
+      if (dish) await logActivity("dish_removed", { target: dish.name, detail: `shop ${dish.shopId}` });
+    } catch { /* bad id */ }
+    redirect(res, "/admin/menus");
+    return;
+  }
+
+  if (path === "/admin/menus") {
+    html(res, await menusTab());
+    return;
+  }
+
+  if (path === "/admin/chats") {
+    html(res, await chatsTab());
+    return;
+  }
+
+  if (path === "/admin/activity") {
+    html(res, await activityTab());
     return;
   }
 
