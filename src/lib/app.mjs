@@ -2264,9 +2264,64 @@ export async function handleApp(req, res, url) {
   if (m) {
     const { suitePage } = await import("./shop-suite.mjs");
     const shop = await shopById(m[1]);
-    const pageHtml = shop ? suitePage(shop, m[2]) : null;
+    // Menu page needs the shop's real dishes + any already-saved set meals.
+    const extras = {};
+    if (shop && m[2] === "menu") {
+      const dishesCol = await col("app_dishes");
+      const allDishes = await dishesCol.find({ shopId: m[1] }).sort({ createdAt: -1 }).toArray();
+      extras.singles = allDishes.filter((d) => d.type !== "set");
+      extras.sets = allDishes.filter((d) => d.type === "set");
+      extras.msg = url.searchParams.get("msg") || "";
+    }
+    const pageHtml = shop ? suitePage(shop, m[2], extras) : null;
     if (pageHtml) { html(res, pageHtml); return; }
     res.writeHead(404).end("not found");
+    return;
+  }
+
+  // Create a set-meal (composed of picked dishes) — Phase 1 wiring, no AI yet.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/menu\/set$/);
+  if (m && req.method === "POST") {
+    const form = await readForm(req);
+    const name = String(form.get("name") || "").trim().slice(0, 80);
+    const pickedIds = form.getAll("dishId").map(String).slice(0, 20);
+    const price = Math.max(0, Number(form.get("price")) || 0);
+    if (name && pickedIds.length && price > 0) {
+      const dishesCol = await col("app_dishes");
+      const oids = (await Promise.all(pickedIds.map(oid))).filter(Boolean);
+      const picked = await dishesCol.find({ _id: { $in: oids }, shopId: m[1] }).toArray();
+      const components = picked.map((d) => ({ dishId: String(d._id), name: d.name, price: Number(d.price) || 0 }));
+      await dishesCol.insertOne({
+        shopId: m[1],
+        type: "set",
+        name,
+        nameSi: "",
+        price,
+        portions: Math.max(1, Number(form.get("portions")) || 10),
+        window: "All day",
+        discount: "none",
+        components,
+        createdAt: new Date(),
+      });
+      const shopOid = await oid(m[1]);
+      if (shopOid) await (await col("shop_owners")).updateOne({ _id: shopOid }, { $inc: { listings: 1 } });
+      redirect(res, `/app/owner/${m[1]}/suite/menu?msg=${encodeURIComponent("Set meal saved")}`);
+      return;
+    }
+    redirect(res, `/app/owner/${m[1]}/suite/menu?msg=${encodeURIComponent("Pick a name, at least one dish, and a price.")}`);
+    return;
+  }
+
+  // Remove a set meal.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/menu\/set\/([a-f0-9]{24})\/remove$/);
+  if (m && req.method === "POST") {
+    const _id = await oid(m[2]);
+    if (_id) {
+      await (await col("app_dishes")).deleteOne({ _id, shopId: m[1], type: "set" });
+      const shopOid = await oid(m[1]);
+      if (shopOid) await (await col("shop_owners")).updateOne({ _id: shopOid }, { $inc: { listings: -1 } });
+    }
+    redirect(res, `/app/owner/${m[1]}/suite/menu?msg=${encodeURIComponent("Set meal removed")}`);
     return;
   }
 

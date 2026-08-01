@@ -117,37 +117,80 @@ function dashboardPage(shop) {
       <div class="sub" style="font-size:12px">$7.44 / LKR 2,400 · live until 8 PM · <span style="color:#1d7a34;font-weight:700">9 sold</span></div></div></div>`);
 }
 
-function menuPage(shop) {
-  const comp = (name, sub, price) => `
-    <div class="card row" style="margin-top:8px;padding:10px 13px;background:#fdf0ec;border-color:#f3cfc2">
-      <span style="width:22px;height:22px;border-radius:7px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;flex:0 0 auto">✓</span>
-      <div style="flex:1;min-width:0"><strong style="font-size:13.5px">${name}</strong><div class="sub" style="font-size:11.5px">${sub}</div></div>
-      <span class="sub" style="font-size:12.5px;font-weight:700;flex:0 0 auto">${price}</span></div>`;
-  const line = (l, v) => `<div class="row" style="justify-content:space-between;font-size:13px;margin-top:5px"><span class="sub">${l}</span><strong>${v}</strong></div>`;
-  return page(shop, "menu", "Menu setup", "මෙනු සැකසුම", `
+function menuPage(shop, extras = {}) {
+  const id = String(shop._id);
+  const singles = extras.singles || [];
+  const sets = extras.sets || [];
+  const msg = extras.msg || "";
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  const dishRow = (d) => {
+    const price = Number(d.price) || 0;
+    return `<label class="card row" style="margin-top:8px;padding:10px 13px;cursor:pointer">
+      <input type="checkbox" name="dishId" value="${String(d._id)}" data-price="${price}" style="width:18px;height:18px;accent-color:${ORANGE};flex:0 0 auto" onchange="recompute()">
+      <div style="flex:1;min-width:0"><strong style="font-size:13.5px">${esc(d.name)}</strong>${d.nameSi ? ` <span class="si">${esc(d.nameSi)}</span>` : ""}
+      <div class="sub" style="font-size:11.5px">${esc(d.window || "All day")}${d.portions ? ` · ${d.portions} portions/day` : ""}</div></div>
+      <span class="sub" style="font-size:12.5px;font-weight:700;flex:0 0 auto">$${price.toFixed(2)}</span></label>`;
+  };
+
+  const savedSet = (s) => `
+    <div class="card row" style="margin-top:10px;padding:11px 13px">
+      <div style="flex:1;min-width:0">
+        <strong style="font-size:13.5px">${esc(s.name)}</strong>
+        <div class="sub" style="font-size:11.5px">${(s.components || []).length} components · $${(Number(s.price) || 0).toFixed(2)} · ${s.portions || 10} portions/day</div>
+      </div>
+      <form method="POST" action="/app/owner/${id}/menu/set/${String(s._id)}/remove" onsubmit="return confirm('Remove this set meal?')" style="margin:0">
+        <button class="btn ghost" style="width:auto;padding:7px 10px;font-size:11.5px;color:#b3261e">Remove</button>
+      </form>
+    </div>`;
+
+  const singlesHtml = singles.length
+    ? singles.map(dishRow).join("")
+    : `<div class="card" style="margin-top:8px;padding:12px 14px;background:#fdf0ec;border-color:#f3cfc2;font-size:12.5px;color:#946200">You have no dishes yet — add a single dish first from <a href="/app/owner/${id}/dishes" style="text-decoration:underline;color:#946200"><strong>Setup Daily Menu</strong></a>, then come back to combine them into set meals.</div>`;
+
+  return page(shop, "menu", "Plan Menu", "මෙනු සැකසුම", `
+    ${msg ? `<div class="card" style="margin-top:10px;padding:10px 13px;background:#e8f6ec;border-color:#bfe5c8;font-size:12.5px;color:#1d7a34">${esc(msg)}</div>` : ""}
+
     <div class="seg" style="margin-top:12px">
-      <label><input type="radio" name="mtab"><span class="opt" style="font-size:12px;padding:6px 12px">Single dish</span></label>
       <label><input type="radio" name="mtab" checked><span class="opt" style="font-size:12px;padding:6px 12px">Set menu</span></label>
-      <label><input type="radio" name="mtab"><span class="opt" style="font-size:12px;padding:6px 12px">Combo</span></label>
-      <label><input type="radio" name="mtab"><span class="opt" style="font-size:12px;padding:6px 12px">Events</span></label>
+      <label><input type="radio" name="mtab" disabled><span class="opt" style="font-size:12px;padding:6px 12px;opacity:.4">Combo (soon)</span></label>
+      <label><input type="radio" name="mtab" disabled><span class="opt" style="font-size:12px;padding:6px 12px;opacity:.4">Events (soon)</span></label>
     </div>
-    <input type="text" value="Rice & 3-Curry Lunch Set" style="margin-top:12px" readonly>
-    <div class="row" style="justify-content:space-between;margin-top:12px"><strong style="font-size:13.5px">Pick from your dishes</strong><span style="color:${ORANGE};font-weight:700;font-size:12.5px">5 picked</span></div>
-    ${comp("Red rice", "350 g cooked · base of the set", "$0.62 / LKR 200")}
-    ${comp("Parippu (dhal)", "50 g portion", "$0.87 / LKR 280")}
-    ${comp("Beef curry", "100 g portion", "$2.94 / LKR 950")}
-    ${comp("Boiled egg", "1 egg", "$0.37 / LKR 120")}
-    ${comp("Pol Sambol", "30 g · side", "$0.46 / LKR 150")}
-    <div class="card" style="margin-top:14px;padding:13px 14px">
-      ${line("Dishes ordered separately", "$5.27 / LKR 1,700")}
-      ${line("Ingredients · from price list", "$1.74 / LKR 560")}
-      ${line("Marketing · platform fee", "$0.37 / LKR 120")}
-      ${line("Utilities · gas & electricity", "$0.28 / LKR 90")}
-      <div class="row" style="justify-content:space-between;border-top:1px solid #f0e7de;margin-top:9px;padding-top:9px">
-        <strong>Set meal price</strong><strong style="color:${ORANGE};border:1.5px solid ${ORANGE};border-radius:10px;padding:4px 10px">$3.72 / LKR 1,200</strong></div>
-      <div class="sub" style="margin-top:9px;font-size:12px;color:#1d7a34">✅ Profit $1.33 / LKR 430 per set · saves buyers 29%</div>
-    </div>
-    <button class="btn" style="margin-top:14px" disabled>Post set meal as one item</button>`);
+
+    ${sets.length ? `<div class="row" style="justify-content:space-between;margin-top:16px"><strong style="font-size:13.5px">Your set meals</strong><span class="sub" style="font-size:12px">${sets.length} saved</span></div>${sets.map(savedSet).join("")}` : ""}
+
+    <div class="row" style="justify-content:space-between;margin-top:20px"><strong style="font-size:14px">Create a new set meal</strong></div>
+
+    <form method="POST" action="/app/owner/${id}/menu/set">
+      <label style="margin-top:10px">SET MEAL NAME</label>
+      <input type="text" name="name" required placeholder="e.g. Rice & 3-Curry Lunch Set" maxlength="80">
+
+      <div class="row" style="justify-content:space-between;margin-top:14px"><strong style="font-size:13.5px">Pick from your dishes</strong><span id="pickCount" style="color:${ORANGE};font-weight:700;font-size:12.5px">0 picked</span></div>
+      ${singlesHtml}
+
+      ${singles.length ? `
+      <div class="card" style="margin-top:14px;padding:13px 14px">
+        <div class="row" style="justify-content:space-between;font-size:13px"><span class="sub">Components sub-total</span><strong id="subtotal">$0.00</strong></div>
+        <label style="margin-top:10px">SET MEAL PRICE (USD)</label>
+        <input type="number" name="price" step="0.01" min="0" required placeholder="3.72" style="font-size:15px;font-weight:700">
+        <label style="margin-top:10px">DAILY PORTIONS</label>
+        <input type="number" name="portions" min="1" value="10" required>
+      </div>
+      <button class="btn" style="margin-top:14px">Post set meal as one item</button>
+      ` : ""}
+    </form>
+
+    <script>
+    function recompute() {
+      const boxes = document.querySelectorAll('input[name="dishId"]');
+      let picked = 0, total = 0;
+      boxes.forEach(b => { if (b.checked) { picked++; total += Number(b.dataset.price) || 0; } });
+      const pc = document.getElementById('pickCount');
+      const st = document.getElementById('subtotal');
+      if (pc) pc.textContent = picked + ' picked';
+      if (st) st.textContent = '$' + total.toFixed(2);
+    }
+    </script>`);
 }
 
 function costsPage(shop) {
@@ -394,8 +437,10 @@ const PAGES = {
   salaries: salariesPage, staff: staffPage, utilities: utilitiesPage, health: healthPage,
 };
 
-/** Render a suite preview page, or null if the key is unknown. */
-export function suitePage(shop, key) {
+/** Render a suite page, or null if the key is unknown. `extras` carries
+ *  page-specific pre-loaded data (e.g. the shop's real dishes for the
+ *  menu page). */
+export function suitePage(shop, key, extras = {}) {
   const fn = PAGES[key];
-  return fn ? fn(shop) : null;
+  return fn ? fn(shop, extras) : null;
 }
