@@ -329,9 +329,14 @@ function shell({ title, desc, body }) {
   * { box-sizing:border-box; margin:0; }
   body { background:#0d1117; color:#e6edf3; font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
   .wrap { max-width:680px; margin:0 auto; padding:20px 14px 40px; min-height:100vh; display:flex; flex-direction:column; }
+  header { position:relative; }
   header h1 { font-size:28px; letter-spacing:-.02em; }
   header h1 em { color:#e3b341; font-style:normal; }
   header .sub { color:#8b949e; font-size:14px; margin:2px 0 18px; }
+  .admin-corner { position:absolute; top:2px; right:0; width:34px; height:34px; display:flex; align-items:center;
+                  justify-content:center; border-radius:10px; background:#ffffff0d; border:1px solid #ffffff1c;
+                  text-decoration:none; font-size:15px; opacity:.7; }
+  .admin-corner:active, .admin-corner:hover { opacity:1; background:#ffffff1a; }
   .tiles { display:flex; flex-direction:column; gap:14px; flex:1; }
   .tile { display:flex; flex-direction:column; justify-content:center; gap:6px; min-height:150px;
           border-radius:18px; padding:22px 22px; text-decoration:none; border:1px solid #ffffff1c;
@@ -346,7 +351,6 @@ function shell({ title, desc, body }) {
   .t-food { background:linear-gradient(135deg,#8a3f12,#c2611c 55%,#e08a2e); }
   .t-ai   { background:linear-gradient(135deg,#0a1f47,#173a7a 60%,#2a5cb8); }
   .t-acct { background:linear-gradient(135deg,#0b3d2e,#14654a 60%,#1e8f66); }
-  .t-admin { background:linear-gradient(135deg,#1a1a1a,#2e2a26 55%,#4a443c); }
   .tile .lock { font-size:13px; opacity:.75; margin-left:6px; }
   .soon { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:10px; }
   .soon .emoji { font-size:64px; }
@@ -425,8 +429,15 @@ function landingPage() {
   <header>
     <h1>GK <em>Newsroom</em></h1>
     <div class="sub">Pick your channel.</div>
+    <a class="admin-corner" href="/admin" title="Superadmin console (private)">🔒</a>
   </header>
   <nav class="tiles">
+    <a class="tile t-acct" href="/accounting">
+      <span class="icon"><img src="/assets/tile-acct.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display=''"><span style="display:none">${ICONS.acct}</span></span>
+      <h2>GK SMART Business News Feed</h2>
+      <p>Cambodia's tax, customs & business announcements — translated from Khmer, daily.</p>
+      <span class="go">Open →</span>
+    </a>
     <a class="tile t-food" href="/food">
       <span class="icon"><img src="/assets/tile-food.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display=''"><span style="display:none">${ICONS.food}</span></span>
       <h2>3una5aha</h2>
@@ -437,18 +448,6 @@ function landingPage() {
       <span class="icon"><img src="/assets/tile-ai.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display=''"><span style="display:none">${ICONS.ai}</span></span>
       <h2>Ai News</h2>
       <p>The daily Ai brief — fresh stories every morning at 5 AM, plus the podcast.</p>
-      <span class="go">Open →</span>
-    </a>
-    <a class="tile t-acct" href="/accounting">
-      <span class="icon"><img src="/assets/tile-acct.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display=''"><span style="display:none">${ICONS.acct}</span></span>
-      <h2>GK SMART Ai Accounting</h2>
-      <p>Cambodia's tax, customs & business announcements — translated from Khmer, daily.</p>
-      <span class="go">Open →</span>
-    </a>
-    <a class="tile t-admin" href="/admin">
-      <span class="icon">${ICONS.admin}</span>
-      <h2>35 <span class="lock">🔒</span></h2>
-      <p>Superadmin control panel — shops, orders, activity, chats.</p>
       <span class="go">Open →</span>
     </a>
   </nav>`,
@@ -653,12 +652,6 @@ function govPage(posts, episodes = []) {
   .chip { flex:0 0 auto; background:#10201a; color:#8fa89a; border:1px solid #1d3329; border-radius:999px; padding:6px 14px; font-size:13px; cursor:pointer; }
   .chip.on { color:#08120d; background:#35c98a; border-color:#35c98a; font-weight:600; }
   ${WA_CSS}
-  .private-row { display:flex; gap:10px; margin:12px 0 2px; }
-  .pbtn { flex:1; display:flex; align-items:center; justify-content:center; gap:8px; text-decoration:none;
-          background:linear-gradient(135deg,#0e2418,#143523); color:#e4f0e9; font-size:14px; font-weight:600;
-          border:1px solid #35c98a44; border-radius:13px; padding:11px 12px; box-shadow:0 3px 10px #0006; }
-  .pbtn:active, .pbtn:hover { border-color:#35c98a; color:#35c98a; }
-  .pbtn .lock { font-size:11px; opacity:.7; }
   .gcard { display:flex; gap:12px; background:#0e1b14; border:1px solid #1d3329; border-radius:14px; padding:12px; margin-top:12px; }
   .gtile { flex:0 0 56px; height:56px; border-radius:12px; display:flex; align-items:center; justify-content:center;
            color:#fff; font-size:13px; font-weight:800; letter-spacing:.02em; overflow:hidden;
@@ -688,15 +681,10 @@ function govPage(posts, episodes = []) {
     <h1>GK <em>SMART Ai</em> Accounting</h1>
     <div class="sub">Cambodia's tax, customs & business announcements — translated from Khmer, daily.</div>
   </header>
-  <div class="private-row">
-    <a class="pbtn" href="/leads">🎯 Leads <span class="lock">🔒</span></a>
-    <a class="pbtn" href="/ai/world">🌍 AI Funding <span class="lock">🔒</span></a>
-    <a class="pbtn" href="/garments">📰 Garments <span class="lock">🔒</span></a>
-  </div>
   ${streamer({ items: waItems, base: "/podcast/gov/" })}
   <nav class="chips">${chips}</nav>
   <main>${cards}</main>
-  <footer>GK SMART Accounting · sources: GDT · ACAR · MEF · MoC · GDCE · NA · MoI · <a href="/leads" style="color:#35c98a;text-decoration:none">Leads</a> · <a href="/ai/world" style="color:#35c98a;text-decoration:none">AI Funding</a> · <a href="/garments" style="color:#35c98a;text-decoration:none">Garments</a></footer>
+  <footer>GK SMART Accounting · sources: GDT · ACAR · MEF · MoC · GDCE · NA · MoI</footer>
 </div>
 <script>
   document.querySelectorAll(".chip").forEach((c) => {
@@ -1024,7 +1012,7 @@ const server = http.createServer(async (req, res) => {
     // Leads/AI-Funding gate — one login unlocks all (same Path=/ cookie).
     if (path === "/garments" || path.startsWith("/garments/")) {
       if (!hasLeadsSession(req)) {
-        res.writeHead(303, { Location: "/leads" }).end();
+        res.writeHead(303, { Location: "/admin" }).end();
         return;
       }
       if (path.startsWith("/garments/assoc") || path === "/garments/associations") {
@@ -1062,7 +1050,7 @@ const server = http.createServer(async (req, res) => {
     // AI Funding pages are private — same gate as /leads (LEADS_CODE).
     if (path === "/ai/world") {
       if (!hasLeadsSession(req)) {
-        res.writeHead(303, { Location: "/leads" }).end();
+        res.writeHead(303, { Location: "/admin" }).end();
         return;
       }
       const index = await loadCountryIndex();
@@ -1074,7 +1062,7 @@ const server = http.createServer(async (req, res) => {
     const cm = path.match(/^\/ai\/country\/([A-Za-z]{2})$/);
     if (cm) {
       if (!hasLeadsSession(req)) {
-        res.writeHead(303, { Location: "/leads" }).end();
+        res.writeHead(303, { Location: "/admin" }).end();
         return;
       }
       const data = await loadCountry(cm[1].toUpperCase());

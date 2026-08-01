@@ -61,13 +61,22 @@ function getSession(req) {
   return m[1];
 }
 
+/** True if the request carries a live admin session — the single shared
+ * login for the console AND the private Leads/AI-Funding/Garments pages
+ * (they used to have their own separate access code; consolidated here). */
+export function isAdminAuthed(req) {
+  return !!getSession(req);
+}
+
 function startSession(res) {
   const token = crypto.randomBytes(24).toString("hex");
   sessions.set(token, Date.now() + SESSION_MS);
   const secure = process.env.RAILWAY_ENVIRONMENT ? "; Secure" : "";
+  // Path=/ (not /admin) — this session also gates the private Leads,
+  // AI Funding and Garments pages, which live outside /admin/*.
   res.setHeader(
     "Set-Cookie",
-    `gk_admin=${token}; HttpOnly; Path=/admin; SameSite=Lax; Max-Age=${SESSION_MS / 1000}${secure}`,
+    `gk_admin=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_MS / 1000}${secure}`,
   );
 }
 
@@ -163,6 +172,15 @@ function shell(tab, body) {
         `<a class="tab${k === tab ? " on" : ""}" href="/admin/${k}">${label}</a>`,
     )
     .join("");
+  // Private tools — outside /admin/* but gated by the same session
+  // (isAdminAuthed). Plain nav links, not part of the tab-highlight state.
+  const privateLinks = [
+    ["/leads", "🎯 Leads"],
+    ["/ai/world", "🌍 AI Funding"],
+    ["/garments", "📰 Garments"],
+  ]
+    .map(([href, label]) => `<a class="tab priv" href="${href}">${label}</a>`)
+    .join("");
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -178,6 +196,7 @@ function shell(tab, body) {
   .brand .chip { background:#e05a33; border-radius:8px; padding:3px 7px; font-size:14px; }
   .tab { color:#c9bfb7; text-decoration:none; font-weight:600; padding:7px 13px; border-radius:9px; }
   .tab.on { background:#2b241f; color:#fff; }
+  .tab.priv { background:#0000002e; border:1px solid #ffffff1c; }
   .out { margin-left:auto; color:#c9bfb7; text-decoration:none; font-size:13.5px; }
   main { max-width:1080px; margin:0 auto; padding:22px 16px 60px; }
   h1 { font-size:23px; letter-spacing:-.01em; }
@@ -209,6 +228,8 @@ function shell(tab, body) {
 <header>
   <span class="brand"><span class="chip">35</span> 3una 5aha console</span>
   ${tabs}
+  <span style="width:1px;height:20px;background:#ffffff2a;margin:0 2px"></span>
+  ${privateLinks}
   <a class="out" href="/admin/logout">Sign out</a>
 </header>
 <main>${body}</main>
@@ -567,7 +588,7 @@ export async function handleAdmin(req, res, url) {
   if (path === "/admin/logout") {
     const t = getSession(req);
     if (t) sessions.delete(t);
-    res.setHeader("Set-Cookie", "gk_admin=; Path=/admin; Max-Age=0");
+    res.setHeader("Set-Cookie", "gk_admin=; Path=/; Max-Age=0");
     redirect(res, "/admin");
     return;
   }

@@ -1,22 +1,18 @@
 /**
  * GK SMART — Leads (Brand Scout on the web).
  *
- * Code-gated brand-connection intelligence (see brand-scout.ts):
+ * Brand-connection intelligence (see brand-scout.ts):
  *   /leads            A→Z directory — 26 letter columns, flags, scores
  *   /leads/b/<slug>   brand detail — signals, approach dossier, first-contact
  *                     deep-search buttons, status/notes tracker
  *
- * Auth: single access code from the LEADS_CODE env var — NO default, NEVER
- * in the repo (public). If LEADS_CODE is unset the page is disabled (404).
- * The session cookie (Path=/) also unlocks the AI Funding pages.
+ * Auth: shares the ONE admin console login (src/lib/admin.mjs) — no
+ * separate code. Unauthenticated visits redirect to /admin.
  */
 
-import crypto from "node:crypto";
 import { getDb } from "./mongo.ts";
 import { CATEGORY_WEIGHT, contactLinks, hiringLinks, isoToFlag } from "./brand-scout.ts";
-
-const SESSION_MS = 12 * 3600 * 1000;
-const sessions = new Map(); // token → expiry
+import { isAdminAuthed } from "./admin.mjs";
 
 export const STATUSES = ["new", "research", "approach", "contacted", "replied", "demo", "pilot", "parked"];
 const STATUS_COLOR = {
@@ -397,45 +393,7 @@ export async function renderBrandPage(slug, { backPath = "/leads", postPath = "/
 </html>`;
 }
 
-/* ---------------------------------------------------------- login page */
-
-function loginPage(err = "") {
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Leads — GK SMART</title>
-<meta name="robots" content="noindex">
-<style>
-  * { box-sizing:border-box; margin:0; }
-  body { background:#0d1117; color:#c9d1d9; font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-         min-height:100vh; display:flex; align-items:center; justify-content:center; }
-  .card { background:#161b22; border:1px solid #21262d; border-radius:16px; padding:30px 28px; width:min(92vw,360px); text-align:center; }
-  h1 { font-size:19px; color:#fff; margin-bottom:4px; }
-  .sub { color:#8b949e; font-size:13px; margin-bottom:18px; }
-  input { width:100%; background:#0d1117; color:#fff; border:1px solid #30363d; border-radius:10px;
-          padding:11px 12px; font-size:17px; text-align:center; letter-spacing:.35em; }
-  button { width:100%; margin-top:12px; background:#238636; color:#fff; border:0; border-radius:10px;
-           padding:11px; font-size:15px; font-weight:700; cursor:pointer; }
-  .err { color:#f85149; font-size:13px; margin-top:10px; }
-  .foot { color:#484f58; font-size:12px; margin-top:16px; }
-</style>
-</head>
-<body>
-  <form class="card" method="POST" action="/leads/login">
-    <h1>🎯 Leads</h1>
-    <div class="sub">GK SMART · private</div>
-    <input name="code" type="password" inputmode="numeric" autocomplete="off" placeholder="access code" autofocus>
-    <button>Enter</button>
-    ${err ? `<div class="err">${esc(err)}</div>` : ""}
-    <div class="foot">Confidential — authorized access only.</div>
-  </form>
-</body>
-</html>`;
-}
-
-/* -------------------------------------------------------- auth plumbing */
+/* -------------------------------------------------------------- routing */
 
 function readBody(req, limit = 50_000) {
   return new Promise((resolve, reject) => {
@@ -446,29 +404,10 @@ function readBody(req, limit = 50_000) {
   });
 }
 
-function getSession(req) {
-  const m = (req.headers.cookie ?? "").match(/(?:^|;\s*)gk_leads=([a-f0-9]{48})/);
-  if (!m) return null;
-  const exp = sessions.get(m[1]);
-  if (!exp || exp < Date.now()) {
-    sessions.delete(m[1]);
-    return null;
-  }
-  return m[1];
-}
-
-function startSession(res) {
-  const token = crypto.randomBytes(24).toString("hex");
-  sessions.set(token, Date.now() + SESSION_MS);
-  const secure = process.env.RAILWAY_ENVIRONMENT ? "; Secure" : "";
-  // Path=/ — the same session also unlocks the private AI Funding pages
-  // (/ai/world, /ai/country/XX), gated in serve-web.mjs via hasLeadsSession.
-  res.setHeader("Set-Cookie", `gk_leads=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_MS / 1000}${secure}`);
-}
-
-/** True if the request carries a live leads session (used by serve-web to gate AI Funding). */
+/** Kept for callers that gate on it (e.g. /ai/world in serve-web.mjs) —
+ * now just delegates to the single shared admin session. */
 export function hasLeadsSession(req) {
-  return !!getSession(req);
+  return isAdminAuthed(req);
 }
 
 function html(res, body, status = 200) {
@@ -476,49 +415,18 @@ function html(res, body, status = 200) {
   res.end(body);
 }
 
-let failures = 0; // crude brute-force damper, resets on process restart
-
 export async function handleLeads(req, res, url) {
-  const CODE = process.env.LEADS_CODE;
-  if (!CODE) {
-    res.writeHead(404).end("not found");
-    return;
-  }
   const path = url.pathname;
 
-  if (path === "/leads/login" && req.method === "POST") {
-    const form = await readBody(req, 5000);
-    const attempt = (form.get("code") || "").trim();
-    if (failures > 50) {
-      html(res, loginPage("Too many attempts — restart required."), 429);
-      return;
-    }
-    const a = Buffer.from(attempt.padEnd(64).slice(0, 64));
-    const b = Buffer.from(String(CODE).padEnd(64).slice(0, 64));
-    if (attempt && crypto.timingSafeEqual(a, b)) {
-      failures = 0;
-      startSession(res);
-      res.writeHead(303, { Location: "/leads" });
-      res.end();
-    } else {
-      failures++;
-      html(res, loginPage("Wrong code."), 401);
-    }
-    return;
-  }
-
   if (path === "/leads/logout") {
-    const t = getSession(req);
-    if (t) sessions.delete(t);
-    res.setHeader("Set-Cookie", "gk_leads=; Path=/; Max-Age=0");
-    res.writeHead(303, { Location: "/leads" });
+    res.writeHead(303, { Location: "/admin/logout" });
     res.end();
     return;
   }
 
-  const authed = getSession(req);
-  if (!authed) {
-    html(res, loginPage(), path === "/leads" ? 200 : 401);
+  if (!isAdminAuthed(req)) {
+    res.writeHead(303, { Location: "/admin" });
+    res.end();
     return;
   }
 
