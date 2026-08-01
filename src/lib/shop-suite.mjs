@@ -75,8 +75,7 @@ function page(shop, key, title, si, body) {
     noBack: true,
     body: `
     <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/owner/${id}">‹</a>
-      <h1 style="font-size:21px;flex:1;min-width:0">${title} <span class="si">${si}</span></h1>
-      <span class="pill" style="flex:0 0 auto;background:#fdf3d7;border:1px solid #efdba8;color:#946200;font-size:10.5px">Preview · sample data</span></div>
+      <h1 style="font-size:21px;flex:1;min-width:0">${title} <span class="si">${si}</span></h1></div>
     ${body}`,
   });
 }
