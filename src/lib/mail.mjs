@@ -17,7 +17,7 @@
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
 function fromAddress() {
-  return process.env.RESEND_FROM || "3una 5aha <onboarding@resend.dev>";
+  return process.env.RESEND_FROM || "3una 5aha <noreply@ggmt.sg>";
 }
 
 /** 6-digit numeric code, first digit ≥1 so display never looks truncated. */
