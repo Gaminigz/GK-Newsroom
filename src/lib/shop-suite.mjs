@@ -175,9 +175,7 @@ function menuPage(shop, extras = {}) {
       <input type="text" id="aiDishName" placeholder="e.g. Chicken curry — or tap one below" maxlength="80">
       <button type="button" class="btn" style="margin-top:10px" onclick="fetchRecipe()">Suggest ingredients with 35Ai</button>
       <div id="aiStatus" class="sub" style="font-size:12px;margin-top:8px;text-align:center"></div>
-
-      <!-- Quick-pick chips for popular dishes (fills the input on click) -->
-      <div class="sub" style="font-size:11.5px;margin-top:12px">Try: ${["Chicken curry","Fish curry (thora)","Kottu roti (chicken)","Chicken biriyani","Egg hoppers (bittara appa)","Coconut sambol (pol sambol)"].map((d) => `<a href="#" onclick="event.preventDefault();document.getElementById('aiDishName').value='${d}';fetchRecipe()" style="display:inline-block;margin:3px 4px 0 0;padding:4px 10px;border:1px solid #efdba8;border-radius:99px;background:#fff9ec;color:#946200;text-decoration:none;font-size:11.5px">${d}</a>`).join(" ")}</div>
+      <div class="sub" style="font-size:11.5px;margin-top:10px;text-align:center;color:#946200">🍛 150+ Sri Lankan dishes ready — just type any name <span class="si">ලංකා කෑම 150+ — ඕනෑම නමක් ලියන්න</span></div>
 
       <!-- Grayed-out mock preview: shows what the ingredient list looks like BEFORE the user picks a dish -->
       <div id="aiMock" style="margin-top:16px;opacity:.45;pointer-events:none">
