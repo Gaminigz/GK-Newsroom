@@ -172,8 +172,7 @@ function menuPage(shop, extras = {}) {
       </div>
 
       <label style="margin-top:14px">DISH NAME <span class="si">කෑමේ නම</span></label>
-      <input type="text" id="aiDishName" list="presetDishes" placeholder="e.g. Chicken curry" maxlength="80">
-      <datalist id="presetDishes">${presetOptions}</datalist>
+      <input type="text" id="aiDishName" placeholder="e.g. Chicken curry — or tap one below" maxlength="80">
       <button type="button" class="btn" style="margin-top:10px" onclick="fetchRecipe()">Suggest ingredients with 35Ai</button>
       <div id="aiStatus" class="sub" style="font-size:12px;margin-top:8px;text-align:center"></div>
 
