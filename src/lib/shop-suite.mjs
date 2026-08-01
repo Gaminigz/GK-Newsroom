@@ -121,6 +121,7 @@ function menuPage(shop, extras = {}) {
   const id = String(shop._id);
   const singles = extras.singles || [];
   const sets = extras.sets || [];
+  const presetDishes = extras.presetDishes || [];
   const msg = extras.msg || "";
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -148,39 +149,82 @@ function menuPage(shop, extras = {}) {
     ? singles.map(dishRow).join("")
     : `<div class="card" style="margin-top:8px;padding:12px 14px;background:#fdf0ec;border-color:#f3cfc2;font-size:12.5px;color:#946200">You have no dishes yet — add a single dish first from <a href="/app/owner/${id}/dishes" style="text-decoration:underline;color:#946200"><strong>Setup Daily Menu</strong></a>, then come back to combine them into set meals.</div>`;
 
+  const presetOptions = presetDishes.map((d) => `<option value="${esc(d)}">`).join("");
+
   return page(shop, "menu", "Plan Menu", "මෙනු සැකසුම", `
     ${msg ? `<div class="card" style="margin-top:10px;padding:10px 13px;background:#e8f6ec;border-color:#bfe5c8;font-size:12.5px;color:#1d7a34">${esc(msg)}</div>` : ""}
 
     <div class="seg" style="margin-top:12px">
-      <label><input type="radio" name="mtab" checked><span class="opt" style="font-size:12px;padding:6px 12px">Set menu</span></label>
+      <label><input type="radio" name="mtab" value="single" checked onchange="showTab('single')"><span class="opt" style="font-size:12px;padding:6px 12px">Single dish · AI</span></label>
+      <label><input type="radio" name="mtab" value="set" onchange="showTab('set')"><span class="opt" style="font-size:12px;padding:6px 12px">Set menu</span></label>
       <label><input type="radio" name="mtab" disabled><span class="opt" style="font-size:12px;padding:6px 12px;opacity:.4">Combo (soon)</span></label>
       <label><input type="radio" name="mtab" disabled><span class="opt" style="font-size:12px;padding:6px 12px;opacity:.4">Events (soon)</span></label>
     </div>
 
-    ${sets.length ? `<div class="row" style="justify-content:space-between;margin-top:16px"><strong style="font-size:13.5px">Your set meals</strong><span class="sub" style="font-size:12px">${sets.length} saved</span></div>${sets.map(savedSet).join("")}` : ""}
+    <!-- SINGLE DISH TAB (AI-assisted) -->
+    <div id="tab-single">
+      <div class="row" style="justify-content:space-between;margin-top:16px"><strong style="font-size:14px">Create a single dish with AI recipe</strong></div>
+      <div class="sub" style="font-size:12px;margin-top:4px">Type or pick a Sri Lankan dish. AI suggests typical ingredients, per-person grams, and estimated LKR cost. Adjust before saving.<br><span class="si">ඔබේ කෑමේ නම දෙන්න — AI කෑමට යන අමුද්‍රව්‍ය, ග්‍රෑම් ප්‍රමාණය, සහ ලංකා මිල පෙන්වයි.</span></div>
 
-    <div class="row" style="justify-content:space-between;margin-top:20px"><strong style="font-size:14px">Create a new set meal</strong></div>
+      <label style="margin-top:14px">DISH NAME <span class="si">කෑමේ නම</span></label>
+      <input type="text" id="aiDishName" list="presetDishes" placeholder="e.g. Chicken curry" maxlength="80">
+      <datalist id="presetDishes">${presetOptions}</datalist>
+      <button type="button" class="btn" style="margin-top:10px" onclick="fetchRecipe()">Suggest ingredients with AI</button>
+      <div id="aiStatus" class="sub" style="font-size:12px;margin-top:8px;text-align:center"></div>
 
-    <form method="POST" action="/app/owner/${id}/menu/set">
-      <label style="margin-top:10px">SET MEAL NAME</label>
-      <input type="text" name="name" required placeholder="e.g. Rice & 3-Curry Lunch Set" maxlength="80">
+      <div id="aiRecipe" style="display:none;margin-top:14px">
+        <div class="row" style="justify-content:space-between;margin-top:6px"><strong style="font-size:13.5px">Ingredients per serving</strong><span id="aiMatched" class="sub" style="font-size:11.5px"></span></div>
+        <div id="aiIngredients"></div>
+        <div class="card" style="margin-top:12px;padding:12px 14px">
+          <div class="row" style="justify-content:space-between;font-size:13px"><span class="sub">Estimated ingredient cost / serving</span><strong id="aiCost" style="color:${ORANGE}">LKR 0</strong></div>
+          <div class="sub" style="font-size:11px;margin-top:4px">Prices are typical LKR rates from a common ingredient library. Real costs vary — this is a planning aid.</div>
+        </div>
 
-      <div class="row" style="justify-content:space-between;margin-top:14px"><strong style="font-size:13.5px">Pick from your dishes</strong><span id="pickCount" style="color:${ORANGE};font-weight:700;font-size:12.5px">0 picked</span></div>
-      ${singlesHtml}
-
-      ${singles.length ? `
-      <div class="card" style="margin-top:14px;padding:13px 14px">
-        <div class="row" style="justify-content:space-between;font-size:13px"><span class="sub">Components sub-total</span><strong id="subtotal">$0.00</strong></div>
-        <label style="margin-top:10px">SET MEAL PRICE (USD)</label>
-        <input type="number" name="price" step="0.01" min="0" required placeholder="3.72" style="font-size:15px;font-weight:700">
-        <label style="margin-top:10px">DAILY PORTIONS</label>
-        <input type="number" name="portions" min="1" value="10" required>
+        <form method="POST" action="/app/owner/${id}/dishes/ai-save" id="aiSaveForm" style="margin-top:14px">
+          <input type="hidden" name="name" id="aiSaveName">
+          <input type="hidden" name="recipe" id="aiSaveRecipe">
+          <label>SELLING PRICE PER SERVING (USD)</label>
+          <input type="number" name="price" step="0.01" min="0" required placeholder="e.g. 3.20" style="font-size:15px;font-weight:700">
+          <label style="margin-top:8px">DAILY PORTIONS</label>
+          <input type="number" name="portions" min="1" value="20" required>
+          <label style="margin-top:8px">SERVING WINDOW</label>
+          <input type="text" name="window" value="All day" maxlength="20">
+          <button class="btn" style="margin-top:14px">Save dish with recipe</button>
+        </form>
       </div>
-      <button class="btn" style="margin-top:14px">Post set meal as one item</button>
-      ` : ""}
-    </form>
+    </div>
+
+    <!-- SET MENU TAB -->
+    <div id="tab-set" style="display:none">
+      ${sets.length ? `<div class="row" style="justify-content:space-between;margin-top:16px"><strong style="font-size:13.5px">Your set meals</strong><span class="sub" style="font-size:12px">${sets.length} saved</span></div>${sets.map(savedSet).join("")}` : ""}
+
+      <div class="row" style="justify-content:space-between;margin-top:20px"><strong style="font-size:14px">Create a new set meal</strong></div>
+
+      <form method="POST" action="/app/owner/${id}/menu/set">
+        <label style="margin-top:10px">SET MEAL NAME</label>
+        <input type="text" name="name" placeholder="e.g. Rice & 3-Curry Lunch Set" maxlength="80">
+
+        <div class="row" style="justify-content:space-between;margin-top:14px"><strong style="font-size:13.5px">Pick from your dishes</strong><span id="pickCount" style="color:${ORANGE};font-weight:700;font-size:12.5px">0 picked</span></div>
+        ${singlesHtml}
+
+        ${singles.length ? `
+        <div class="card" style="margin-top:14px;padding:13px 14px">
+          <div class="row" style="justify-content:space-between;font-size:13px"><span class="sub">Components sub-total</span><strong id="subtotal">$0.00</strong></div>
+          <label style="margin-top:10px">SET MEAL PRICE (USD)</label>
+          <input type="number" name="price" step="0.01" min="0" placeholder="3.72" style="font-size:15px;font-weight:700">
+          <label style="margin-top:10px">DAILY PORTIONS</label>
+          <input type="number" name="portions" min="1" value="10">
+        </div>
+        <button class="btn" style="margin-top:14px">Post set meal as one item</button>
+        ` : ""}
+      </form>
+    </div>
 
     <script>
+    function showTab(which) {
+      document.getElementById('tab-single').style.display = which === 'single' ? '' : 'none';
+      document.getElementById('tab-set').style.display = which === 'set' ? '' : 'none';
+    }
     function recompute() {
       const boxes = document.querySelectorAll('input[name="dishId"]');
       let picked = 0, total = 0;
@@ -189,6 +233,35 @@ function menuPage(shop, extras = {}) {
       const st = document.getElementById('subtotal');
       if (pc) pc.textContent = picked + ' picked';
       if (st) st.textContent = '$' + total.toFixed(2);
+    }
+    async function fetchRecipe() {
+      const dish = document.getElementById('aiDishName').value.trim();
+      if (!dish) { document.getElementById('aiStatus').textContent = 'Type a dish name first.'; return; }
+      const s = document.getElementById('aiStatus');
+      s.textContent = '⏳ Asking AI…';
+      try {
+        const fd = new FormData(); fd.set('dish', dish);
+        const r = await fetch('/app/owner/${id}/dishes/ai-recipe', { method: 'POST', body: fd });
+        const j = await r.json();
+        if (!j.ok) { s.textContent = '❌ ' + (j.error || 'AI failed'); return; }
+        s.textContent = j.cached ? '✓ (from cache)' : '✓ (fresh AI)';
+        renderRecipe(dish, j);
+      } catch (e) { s.textContent = '❌ ' + e.message; }
+    }
+    function renderRecipe(dish, j) {
+      document.getElementById('aiRecipe').style.display = '';
+      document.getElementById('aiSaveName').value = dish;
+      document.getElementById('aiSaveRecipe').value = JSON.stringify({ servings: j.servings, ingredients: j.ingredients, methodSummary: j.methodSummary });
+      const list = document.getElementById('aiIngredients');
+      list.innerHTML = j.ingredients.map((i, idx) => \`
+        <div class="card row" style="margin-top:8px;padding:10px 13px">
+          <div style="flex:1;min-width:0"><strong style="font-size:13px">\${i.name}</strong>\${i.notes ? \` <span class="sub" style="font-size:11px">· \${i.notes}</span>\` : ''}
+          <div class="sub" style="font-size:11.5px">\${i.quantity} \${i.unit}\${i.matched ? '' : ' · <span style="color:#946200">no price match</span>'}</div></div>
+          <span style="font-size:12.5px;font-weight:700;color:\${i.lkr != null ? '#1a1a1a' : '#c8c1b8'}">\${i.lkr != null ? 'LKR ' + i.lkr : '—'}</span>
+        </div>\`).join('');
+      document.getElementById('aiCost').textContent = 'LKR ' + j.totalLkr;
+      const matchedCount = j.ingredients.filter(i => i.matched).length;
+      document.getElementById('aiMatched').textContent = matchedCount + '/' + j.ingredients.length + ' priced';
     }
     </script>`);
 }

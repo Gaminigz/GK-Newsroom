@@ -30,6 +30,7 @@ import crypto from "node:crypto";
 import QRCode from "qrcode";
 import { getDb } from "./mongo.ts";
 import { newCode, sendVerificationEmail, sendPasswordResetEmail } from "./mail.mjs";
+import { PRESET_DISHES, generateRecipe, priceIngredient } from "./ai-dish.mjs";
 
 const ORANGE = "#d9542b";
 const PUBLIC_BASE = process.env.PUBLIC_BASE || "https://web-production-2b43c.up.railway.app";
@@ -2272,6 +2273,7 @@ export async function handleApp(req, res, url) {
       extras.singles = allDishes.filter((d) => d.type !== "set");
       extras.sets = allDishes.filter((d) => d.type === "set");
       extras.msg = url.searchParams.get("msg") || "";
+      extras.presetDishes = PRESET_DISHES;
     }
     const pageHtml = shop ? suitePage(shop, m[2], extras) : null;
     if (pageHtml) { html(res, pageHtml); return; }
@@ -2309,6 +2311,58 @@ export async function handleApp(req, res, url) {
       return;
     }
     redirect(res, `/app/owner/${m[1]}/suite/menu?msg=${encodeURIComponent("Pick a name, at least one dish, and a price.")}`);
+    return;
+  }
+
+  // AI: generate per-serving ingredient recipe for a Sri Lankan dish name.
+  // Cached in `app_dish_recipes` (keyed by lowercased dish name) — repeat
+  // queries for the same dish don't re-hit Gemini.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/dishes\/ai-recipe$/);
+  if (m && req.method === "POST") {
+    const form = await readForm(req);
+    const dish = String(form.get("dish") || "").trim().slice(0, 80);
+    if (!dish) { res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: false, error: "dish name required" })); return; }
+    const cache = await col("app_dish_recipes");
+    const r = await generateRecipe(dish, cache);
+    if (!r.ok) { res.writeHead(502, { "Content-Type": "application/json" }).end(JSON.stringify(r)); return; }
+    // Attach price + matched-library-name to each ingredient so the UI
+    // can show cost without a second round-trip.
+    const priced = r.recipe.ingredients.map((ing) => {
+      const p = priceIngredient(ing.name, ing.quantity, ing.unit);
+      return { ...ing, lkr: p.lkr, matched: p.matched };
+    });
+    const totalLkr = priced.reduce((s, i) => s + (Number(i.lkr) || 0), 0);
+    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({
+      ok: true, cached: !!r.cached, dish, servings: r.recipe.servings || 1,
+      ingredients: priced, totalLkr: Math.round(totalLkr * 10) / 10,
+      methodSummary: r.recipe.methodSummary || "",
+    }));
+    return;
+  }
+
+  // Save a single dish with an attached recipe (from the AI-assisted flow).
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/dishes\/ai-save$/);
+  if (m && req.method === "POST") {
+    const form = await readForm(req);
+    const name = String(form.get("name") || "").trim().slice(0, 80);
+    const price = Math.max(0, Number(form.get("price")) || 0);
+    const portions = Math.max(1, Number(form.get("portions")) || 20);
+    let recipe = null;
+    try { recipe = JSON.parse(String(form.get("recipe") || "null")); } catch {}
+    if (name && price > 0) {
+      await (await col("app_dishes")).insertOne({
+        shopId: m[1], type: "single", name, nameSi: "",
+        price, portions, window: String(form.get("window") || "All day").slice(0, 20),
+        discount: "none", special: false, promoTag: "Today special",
+        ...(recipe && Array.isArray(recipe.ingredients) ? { recipe } : {}),
+        createdAt: new Date(),
+      });
+      const shopOid = await oid(m[1]);
+      if (shopOid) await (await col("shop_owners")).updateOne({ _id: shopOid }, { $inc: { listings: 1 } });
+      redirect(res, `/app/owner/${m[1]}/suite/menu?msg=${encodeURIComponent("Dish saved")}`);
+      return;
+    }
+    redirect(res, `/app/owner/${m[1]}/suite/menu?msg=${encodeURIComponent("Name + price required.")}`);
     return;
   }
 
