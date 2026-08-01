@@ -560,9 +560,9 @@ function emailLoginPage(error = "") {
     body: `
     <h1>Sign in with email <span style="font-weight:800">· ඊමේල් වලින් පිවිසෙන්න</span></h1>
     <div class="sub" style="margin:4px 0 6px">Submit your email and password — new emails get an account instantly.
-    A verification code is emailed to you from noreply@ggmt.sg; you can sign in right away and verify within 24 hours.</div>
+    A verification code is emailed to you from gk.smart@ggmt.sg; you can sign in right away and verify within 24 hours.</div>
     <div class="sub" style="margin:6px 0 10px;font-style:italic">ඔබේ ඊමේල් සහ මුරපදය දෙන්න. අලුත් ඊමේල් වලට ගිණුමක් වහාම හැදෙයි.
-    noreply@ggmt.sg වෙතින් සත්‍යාපන අංක 6ක් ඔබට එවනු ලැබේ — ඔබට වහාම පිවිසෙන්න පුළුවන්, පැය 24ක් ඇතුළත සත්‍යාපනය කරන්න.</div>
+    gk.smart@ggmt.sg වෙතින් සත්‍යාපන අංක 6ක් ඔබට එවනු ලැබේ — ඔබට වහාම පිවිසෙන්න පුළුවන්, පැය 24ක් ඇතුළත සත්‍යාපනය කරන්න.</div>
     ${error ? `<div class="card" style="background:#fdecea;border-color:#efc4bf;color:#b3261e">${esc(error)}</div>` : ""}
     <form method="POST" action="/app/login-email">
       <label>EMAIL</label>

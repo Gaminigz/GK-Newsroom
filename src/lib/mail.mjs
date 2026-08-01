@@ -17,7 +17,7 @@
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
 function fromAddress() {
-  return process.env.RESEND_FROM || "3una 5aha · තුන පහ <noreply@ggmt.sg>";
+  return process.env.RESEND_FROM || "3una 5aha · තුන පහ <gk.smart@ggmt.sg>";
 }
 
 /** 6-digit numeric code, first digit ≥1 so display never looks truncated. */
