@@ -155,7 +155,7 @@ function menuPage(shop, extras = {}) {
     ${msg ? `<div class="card" style="margin-top:10px;padding:10px 13px;background:#e8f6ec;border-color:#bfe5c8;font-size:12.5px;color:#1d7a34">${esc(msg)}</div>` : ""}
 
     <div class="seg" style="margin-top:12px">
-      <label><input type="radio" name="mtab" value="single" checked onchange="showTab('single')"><span class="opt" style="font-size:12px;padding:6px 12px">Single dish · AI</span></label>
+      <label><input type="radio" name="mtab" value="single" checked onchange="showTab('single')"><span class="opt" style="font-size:12px;padding:6px 12px">Single dish · 35Ai</span></label>
       <label><input type="radio" name="mtab" value="set" onchange="showTab('set')"><span class="opt" style="font-size:12px;padding:6px 12px">Set menu</span></label>
       <label><input type="radio" name="mtab" disabled><span class="opt" style="font-size:12px;padding:6px 12px;opacity:.4">Combo (soon)</span></label>
       <label><input type="radio" name="mtab" disabled><span class="opt" style="font-size:12px;padding:6px 12px;opacity:.4">Events (soon)</span></label>
@@ -163,13 +163,13 @@ function menuPage(shop, extras = {}) {
 
     <!-- SINGLE DISH TAB (AI-assisted) -->
     <div id="tab-single">
-      <div class="row" style="justify-content:space-between;margin-top:16px"><strong style="font-size:14px">Create a single dish with AI recipe</strong></div>
-      <div class="sub" style="font-size:12px;margin-top:4px">Type or pick a Sri Lankan dish. AI suggests typical ingredients, per-person grams, and estimated LKR cost. Adjust before saving.<br><span class="si">ඔබේ කෑමේ නම දෙන්න — AI කෑමට යන අමුද්‍රව්‍ය, ග්‍රෑම් ප්‍රමාණය, සහ ලංකා මිල පෙන්වයි.</span></div>
+      <div class="row" style="justify-content:space-between;margin-top:16px"><strong style="font-size:14px">Create a single dish with 35Ai recipe</strong></div>
+      <div class="sub" style="font-size:12px;margin-top:4px">Type or pick a Sri Lankan dish. 35Ai suggests typical ingredients, per-person grams, and estimated LKR cost. Adjust before saving.<br><span class="si">ඔබේ කෑමේ නම දෙන්න — 35Ai කෑමට යන අමුද්‍රව්‍ය, ග්‍රෑම් ප්‍රමාණය, සහ ලංකා මිල පෙන්වයි.</span></div>
 
       <label style="margin-top:14px">DISH NAME <span class="si">කෑමේ නම</span></label>
       <input type="text" id="aiDishName" list="presetDishes" placeholder="e.g. Chicken curry" maxlength="80">
       <datalist id="presetDishes">${presetOptions}</datalist>
-      <button type="button" class="btn" style="margin-top:10px" onclick="fetchRecipe()">Suggest ingredients with AI</button>
+      <button type="button" class="btn" style="margin-top:10px" onclick="fetchRecipe()">Suggest ingredients with 35Ai</button>
       <div id="aiStatus" class="sub" style="font-size:12px;margin-top:8px;text-align:center"></div>
 
       <div id="aiRecipe" style="display:none;margin-top:14px">
@@ -238,13 +238,17 @@ function menuPage(shop, extras = {}) {
       const dish = document.getElementById('aiDishName').value.trim();
       if (!dish) { document.getElementById('aiStatus').textContent = 'Type a dish name first.'; return; }
       const s = document.getElementById('aiStatus');
-      s.textContent = '⏳ Asking AI…';
+      s.textContent = '⏳ Asking 35Ai…';
       try {
-        const fd = new FormData(); fd.set('dish', dish);
-        const r = await fetch('/app/owner/${id}/dishes/ai-recipe', { method: 'POST', body: fd });
+        const body = new URLSearchParams({ dish }).toString();
+        const r = await fetch('/app/owner/${id}/dishes/ai-recipe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body,
+        });
         const j = await r.json();
-        if (!j.ok) { s.textContent = '❌ ' + (j.error || 'AI failed'); return; }
-        s.textContent = j.cached ? '✓ (from cache)' : '✓ (fresh AI)';
+        if (!j.ok) { s.textContent = '❌ ' + (j.error || '35Ai failed'); return; }
+        s.textContent = j.cached ? '✓ (from cache)' : '✓ (fresh 35Ai)';
         renderRecipe(dish, j);
       } catch (e) { s.textContent = '❌ ' + e.message; }
     }
