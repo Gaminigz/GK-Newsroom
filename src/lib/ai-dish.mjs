@@ -10,25 +10,24 @@
  */
 
 import { GoogleGenAI, Type } from "@google/genai";
+import { LANKA_DISHES_FLAT, LANKA_DISHES_150 } from "../data/lanka-dishes-150.mjs";
 
-/** Curated preset dish names — powers the search datalist. */
-export const PRESET_DISHES = [
-  "Chicken curry", "Beef curry", "Pork curry", "Mutton curry", "Fish curry (thora)",
-  "Fish ambulthiyal", "Prawn curry", "Squid curry", "Crab curry", "Dhal curry (parippu)",
-  "Coconut sambol (pol sambol)", "Seeni sambol", "Lunu miris", "Katta sambol",
-  "Kottu roti (chicken)", "Kottu roti (cheese)", "Kottu roti (vegetable)", "Kottu roti (egg)",
-  "Egg hoppers (bittara appa)", "Milk hoppers", "String hoppers (idiyappam)", "Plain hoppers",
-  "Rice & curry (fish)", "Rice & curry (chicken)", "Rice & curry (vegetable)", "Rice & curry (beef)",
-  "Fried rice (chicken)", "Fried rice (egg)", "Fried rice (seafood)", "Nasi goreng (Sri Lankan style)",
-  "Watalappan", "Kavum", "Kokis", "Aluwa", "Milk toffee", "Curd & treacle",
-  "Kiribath (milk rice)", "Pittu", "Pol roti (coconut roti)", "Godamba roti", "Egg roti",
-  "Parippu vadai", "Isso vadai", "Ulundu vadai", "Cutlets (fish)", "Cutlets (chicken)",
-  "Devilled chicken", "Devilled prawns", "Devilled beef", "Devilled squid",
-  "Chicken biriyani", "Mutton biriyani", "Egg biriyani", "Vegetable biriyani",
-  "Jaffna crab curry", "Kool (Jaffna seafood soup)", "Ala thel dala (tempered potato)",
-  "Karola (mixed vegetable curry)", "Ambul kelawalla (sour tuna)", "Roast paan", "Faluda",
-  "Wambatu moju (eggplant pickle)", "Gotu kola sambol", "Mallum (kale)",
-];
+/** Seed list used to bootstrap the Mongo `lanka_dishes` collection.
+ *  At runtime the app should call `loadPresetDishes(col)` to get the
+ *  CURRENT list — so if the newsroom adds new dishes to Mongo later,
+ *  the app picks them up automatically without a redeploy. */
+export const SEED_DISHES = LANKA_DISHES_FLAT;
+export { LANKA_DISHES_150 };
+
+/** Load the current preset dish names from Mongo. Falls back to the
+ *  in-code seed list if the collection is empty (fresh install). */
+export async function loadPresetDishes(lankaDishesCol) {
+  try {
+    const rows = await lankaDishesCol.find({}, { projection: { name: 1 } }).sort({ order: 1, name: 1 }).toArray();
+    if (rows.length) return rows.map((r) => r.name).filter(Boolean);
+  } catch { /* Mongo hiccup → fall through to seed */ }
+  return SEED_DISHES;
+}
 
 /** Ingredient price library — LKR per unit, common Sri Lankan pricing (Aug 2026 base).
  *  Prices are per 100g / 100ml / per piece as noted in `unit`. */

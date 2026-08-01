@@ -30,7 +30,7 @@ import crypto from "node:crypto";
 import QRCode from "qrcode";
 import { getDb } from "./mongo.ts";
 import { newCode, sendVerificationEmail, sendPasswordResetEmail } from "./mail.mjs";
-import { PRESET_DISHES, generateRecipe, priceIngredient } from "./ai-dish.mjs";
+import { loadPresetDishes, generateRecipe, priceIngredient } from "./ai-dish.mjs";
 
 const ORANGE = "#d9542b";
 const PUBLIC_BASE = process.env.PUBLIC_BASE || "https://web-production-2b43c.up.railway.app";
@@ -2273,7 +2273,9 @@ export async function handleApp(req, res, url) {
       extras.singles = allDishes.filter((d) => d.type !== "set");
       extras.sets = allDishes.filter((d) => d.type === "set");
       extras.msg = url.searchParams.get("msg") || "";
-      extras.presetDishes = PRESET_DISHES;
+      // Pull the current dish catalogue from Mongo — auto-picks up new
+      // dishes added via the newsroom without needing a code redeploy.
+      extras.presetDishes = await loadPresetDishes(await col("lanka_dishes"));
     }
     const pageHtml = shop ? suitePage(shop, m[2], extras) : null;
     if (pageHtml) { html(res, pageHtml); return; }

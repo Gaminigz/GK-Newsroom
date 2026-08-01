@@ -175,7 +175,7 @@ function menuPage(shop, extras = {}) {
       <input type="text" id="aiDishName" placeholder="e.g. Chicken curry — or tap one below" maxlength="80">
       <button type="button" class="btn" style="margin-top:10px" onclick="fetchRecipe()">Suggest ingredients with 35Ai</button>
       <div id="aiStatus" class="sub" style="font-size:12px;margin-top:8px;text-align:center"></div>
-      <div class="sub" style="font-size:11.5px;margin-top:10px;text-align:center;color:#946200">🍛 150+ Sri Lankan dishes ready — just type any name <span class="si">ලංකා කෑම 150+ — ඕනෑම නමක් ලියන්න</span></div>
+      <div class="sub" style="font-size:11.5px;margin-top:10px;text-align:center;color:#946200">🍛 ${presetDishes.length}+ Sri Lankan dishes ready — just type any name <span class="si">ලංකා කෑම ${presetDishes.length}+ — ඕනෑම නමක් ලියන්න</span></div>
 
       <!-- Grayed-out mock preview: shows what the ingredient list looks like BEFORE the user picks a dish -->
       <div id="aiMock" style="margin-top:16px;opacity:.45;pointer-events:none">
