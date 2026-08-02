@@ -40,6 +40,9 @@ import { getSpiceAudio, listSpiceEpisodes } from "../lib/spice-podcast.ts";
 import { getGovAudio, listGovEpisodes } from "../lib/gov-podcast.ts";
 import { SPICES } from "../data/spices.ts";
 import { GOV_SOURCES } from "../data/gov-sources.ts";
+import { LANKA_SPICES_FLAT_ENTRIES } from "../data/lanka-spices.mjs";
+import { LANKA_DISHES_FLAT_ENTRIES } from "../data/lanka-dishes-150.mjs";
+import { LANKA_BAKERY_FLAT_ENTRIES } from "../data/lanka-bakery.mjs";
 import { isoToFlag } from "../lib/ai-country-fetch.ts";
 
 const PORT = Number(process.env.PORT || 8080);
@@ -1096,6 +1099,47 @@ const server = http.createServer(async (req, res) => {
       const data = await loadCountry(cm[1].toUpperCase());
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
       res.end(countryPage(data));
+      return;
+    }
+
+    // One-click catalogue seed for the /food page. Idempotent — upserts
+    // the 238 topics (spices + dishes + bakery) into their Mongo collections
+    // with global postNumber 1..238. Safe to hit multiple times; no Gemini
+    // calls (that's the daily cron's job).
+    if (path === "/food/init") {
+      try {
+        const db = await getDb();
+        let globalOrder = 0;
+        const seedInto = async (colName, entries) => {
+          const col = db.collection(colName);
+          const ops = entries.map((e) => {
+            globalOrder++;
+            const postNumber = globalOrder;
+            return {
+              updateOne: {
+                filter: { _id: e.name.toLowerCase() },
+                update: {
+                  $setOnInsert: { _id: e.name.toLowerCase(), addedAt: new Date() },
+                  $set: { name: e.name, nameSi: e.si, category: e.category, order: postNumber, postNumber },
+                },
+                upsert: true,
+              },
+            };
+          });
+          const r = ops.length ? await col.bulkWrite(ops, { ordered: false }) : { upsertedCount: 0, matchedCount: 0 };
+          return { upserted: r.upsertedCount, matched: r.matchedCount, total: ops.length };
+        };
+        const spices = await seedInto("lanka_spices", LANKA_SPICES_FLAT_ENTRIES);
+        const dishes = await seedInto("lanka_dishes", LANKA_DISHES_FLAT_ENTRIES);
+        const bakery = await seedInto("lanka_bakery", LANKA_BAKERY_FLAT_ENTRIES);
+        spiceCache = { html: "", at: 0 }; // bust the /food page cache so placeholders show immediately
+        res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({
+          ok: true, totals: { spices: spices.total, dishes: dishes.total, bakery: bakery.total, all: globalOrder },
+          spices, dishes, bakery,
+        }));
+      } catch (err) {
+        res.writeHead(500, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+      }
       return;
     }
 
