@@ -241,7 +241,7 @@ export const SPICES: Spice[] = [
   {
     id: "undu-wel",
     imgQuery: "undu wel sri lanka sweet",
-    name: "Undu Wel (Peni Walalu)",
+    name: "Undu Wel",
     sinhala: "උළුඳු වැල්",
     category: "Sri Lankan Cakes & Sweets",
     emoji: "🍯",
