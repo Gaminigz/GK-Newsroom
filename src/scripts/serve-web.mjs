@@ -538,7 +538,7 @@ function spicesPage(episodes = {}, catalogue = []) {
 <style>
   * { box-sizing:border-box; margin:0; }
   body { background:#140d08; color:#f3e9dd; font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
-  .wrap { max-width:680px; margin:0 auto; padding:16px 14px 60px; }
+  .wrap { max-width:100%; margin:0 auto; padding:16px 24px 60px; }
   .back { display:inline-block; margin-bottom:8px; color:#b09a86; text-decoration:none; font-size:14px; }
   .back:active, .back:hover { color:#e08a2e; }
   header h1 { font-size:26px; letter-spacing:-.02em; }
