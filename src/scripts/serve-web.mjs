@@ -482,46 +482,47 @@ function spicesPage(episodes = {}, catalogue = []) {
     card: `#sp-${s.id}`,
   }));
 
-  // Build a set of names already covered by the rich SPICES.ts cards
-  // so we don't double-render them as placeholders.
-  const richNames = new Set(SPICES.map((s) => s.name.toLowerCase()));
-  const placeholders = catalogue
-    .filter((c) => !richNames.has(String(c.name || "").toLowerCase()))
-    .map((c) => {
-      const n = Number(c.postNumber) || 0;
+  const sortedCatalogue = [...catalogue].sort((a, b) => (b.postNumber || 0) - (a.postNumber || 0));
+  const richMap = new Map(SPICES.map((s) => [s.name.toLowerCase(), s]));
+
+  const allCards = sortedCatalogue.map((c) => {
+    const n = Number(c.postNumber) || 0;
+    const d = c.addedAt ? new Date(c.addedAt) : new Date();
+    const dateStr = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+    const nameKey = String(c.name || "").toLowerCase();
+
+    if (richMap.has(nameKey)) {
+      const s = richMap.get(nameKey);
+      const dur = episodes[s.id];
+      const playRow = dur
+        ? `<div class="listen">
+             <button class="lbtn" onclick="waPick && waPick('${esc(s.id)}')" aria-label="Play episode">▶</button>
+             <span class="ltxt">Listen · ${fmtDur(dur)}</span>
+           </div>`
+        : "";
+      return `<article class="scard" id="sp-${esc(s.id)}" data-kind="${esc(s.category)}">
+      <img class="sphoto" src="/assets/spices/${esc(s.id)}.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2><span style="color:#e08a2e">#${n}</span> ${esc(s.name)}</h2><span class="sin">${esc(s.sinhala)}</span></div>
+          <div class="srow" style="margin-top:2px"><span class="pill">${esc(s.category)}</span> <span style="color:#b09a86;font-size:12px">${dateStr}</span></div>
+          <p>${esc(s.post)}</p>
+          ${playRow}
+        </div>
+      </div>
+    </article>`;
+    } else {
       const cat = String(c.category || "");
       const nameSi = String(c.nameSi || "");
       return `<article class="phcard" data-kind="${esc(cat)}">
         <div class="phnum">#${n}</div>
         <div class="phbody">
           <div class="phrow"><h3>${esc(c.name)}</h3>${nameSi ? `<span class="sin">${esc(nameSi)}</span>` : ""}</div>
-          <span class="pill">${esc(cat)}</span>
+          <div class="srow" style="margin-top:2px"><span class="pill">${esc(cat)}</span> <span style="color:#8f7b67;font-size:11.5px">${dateStr}</span></div>
           <p class="phhint">Content coming — 35Ai is researching this one.</p>
         </div>
       </article>`;
-    })
-    .join("\n");
-  const totalCount = SPICES.length + (catalogue.length - SPICES.filter((s) => catalogue.some((c) => String(c.name || "").toLowerCase() === s.name.toLowerCase())).length);
-
-  const cards = SPICES.map((s) => {
-    const dur = episodes[s.id];
-    const playRow = dur
-      ? `<div class="listen">
-           <button class="lbtn" onclick="waPick && waPick('${esc(s.id)}')" aria-label="Play episode">▶</button>
-           <span class="ltxt">Listen · ${fmtDur(dur)}</span>
-         </div>`
-      : "";
-    return `<article class="scard" id="sp-${esc(s.id)}" data-kind="${esc(s.category)}">
-      <img class="sphoto" src="/assets/spices/${esc(s.id)}.jpg" alt="" loading="lazy" onerror="this.remove()">
-      <div class="sinner">
-        <div class="sbody">
-          <div class="srow"><h2>${esc(s.name)}</h2><span class="sin">${esc(s.sinhala)}</span></div>
-          <span class="pill">${esc(s.category)}</span>
-          <p>${esc(s.post)}</p>
-          ${playRow}
-        </div>
-      </div>
-    </article>`;
+    }
   }).join("\n");
 
   return `<!doctype html>
@@ -583,7 +584,7 @@ function spicesPage(episodes = {}, catalogue = []) {
   </header>
   ${streamer({ items: waItems, base: "/podcast/spice/" })}
   <nav class="chips">${chips}</nav>
-  <main>${cards}${placeholders ? `<div class="divider">↓ Coming soon — 35Ai researching daily ↓</div>${placeholders}` : ""}</main>
+  <main>${allCards}</main>
   <footer>3una5aha · GK Newsroom · photos from Wikimedia Commons</footer>
 </div>
 <script>
@@ -592,7 +593,7 @@ function spicesPage(episodes = {}, catalogue = []) {
       document.querySelectorAll(".chip").forEach((x) => x.classList.remove("on"));
       c.classList.add("on");
       const f = c.dataset.filter;
-      document.querySelectorAll(".scard").forEach((el) => {
+      document.querySelectorAll(".scard, .phcard").forEach((el) => {
         el.style.display = f === "All" || el.dataset.kind === f ? "" : "none";
       });
     });
