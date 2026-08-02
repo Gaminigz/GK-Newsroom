@@ -456,7 +456,7 @@ function landingPage() {
 
 /** 3una5aha — the Sri Lankan spice feed, served from src/data/spices.ts.
  *  `episodes` maps spice id → durationSec for ready mini-podcasts. */
-function spicesPage(episodes = {}) {
+function spicesPage(episodes = {}, catalogue = []) {
   const CAT_COLORS = {
     "Blend": ["#e08a2e", "#8a3f12"],
     "Seed": ["#c9a227", "#6b4e0a"],
@@ -478,6 +478,27 @@ function spicesPage(episodes = {}) {
     d: fmtDur(episodes[s.id]),
     card: `#sp-${s.id}`,
   }));
+
+  // Build a set of names already covered by the rich SPICES.ts cards
+  // so we don't double-render them as placeholders.
+  const richNames = new Set(SPICES.map((s) => s.name.toLowerCase()));
+  const placeholders = catalogue
+    .filter((c) => !richNames.has(String(c.name || "").toLowerCase()))
+    .map((c) => {
+      const n = Number(c.postNumber) || 0;
+      const cat = String(c.category || "");
+      const nameSi = String(c.nameSi || "");
+      return `<article class="phcard" data-kind="${esc(cat)}">
+        <div class="phnum">#${n}</div>
+        <div class="phbody">
+          <div class="phrow"><h3>${esc(c.name)}</h3>${nameSi ? `<span class="sin">${esc(nameSi)}</span>` : ""}</div>
+          <span class="pill">${esc(cat)}</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>`;
+    })
+    .join("\n");
+  const totalCount = SPICES.length + (catalogue.length - SPICES.filter((s) => catalogue.some((c) => String(c.name || "").toLowerCase() === s.name.toLowerCase())).length);
 
   const cards = SPICES.map((s) => {
     const dur = episodes[s.id];
@@ -541,18 +562,25 @@ function spicesPage(episodes = {}) {
   .lbar { flex:1; height:5px; border-radius:3px; background:#140d08; overflow:hidden; }
   .lfill { height:100%; width:0%; background:linear-gradient(90deg,#e08a2e,#f37021); }
   footer { color:#8f7b67; font-size:12px; text-align:center; margin-top:36px; }
+  .phcard { display:flex; gap:10px; align-items:stretch; background:#1a120c; border:1px solid #2a1e14; border-radius:12px; margin-top:8px; padding:10px 12px; opacity:.75; }
+  .phnum { flex:0 0 auto; min-width:44px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:14px; font-weight:700; color:#e08a2e; padding-top:2px; }
+  .phbody { min-width:0; flex:1; }
+  .phrow { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+  .phbody h3 { font-size:14px; font-weight:600; color:#e8d9c5; }
+  .phhint { color:#8f7b67; font-size:11.5px; margin-top:4px; font-style:italic; }
+  .divider { margin:22px 0 6px; padding-top:12px; border-top:1px dashed #33241a; color:#b09a86; font-size:12.5px; text-align:center; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <a class="back" href="/">← GK Newsroom</a>
   <header>
-    <h1><em>3una5aha</em> · Sri Lankan Spices</h1>
-    <div class="sub">The island cooks with ~100 spices — meet them one post at a time. ${SPICES.length} so far, growing.</div>
+    <h1><em>3una5aha</em> · Sri Lankan Food</h1>
+    <div class="sub">Sri Lanka's spices, dishes, sweets and bakery — one numbered post at a time. ${SPICES.length} full posts so far${catalogue.length ? `, ${catalogue.length - SPICES.filter((s) => catalogue.some((c) => String(c.name || "").toLowerCase() === s.name.toLowerCase())).length} more in the pipeline` : ""}. 35Ai researches ~10–15 new topics daily.</div>
   </header>
   ${streamer({ items: waItems, base: "/podcast/spice/" })}
   <nav class="chips">${chips}</nav>
-  <main>${cards}</main>
+  <main>${cards}${placeholders ? `<div class="divider">↓ Coming soon — 35Ai researching daily ↓</div>${placeholders}` : ""}</main>
   <footer>3una5aha · GK Newsroom · photos from Wikimedia Commons</footer>
 </div>
 <script>
@@ -1079,7 +1107,23 @@ const server = http.createServer(async (req, res) => {
         } catch (err) {
           console.error("[web] spice episodes query failed:", err instanceof Error ? err.message : err);
         }
-        spiceCache = { html: spicesPage(episodes), at: Date.now() };
+        // Pull the numbered topic catalogues (spices/dishes/bakery) that
+        // the daily Gemini cron enriches over time. Existing rich cards
+        // from SPICES.ts win on name match; anything else becomes a
+        // numbered placeholder so users see the full pipeline.
+        let catalogue = [];
+        try {
+          const db = await getDb();
+          const [sp, di, ba] = await Promise.all([
+            db.collection("lanka_spices").find({}).sort({ postNumber: 1 }).toArray(),
+            db.collection("lanka_dishes").find({}).sort({ postNumber: 1 }).toArray(),
+            db.collection("lanka_bakery").find({}).sort({ postNumber: 1 }).toArray(),
+          ]);
+          catalogue = [...sp, ...di, ...ba];
+        } catch (err) {
+          console.error("[web] catalogue query failed:", err instanceof Error ? err.message : err);
+        }
+        spiceCache = { html: spicesPage(episodes, catalogue), at: Date.now() };
       }
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
