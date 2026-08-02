@@ -516,13 +516,29 @@ function spicesPage(episodes = {}, catalogue = []) {
              <span class="ltxt">Listen · ${fmtDur(dur)}</span>
            </div>`
         : "";
+      const ingrTable = s.ingredients?.length
+        ? `<div class="ingr">
+             <div class="ingr-title">🧑‍🍳 Ingredients &amp; Portions (5 persons)</div>
+             <table>
+               <thead><tr><th>Ingredient</th><th>Sinhala</th><th>Qty</th></tr></thead>
+               <tbody>${s.ingredients.map(i =>
+                 `<tr><td>${esc(i.name)}</td><td>${esc(i.nameSi)}</td><td>${esc(i.qty5)}</td></tr>`
+               ).join('')}</tbody>
+             </table>
+           </div>`
+        : '';
+      const siBlock = s.postSi
+        ? `<p class="psi">${esc(s.postSi)}</p>`
+        : '';
       return `<article class="scard" id="sp-${esc(s.id)}" data-kind="${esc(s.category)}">
-      <img class="sphoto" src="/assets/spices/${esc(s.id)}.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <img class="sphoto" src="/assets/spices/${esc(s.id)}.jpg" alt="${esc(s.name)}" loading="lazy" onerror="this.remove()">
       <div class="sinner">
         <div class="sbody">
           <div class="srow"><h2><span style="color:#e08a2e">#${n}</span> ${esc(s.name)}</h2><span class="sin">${esc(s.sinhala)}</span></div>
           <div class="srow" style="margin-top:2px"><span class="pill">${esc(s.category)}</span> <span style="color:#b09a86;font-size:12px">${dateStr}</span></div>
           <p>${esc(s.post)}</p>
+          ${siBlock}
+          ${ingrTable}
           ${playRow}
         </div>
       </div>
@@ -564,17 +580,25 @@ function spicesPage(episodes = {}, catalogue = []) {
   .chip { flex:0 0 auto; background:#241811; color:#b09a86; border:1px solid #3a2a1e; border-radius:999px; padding:6px 14px; font-size:13px; cursor:pointer; }
   .chip.on { color:#140d08; background:#e08a2e; border-color:#e08a2e; font-weight:600; }
   ${WA_CSS}
-  .scard { background:#1e140d; border:1px solid #33241a; border-radius:14px; margin-top:12px; overflow:hidden; scroll-margin-top:110px; }
-  .sphoto { width:100%; height:190px; object-fit:cover; display:block; background:#2a1c11; }
-  .sinner { display:flex; gap:12px; padding:12px; }
-  .sbody { min-width:0; }
+  .scard { background:#1e140d; border:1px solid #33241a; border-radius:14px; margin-top:12px; overflow:hidden; scroll-margin-top:110px; display:flex; flex-direction:row; align-items:stretch; }
+  .sphoto { width:220px; min-width:220px; max-width:220px; height:auto; min-height:180px; object-fit:cover; display:block; background:#2a1c11; flex-shrink:0; }
+  .sinner { flex:1; min-width:0; padding:14px 16px; display:flex; flex-direction:column; gap:6px; }
+  .sbody { min-width:0; display:flex; flex-direction:column; gap:5px; }
   .srow { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
   h2 { font-size:17px; }
   .sin { color:#c98f4e; font-size:14px; }
   .pill { display:inline-block; font-size:11px; border-radius:999px; padding:2px 9px; border:1px solid #4a3624; color:#c9a984; margin-top:3px; }
-  .sbody p { color:#cbb8a4; font-size:14px; margin-top:6px; }
+  .sbody p { color:#cbb8a4; font-size:14px; margin-top:2px; line-height:1.5; }
+  .sbody .psi { color:#a88c6a; font-size:13px; font-style:italic; margin-top:4px; line-height:1.5; border-left:2px solid #4a3624; padding-left:10px; }
+  .ingr { margin-top:10px; }
+  .ingr-title { font-size:11.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#e08a2e; margin-bottom:6px; }
+  .ingr table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  .ingr th { color:#8f7b67; font-weight:600; text-align:left; padding:3px 8px 3px 0; border-bottom:1px solid #2e1f14; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+  .ingr td { color:#cbb8a4; padding:4px 8px 4px 0; border-bottom:1px solid #231509; vertical-align:top; }
+  .ingr td:last-child { color:#e08a2e; font-weight:600; white-space:nowrap; text-align:right; padding-right:0; }
+  .ingr td .isi { display:block; color:#7a6650; font-size:11px; font-style:italic; }
   .listen { display:flex; align-items:center; gap:10px; margin-top:10px; background:#241811;
-            border:1px solid #3a2a1e; border-radius:999px; padding:5px 12px 5px 5px; }
+            border:1px solid #3a2a1e; border-radius:999px; padding:5px 12px 5px 5px; align-self:flex-start; }
   .lbtn { width:30px; height:30px; border-radius:50%; border:0; cursor:pointer; flex:0 0 auto;
           background:linear-gradient(140deg,#f0a13e,#c2611c); color:#140d08; font-size:13px; font-weight:800;
           box-shadow:0 2px 6px #0007, inset 0 1px 0 #ffffff55; }
@@ -589,6 +613,10 @@ function spicesPage(episodes = {}, catalogue = []) {
   .phbody h3 { font-size:14px; font-weight:600; color:#e8d9c5; }
   .phhint { color:#8f7b67; font-size:11.5px; margin-top:4px; font-style:italic; }
   .divider { margin:22px 0 6px; padding-top:12px; border-top:1px dashed #33241a; color:#b09a86; font-size:12.5px; text-align:center; }
+  @media(max-width:540px) {
+    .scard { flex-direction:column; }
+    .sphoto { width:100%; min-width:0; max-width:100%; height:180px; }
+  }
 </style>
 </head>
 <body>

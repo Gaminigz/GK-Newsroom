@@ -19,6 +19,13 @@ export type Spice = {
   /** Wikimedia Commons search term the page uses to find a photo. */
   imgQuery: string;
   post: string;
+  /** Sinhala language explanation of the item. */
+  postSi?: string;
+  /**
+   * Ingredients for a 5-person portion (only for dishes/sweets — omit for raw spices).
+   * nameSi is the Sinhala name of the ingredient.
+   */
+  ingredients?: Array<{ name: string; nameSi: string; qty5: string }>;
 };
 
 export const SPICES: Spice[] = [
@@ -246,5 +253,14 @@ export const SPICES: Spice[] = [
     category: "Sri Lankan Cakes & Sweets",
     emoji: "🍯",
     post: "A traditional Sinhala and Tamil New Year sweet made from a thick batter of urad dal (black gram) and rice flour. It is piped into hot oil in coiled, spiral shapes, deep-fried until golden, and immediately plunged into warm, dark kithul treacle. The result is a delightfully crunchy exterior with a juicy, syrup-filled center.",
+    postSi: "උළුඳු වැල් යනු සිංහල සහ දෙමළ අලුත් අවුරුදු සමයේ සාම්ප්‍රදායික රසකැවිලි වර්ගයකි. උළුඳු පිටි සහ හාල් පිටි ඝන ලෙස ගළපා, රත් තෙලේ ඇලෙළි හැඩයෙන් ඉවෙකා ගෙන කිතුල් හකුරු පැණි වල ගිල්වා ගනී. පිටත කිළිටු-දෙකා ස්වභාවයකින් ද ඇතුළත රස පැණිය සෙවිලෙන් ද යුක්ත රසකැවිලි වර්ගයකි.",
+    ingredients: [
+      { name: "Urad dal (black gram), soaked", nameSi: "උළුඳු", qty5: "250 g" },
+      { name: "Rice flour", nameSi: "හාල් පිටි", qty5: "100 g" },
+      { name: "Kithul treacle", nameSi: "කිතුල් පැණි", qty5: "200 ml" },
+      { name: "Coconut oil (for frying)", nameSi: "පොල් තෙල්", qty5: "500 ml" },
+      { name: "Salt", nameSi: "ලුණු", qty5: "¼ tsp" },
+      { name: "Water (to adjust batter)", nameSi: "වතුර", qty5: "as needed" },
+    ],
   },
 ];

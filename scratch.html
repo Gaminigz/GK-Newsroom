@@ -1,0 +1,2396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3una5aha — Sri Lankan Spices</title>
+<meta name="description" content="Short posts on the spices behind Sri Lankan cooking — roots, seeds, barks, leaves and the blends they make.">
+<meta property="og:title" content="3una5aha — Sri Lankan Spices">
+<meta property="og:description" content="The island cooks with ~100 spices. Meet them one post at a time.">
+<meta property="og:type" content="website">
+<style>
+  * { box-sizing:border-box; margin:0; }
+  body { background:#140d08; color:#f3e9dd; font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  .wrap { max-width:680px; margin:0 auto; padding:16px 14px 60px; }
+  .back { display:inline-block; margin-bottom:8px; color:#b09a86; text-decoration:none; font-size:14px; }
+  .back:active, .back:hover { color:#e08a2e; }
+  header h1 { font-size:26px; letter-spacing:-.02em; }
+  header h1 em { color:#e08a2e; font-style:normal; }
+  header .sub { color:#b09a86; font-size:14px; margin-top:2px; }
+  .chips { display:flex; gap:8px; margin:14px 0 4px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .chip { flex:0 0 auto; background:#241811; color:#b09a86; border:1px solid #3a2a1e; border-radius:999px; padding:6px 14px; font-size:13px; cursor:pointer; }
+  .chip.on { color:#140d08; background:#e08a2e; border-color:#e08a2e; font-weight:600; }
+  
+  .wa { position:sticky; top:8px; z-index:40; margin:16px 0 6px; border:1px solid #14161b; border-radius:10px;
+        background:linear-gradient(#343a46,#20242c); box-shadow:0 4px 14px #000a; overflow:hidden; }
+  .wa-row { display:flex; align-items:center; gap:8px; padding:8px 10px 6px; }
+  .wa-b { flex:0 0 auto; width:34px; height:30px; border-radius:6px; cursor:pointer; color:#cdd3dd;
+          background:linear-gradient(#4a5160,#2b303a); border:1px solid #171a20;
+          box-shadow:inset 0 1px 0 #ffffff22; font-size:13px; line-height:1; }
+  .wa-b:active { background:linear-gradient(#2b303a,#4a5160); }
+  .wa-main { width:42px; font-size:15px; color:#e3b341; }
+  .wa-lcd { flex:1 1 auto; min-width:0; background:#080d09; border:1px solid #000;
+            border-radius:5px; padding:4px 10px 5px; box-shadow:inset 0 2px 6px #000c; }
+  .wa-lcd-top { color:#39ff88; font:600 12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
+                letter-spacing:.06em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+                text-shadow:0 0 6px #39ff8877; }
+  .wa-lcd-sub { color:#2bcf6e; font:11px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace; opacity:.9; }
+  .wa-drop { font-size:15px; transition:transform .18s; }
+  .wa-drop.open { transform:rotate(180deg); }
+  .wa-seek { height:8px; margin:0 10px 9px; border-radius:4px; background:#12151b;
+             box-shadow:inset 0 1px 3px #000a; cursor:pointer; }
+  .wa-fill { height:100%; width:0%; border-radius:4px;
+             background:linear-gradient(90deg,#e3b341,#f37021); box-shadow:0 0 6px #f3702188; }
+  .wa-list { list-style:none; max-height:224px; overflow-y:auto; border-top:1px solid #14161b;
+             background:#101318; padding:4px 0; margin:0; }
+  .wa-list li { display:flex; gap:10px; align-items:baseline; padding:8px 14px; cursor:pointer;
+                font:12.5px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace; color:#aab3bf; }
+  .wa-list li:hover { background:#181d25; }
+  .wa-list li.on { color:#39ff88; }
+  .wa-list li.on .n::before { content:"▸ "; }
+  .wa-list .n { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wa-list .t { width:44px; text-align:right; color:#6b7480; }
+  .wa-sub { border:1px solid #14161b; border-radius:10px; margin:8px 0 4px; background:#0c1015; padding:9px 14px;
+            font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace; color:#8fe0b2; }
+  .wa-sub div::before { content:"· "; color:#4a7c60; }
+  .playing-card { outline:2px solid #e3b341; outline-offset:-1px; }
+
+  .scard { background:#1e140d; border:1px solid #33241a; border-radius:14px; margin-top:12px; overflow:hidden; scroll-margin-top:110px; }
+  .sphoto { width:100%; height:190px; object-fit:cover; display:block; background:#2a1c11; }
+  .sinner { display:flex; gap:12px; padding:12px; }
+  .sbody { min-width:0; }
+  .srow { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+  h2 { font-size:17px; }
+  .sin { color:#c98f4e; font-size:14px; }
+  .pill { display:inline-block; font-size:11px; border-radius:999px; padding:2px 9px; border:1px solid #4a3624; color:#c9a984; margin-top:3px; }
+  .sbody p { color:#cbb8a4; font-size:14px; margin-top:6px; }
+  .listen { display:flex; align-items:center; gap:10px; margin-top:10px; background:#241811;
+            border:1px solid #3a2a1e; border-radius:999px; padding:5px 12px 5px 5px; }
+  .lbtn { width:30px; height:30px; border-radius:50%; border:0; cursor:pointer; flex:0 0 auto;
+          background:linear-gradient(140deg,#f0a13e,#c2611c); color:#140d08; font-size:13px; font-weight:800;
+          box-shadow:0 2px 6px #0007, inset 0 1px 0 #ffffff55; }
+  .ltxt { color:#c9a984; font-size:12.5px; white-space:nowrap; }
+  .lbar { flex:1; height:5px; border-radius:3px; background:#140d08; overflow:hidden; }
+  .lfill { height:100%; width:0%; background:linear-gradient(90deg,#e08a2e,#f37021); }
+  footer { color:#8f7b67; font-size:12px; text-align:center; margin-top:36px; }
+  .phcard { display:flex; gap:10px; align-items:stretch; background:#1a120c; border:1px solid #2a1e14; border-radius:12px; margin-top:8px; padding:10px 12px; opacity:.75; }
+  .phnum { flex:0 0 auto; min-width:44px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:14px; font-weight:700; color:#e08a2e; padding-top:2px; }
+  .phbody { min-width:0; flex:1; }
+  .phrow { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+  .phbody h3 { font-size:14px; font-weight:600; color:#e8d9c5; }
+  .phhint { color:#8f7b67; font-size:11.5px; margin-top:4px; font-style:italic; }
+  .divider { margin:22px 0 6px; padding-top:12px; border-top:1px dashed #33241a; color:#b09a86; font-size:12.5px; text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/">← GK Newsroom</a>
+  <header>
+    <h1><em>3una5aha</em> · Sri Lankan Food</h1>
+    <div class="sub">Sri Lanka's spices, dishes, sweets and bakery — one numbered post at a time. 24 full posts so far, 233 more in the pipeline. 35Ai researches ~10–15 new topics daily.</div>
+  </header>
+  <section class="wa" id="wa">
+    <div class="wa-row">
+      <button class="wa-b" id="waPrev" aria-label="Previous">⏮</button>
+      <button class="wa-b wa-main" id="waPlay" aria-label="Play">▶</button>
+      <button class="wa-b" id="waNext" aria-label="Next">⏭</button>
+      <div class="wa-lcd">
+        <div class="wa-lcd-top" id="waTitle">THUNA PAHA · තුන පහ</div>
+        <div class="wa-lcd-sub"><span id="waCur">0:00</span> / <span id="waDur">1:11</span></div>
+      </div>
+      <button class="wa-b wa-drop" id="waDrop" aria-label="Topics">▾</button>
+    </div>
+    <div class="wa-seek" id="waSeek"><div class="wa-fill" id="waFill"></div></div>
+    <ol class="wa-list" id="waList" hidden><li data-i="0" class="on"><span class="n">Thuna Paha · තුන පහ</span><span class="t">1:11</span></li><li data-i="1"><span class="n">Roasted Curry Powder · බැදපු තුන පහ</span><span class="t">1:12</span></li><li data-i="2"><span class="n">Ceylon Cinnamon · කුරුඳු</span><span class="t">1:10</span></li><li data-i="3"><span class="n">Turmeric · කහ</span><span class="t">0:56</span></li><li data-i="4"><span class="n">Ginger · ඉඟුරු</span><span class="t">1:04</span></li><li data-i="5"><span class="n">Cardamom · එනසාල්</span><span class="t">0:58</span></li><li data-i="6"><span class="n">Cloves · කරාබු නැටි</span><span class="t">0:58</span></li><li data-i="7"><span class="n">Nutmeg · සාදික්කා</span><span class="t">1:17</span></li><li data-i="8"><span class="n">Mace · වසාවාසි</span><span class="t">1:01</span></li><li data-i="9"><span class="n">Black Pepper · ගම්මිරිස්</span><span class="t">1:00</span></li><li data-i="10"><span class="n">Dried Chili · මිරිස්</span><span class="t">1:02</span></li><li data-i="11"><span class="n">Coriander Seed · කොත්තමල්ලි</span><span class="t">1:04</span></li><li data-i="12"><span class="n">Cumin · සූදුරු</span><span class="t">1:01</span></li><li data-i="13"><span class="n">Fennel Seed · මාදුරු</span><span class="t">0:56</span></li><li data-i="14"><span class="n">Fenugreek · උළුහාල්</span><span class="t">0:58</span></li><li data-i="15"><span class="n">Mustard Seed · අබ</span><span class="t">0:59</span></li><li data-i="16"><span class="n">Curry Leaves · කරපිංචා</span><span class="t">1:13</span></li><li data-i="17"><span class="n">Pandan (Rampe) · රම්පෙ</span><span class="t">1:03</span></li><li data-i="18"><span class="n">Lemongrass (Sera) · සේර</span><span class="t">1:16</span></li><li data-i="19"><span class="n">Garlic · සුදු ලූනු</span><span class="t">0:56</span></li><li data-i="20"><span class="n">Tamarind · සියඹලා</span><span class="t">1:16</span></li><li data-i="21"><span class="n">Goraka · ගොරකා</span><span class="t">1:04</span></li><li data-i="22"><span class="n">White Curry Powder · සුදු කරි කුඩු</span><span class="t">1:06</span></li><li data-i="23"><span class="n">Caraway (Sweet Cumin) · සූදුරු මාදුරු</span><span class="t">1:07</span></li></ol>
+    <audio id="waAudio" preload="none"></audio>
+    <script id="waData" type="application/json">{"base":"/podcast/spice/","items":[{"k":"thuna-paha","t":"THUNA PAHA · තුන පහ","row":"Thuna Paha · තුන පහ","d":"1:11","card":"#sp-thuna-paha"},{"k":"roasted-curry-powder","t":"ROASTED CURRY POWDER · බැදපු තුන පහ","row":"Roasted Curry Powder · බැදපු තුන පහ","d":"1:12","card":"#sp-roasted-curry-powder"},{"k":"cinnamon","t":"CEYLON CINNAMON · කුරුඳු","row":"Ceylon Cinnamon · කුරුඳු","d":"1:10","card":"#sp-cinnamon"},{"k":"turmeric","t":"TURMERIC · කහ","row":"Turmeric · කහ","d":"0:56","card":"#sp-turmeric"},{"k":"ginger","t":"GINGER · ඉඟුරු","row":"Ginger · ඉඟුරු","d":"1:04","card":"#sp-ginger"},{"k":"cardamom","t":"CARDAMOM · එනසාල්","row":"Cardamom · එනසාල්","d":"0:58","card":"#sp-cardamom"},{"k":"cloves","t":"CLOVES · කරාබු නැටි","row":"Cloves · කරාබු නැටි","d":"0:58","card":"#sp-cloves"},{"k":"nutmeg","t":"NUTMEG · සාදික්කා","row":"Nutmeg · සාදික්කා","d":"1:17","card":"#sp-nutmeg"},{"k":"mace","t":"MACE · වසාවාසි","row":"Mace · වසාවාසි","d":"1:01","card":"#sp-mace"},{"k":"black-pepper","t":"BLACK PEPPER · ගම්මිරිස්","row":"Black Pepper · ගම්මිරිස්","d":"1:00","card":"#sp-black-pepper"},{"k":"chili","t":"DRIED CHILI · මිරිස්","row":"Dried Chili · මිරිස්","d":"1:02","card":"#sp-chili"},{"k":"coriander","t":"CORIANDER SEED · කොත්තමල්ලි","row":"Coriander Seed · කොත්තමල්ලි","d":"1:04","card":"#sp-coriander"},{"k":"cumin","t":"CUMIN · සූදුරු","row":"Cumin · සූදුරු","d":"1:01","card":"#sp-cumin"},{"k":"fennel","t":"FENNEL SEED · මාදුරු","row":"Fennel Seed · මාදුරු","d":"0:56","card":"#sp-fennel"},{"k":"fenugreek","t":"FENUGREEK · උළුහාල්","row":"Fenugreek · උළුහාල්","d":"0:58","card":"#sp-fenugreek"},{"k":"mustard-seed","t":"MUSTARD SEED · අබ","row":"Mustard Seed · අබ","d":"0:59","card":"#sp-mustard-seed"},{"k":"curry-leaves","t":"CURRY LEAVES · කරපිංචා","row":"Curry Leaves · කරපිංචා","d":"1:13","card":"#sp-curry-leaves"},{"k":"pandan","t":"PANDAN (RAMPE) · රම්පෙ","row":"Pandan (Rampe) · රම්පෙ","d":"1:03","card":"#sp-pandan"},{"k":"lemongrass","t":"LEMONGRASS (SERA) · සේර","row":"Lemongrass (Sera) · සේර","d":"1:16","card":"#sp-lemongrass"},{"k":"garlic","t":"GARLIC · සුදු ලූනු","row":"Garlic · සුදු ලූනු","d":"0:56","card":"#sp-garlic"},{"k":"tamarind","t":"TAMARIND · සියඹලා","row":"Tamarind · සියඹලා","d":"1:16","card":"#sp-tamarind"},{"k":"goraka","t":"GORAKA · ගොරකා","row":"Goraka · ගොරකා","d":"1:04","card":"#sp-goraka"},{"k":"curry-powder-unroasted","t":"WHITE CURRY POWDER · සුදු කරි කුඩු","row":"White Curry Powder · සුදු කරි කුඩු","d":"1:06","card":"#sp-curry-powder-unroasted"},{"k":"sweet-cumin","t":"CARAWAY (SWEET CUMIN) · සූදුරු මාදුරු","row":"Caraway (Sweet Cumin) · සූදුරු මාදුරු","d":"1:07","card":"#sp-sweet-cumin"}]}</script>
+  </section>
+  <div class="wa-sub" id="waSub" hidden></div>
+  <nav class="chips"><button class="chip on" data-filter="All">All</button><button class="chip" data-filter="Blend">Blend</button><button class="chip" data-filter="Bark &amp; Root">Bark &amp; Root</button><button class="chip" data-filter="Fruit &amp; Pod">Fruit &amp; Pod</button><button class="chip" data-filter="Seed">Seed</button><button class="chip" data-filter="Leaf &amp; Herb">Leaf &amp; Herb</button></nav>
+  <main><article class="scard" id="sp-thuna-paha" data-kind="Blend">
+      <img class="sphoto" src="/assets/spices/thuna-paha.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Thuna Paha</h2><span class="sin">තුන පහ</span></div>
+          <span class="pill">Blend</span>
+          <p>The blend this channel is named after — 'three-five', the classic Sinhala curry powder of coriander, cumin, fennel, cinnamon and curry leaves. Every Sri Lankan kitchen roasts its own, and no two houses taste the same.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('thuna-paha')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 1:11</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-roasted-curry-powder" data-kind="Blend">
+      <img class="sphoto" src="/assets/spices/roasted-curry-powder.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Roasted Curry Powder</h2><span class="sin">බැදපු තුන පහ</span></div>
+          <span class="pill">Blend</span>
+          <p>Thuna paha's darker sibling: the same spices dry-roasted until deep brown. It powers black curries — jaffna crab, black pork curry — with a smoky depth raw powder can't reach.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('roasted-curry-powder')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 1:12</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-cinnamon" data-kind="Bark &amp; Root">
+      <img class="sphoto" src="/assets/spices/cinnamon.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Ceylon Cinnamon</h2><span class="sin">කුරුඳු</span></div>
+          <span class="pill">Bark &amp; Root</span>
+          <p>Sri Lanka's gift to the world — true cinnamon, softer and sweeter than cassia, peeled by hand into feather-thin quills. The island still grows most of the world's supply, just like it did when spice ships fought over it.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('cinnamon')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 1:10</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-turmeric" data-kind="Bark &amp; Root">
+      <img class="sphoto" src="/assets/spices/turmeric.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Turmeric</h2><span class="sin">කහ</span></div>
+          <span class="pill">Bark &amp; Root</span>
+          <p>The golden root that colours almost every Sri Lankan curry. A pinch goes into the pot first with onions and curry leaves — for colour, earthiness, and its famous anti-inflammatory punch.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('turmeric')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 0:56</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-ginger" data-kind="Bark &amp; Root">
+      <img class="sphoto" src="/assets/spices/ginger.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Ginger</h2><span class="sin">ඉඟුරු</span></div>
+          <span class="pill">Bark &amp; Root</span>
+          <p>Crushed with garlic into the base of most meat curries, brewed into plain tea for colds, and candied for sweets. Island ginger is small, fibrous and twice as sharp as the supermarket kind.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('ginger')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 1:04</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-cardamom" data-kind="Fruit &amp; Pod">
+      <img class="sphoto" src="/assets/spices/cardamom.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Cardamom</h2><span class="sin">එනසාල්</span></div>
+          <span class="pill">Fruit &amp; Pod</span>
+          <p>The 'queen of spices' — green pods crushed into rice, milk toffee and curries alike. Sri Lankan cardamom grows in the misty hills of Kandy and gives watalappan its floral note.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('cardamom')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 0:58</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-cloves" data-kind="Fruit &amp; Pod">
+      <img class="sphoto" src="/assets/spices/cloves.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Cloves</h2><span class="sin">කරාබු නැටි</span></div>
+          <span class="pill">Fruit &amp; Pod</span>
+          <p>Dried flower buds that look like tiny nails and taste like warm perfume. Two or three go into a pot of yellow rice; chewing one is the island's oldest breath freshener.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('cloves')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 0:58</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-nutmeg" data-kind="Fruit &amp; Pod">
+      <img class="sphoto" src="/assets/spices/nutmeg.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Nutmeg</h2><span class="sin">සාදික්කා</span></div>
+          <span class="pill">Fruit &amp; Pod</span>
+          <p>One tree, two spices: the seed is nutmeg, its red lace covering is mace. Grated fresh over milk rice and love cake — a little makes dessert sing, a lot makes you sleepy.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('nutmeg')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 1:17</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-mace" data-kind="Fruit &amp; Pod">
+      <img class="sphoto" src="/assets/spices/mace.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Mace</h2><span class="sin">වසාවාසි</span></div>
+          <span class="pill">Fruit &amp; Pod</span>
+          <p>The crimson web wrapped around the nutmeg seed, milder and more floral than its twin. Prized in rich meat curries and the secret warmth in many Ceylon spice blends.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('mace')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 1:01</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-black-pepper" data-kind="Seed">
+      <img class="sphoto" src="/assets/spices/black-pepper.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Black Pepper</h2><span class="sin">ගම්මිරිස්</span></div>
+          <span class="pill">Seed</span>
+          <p>Before chili ever reached the island, this was the heat. Sri Lankan black pepper is oily, bold and high in piperine — 'gammiris' still means serious spice in any village kitchen.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('black-pepper')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 1:00</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-chili" data-kind="Fruit &amp; Pod">
+      <img class="sphoto" src="/assets/spices/chili.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Dried Chili</h2><span class="sin">මිරිස්</span></div>
+          <span class="pill">Fruit &amp; Pod</span>
+          <p>The Portuguese brought it; Sri Lanka never looked back. Sun-dried, flaked or ground — it's the fire in pol sambol and the red in every 'devilled' dish on the island.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('chili')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 1:02</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-coriander" data-kind="Seed">
+      <img class="sphoto" src="/assets/spices/coriander.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Coriander Seed</h2><span class="sin">කොත්තමල්ලි</span></div>
+          <span class="pill">Seed</span>
+          <p>The biggest share of any curry powder — citrusy, nutty, gentle. Boiled whole it becomes kottamalli tea, the island's first medicine for every cold and fever.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('coriander')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 1:04</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-cumin" data-kind="Seed">
+      <img class="sphoto" src="/assets/spices/cumin.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Cumin</h2><span class="sin">සූදුරු</span></div>
+          <span class="pill">Seed</span>
+          <p>Earthy seeds that anchor thuna paha and rice pilafs. Roasted and ground with coriander and fennel, it's the backbone note your tongue reads as 'curry'.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('cumin')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 1:01</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-fennel" data-kind="Seed">
+      <img class="sphoto" src="/assets/spices/fennel.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Fennel Seed</h2><span class="sin">මාදුරු</span></div>
+          <span class="pill">Seed</span>
+          <p>Sweet, liquorice-scented seeds that round off the curry-powder trio. Chewed after meals as a digestive, and the quiet sweetness inside Sri Lankan fish curries.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('fennel')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 0:56</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-fenugreek" data-kind="Seed">
+      <img class="sphoto" src="/assets/spices/fenugreek.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Fenugreek</h2><span class="sin">උළුහාල්</span></div>
+          <span class="pill">Seed</span>
+          <p>Tiny bitter cubes that turn magical in coconut milk — they thicken and mellow white curries like kiri hodi. Soaked overnight, they're also a village remedy for the stomach.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('fenugreek')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 0:58</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-mustard-seed" data-kind="Seed">
+      <img class="sphoto" src="/assets/spices/mustard-seed.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Mustard Seed</h2><span class="sin">අබ</span></div>
+          <span class="pill">Seed</span>
+          <p>Popped in hot oil until they crackle — the opening beat of countless island dishes. Ground into a paste they sharpen pickles like malay achcharu.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('mustard-seed')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 0:59</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-curry-leaves" data-kind="Leaf &amp; Herb">
+      <img class="sphoto" src="/assets/spices/curry-leaves.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Curry Leaves</h2><span class="sin">කරපිංචා</span></div>
+          <span class="pill">Leaf &amp; Herb</span>
+          <p>Not 'curry flavour' — a tree of its own, and the single most Sri Lankan smell there is. A sprig sizzling in coconut oil with onions is how a thousand curries begin.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('curry-leaves')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 1:13</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-pandan" data-kind="Leaf &amp; Herb">
+      <img class="sphoto" src="/assets/spices/pandan.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Pandan (Rampe)</h2><span class="sin">රම්පෙ</span></div>
+          <span class="pill">Leaf &amp; Herb</span>
+          <p>The long green leaf knotted into every pot of rice and curry, lending a nutty, jasmine-like aroma. Sri Lankans call rice cooked without it 'naked'.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('pandan')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 1:03</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-lemongrass" data-kind="Leaf &amp; Herb">
+      <img class="sphoto" src="/assets/spices/lemongrass.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Lemongrass (Sera)</h2><span class="sin">සේර</span></div>
+          <span class="pill">Leaf &amp; Herb</span>
+          <p>A bruised stalk in the curry pot brings citrus without the fruit. Paired with rampe and curry leaves, it forms the island's aromatic holy trinity.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('lemongrass')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 1:16</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-garlic" data-kind="Bark &amp; Root">
+      <img class="sphoto" src="/assets/spices/garlic.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Garlic</h2><span class="sin">සුදු ලූනු</span></div>
+          <span class="pill">Bark &amp; Root</span>
+          <p>Whole cloves melt into dhal curry; crushed, it partners ginger at the base of nearly everything savoury. Garlic curry itself — sudu lunu curry — is a beloved dish, not just a seasoning.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('garlic')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 0:56</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-tamarind" data-kind="Fruit &amp; Pod">
+      <img class="sphoto" src="/assets/spices/tamarind.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Tamarind</h2><span class="sin">සියඹලා</span></div>
+          <span class="pill">Fruit &amp; Pod</span>
+          <p>The sour soul of southern cooking. A lime-sized ball soaked in water gives fish ambul thiyal its dark tang and keeps it good for days without a fridge.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('tamarind')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 1:16</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-goraka" data-kind="Fruit &amp; Pod">
+      <img class="sphoto" src="/assets/spices/goraka.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Goraka</h2><span class="sin">ගොරකා</span></div>
+          <span class="pill">Fruit &amp; Pod</span>
+          <p>A smoked, dried garcinia fruit — blacker and smokier than tamarind. It's what makes true ambul thiyal 'sour fish curry' and not just fish curry.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('goraka')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 1:04</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-curry-powder-unroasted" data-kind="Blend">
+      <img class="sphoto" src="/assets/spices/curry-powder-unroasted.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>White Curry Powder</h2><span class="sin">සුදු කරි කුඩු</span></div>
+          <span class="pill">Blend</span>
+          <p>The gentle blend for vegetable and coconut-milk curries — raw-ground coriander, cumin and fennel. White curries are the island's comfort food: mild, milky, everyday.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('curry-powder-unroasted')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 1:06</span>
+         </div>
+        </div>
+      </div>
+    </article>
+<article class="scard" id="sp-sweet-cumin" data-kind="Seed">
+      <img class="sphoto" src="/assets/spices/sweet-cumin.jpg" alt="" loading="lazy" onerror="this.remove()">
+      <div class="sinner">
+        <div class="sbody">
+          <div class="srow"><h2>Caraway (Sweet Cumin)</h2><span class="sin">සූදුරු මාදුරු</span></div>
+          <span class="pill">Seed</span>
+          <p>Often confused with fennel in island markets, this warmer seed slips into biryani masalas and festive rice, a legacy of Malay and Moor kitchens on the coast.</p>
+          <div class="listen">
+           <button class="lbtn" onclick="waPick && waPick('sweet-cumin')" aria-label="Play episode">▶</button>
+           <span class="ltxt">Listen · 1:07</span>
+         </div>
+        </div>
+      </div>
+    </article><div class="divider">↓ Coming soon — 35Ai researching daily ↓</div><article class="phcard" data-kind="Fresh Spices &amp; Aromatics">
+        <div class="phnum">#1</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Fresh Ginger Root</h3><span class="sin">අලුත් ඉඟුරු අල</span></div>
+          <span class="pill">Fresh Spices &amp; Aromatics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fresh Spices &amp; Aromatics">
+        <div class="phnum">#2</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Garlic Cloves</h3><span class="sin">සුදු ලූනු බිළිඳ</span></div>
+          <span class="pill">Fresh Spices &amp; Aromatics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fresh Spices &amp; Aromatics">
+        <div class="phnum">#3</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Shallots (Small Red Onions)</h3><span class="sin">සාලු හෝ රතු ලූනු</span></div>
+          <span class="pill">Fresh Spices &amp; Aromatics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fresh Spices &amp; Aromatics">
+        <div class="phnum">#4</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Big Red / White Onions</h3><span class="sin">බොම්බායි ලූනු / රතු සහ සුදු ලූනු</span></div>
+          <span class="pill">Fresh Spices &amp; Aromatics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fresh Spices &amp; Aromatics">
+        <div class="phnum">#5</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Green Chilies</h3><span class="sin">අමු මිරිස්</span></div>
+          <span class="pill">Fresh Spices &amp; Aromatics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fresh Spices &amp; Aromatics">
+        <div class="phnum">#6</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Bird's Eye Chilies (Kochchi Miris)</h3><span class="sin">කොච්චි මිරිස්</span></div>
+          <span class="pill">Fresh Spices &amp; Aromatics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fresh Spices &amp; Aromatics">
+        <div class="phnum">#7</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Curry Leaves (Karapincha)</h3><span class="sin">කරපිංචා</span></div>
+          <span class="pill">Fresh Spices &amp; Aromatics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fresh Spices &amp; Aromatics">
+        <div class="phnum">#8</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Pandan Leaves (Rampe)</h3><span class="sin">රම්පේ</span></div>
+          <span class="pill">Fresh Spices &amp; Aromatics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fresh Spices &amp; Aromatics">
+        <div class="phnum">#9</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Lemongrass Stalks</h3><span class="sin">සේර</span></div>
+          <span class="pill">Fresh Spices &amp; Aromatics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fresh Spices &amp; Aromatics">
+        <div class="phnum">#10</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Fresh Turmeric Root</h3><span class="sin">අලුත් කහ අල</span></div>
+          <span class="pill">Fresh Spices &amp; Aromatics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fresh Spices &amp; Aromatics">
+        <div class="phnum">#11</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Raw Green Mango</h3><span class="sin">අමු අඹ</span></div>
+          <span class="pill">Fresh Spices &amp; Aromatics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fresh Spices &amp; Aromatics">
+        <div class="phnum">#12</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Goraka (Fresh Malabar Tamarind pieces)</h3><span class="sin">ගොරකා</span></div>
+          <span class="pill">Fresh Spices &amp; Aromatics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Dried Whole Spices">
+        <div class="phnum">#13</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Dry Red Chilies (Whole)</h3><span class="sin">වියළි මිරිස්</span></div>
+          <span class="pill">Dried Whole Spices</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Dried Whole Spices">
+        <div class="phnum">#14</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Black Peppercorns</h3><span class="sin">ගම්මිරිස් ඇට</span></div>
+          <span class="pill">Dried Whole Spices</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Dried Whole Spices">
+        <div class="phnum">#15</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Coriander Seeds (Whole)</h3><span class="sin">කොත්තමල්ලි ඇට</span></div>
+          <span class="pill">Dried Whole Spices</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Dried Whole Spices">
+        <div class="phnum">#16</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Cumin Seeds (Jeera)</h3><span class="sin">දුරු</span></div>
+          <span class="pill">Dried Whole Spices</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Dried Whole Spices">
+        <div class="phnum">#17</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Fennel Seeds (Mahenduru)</h3><span class="sin">මහදුරු</span></div>
+          <span class="pill">Dried Whole Spices</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Dried Whole Spices">
+        <div class="phnum">#18</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Fenugreek Seeds (Uluhal)</h3><span class="sin">උළුහාල්</span></div>
+          <span class="pill">Dried Whole Spices</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Dried Whole Spices">
+        <div class="phnum">#19</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Mustard Seeds (Bada Ithuru)</h3><span class="sin">අබ ඇට</span></div>
+          <span class="pill">Dried Whole Spices</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Dried Whole Spices">
+        <div class="phnum">#20</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Green Cardamom Pods</h3><span class="sin">කරදමුංගු</span></div>
+          <span class="pill">Dried Whole Spices</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Dried Whole Spices">
+        <div class="phnum">#21</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Black Cardamom</h3><span class="sin">කළු කරදමුංගු</span></div>
+          <span class="pill">Dried Whole Spices</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Dried Whole Spices">
+        <div class="phnum">#22</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Cloves (Karabu Nati)</h3><span class="sin">කරාබුනැටි</span></div>
+          <span class="pill">Dried Whole Spices</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Dried Whole Spices">
+        <div class="phnum">#23</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Cinnamon Sticks / Quills (Kurundu)</h3><span class="sin">කුරුඳු පොතු</span></div>
+          <span class="pill">Dried Whole Spices</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Dried Whole Spices">
+        <div class="phnum">#24</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Nutmeg Whole</h3><span class="sin">සාදික්කා</span></div>
+          <span class="pill">Dried Whole Spices</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Dried Whole Spices">
+        <div class="phnum">#25</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Mace (Jathi Paththri)</h3><span class="sin">ජාවත්‍රී</span></div>
+          <span class="pill">Dried Whole Spices</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Dried Whole Spices">
+        <div class="phnum">#26</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Star Anise</h3><span class="sin">තාරකා මල් / චීන අනිස්</span></div>
+          <span class="pill">Dried Whole Spices</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Dried Whole Spices">
+        <div class="phnum">#27</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Curry Leaves (Dried)</h3><span class="sin">වියළි කරපිංචා</span></div>
+          <span class="pill">Dried Whole Spices</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Powdered Spices &amp; Blends">
+        <div class="phnum">#28</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Sri Lankan Roasted Curry Powder</h3><span class="sin">බදින ලද තුනපහ කුඩු</span></div>
+          <span class="pill">Powdered Spices &amp; Blends</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Powdered Spices &amp; Blends">
+        <div class="phnum">#29</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Sri Lankan Unroasted Curry Powder</h3><span class="sin">බැද නොගත් තුනපහ කුඩු</span></div>
+          <span class="pill">Powdered Spices &amp; Blends</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Powdered Spices &amp; Blends">
+        <div class="phnum">#30</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Jaffna Special Curry Powder</h3><span class="sin">යාපනය විශේෂ කුඩු</span></div>
+          <span class="pill">Powdered Spices &amp; Blends</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Powdered Spices &amp; Blends">
+        <div class="phnum">#31</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Chili Powder (Standard / Hot)</h3><span class="sin">මිරිස් කුඩු</span></div>
+          <span class="pill">Powdered Spices &amp; Blends</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Powdered Spices &amp; Blends">
+        <div class="phnum">#32</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Chili Flakes</h3><span class="sin">මිරිස් කෑලි</span></div>
+          <span class="pill">Powdered Spices &amp; Blends</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Powdered Spices &amp; Blends">
+        <div class="phnum">#33</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Turmeric Powder</h3><span class="sin">කහ කුඩු</span></div>
+          <span class="pill">Powdered Spices &amp; Blends</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Powdered Spices &amp; Blends">
+        <div class="phnum">#34</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Black Pepper Powder</h3><span class="sin">ගම්මිරිස් කුඩු</span></div>
+          <span class="pill">Powdered Spices &amp; Blends</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Powdered Spices &amp; Blends">
+        <div class="phnum">#35</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Cumin Powder</h3><span class="sin">දුරු කුඩු</span></div>
+          <span class="pill">Powdered Spices &amp; Blends</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Powdered Spices &amp; Blends">
+        <div class="phnum">#36</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Coriander Powder</h3><span class="sin">කොත්තමල්ලි කුඩු</span></div>
+          <span class="pill">Powdered Spices &amp; Blends</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Powdered Spices &amp; Blends">
+        <div class="phnum">#37</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Fenugreek Powder</h3><span class="sin">උළුහාල් කුඩු</span></div>
+          <span class="pill">Powdered Spices &amp; Blends</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Powdered Spices &amp; Blends">
+        <div class="phnum">#38</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Cinnamon Powder</h3><span class="sin">කුරුඳු කුඩු</span></div>
+          <span class="pill">Powdered Spices &amp; Blends</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Powdered Spices &amp; Blends">
+        <div class="phnum">#39</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Nutmeg Powder</h3><span class="sin">සාදික්කා කුඩු</span></div>
+          <span class="pill">Powdered Spices &amp; Blends</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Powdered Spices &amp; Blends">
+        <div class="phnum">#40</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Garam Masala</h3><span class="sin">ගරම් මසාලා</span></div>
+          <span class="pill">Powdered Spices &amp; Blends</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Pre-Processed &amp; Specialty Spice Pastes / Items">
+        <div class="phnum">#41</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Goraka Paste</h3><span class="sin">ගොරකා පේස්ට්</span></div>
+          <span class="pill">Pre-Processed &amp; Specialty Spice Pastes / Items</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Pre-Processed &amp; Specialty Spice Pastes / Items">
+        <div class="phnum">#42</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Tamarind Pulp / Concentrate</h3><span class="sin">සියඹලා මදය / සියඹලා යුෂ</span></div>
+          <span class="pill">Pre-Processed &amp; Specialty Spice Pastes / Items</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Pre-Processed &amp; Specialty Spice Pastes / Items">
+        <div class="phnum">#43</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Roasted Maldive Fish Chips &amp; Powder</h3><span class="sin">මෝල්දිව් මාළු (උම්බලකඩ) කැබලි සහ කුඩු</span></div>
+          <span class="pill">Pre-Processed &amp; Specialty Spice Pastes / Items</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Pre-Processed &amp; Specialty Spice Pastes / Items">
+        <div class="phnum">#44</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Roasted Mustard Paste</h3><span class="sin">බදින ලද අබ පේස්ට්</span></div>
+          <span class="pill">Pre-Processed &amp; Specialty Spice Pastes / Items</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Pre-Processed &amp; Specialty Spice Pastes / Items">
+        <div class="phnum">#45</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Ginger-Garlic Paste</h3><span class="sin">ඉඟුරු-සුදු ලූනු පේස්ට්</span></div>
+          <span class="pill">Pre-Processed &amp; Specialty Spice Pastes / Items</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Pre-Processed &amp; Specialty Spice Pastes / Items">
+        <div class="phnum">#46</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Fermented Coconut Toddy</h3><span class="sin">පැසුණු පොල් රා</span></div>
+          <span class="pill">Pre-Processed &amp; Specialty Spice Pastes / Items</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Pre-Processed &amp; Specialty Spice Pastes / Items">
+        <div class="phnum">#47</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Sesame Seeds (White and Black)</h3><span class="sin">තල ඇට - සුදු සහ කළු</span></div>
+          <span class="pill">Pre-Processed &amp; Specialty Spice Pastes / Items</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Pre-Processed &amp; Specialty Spice Pastes / Items">
+        <div class="phnum">#48</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Poppy Seeds (Kasa Kasa)</h3><span class="sin">කසාකසා</span></div>
+          <span class="pill">Pre-Processed &amp; Specialty Spice Pastes / Items</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#49</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Parippu</h3><span class="sin">පරිප්පු කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#50</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Polos</h3><span class="sin">පොලොස් කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#51</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Kiri Kos</h3><span class="sin">කිරි කොස්</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#52</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Potato White Curry</h3><span class="sin">අර්තාපල් කිරි හොදි</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#53</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Pumpkin Curry</h3><span class="sin">වට්ටක්කා කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#54</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Beetroot Curry</h3><span class="sin">බීට්‌රූට් කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#55</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Cabbage Curry</h3><span class="sin">ගෝවා කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#56</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Bandakka Curry</h3><span class="sin">බණ්ඩක්කා කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#57</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Drumstick Curry</h3><span class="sin">මුරුනගා කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#58</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Snake Gourd Curry</h3><span class="sin">පතෝල කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#59</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Radish Curry</h3><span class="sin">මුලී කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#60</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Cashew Nut Curry</h3><span class="sin">කජු කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#61</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Mango Curry</h3><span class="sin">අඹ කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#62</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Pineapple Curry</h3><span class="sin">අනනස් කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#63</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Ash Plantain Curry</h3><span class="sin">අළු කෙසෙල් කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#64</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Tomato Curry</h3><span class="sin">තක්කාලි කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#65</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Green Bean Curry</h3><span class="sin">බෝංචි කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#66</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Bitter Gourd Curry</h3><span class="sin">කරවිල කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#67</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Knol Khol Curry</h3><span class="sin">නෝකෝල් කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#68</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Mushroom Curry</h3><span class="sin">බිම්මල් කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#69</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Brinjal Curry</h3><span class="sin">වම්බටු කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#70</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Luffa Curry</h3><span class="sin">වැටකොළු කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#71</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Lotus Root Curry</h3><span class="sin">නෙළුම් අල කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#72</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Breadfruit Curry</h3><span class="sin">දෙල් කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Vegetable Curries">
+        <div class="phnum">#73</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Ripe Jackfruit Curry</h3><span class="sin">වැල් කොස් කරවල</span></div>
+          <span class="pill">Vegetable Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#74</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Kukul Mas Curry</h3><span class="sin">කුකුළු මස් කරවල</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#75</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Black Pork Curry</h3><span class="sin">කළුඌරු මස් කරවල</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#76</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Mutton Curry</h3><span class="sin">එළු මස් කරවල</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#77</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Sri Lankan Beef Curry</h3><span class="sin">හරක් මස් කරවල</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#78</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Jaffna Mutton Kuzhambu</h3><span class="sin">යාපනය එළු මස් හොදි</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#79</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Malu Mirisata</h3><span class="sin">මාළු මිරිසට</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#80</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Kiri Hodi Malu</h3><span class="sin">මාළු කිරි හොදි</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#81</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Prawn Curry</h3><span class="sin">ඉස්සන් කරවල</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#82</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Cuttlefish Curry</h3><span class="sin">දැල්ලා කරවල</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#83</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Crab Curry</h3><span class="sin">කකුළු කරවල</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#84</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Dry Fish Curry</h3><span class="sin">කරවල හොද්ද</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#85</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Ambul Thiyal</h3><span class="sin">මාළු ඇඹුල් තියල්</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#86</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Fish Ambul Thiyal</h3><span class="sin">මාළු ඇඹුල් තියල්</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#87</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Shark Curry</h3><span class="sin">මෝර මස් කරවල</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#88</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Sprats Curry</h3><span class="sin">හාල්මැස්සන් කරවල</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#89</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Squid Curry</h3><span class="sin">දැල්ලා කරවල</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#90</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Eel Curry</h3><span class="sin">ආඳා කරවල</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#91</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Duck Curry</h3><span class="sin">බත්තු මස් කරවල</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#92</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Turkey Curry</h3><span class="sin">ටර්කී මස් කරවල</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#93</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Quail Curry</h3><span class="sin">වටු මස් කරවල</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#94</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Beef Smore</h3><span class="sin">බීෆ් ස්මෝර්</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#95</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Chicken Korma</h3><span class="sin">කුකුළු මස් කෝර්මා</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#96</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Mutton Korma</h3><span class="sin">එළු මස් කෝර්මා</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#97</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Liver Fry Curry</h3><span class="sin">අක්මාව බැදපු කරවල</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Meat &amp; Seafood Curries">
+        <div class="phnum">#98</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Beef Lung Curry</h3><span class="sin">බීෆ් පෙනහළු කරවල</span></div>
+          <span class="pill">Meat &amp; Seafood Curries</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#99</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Chicken Lamprais</h3><span class="sin">චිකන් ලැම්ප්‍රයිස්</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#100</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Chicken Kottu Roti</h3><span class="sin">චිකන් කොත්තු රොටි</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#101</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Mutton Biryani</h3><span class="sin">මට්න් බිරියානි</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#102</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Egg Kottu Roti</h3><span class="sin">බිත්තර කොත්තු</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#103</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Cheese Kottu</h3><span class="sin">චීස් කොත්තු</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#104</div>
+        <div class="phbody">
+          <div class="phrow"><h3>String Hopper Biryani</h3><span class="sin">ඉඳියාප්ප බිරියානි</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#105</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Pittu Kottu</h3><span class="sin">පිට්ටු කොත්තු</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#106</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Yellow Rice and Curry</h3><span class="sin">කහ බත් සහ කරවල</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#107</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Ghee Rice</h3><span class="sin">ගී බත්</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#108</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Yellow Rice Combo</h3><span class="sin">කහ බත් සම්භවය</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#109</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Hoppers with Curry</h3><span class="sin">ආප්ප සහ හොදි</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#110</div>
+        <div class="phbody">
+          <div class="phrow"><h3>String Hoppers with Curry</h3><span class="sin">ඉඳියාප්ප සහ හොදි</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#111</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Pittu with Curry</h3><span class="sin">පිට්ටු සහ හොදි</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#112</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Roti with Curry</h3><span class="sin">පරාටා / රොටි සහ හොදි</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#113</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Indiyappam Biryani</h3><span class="sin">ඉඳියාප්ප බිරියානි</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#114</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Chicken Fried Rice</h3><span class="sin">චිකන් ෆ්‍රයිඩ් රයිස්</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#115</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Mixed Fried Rice</h3><span class="sin">මිශ්‍ර ෆ්‍රයිඩ් රයිස්</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#116</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Nasi Sri Lankan Style</h3><span class="sin">නසි ගොරෙං ශ්‍රී ලංකා ක්‍රමයට</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#117</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Savory Bun</h3><span class="sin">පිරවුම් බනිස්</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#121</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Roll with Curry</h3><span class="sin">රෝල්ස්</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#122</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Pittu Wrap</h3><span class="sin">පිට්ටු රැප්</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Mixed, Fusion &amp; Street Food">
+        <div class="phnum">#123</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Egg Hopper Combo</h3><span class="sin">බිත්තර ආප්ප කොම්බෝ</span></div>
+          <span class="pill">Mixed, Fusion &amp; Street Food</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#124</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Gotukola Sambol</h3><span class="sin">ගොටුකොළ සම්බෝල</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#125</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Mukunuwenna Sambol</h3><span class="sin">මුකුණුවැන්න සම්බෝල</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#126</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Pol Sambol</h3><span class="sin">පොල් සම්බෝල</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#127</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Seeni Sambol</h3><span class="sin">සීනි සම්බෝල</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#128</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Lunu Miris</h3><span class="sin">ලුනු මිරිස්</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#129</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Gotukola Mallung</h3><span class="sin">ගොටුකොළ මැල්ලුම්</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#130</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Cabbage Mallung</h3><span class="sin">ගෝවා මැල්ලුම්</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#131</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Kale Mallung</h3><span class="sin">කේල් මැල්ලුම්</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#132</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Kos Kola Mallung</h3><span class="sin">කොස් කොළ මැල්ලුම්</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#133</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Carrot Sambol</h3><span class="sin">කැරට් සම්බෝල</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#134</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Cucumber Salad</h3><span class="sin">පිපිඤ්ඤා සලාද</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#135</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Onion Sambol</h3><span class="sin">ලූනු සම්බෝල</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#136</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Tomato Sambol</h3><span class="sin">තක්කාලි සම්බෝල</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#137</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Green Mango Salad</h3><span class="sin">අඹ සලාද</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#138</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Pineapple Salad</h3><span class="sin">අනනස් සලාද</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#139</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Katta Sambol</h3><span class="sin">කටු සම්බෝල</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#140</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Maldive Fish Sambol</h3><span class="sin">මෝල්දිව් මාළු සම්බෝල</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#141</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Ash Plantain Moju</h3><span class="sin">අළු කෙසෙල් මෝජු</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#142</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Brinjal Moju</h3><span class="sin">වම්බටු මෝජු</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#143</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Brinjal Pahi</h3><span class="sin">වම්බටු පහි</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#144</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Beetroot Raita</h3><span class="sin">බීට්‌රූට් රයිතා</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#145</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Cucumber Raita</h3><span class="sin">පිපිඤ්ඤා රයිතා</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#146</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Onion Raita</h3><span class="sin">ලූනු රයිතා</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#147</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Gotukola and Coconut Salad</h3><span class="sin">ගොටුකොළ සහ පොල් සලාද</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Salads, Sambols &amp; Relishes">
+        <div class="phnum">#148</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Centella Salad</h3><span class="sin">ශාක සලාද</span></div>
+          <span class="pill">Salads, Sambols &amp; Relishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#149</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Ala Theldala</h3><span class="sin">අර්තාපල් තෙල්දාලා</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#150</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Wambatu Theldala</h3><span class="sin">වම්බටු තෙල්දාලා</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#151</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Ash Plantain Theldala</h3><span class="sin">අළු කෙසෙල් තෙල්දාලා</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#152</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Bitter Gourd Fry</h3><span class="sin">කරවිල බැදුම</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#153</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Devilled Chicken</h3><span class="sin">දෙවලඩ් චිකන්</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#154</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Devilled Pork</h3><span class="sin">දෙවලඩ් පෝක්</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#155</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Devilled Prawns</h3><span class="sin">දෙවලඩ් ඉස්සන්</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#156</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Devilled Cuttlefish</h3><span class="sin">දෙවලඩ් දැල්ලා</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#157</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Devilled Cashew and Peas</h3><span class="sin">කජු සහ බෝංචි දෙවලඩ්</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#158</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Devilled Paneer</h3><span class="sin">දෙවලඩ් පනීර්</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#159</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Fried Sprats</h3><span class="sin">බැද්ද හාල්මැස්සන්</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#160</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Fried Halmessa</h3><span class="sin">බැද්ද හාල්මැස්සන්</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#161</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Mutton Cutlets</h3><span class="sin">එළු මස් කට්ලට්</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#162</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Fish Cutlets</h3><span class="sin">මාළු කට්ලට්</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#163</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Vegetable Cutlets</h3><span class="sin">එළවළු කට්ලට්</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#164</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Egg Rolls</h3><span class="sin">බිත්තර රෝල්ස්</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#165</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Mutton Rolls</h3><span class="sin">එළු මස් රෝල්ස්</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#168</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Chicken Devilled Bites</h3><span class="sin">චිකන් දෙවලඩ් බයිට්ස්</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#169</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Pork Black Pepper Fry</h3><span class="sin">කළු ගම්මිරිස් ඌරු මස් බැදුම</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#170</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Chicken Wings Spicy</h3><span class="sin">ස්පයිසි චිකන් විංග්ස්</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#171</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Sausage Devilled</h3><span class="sin">සොසේජස් දෙවලඩ්</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#172</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Fried Vadai</h3><span class="sin">උළුඳු වඩේ</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Fried, Dry &amp; Bite Dishes">
+        <div class="phnum">#173</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Parippu Vadai</h3><span class="sin">පරිප්පු වඩේ</span></div>
+          <span class="pill">Fried, Dry &amp; Bite Dishes</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#174</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Fish Bun</h3><span class="sin">මාළු බනිස්</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#175</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Egg Bun</h3><span class="sin">බිත්තර බනිස්</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#176</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Sausage Bun</h3><span class="sin">සොසේජස් බනිස්</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#177</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Seeni Sambol Bun</h3><span class="sin">සීනි සම්බෝල බනිස්</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#178</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Fish Pastry</h3><span class="sin">මාළු පැස්ට්‍රි</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#179</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Chicken Patties</h3><span class="sin">චිකන් පැටිස්</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#180</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Vegetable Roti</h3><span class="sin">එළවළු රොටි</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#181</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Egg Roti</h3><span class="sin">බිත්තර රොටි</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#182</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Mutton Roll</h3><span class="sin">එළු මස් රෝල්ස්</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#183</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Fish Cutlet</h3><span class="sin">මාළු කට්ලට්</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#184</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Devilled Peanuts</h3><span class="sin">දෙවලඩ් රටකජු</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#185</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Masala Cashews</h3><span class="sin">මසාලා කජු</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#186</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Chili Garlic Peanuts</h3><span class="sin">චිලි ගාර්ලික් රටකජු</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#187</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Fried Chickpeas</h3><span class="sin">බැද්ද කඩල</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#188</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Wade</h3><span class="sin">පරිප්පු වඩේ</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#189</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Ulundu Wade</h3><span class="sin">උළුඳු වඩේ</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#190</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Isso Wade</h3><span class="sin">ඉස්සන් වඩේ</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#191</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Crispy Tapioca Chips</h3><span class="sin">හැපෙනසුළු මඤ්ඤොක්කා චිප්ස්</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#192</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Banana Chips</h3><span class="sin">ස්පයිසි කෙසෙල් චිප්ස්</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#193</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Garlic Bread</h3><span class="sin">ස්ථානීය ක්‍රමයට ගාර්ලික් බ්‍රෙඩ්</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#194</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Devilled Sausage Bites</h3><span class="sin">දෙවලඩ් සොසේජස් බයිට්ස්</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#195</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Pepper Beef Bites</h3><span class="sin">ගම්මිරිස් බීෆ් බයිට්ස්</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#196</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Crispy Fried Pork Strips</h3><span class="sin">හැපෙනසුළු ඌරු මස් තීරු බැදුම</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#197</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Chicken Giblets Devilled</h3><span class="sin">චිකන් ගිබ්ලට්ස් දෙවලඩ්</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bread, Buns &amp; Beer Snacks">
+        <div class="phnum">#198</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Papadum Bites</h3><span class="sin">පප්පඩම් බයිට්ස්</span></div>
+          <span class="pill">Bread, Buns &amp; Beer Snacks</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#199</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Fish Bun</h3><span class="sin">මාළු බනිස්</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#200</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Egg Bun</h3><span class="sin">බිත්තර බනිස්</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#201</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Sausage Bun</h3><span class="sin">සොසේජස් බනිස්</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#202</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Seeni Sambol Bun</h3><span class="sin">සීනි සම්බෝල බනිස්</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#203</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Jam Bun</h3><span class="sin">ජෑම් බනිස්</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#204</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Cream Bun</h3><span class="sin">ක්‍රීම් බනිස්</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#205</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Coconut Bun / Ceylon Bun</h3><span class="sin">පොල් බනිස්</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#206</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Fish Pastry</h3><span class="sin">මාළු පැස්ට්‍රි</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#207</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Chicken Pastry</h3><span class="sin">චිකන් පැස්ට්‍රි</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#208</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Fish Cutlet</h3><span class="sin">මාළු කට්ලට්</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#209</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Egg Roll</h3><span class="sin">බිත්තර රෝල්ස්</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#210</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Chicken Roll</h3><span class="sin">චිකන් රෝල්ස්</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#211</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Mutton Roll</h3><span class="sin">එළු මස් රෝල්ස්</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#212</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Chicken Patties</h3><span class="sin">චිකන් පැටිස්</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#213</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Vegetable Roti</h3><span class="sin">එළවළු රොටි</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#214</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Egg Roti</h3><span class="sin">බිත්තර රොටි</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#215</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Bread Loaf</h3><span class="sin">සාමාන්‍ය බේකරි පාන්</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#216</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Bun With Butter &amp; Sugar</h3><span class="sin">බටර් සහ සීනි ගාපු බනිස්</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#217</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Sausage Roll</h3><span class="sin">සොසේජස් රෝල්</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Bakery &amp; Canteen Classics">
+        <div class="phnum">#218</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Cheese Pastry</h3><span class="sin">චීස් පැස්ට්‍රි</span></div>
+          <span class="pill">Bakery &amp; Canteen Classics</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#219</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Sri Lankan Butter Cake</h3><span class="sin">බටර් කේක්</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#220</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Ribbon Cake</h3><span class="sin">රිබන් කේක්</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#221</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Love Cake</h3><span class="sin">ලව් කේක්</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#222</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Chocolate Biscuits Pudding</h3><span class="sin">බිස්කට් පුඩිං</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#223</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Watalappam</h3><span class="sin">වටලප්පන්</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#224</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Caramel Pudding</h3><span class="sin">කැරමල් පුඩිං</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#225</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Aluwa</h3><span class="sin">අලුවා</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#226</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Dodol</h3><span class="sin">දොඩෝල්</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#227</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Thala Guli</h3><span class="sin">තල ගුලි</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#228</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Kalu Dodol</h3><span class="sin">කළු දොඩෝල්</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#229</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Peni Walalu</h3><span class="sin">පැණි වළලු</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#230</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Asmi</h3><span class="sin">අස්මි</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#231</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Kokis</h3><span class="sin">කොකිස්</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#232</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Kewum / Kavum</h3><span class="sin">කැවුම්</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#233</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Konda Kavum</h3><span class="sin">කොණ්ඩා කැවුම්</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#234</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Athirasa</h3><span class="sin">අතිරස</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#235</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Mung Kavum</h3><span class="sin">මුං කැවුම්</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#236</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Naran Kavum</h3><span class="sin">නාරං කැවුම්</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#237</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Surul Kavum</h3><span class="sin">සුරුල් කැවුම්</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article>
+<article class="phcard" data-kind="Sri Lankan Cakes &amp; Sweets">
+        <div class="phnum">#238</div>
+        <div class="phbody">
+          <div class="phrow"><h3>Undu Wel</h3><span class="sin">උළුඳු වැල්</span></div>
+          <span class="pill">Sri Lankan Cakes &amp; Sweets</span>
+          <p class="phhint">Content coming — 35Ai is researching this one.</p>
+        </div>
+      </article></main>
+  <footer>3una5aha · GK Newsroom · photos from Wikimedia Commons</footer>
+</div>
+<script>
+  document.querySelectorAll(".chip").forEach((c) => {
+    c.addEventListener("click", () => {
+      document.querySelectorAll(".chip").forEach((x) => x.classList.remove("on"));
+      c.classList.add("on");
+      const f = c.dataset.filter;
+      document.querySelectorAll(".scard").forEach((el) => {
+        el.style.display = f === "All" || el.dataset.kind === f ? "" : "none";
+      });
+    });
+  });
+
+  // Spice photos are Gemini-generated and shipped in the repo
+  // (/assets/spices/<id>.jpg) — deterministic, always on-topic. A card
+  // whose image is missing simply shows text (onerror removes the img).
+  // Card "Listen" pills delegate to the top streamer via waPick(id).
+  
+  window.waPick = null;
+  (() => {
+    const data = document.getElementById("waData");
+    if (!data) return;
+    const { base, items } = JSON.parse(data.textContent);
+    const audio = document.getElementById("waAudio");
+    const play = document.getElementById("waPlay");
+    const prev = document.getElementById("waPrev");
+    const next = document.getElementById("waNext");
+    const drop = document.getElementById("waDrop");
+    const listEl = document.getElementById("waList");
+    const sub = document.getElementById("waSub");
+    const title = document.getElementById("waTitle");
+    const cur = document.getElementById("waCur");
+    const dur = document.getElementById("waDur");
+    const seek = document.getElementById("waSeek");
+    const fill = document.getElementById("waFill");
+    let i = 0, loaded = false;
+    const mmss = (s) => isFinite(s) ? Math.floor(s/60) + ":" + String(Math.floor(s%60)).padStart(2,"0") : "–:––";
+
+    function show(idx, pull) {
+      i = idx; loaded = false;
+      const e = items[i];
+      title.textContent = e.t;
+      dur.textContent = e.d; cur.textContent = "0:00"; fill.style.width = "0%";
+      listEl.querySelectorAll("li").forEach((li, k) => li.classList.toggle("on", k === i));
+      sub.hidden = !(e.subs && e.subs.length);
+      if (!sub.hidden) sub.innerHTML = [...new Set(e.subs)].map((s) => "<div>" + s.replace(/</g,"&lt;") + "</div>").join("");
+      document.querySelectorAll(".playing-card").forEach((el) => el.classList.remove("playing-card"));
+      if (pull && e.card) {
+        const el = document.querySelector(e.card);
+        if (el) { el.classList.add("playing-card"); el.scrollIntoView({ behavior: "smooth", block: "start" }); }
+      }
+    }
+    function start(idx) {
+      show(idx, true);
+      audio.src = base + items[i].k + ".wav"; loaded = true;
+      listEl.hidden = true; drop.classList.remove("open");
+      audio.play();
+    }
+    window.waPick = (k) => { const idx = items.findIndex((e) => e.k === k); if (idx > -1) start(idx); };
+
+    play.addEventListener("click", () => {
+      if (!loaded) { start(i); return; }
+      if (audio.paused) audio.play(); else audio.pause();
+    });
+    audio.addEventListener("play",  () => { play.textContent = "⏸"; });
+    audio.addEventListener("pause", () => { play.textContent = "▶"; });
+    audio.addEventListener("ended", () => { if (i < items.length - 1) start(i + 1); });
+    audio.addEventListener("loadedmetadata", () => { dur.textContent = mmss(audio.duration); });
+    audio.addEventListener("timeupdate", () => {
+      cur.textContent = mmss(audio.currentTime);
+      if (audio.duration) fill.style.width = (audio.currentTime / audio.duration * 100) + "%";
+    });
+    prev.addEventListener("click", () => { if (i > 0) start(i - 1); });
+    next.addEventListener("click", () => { if (i < items.length - 1) start(i + 1); });
+    seek.addEventListener("click", (ev) => {
+      if (!audio.duration) return;
+      const r = seek.getBoundingClientRect();
+      audio.currentTime = ((ev.clientX - r.left) / r.width) * audio.duration;
+    });
+    drop.addEventListener("click", () => { listEl.hidden = !listEl.hidden; drop.classList.toggle("open", !listEl.hidden); });
+    listEl.addEventListener("click", (ev) => { const li = ev.target.closest("li"); if (li) start(Number(li.dataset.i)); });
+    show(0, false);
+  })();
+
+</script>
+</body>
+</html>
