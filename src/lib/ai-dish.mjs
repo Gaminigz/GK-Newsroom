@@ -139,7 +139,7 @@ export async function generateRecipe(dishName, mongoCollection) {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const r = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-flash-latest",
       contents: [{ role: "user", parts: [{ text: `Dish: ${dishName}` }] }],
       config: {
         systemInstruction: SYSTEM_PROMPT,
