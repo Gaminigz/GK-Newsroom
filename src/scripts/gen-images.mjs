@@ -40,8 +40,10 @@ const SPICE_NOUNS = {
 };
 
 function spicePrompt(s) {
-  const noun = SPICE_NOUNS[s.id] ?? `${s.name} spice, clearly recognizable`;
-  return `Professional food photography, ${noun}, Sri Lankan kitchen setting, rustic dark wood surface, warm side light, shallow depth of field, macro detail, rich colors. No people, no hands, no text, no watermark, no labels.`;
+  const noun = SPICE_NOUNS[s.id] ?? `${s.name} (${s.sinhala})`;
+  // Use the actual post description for food items for much better accuracy
+  const desc = s.post ? s.post.slice(0, 200) : `${noun}, Sri Lankan food`;
+  return `Professional food photography of ${noun}. ${desc} Sri Lankan kitchen setting, rustic dark wood surface, warm side light, shallow depth of field, macro detail, rich colors. No people, no hands, no text, no watermark, no labels.`;
 }
 
 const TILES = [
@@ -66,6 +68,22 @@ async function generate(ai, prompt, aspectRatio) {
   const b64 = res.generatedImages?.[0]?.image?.imageBytes;
   if (!b64) throw new Error("no image returned");
   return Buffer.from(b64, "base64");
+}
+
+/**
+ * Generate image using Gemini Flash image model (much cheaper than Imagen 4.0).
+ * Uses gemini-3.1-flash-lite-image with responseModalities: ['IMAGE'].
+ */
+async function geminiGenerateImage(ai, prompt) {
+  const res = await ai.models.generateContent({
+    model: "gemini-3.1-flash-lite-image",
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    config: { responseModalities: ["IMAGE", "TEXT"] },
+  });
+  const parts = res.candidates?.[0]?.content?.parts ?? [];
+  const imgPart = parts.find(p => p.inlineData?.mimeType?.startsWith("image/"));
+  if (!imgPart) throw new Error("gemini image gen: no image in response");
+  return Buffer.from(imgPart.inlineData.data, "base64");
 }
 
 /**
@@ -169,18 +187,18 @@ async function main() {
       // Use Wikimedia Commons (free) instead of Imagen
       const buf = await fetchWikimediaImage(s.imgQuery);
       await sharp(buf).resize(800, 450, { fit: 'cover' }).jpeg({ quality: 82 }).toFile(dest);
-      console.log(`✓ spices/${s.id}.jpg (wikimedia — FREE)`);
+      console.log(`\u2713 spices/${s.id}.jpg (wikimedia \u2014 FREE)`);
       ok++;
     } catch (wikiErr) {
-      // Last resort: Imagen (paid ~SGD 0.06)
-      console.log(`  wikimedia miss (${wikiErr.message}) — falling back to Imagen...`);
+      // Fallback: Gemini Flash image generation (cheap, accurate)
+      console.log(`  wikimedia miss \u2014 generating with Gemini Flash...`);
       try {
-        const png = await generate(ai, spicePrompt(s), '16:9');
-        await sharp(png).resize(800, 450).jpeg({ quality: 80 }).toFile(dest);
-        console.log(`✓ spices/${s.id}.jpg (imagen — PAID)`);
+        const buf = await geminiGenerateImage(ai, spicePrompt(s));
+        await sharp(buf).resize(800, 450, { fit: 'cover' }).jpeg({ quality: 82 }).toFile(dest);
+        console.log(`\u2713 spices/${s.id}.jpg (gemini-flash-image)`);
         ok++;
       } catch (e) {
-        console.log(`✗ ${s.id}: ${e.message}`);
+        console.log(`\u2717 ${s.id}: ${e.message}`);
         fail++;
       }
     }

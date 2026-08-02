@@ -247,7 +247,7 @@ export const SPICES: Spice[] = [
   },
   {
     id: 'surul-kavum',
-    imgQuery: 'File:Surul kavum',
+    imgQuery: 'Surul Kavum Sri Lankan sweet deep fried scroll',
     name: 'Surul Kavum',
     sinhala: 'සුරුල් කැවුම්',
     category: 'Sri Lankan Cakes & Sweets',
