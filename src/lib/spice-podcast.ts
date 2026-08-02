@@ -13,7 +13,7 @@ import { Binary } from "mongodb";
 import { getDb } from "./mongo";
 import type { Spice } from "../data/spices";
 
-const SCRIPT_MODEL = "gemini-2.5-flash";
+const SCRIPT_MODEL = "gemini-3.1-flash-lite";
 const TTS_MODEL = "gemini-2.5-flash-preview-tts";
 const COLLECTION = "spice_podcast";
 

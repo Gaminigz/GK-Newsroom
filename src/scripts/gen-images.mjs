@@ -68,6 +68,66 @@ async function generate(ai, prompt, aspectRatio) {
   return Buffer.from(b64, "base64");
 }
 
+/**
+ * Fetch a free photo from Wikimedia Commons.
+ * Tries 3 strategies in order: Commons file search, Wikipedia pageimages (multiple terms), Commons generator.
+ * Returns a Buffer or throws.
+ */
+async function fetchWikimediaImage(query) {
+  const UA = { 'User-Agent': 'GK-Newsroom/1.0 (gksmart.ai)' };
+
+  async function tryDownload(url) {
+    if (!url) return null;
+    const r = await fetch(url, { headers: UA });
+    if (!r.ok) return null;
+    return Buffer.from(await r.arrayBuffer());
+  }
+
+  // Strategy 1: search Wikimedia Commons file namespace directly
+  const terms = [query, query.split(' ').slice(0,2).join(' '), query.split(' ')[0]];
+  for (const term of terms) {
+    const url = `https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(term)}&srnamespace=6&format=json&srlimit=5`;
+    const data = await fetch(url, { headers: UA }).then(r => r.json());
+    const hits = data?.query?.search ?? [];
+    for (const hit of hits) {
+      const infoUrl = `https://commons.wikimedia.org/w/api.php?action=query&titles=${encodeURIComponent(hit.title)}&prop=imageinfo&iiprop=url|mime&format=json`;
+      const info = await fetch(infoUrl, { headers: UA }).then(r => r.json());
+      const pages = Object.values(info?.query?.pages ?? {});
+      const ii = pages[0]?.imageinfo?.[0];
+      if (ii?.url && /image\/(jpeg|png|webp)/.test(ii.mime ?? '')) {
+        const buf = await tryDownload(ii.url);
+        if (buf) return buf;
+      }
+    }
+  }
+
+  // Strategy 2: Wikipedia pageimages (tries multiple search terms)
+  for (const term of terms) {
+    const url = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(term)}&prop=pageimages&pithumbsize=800&format=json`;
+    const data = await fetch(url, { headers: UA }).then(r => r.json());
+    const pages = Object.values(data?.query?.pages ?? {});
+    const thumbUrl = pages[0]?.thumbnail?.source;
+    const buf = await tryDownload(thumbUrl);
+    if (buf) return buf;
+  }
+
+  // Strategy 3: Commons generator — get images from first matching category page
+  for (const term of terms) {
+    const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term)}&gsrnamespace=6&prop=imageinfo&iiprop=url|mime&format=json&gsrlimit=3`;
+    const data = await fetch(url, { headers: UA }).then(r => r.json());
+    const pages = Object.values(data?.query?.pages ?? {});
+    for (const p of pages) {
+      const ii = p.imageinfo?.[0];
+      if (ii?.url && /image\/(jpeg|png|webp)/.test(ii.mime ?? '')) {
+        const buf = await tryDownload(ii.url);
+        if (buf) return buf;
+      }
+    }
+  }
+
+  throw new Error(`no Wikimedia image found for: ${query}`);
+}
+
 async function downloadGkLogo() {
   const dest = path.join(OUT, "tile-acct.png");
   if (existsSync(dest) && !FORCE) return console.log("skip tile-acct.png (exists)");
@@ -106,13 +166,23 @@ async function main() {
     const dest = path.join(OUT, "spices", `${s.id}.jpg`);
     if (existsSync(dest) && !FORCE) { console.log(`skip ${s.id} (exists)`); ok++; continue; }
     try {
-      const png = await generate(ai, spicePrompt(s), "16:9");
-      await sharp(png).resize(800, 450).jpeg({ quality: 80 }).toFile(dest);
-      console.log(`✓ spices/${s.id}.jpg`);
+      // Use Wikimedia Commons (free) instead of Imagen
+      const buf = await fetchWikimediaImage(s.imgQuery);
+      await sharp(buf).resize(800, 450, { fit: 'cover' }).jpeg({ quality: 82 }).toFile(dest);
+      console.log(`✓ spices/${s.id}.jpg (wikimedia — FREE)`);
       ok++;
-    } catch (e) {
-      console.log(`✗ ${s.id}: ${e.message}`);
-      fail++;
+    } catch (wikiErr) {
+      // Last resort: Imagen (paid ~SGD 0.06)
+      console.log(`  wikimedia miss (${wikiErr.message}) — falling back to Imagen...`);
+      try {
+        const png = await generate(ai, spicePrompt(s), '16:9');
+        await sharp(png).resize(800, 450).jpeg({ quality: 80 }).toFile(dest);
+        console.log(`✓ spices/${s.id}.jpg (imagen — PAID)`);
+        ok++;
+      } catch (e) {
+        console.log(`✗ ${s.id}: ${e.message}`);
+        fail++;
+      }
     }
   }
   console.log(`done — ${ok} ok, ${fail} failed. Now: git add src/web-assets && commit && push.`);
