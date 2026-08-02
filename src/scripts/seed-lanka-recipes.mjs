@@ -50,44 +50,33 @@ async function main() {
   const col = db.collection("app_dish_recipes");
   const catalogue = db.collection("lanka_dishes");
 
-  // Step 1a: seed the dish catalogue (Mongo `lanka_dishes`, the list the
-  // app reads for the picker). Idempotent — upserts by lowercased name,
-  // preserves any manual edits, carries English + Sinhala names.
-  console.log("Seeding lanka_dishes catalogue…");
-  let dishOrder = 0;
-  const dishOps = LANKA_DISHES_FLAT_ENTRIES.map((d) => {
-    dishOrder++;
-    return {
-      updateOne: {
-        filter: { _id: d.name.toLowerCase() },
-        update: {
-          $setOnInsert: { _id: d.name.toLowerCase(), addedAt: new Date() },
-          $set: { name: d.name, nameSi: d.si, category: d.category, order: dishOrder },
-        },
-        upsert: true,
-      },
-    };
-  });
-  if (!dry && dishOps.length) {
-    const r = await catalogue.bulkWrite(dishOps, { ordered: false });
-    console.log(`  lanka_dishes: upserted=${r.upsertedCount} matched=${r.matchedCount} modified=${r.modifiedCount}`);
-  } else if (dry) {
-    console.log(`  (dry) would upsert ${dishOps.length} dish entries`);
-  }
+  // Step 1: seed all three topic catalogues with a GLOBAL post-number
+  // (1..N across all catalogues). The newsroom feed renders items ordered
+  // by this number — #1 at the bottom (oldest to publish), #N at the top
+  // (newest). Populated posts (with Gemini-generated content) show full
+  // content; unpublished ones can be rendered as title-only placeholders
+  // until the daily cron enriches them.
+  //
+  // Numbering scheme (stable): spices first, then dishes, then bakery.
+  //   1 .. 48    = LANKA_SPICES_FLAT_ENTRIES
+  //   49 .. 198  = LANKA_DISHES_FLAT_ENTRIES
+  //   199 .. 238 = LANKA_BAKERY_FLAT_ENTRIES
+  let globalOrder = 0;
 
-  // Helper: upsert-by-lowercased-name into a topic catalogue (spices, bakery).
-  // Newsroom pipeline reads from these to generate feed posts.
   async function seedCatalogue(collectionName, entries, label) {
     const col = db.collection(collectionName);
-    let order = 0;
     const ops = entries.map((e) => {
-      order++;
+      globalOrder++;
+      const postNumber = globalOrder;
       return {
         updateOne: {
           filter: { _id: e.name.toLowerCase() },
           update: {
             $setOnInsert: { _id: e.name.toLowerCase(), addedAt: new Date() },
-            $set: { name: e.name, nameSi: e.si, category: e.category, order },
+            $set: {
+              name: e.name, nameSi: e.si, category: e.category,
+              order: postNumber, postNumber,
+            },
           },
           upsert: true,
         },
@@ -95,17 +84,22 @@ async function main() {
     });
     if (!dry && ops.length) {
       const r = await col.bulkWrite(ops, { ordered: false });
-      console.log(`  ${collectionName}: upserted=${r.upsertedCount} matched=${r.matchedCount} modified=${r.modifiedCount}`);
+      console.log(`  ${collectionName}: upserted=${r.upsertedCount} matched=${r.matchedCount} modified=${r.modifiedCount} (postNumber ${globalOrder - ops.length + 1}..${globalOrder})`);
     } else if (dry) {
-      console.log(`  (dry) would upsert ${ops.length} ${label} entries`);
+      console.log(`  (dry) would upsert ${ops.length} ${label} entries (postNumber ${globalOrder - ops.length + 1}..${globalOrder})`);
     }
   }
 
   console.log("Seeding lanka_spices catalogue…");
   await seedCatalogue("lanka_spices", LANKA_SPICES_FLAT_ENTRIES, "spice");
 
+  console.log("Seeding lanka_dishes catalogue…");
+  await seedCatalogue("lanka_dishes", LANKA_DISHES_FLAT_ENTRIES, "dish");
+
   console.log("Seeding lanka_bakery catalogue…");
   await seedCatalogue("lanka_bakery", LANKA_BAKERY_FLAT_ENTRIES, "bakery");
+
+  console.log(`\nTotal numbered posts across all catalogues: ${globalOrder}`);
 
   // Step 2: pre-generate per-serving recipes via Gemini.
   // In --daily=N mode we STOP after generating N new (uncached) recipes,
