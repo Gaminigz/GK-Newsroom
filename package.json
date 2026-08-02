@@ -25,6 +25,7 @@
     "seed:lanka": "tsx src/scripts/seed-lanka-recipes.mjs",
     "seed:lanka:force": "tsx src/scripts/seed-lanka-recipes.mjs --force",
     "seed:lanka:dry": "tsx src/scripts/seed-lanka-recipes.mjs --dry-run",
+    "daily:lanka": "tsx src/scripts/seed-lanka-recipes.mjs --daily=15",
     "photo": "tsx src/scripts/render-brief-photo.mjs",
     "web": "tsx src/scripts/serve-web.mjs",
     "video": "tsx src/scripts/render-brief-video.mjs",
