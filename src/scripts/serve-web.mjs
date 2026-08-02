@@ -467,12 +467,28 @@ function spicesPage(episodes = {}, catalogue = []) {
     "Leaf & Herb": ["#3f9e4d", "#175226"],
     "Fruit & Pod": ["#d0503a", "#6e1f14"],
   };
+  const CAT_SI = {
+    "All": "සියල්ල",
+    "Fresh Spices & Aromatics": "අලුත් කුළුබඩු සහ සුවඳකාරක",
+    "Dried Whole Spices": "වියළි මුල් කුළුබඩු",
+    "Powdered Spices & Blends": "කුඩු කළ කුළුබඩු සහ මිශ්‍රණ",
+    "Pre-Processed & Specialty Spice Pastes / Items": "කල් තබාගත් සහ විශේෂ කුළුබඩු පේස්ට් / ද්‍රව්‍ය",
+    "Vegetable Curries": "පළතුරු හා අලුත් බෝග කරවල",
+    "Meat & Seafood Curries": "මස් හා මාළු කරවල",
+    "Mixed, Fusion & Street Food": "මිශ්‍ර, සම්ප්‍රදායික හා වීදි ආහාර",
+    "Salads, Sambols & Relishes": "සලාද, සම්බෝල හා අතුරු කෑම",
+    "Fried, Dry & Bite Dishes": "බැදුම්, වියළි හා බයිට් වර්ග",
+    "Bread, Buns & Beer Snacks": "පාන්, බනිස්, බියර් බයිට් සහ සුලු කෑම",
+    "Bakery & Canteen Classics": "බේකරි සහ කැන්ටින් නිෂ්පාදන",
+    "Sri Lankan Cakes & Sweets": "කේක් සහ වෙනත් රසකැවිලි",
+  };
+
   const cats = [...new Set(catalogue.map((c) => String(c.category || "")).filter(Boolean))];
   const chips = ["All", ...cats]
-    .map(
-      (c, i) =>
-        `<button class="chip${i === 0 ? " on" : ""}" data-filter="${esc(c)}">${esc(c)}</button>`,
-    )
+    .map((c, i) => {
+      const label = CAT_SI[c] ? `${esc(c)} <span style="opacity:0.7;font-size:0.9em;margin-left:4px">${CAT_SI[c]}</span>` : esc(c);
+      return `<button class="chip${i === 0 ? " on" : ""}" data-filter="${esc(c)}">${label}</button>`;
+    })
     .join("");
   const waItems = SPICES.filter((s) => episodes[s.id]).map((s) => ({
     k: s.id,
@@ -544,7 +560,7 @@ function spicesPage(episodes = {}, catalogue = []) {
   header h1 { font-size:26px; letter-spacing:-.02em; }
   header h1 em { color:#e08a2e; font-style:normal; }
   header .sub { color:#b09a86; font-size:14px; margin-top:2px; }
-  .chips { display:flex; gap:8px; margin:14px 0 4px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .chips { display:flex; gap:8px; margin:14px 0 12px; flex-wrap:wrap; }
   .chip { flex:0 0 auto; background:#241811; color:#b09a86; border:1px solid #3a2a1e; border-radius:999px; padding:6px 14px; font-size:13px; cursor:pointer; }
   .chip.on { color:#140d08; background:#e08a2e; border-color:#e08a2e; font-weight:600; }
   ${WA_CSS}
