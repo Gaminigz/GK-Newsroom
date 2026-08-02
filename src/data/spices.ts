@@ -14,7 +14,7 @@ export type Spice = {
   id: string;
   name: string;
   sinhala: string;
-  category: "Blend" | "Seed" | "Bark & Root" | "Leaf & Herb" | "Fruit & Pod";
+  category: string;
   emoji: string;
   /** Wikimedia Commons search term the page uses to find a photo. */
   imgQuery: string;
@@ -235,7 +235,16 @@ export const SPICES: Spice[] = [
     name: "Caraway (Sweet Cumin)",
     sinhala: "සූදුරු මාදුරු",
     category: "Seed",
-    emoji: "\u{1FAD8}",
+    emoji: "🫘",
     post: "Often confused with fennel in island markets, this warmer seed slips into biryani masalas and festive rice, a legacy of Malay and Moor kitchens on the coast.",
+  },
+  {
+    id: "undu-wel",
+    imgQuery: "undu wel sri lanka sweet",
+    name: "Undu Wel (Peni Walalu)",
+    sinhala: "උළුඳු වැල්",
+    category: "Sri Lankan Cakes & Sweets",
+    emoji: "🍯",
+    post: "A traditional Sinhala and Tamil New Year sweet made from a thick batter of urad dal (black gram) and rice flour. It is piped into hot oil in coiled, spiral shapes, deep-fried until golden, and immediately plunged into warm, dark kithul treacle. The result is a delightfully crunchy exterior with a juicy, syrup-filled center.",
   },
 ];
