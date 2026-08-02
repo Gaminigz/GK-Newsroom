@@ -467,7 +467,7 @@ function spicesPage(episodes = {}, catalogue = []) {
     "Leaf & Herb": ["#3f9e4d", "#175226"],
     "Fruit & Pod": ["#d0503a", "#6e1f14"],
   };
-  const cats = [...new Set(SPICES.map((s) => s.category))];
+  const cats = [...new Set(catalogue.map((c) => String(c.category || "")).filter(Boolean))];
   const chips = ["All", ...cats]
     .map(
       (c, i) =>
