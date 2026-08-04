@@ -368,26 +368,21 @@ function stockPage(shop, extras = {}) {
 
     <div class="chips" style="display:flex;gap:8px;margin-top:12px;overflow-x:auto;-webkit-overflow-scrolling:touch">${tabs}</div>
 
-    <!-- Add an ingredient — dropdown follows the selected category tab -->
-    <div class="card" style="margin-top:14px;padding:13px 14px;background:#fdf7ee;border-color:#efe0c8">
-      <div class="row" style="justify-content:space-between"><strong style="font-size:13px">＋ Add to <span id="addCatLabel">Vegi</span> <span class="si" style="font-size:12.4px">ගබඩාවට එක් කරන්න</span></strong></div>
-      <select id="addName" onchange="syncUnit()" style="width:100%;padding:11px;border-radius:10px;border:1px solid #e3d6c2;background:#fff;font-size:14px;margin-top:8px"></select>
-      <div class="row" style="gap:8px;margin-top:8px">
-        <div style="flex:1"><label>HOW MUCH <span class="si" style="font-size:12.4px">කීයද?</span></label>
-          <input type="number" id="addQty" min="0" step="0.1" placeholder="e.g. 5" style="font-size:15px;font-weight:700" oninput="calcLine()"></div>
-        <div style="flex:1"><label>UNIT</label>
-          <select id="addUnit" style="width:100%;padding:11px;border-radius:10px;border:1px solid #e3d6c2;background:#fff;font-size:14px">
-            ${units.map((u) => `<option value="${esc(u)}">${esc(u)}</option>`).join("")}
-          </select></div>
+    <!-- Add an ingredient — one compact line, dropdown follows the tab -->
+    <div class="card" style="margin-top:12px;padding:10px 11px;background:#fdf7ee;border-color:#efe0c8">
+      <div class="row" style="gap:5px;align-items:stretch">
+        <select id="addName" onchange="syncUnit()" title="Ingredient" style="flex:2.4;min-width:0;padding:9px 6px;border-radius:9px;border:1px solid #e3d6c2;background:#fff;font-size:12.5px"></select>
+        <input type="number" id="addQty" min="0" step="0.1" placeholder="Qty" title="How much to buy" style="flex:1;min-width:0;padding:9px 6px;font-size:13px;font-weight:700;text-align:center" oninput="calcLine()">
+        <select id="addUnit" title="Unit" style="flex:0 0 auto;width:52px;padding:9px 2px;border-radius:9px;border:1px solid #e3d6c2;background:#fff;font-size:12px">
+          ${units.map((u) => `<option value="${esc(u)}">${esc(u)}</option>`).join("")}
+        </select>
+        <input type="number" id="addPrice" min="0" step="0.01" placeholder="LKR" title="Price per unit (optional)" style="flex:1.1;min-width:0;padding:9px 6px;font-size:13px;text-align:center" oninput="calcLine()">
+        <button type="button" class="btn" style="width:auto;padding:9px 13px;flex:0 0 auto;font-size:14px" onclick="submitStock()">＋</button>
       </div>
-      <div class="row" style="gap:8px;margin-top:8px;align-items:flex-end">
-        <div style="flex:1"><label>PRICE / UNIT · LKR <span class="sub" style="font-weight:400">optional</span></label>
-          <input type="number" id="addPrice" min="0" step="0.01" placeholder="e.g. 220" style="font-size:15px" oninput="calcLine()"></div>
-        <button type="button" class="btn" style="width:auto;padding:11px 18px;flex:0 0 auto" onclick="submitStock()">＋ Add</button>
-      </div>
-      <div id="addLineTotal" class="sub" style="font-size:12px;margin-top:8px;color:#1d7a34;display:none"></div>
+      <div id="addLineTotal" class="sub" style="font-size:11.5px;margin-top:7px;color:#1d7a34;display:none"></div>
     </div>
     <input type="hidden" id="addCat" value="${esc(catKeys[0] || "Vegi")}">
+    <input type="hidden" id="addCatLabel" value="Vegi">
 
     <!-- Current stock -->
     <div class="row" style="justify-content:space-between;margin-top:18px"><strong style="font-size:14px">In your store <span class="si">ගබඩාවේ</span></strong><span class="sub" id="stockCount" style="font-size:12px">${stock.length} items</span></div>
