@@ -674,9 +674,8 @@ struct AccountView: View {
                 row("person.crop.circle", "My profile & favourites", "/app/profile")
                 row("bell.badge", "Notifications", nil, note: "Order updates arrive as push notifications.")
             }
-            Section("For restaurants & home cooks") {
-                row("storefront", "Open your shop — free", "/app")
-            }
+            // Shop is handled by the Manager tab + the red button above —
+            // no separate "open your shop" row here (was redundant).
             Section("About") {
                 row("questionmark.circle", "Support & contact", "/app/support")
                 row("doc.text", "Terms of Service", "/app/terms")

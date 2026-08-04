@@ -657,9 +657,9 @@ async function userProfilePage(req, flash = "") {
         img.src = URL.createObjectURL(f);
       });
     </script>`
-    : `<div class="card" style="margin-top:10px"><strong>Sign in with email to manage your profile</strong>
-       <div class="sub" style="font-size:12.5px;margin:4px 0 10px">Photo, name, phone and password live on your email account.</div>
-       <form method="POST" action="/app/login"><input type="hidden" name="via" value="email"><button class="btn" style="padding:11px">Sign in with email</button></form></div>`}
+    : `<div class="card" style="margin-top:10px"><strong>Sign in to manage your profile</strong>
+       <div class="sub" style="font-size:12.5px;margin:4px 0 10px">Use the same account you sign in with — Apple, Google or email. Your photo, name, phone and favourites live on it.</div>
+       <a class="btn" style="padding:11px" href="/app">Sign in</a></div>`}
     <strong style="display:block;margin:20px 0 8px">★ My favourites</strong>
     ${favShops.map((sh) => shopRow(sh, "★ favourite")).join("") || `<div class="sub card">Hold a shop pin on the map or tap ☆ on a shop page to save it here.</div>`}
     ${usedShops.length ? `<strong style="display:block;margin:16px 0 8px">Ordered before</strong>${usedShops.map((sh) => shopRow(sh, "ordered before")).join("")}` : ""}`,
@@ -1524,6 +1524,8 @@ function profilePage(shop) {
       <input type="text" name="telegram" value="${esc(shop.telegram ?? "")}" placeholder="@yourshop">
       <label>FACEBOOK PAGE</label>
       <input type="text" name="facebook" value="${esc(shop.facebook ?? "")}" placeholder="https://facebook.com/yourshop">
+      <label>GOOGLE BUSINESS PROFILE <span style="font-weight:400">— your Google listing link</span></label>
+      <input type="text" name="googleBusiness" value="${esc(shop.googleBusiness ?? "")}" placeholder="https://g.page/yourshop or Maps business link">
       <label>CONTACT EMAIL</label>
       <input type="text" name="contactEmail" value="${esc(shop.contactEmail ?? "")}" placeholder="hello@yourshop.lk">
       <button class="btn" style="margin-top:18px">Save profile</button>
@@ -2541,6 +2543,7 @@ export async function handleApp(req, res, url) {
         ...(frontOk ? { frontPhoto: front } : {}),
         mapsUrl: urlish(form.get("mapsUrl")),
         facebook: urlish(form.get("facebook")),
+        googleBusiness: urlish(form.get("googleBusiness")),
         telegram: String(form.get("telegram") || "").trim().slice(0, 60),
         whatsapp: String(form.get("whatsapp") || "").trim().slice(0, 24),
         phone: String(form.get("phone") || "").trim().slice(0, 24),
