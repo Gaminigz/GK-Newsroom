@@ -2266,6 +2266,41 @@ export async function handleApp(req, res, url) {
     return;
   }
 
+  // Shop Manager entry point — resolves the signed-in owner's shop from
+  // the session (works for email/Apple/Google/SMS login) and jumps to the
+  // owner hub. The native app's "Shop Manager" tab + button point here.
+  if (path === "/app/manager") {
+    const c = cookies(req);
+    // Fast path: app_shop cookie already set (email login sets it).
+    if (c.app_shop) { redirect(res, `/app/owner/${c.app_shop}`); return; }
+    // Otherwise look the owner up by their signed-in email.
+    const email = c.app_email ? decodeURIComponent(c.app_email).toLowerCase() : "";
+    if (email) {
+      const ownShop = await (await col("shop_owners")).findOne({ email });
+      if (ownShop) {
+        res.setHeader("Set-Cookie", `app_shop=${String(ownShop._id)}; Path=/app; Max-Age=31536000; SameSite=Lax`);
+        redirect(res, `/app/owner/${String(ownShop._id)}`);
+        return;
+      }
+    }
+    // Signed in but no shop yet (or not signed in) — send to the welcome /
+    // "open your shop" flow.
+    html(res, shell({
+      title: "Shop Manager — 3una 5aha",
+      hideLogout: true,
+      body: `
+      <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/home">‹</a><h1 style="font-size:21px">Shop Manager <span class="si">සාප්පු කළමනාකරු</span></h1></div>
+      <div class="card" style="margin-top:14px;padding:16px;text-align:center">
+        <div style="font-size:34px">🏪</div>
+        <strong style="display:block;margin-top:8px;font-size:15px">You don't have a shop yet</strong>
+        <p class="sub" style="font-size:13px;margin-top:6px">Shop Manager is where restaurants and home cooks manage their menu, kitchen stock, purchase planning and more — all free.<br><span class="si">ඔබට තවම සාප්පුවක් නැත. නොමිලේ එකක් විවෘත කරන්න.</span></p>
+        <a class="btn" style="margin-top:14px" href="/app">Open your shop — free</a>
+        ${email ? "" : `<a class="btn ghost" style="margin-top:10px" href="/app">Sign in first</a>`}
+      </div>`,
+    }));
+    return;
+  }
+
   // Owner hub — 13 round buttons, one per shop function.
   m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/suite\/([a-z]+)$/);
   if (m) {

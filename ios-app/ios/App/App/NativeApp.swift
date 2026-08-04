@@ -183,6 +183,9 @@ struct RootView: View {
             NavigationView { ShopsMapView() }
                 .navigationViewStyle(.stack)
                 .tabItem { Label("Map", systemImage: "map.fill") }
+            NavigationView { ManagerView() }
+                .navigationViewStyle(.stack)
+                .tabItem { Label("Manager", systemImage: "storefront.fill") }
             NavigationView { AccountView() }
                 .navigationViewStyle(.stack)
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
@@ -650,6 +653,23 @@ struct AccountView: View {
                     }
                 }
             }
+            // Shop owners jump straight to the management hub from here;
+            // the same is always available from the Manager tab below.
+            if !signedInEmail.isEmpty {
+                Section {
+                    Button {
+                        webURL = IdentifiedURL(url: API.base.appendingPathComponent("/app/manager"), title: "Shop Manager")
+                    } label: {
+                        HStack {
+                            Image(systemName: "storefront.fill")
+                            Text("Shop Manager").font(.headline)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.caption).foregroundColor(.secondary)
+                        }
+                        .foregroundColor(.red)
+                    }
+                }
+            }
             Section("My account") {
                 row("person.crop.circle", "My profile & favourites", "/app/profile")
                 row("bell.badge", "Notifications", nil, note: "Order updates arrive as push notifications.")
@@ -722,6 +742,20 @@ struct WebSheet: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
         }
+    }
+}
+
+// MARK: - Shop Manager (owner hub — webview-backed)
+// The /app/manager route resolves the signed-in owner's shop from the
+// session cookie and shows the owner hub (menu, kitchen stock, purchase
+// planner, etc.). Non-owners see an "open your shop" prompt.
+
+struct ManagerView: View {
+    var body: some View {
+        WebViewRepresentable(url: API.base.appendingPathComponent("/app/manager"))
+            .navigationTitle("Shop Manager")
+            .navigationBarTitleDisplayMode(.inline)
+            .ignoresSafeArea(.container, edges: .bottom)
     }
 }
 
