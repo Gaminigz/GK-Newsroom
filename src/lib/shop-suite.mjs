@@ -321,6 +321,7 @@ function stockPage(shop, extras = {}) {
   const cats = extras.ingredientCats || {};      // { Vegi:{label,labelSi,items:[{name,si,unit}]}, ... }
   const stock = extras.stock || [];              // [{ _id, name, category, qty, unit }]
   const units = extras.units || ["kg", "L", "packs", "pcs"];
+  const cur = extras.currency || { code: "LKR", symbol: "Rs" };
   const msg = extras.msg || "";
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -353,7 +354,7 @@ function stockPage(shop, extras = {}) {
       <span style="width:36px;height:36px;border-radius:10px;background:#f0e7de;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11.5px;flex:0 0 auto">${esc(initials(s.name))}</span>
       <div style="flex:1;min-width:0"><strong style="font-size:13.5px">${esc(s.name)} <span class="sub" style="font-weight:600">${esc(String(s.qty))} ${esc(s.unit)}</span></strong>
       <div class="sub" style="font-size:11.5px">${esc(s.category)}${s.si ? ` · ${esc(s.si)}` : ""}${s.addedAt ? ` · ${fmtDate(s.addedAt)}` : ""}</div>
-      ${price > 0 ? `<div class="sub" style="font-size:11.5px;color:#946200;margin-top:2px">LKR ${price}/${esc(s.unit)} × ${esc(String(s.qty))} = <strong style="color:#d9542b">LKR ${lineTotal.toLocaleString()}</strong></div>` : ""}</div>
+      ${price > 0 ? `<div class="sub" style="font-size:11.5px;color:#946200;margin-top:2px">${esc(cur.symbol)} ${price}/${esc(s.unit)} × ${esc(String(s.qty))} = <strong style="color:#d9542b">${esc(cur.symbol)} ${lineTotal.toLocaleString()}</strong></div>` : ""}</div>
       <form method="POST" action="/app/owner/${id}/stock/${String(s._id)}/remove" onsubmit="return confirm('Remove ${esc(s.name)} from stock?')" style="margin:0">
         <button class="btn ghost" style="width:auto;padding:6px 10px;font-size:11px;color:#b3261e">✕</button>
       </form>
@@ -376,7 +377,7 @@ function stockPage(shop, extras = {}) {
         <select id="addUnit" title="Unit" style="flex:0 0 auto;width:52px;height:40px;padding:0 2px;border-radius:9px;border:1px solid #e3d6c2;background:#fff;font-size:12px;text-align:center;text-align-last:center">
           ${units.map((u) => `<option value="${esc(u)}">${esc(u)}</option>`).join("")}
         </select>
-        <input type="number" id="addPrice" min="0" step="0.01" placeholder="LKR" title="Price per unit (optional)" style="flex:1.1;min-width:0;height:40px;padding:0 6px;font-size:13px;text-align:center" oninput="calcLine()">
+        <input type="number" id="addPrice" min="0" step="0.01" placeholder="${esc(cur.symbol)}" title="Price per unit in ${esc(cur.code)} (optional)" style="flex:1.1;min-width:0;height:40px;padding:0 6px;font-size:13px;text-align:center" oninput="calcLine()">
         <button type="button" class="btn" style="width:auto;height:40px;padding:0 14px;flex:0 0 auto;font-size:15px" onclick="submitStock()">＋</button>
       </div>
       <div id="addLineTotal" class="sub" style="font-size:11.5px;margin-top:7px;color:#1d7a34;display:none;text-align:center"></div>
@@ -434,7 +435,7 @@ function stockPage(shop, extras = {}) {
       var el = document.getElementById('addLineTotal');
       if(qty>0 && price>0){
         el.style.display='';
-        el.innerHTML = 'Total value: <strong style="color:#d9542b">LKR '+Math.round(qty*price).toLocaleString()+'</strong> ('+price+' × '+qty+')';
+        el.innerHTML = 'Total value: <strong style="color:#d9542b">${esc(cur.symbol)} '+Math.round(qty*price).toLocaleString()+'</strong> ('+price+' × '+qty+')';
       } else { el.style.display='none'; }
     }
     function submitStock(){

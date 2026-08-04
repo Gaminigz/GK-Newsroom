@@ -32,6 +32,7 @@ import { getDb } from "./mongo.ts";
 import { newCode, sendVerificationEmail, sendPasswordResetEmail } from "./mail.mjs";
 import { loadPresetDishes, generateRecipe, priceIngredient } from "./ai-dish.mjs";
 import { LANKA_INGREDIENTS, STOCK_UNITS, INGREDIENT_INDEX } from "../data/lanka-ingredients.mjs";
+import { CURRENCIES, CURRENCY_CODES, currencyOf, fmtMoney } from "../data/currencies.mjs";
 
 const ORANGE = "#d9542b";
 const PUBLIC_BASE = process.env.PUBLIC_BASE || "https://web-production-2b43c.up.railway.app";
@@ -1449,7 +1450,7 @@ function dishEditPage(shop, d) {
       <label>SINHALA NAME (OPTIONAL)</label>
       <input type="text" name="nameSi" value="${esc(d.nameSi ?? "")}">
       <div class="row" style="gap:10px">
-        <div style="flex:1"><label>PRICE (LKR)</label><input type="number" name="price" required min="0" value="${Number(d.price) || 0}"></div>
+        <div style="flex:1"><label>PRICE (${currencyOf(shop).code})</label><input type="number" name="price" required min="0" value="${Number(d.price) || 0}"></div>
         <div style="flex:1"><label>PORTIONS / DAY</label><input type="number" name="portions" value="${Number(d.portions) || 20}" min="1"></div>
       </div>
       <label>AVAILABLE TIME</label>
@@ -1509,6 +1510,10 @@ function profilePage(shop) {
       <input type="text" name="name" required value="${esc(shop.name)}">
       <label>OWNER NAME</label>
       <input type="text" name="owner" value="${esc(shop.owner ?? "")}" placeholder="Your name">
+      <label>CURRENCY <span style="font-weight:400">— all your prices show in this</span></label>
+      <select name="currency" style="width:100%;padding:11px;border-radius:10px;border:1px solid #e3d6c2;background:#fff;font-size:14px">
+        ${CURRENCIES.map((c) => `<option value="${c.code}"${(shop.currency || "LKR") === c.code ? " selected" : ""}>${c.code} · ${esc(c.name)} (${esc(c.symbol)})</option>`).join("")}
+      </select>
       <label>GOOGLE MAPS LOCATION <span style="font-weight:400">— Google Maps → Share → Copy link</span></label>
       <input type="text" name="mapsUrl" value="${esc(shop.mapsUrl ?? "")}" placeholder="https://maps.app.goo.gl/…">
       <label>PHONE</label>
@@ -1581,7 +1586,7 @@ function addDishPage(shop) {
       <label>SINHALA NAME (OPTIONAL)</label>
       <input type="text" name="nameSi" placeholder="අඹුල් තියල්">
       <div class="row" style="gap:10px">
-        <div style="flex:1"><label>PRICE (LKR)</label><input type="number" name="price" required min="0" placeholder="950"></div>
+        <div style="flex:1"><label>PRICE (${currencyOf(shop).code})</label><input type="number" name="price" required min="0" placeholder="950"></div>
         <div style="flex:1"><label>PORTIONS / DAY</label><input type="number" name="portions" value="20" min="1"></div>
       </div>
       <label>AVAILABLE TIME</label>
@@ -2281,6 +2286,7 @@ export async function handleApp(req, res, url) {
     // Purchase Planner also needs the dish catalogue for its dish picker.
     if (shop && m[2] === "plan") {
       extras.presetDishes = await loadPresetDishes(await col("lanka_dishes"));
+      extras.currency = currencyOf(shop);
     }
     // Kitchen Stock: the categorised ingredient catalogue + the shop's
     // saved store contents.
@@ -2288,6 +2294,7 @@ export async function handleApp(req, res, url) {
       extras.ingredientCats = LANKA_INGREDIENTS;
       extras.units = STOCK_UNITS;
       extras.msg = url.searchParams.get("msg") || "";
+      extras.currency = currencyOf(shop);
       extras.stock = await (await col("kitchen_stock"))
         .find({ shopId: m[1] }).sort({ category: 1, name: 1 }).toArray();
     }
@@ -2492,8 +2499,9 @@ export async function handleApp(req, res, url) {
       const front = String(form.get("frontPhoto") || "");
       const frontOk = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(front) && front.length < 500_000;
       const urlish = (v) => { v = String(v || "").trim().slice(0, 200); return v && !/^https?:\/\//.test(v) ? "https://" + v : v; };
+      const currency = CURRENCY_CODES.includes(form.get("currency")) ? form.get("currency") : "LKR";
       const set = {
-        ...(name ? { name } : {}), owner,
+        ...(name ? { name } : {}), owner, currency,
         ...(logoOk ? { logo } : {}),
         ...(frontOk ? { frontPhoto: front } : {}),
         mapsUrl: urlish(form.get("mapsUrl")),
