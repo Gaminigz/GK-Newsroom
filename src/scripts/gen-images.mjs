@@ -14,6 +14,7 @@
  * Usage:
  *   npm run genimages
  *   npm run genimages -- --force
+ *   npm run genimages -- --id=beef-lung-curry --skip-wikimedia   # fix one bad/mismatched photo
  */
 
 import { GoogleGenAI } from "@google/genai";
@@ -23,6 +24,8 @@ import path from "node:path";
 import { SPICES } from "../data/spices.ts";
 
 const FORCE = process.argv.includes("--force");
+const ONLY_ID = (process.argv.find((a) => a.startsWith("--id=")) || "").split("=")[1] || null;
+const SKIP_WIKIMEDIA = process.argv.includes("--skip-wikimedia");
 const OUT = path.resolve("src/web-assets");
 const IMAGE_MODEL = "imagen-4.0-generate-001";
 const GK_LOGO_DRIVE_ID = "1btgfaoPGs-Et9nIym7mJluqYoHyKV9YH";
@@ -214,13 +217,30 @@ async function main() {
   }
 
   let ok = 0, fail = 0;
-  for (const s of SPICES) {
+  const targets = ONLY_ID ? SPICES.filter((s) => s.id === ONLY_ID) : SPICES;
+  if (ONLY_ID && targets.length === 0) throw new Error(`no spice with id "${ONLY_ID}"`);
+  for (const s of targets) {
     const dest = path.join(OUT, "spices", `${s.id}.jpg`);
-    if (existsSync(dest) && !FORCE) { console.log(`skip ${s.id} (exists)`); ok++; continue; }
+    if (existsSync(dest) && !FORCE && !ONLY_ID) { console.log(`skip ${s.id} (exists)`); ok++; continue; }
     // Small delay between items — Wikimedia's anonymous API rate-limits
     // rapid bulk requests, which showed up as false "no image found"
     // misses when running large batches back to back.
     await new Promise((res) => setTimeout(res, 400));
+    if (SKIP_WIKIMEDIA) {
+      // Used to fix a bad/irrelevant Wikimedia match — go straight to
+      // Gemini instead of re-trying the same search that found the
+      // wrong photo in the first place.
+      try {
+        const buf = await geminiGenerateImage(ai, spicePrompt(s));
+        await sharp(buf).resize(800, 450, { fit: 'cover' }).jpeg({ quality: 82 }).toFile(dest);
+        console.log(`✓ spices/${s.id}.jpg (gemini-flash-image, forced)`);
+        ok++;
+      } catch (e) {
+        console.log(`✗ ${s.id}: ${e.message}`);
+        fail++;
+      }
+      continue;
+    }
     try {
       // Use Wikimedia Commons (free) instead of Imagen. Category-level
       // fallback term tried last, before paying for Gemini image-gen.
