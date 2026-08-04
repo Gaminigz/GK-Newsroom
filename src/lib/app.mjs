@@ -412,8 +412,9 @@ function buyerNav(on) {
   const items = [
     ["home", "/app/home", "⌂", "Home"],
     ["orders", "/app/orders", "▤", "Orders"],
-    ["location", "/app/location", "◎", "Location"],
-    ["profile", "/app/profile", "○", "Profile"],
+    ["location", "/app/location", "◎", "Map"],
+    ["manager", "/app/manager", "🏪", "Manager"],
+    ["profile", "/app/profile", "○", "Account"],
   ];
   return `<nav class="nav">${items
     .map(([k, href, i, label]) => `<a href="${href}" class="${k === on ? "on" : ""}"><span class="i">${i}</span>${label}</a>`)
@@ -1502,10 +1503,16 @@ function profilePage(shop) {
       <label for="logoIn" class="thumb" id="logoBox" style="width:110px;height:110px;font-size:13px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative;${shop.logo ? `background-image:url(${shop.logo})` : ""}"><span id="logoHint">${shop.logo ? "" : "tap to add"}</span><span style="position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
       <input type="file" id="logoIn" accept="image/*" style="display:none">
       <input type="hidden" name="logo" id="logoData">
-      <label>SHOP FRONT PHOTO <span style="font-weight:400">— sign / shop number / door clearly visible</span></label>
-      <label for="frontIn" class="thumb" id="frontBox" style="width:100%;height:130px;font-size:13px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative;${shop.frontPhoto ? `background-image:url(${shop.frontPhoto})` : ""}"><span id="frontHint">${shop.frontPhoto ? "" : "tap to add — helps buyers and the 3una 5aha team find you"}</span><span style="position:absolute;right:-6px;bottom:-6px;width:34px;height:34px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
-      <input type="file" id="frontIn" accept="image/*" style="display:none">
-      <input type="hidden" name="frontPhoto" id="frontData">
+      <label>SHOP PHOTOS <span style="font-weight:400">— up to 4: shop front, kitchen, food, seating</span></label>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        ${[1, 2, 3, 4].map((n) => {
+          const val = n === 1 ? (shop.frontPhoto || shop.photo1 || "") : (shop["photo" + n] || "");
+          const dataField = n === 1 ? "frontPhoto" : "photo" + n;
+          return `<label for="ph${n}In" class="thumb" id="ph${n}Box" style="width:calc(50% - 4px);height:110px;font-size:12px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative;${val ? `background-image:url(${val})` : ""}"><span id="ph${n}Hint">${val ? "" : (n === 1 ? "shop front" : "photo " + n)}</span><span style="position:absolute;right:-6px;bottom:-6px;width:30px;height:30px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
+          <input type="file" id="ph${n}In" accept="image/*" style="display:none">
+          <input type="hidden" name="${dataField}" id="ph${n}Data">`;
+        }).join("")}
+      </div>
       <label>SHOP NAME</label>
       <input type="text" name="name" required value="${esc(shop.name)}">
       <label>OWNER NAME</label>
@@ -1524,6 +1531,12 @@ function profilePage(shop) {
       <input type="text" name="telegram" value="${esc(shop.telegram ?? "")}" placeholder="@yourshop">
       <label>FACEBOOK PAGE</label>
       <input type="text" name="facebook" value="${esc(shop.facebook ?? "")}" placeholder="https://facebook.com/yourshop">
+      <label>INSTAGRAM</label>
+      <input type="text" name="instagram" value="${esc(shop.instagram ?? "")}" placeholder="@yourshop or instagram.com/yourshop">
+      <label>TIKTOK</label>
+      <input type="text" name="tiktok" value="${esc(shop.tiktok ?? "")}" placeholder="@yourshop or tiktok.com/@yourshop">
+      <label>YOUTUBE</label>
+      <input type="text" name="youtube" value="${esc(shop.youtube ?? "")}" placeholder="youtube.com/@yourshop">
       <label>GOOGLE BUSINESS PROFILE <span style="font-weight:400">— your Google listing link</span></label>
       <input type="text" name="googleBusiness" value="${esc(shop.googleBusiness ?? "")}" placeholder="https://g.page/yourshop or Maps business link">
       <label>CONTACT EMAIL</label>
@@ -1560,7 +1573,7 @@ function profilePage(shop) {
     });
   }
   wirePhoto('logoIn', 'logoBox', 'logoHint', 'logoData', true);
-  wirePhoto('frontIn', 'frontBox', 'frontHint', 'frontData', false);
+  for (var n = 1; n <= 4; n++) wirePhoto('ph'+n+'In', 'ph'+n+'Box', 'ph'+n+'Hint', 'ph'+n+'Data', false);
 </script>`,
   });
 }
@@ -2528,21 +2541,29 @@ export async function handleApp(req, res, url) {
     const shop = await shopById(m[1]);
     if (!shop) { res.writeHead(404).end("not found"); return; }
     if (req.method === "POST") {
-      const form = await readForm(req, 1_200_000);
+      const form = await readForm(req, 3_500_000); // up to 5 photos (logo + 4)
       const name = String(form.get("name") || "").trim().slice(0, 80);
       const owner = String(form.get("owner") || "").trim().slice(0, 60);
       const logo = String(form.get("logo") || "");
       const logoOk = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(logo) && logo.length < 500_000;
+      const photoOk = (v) => /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(v) && v.length < 600_000;
       const front = String(form.get("frontPhoto") || "");
-      const frontOk = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(front) && front.length < 500_000;
       const urlish = (v) => { v = String(v || "").trim().slice(0, 200); return v && !/^https?:\/\//.test(v) ? "https://" + v : v; };
       const currency = CURRENCY_CODES.includes(form.get("currency")) ? form.get("currency") : "LKR";
       const set = {
         ...(name ? { name } : {}), owner, currency,
         ...(logoOk ? { logo } : {}),
-        ...(frontOk ? { frontPhoto: front } : {}),
+        ...(photoOk(front) ? { frontPhoto: front } : {}),
+        ...([2, 3, 4].reduce((acc, n) => {
+          const v = String(form.get("photo" + n) || "");
+          if (photoOk(v)) acc["photo" + n] = v;
+          return acc;
+        }, {})),
         mapsUrl: urlish(form.get("mapsUrl")),
         facebook: urlish(form.get("facebook")),
+        instagram: String(form.get("instagram") || "").trim().slice(0, 120),
+        tiktok: String(form.get("tiktok") || "").trim().slice(0, 120),
+        youtube: String(form.get("youtube") || "").trim().slice(0, 120),
         googleBusiness: urlish(form.get("googleBusiness")),
         telegram: String(form.get("telegram") || "").trim().slice(0, 60),
         whatsapp: String(form.get("whatsapp") || "").trim().slice(0, 24),
