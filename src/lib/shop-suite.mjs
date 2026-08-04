@@ -370,16 +370,16 @@ function stockPage(shop, extras = {}) {
 
     <!-- Add an ingredient — one compact line, dropdown follows the tab -->
     <div class="card" style="margin-top:12px;padding:10px 11px;background:#fdf7ee;border-color:#efe0c8">
-      <div class="row" style="gap:5px;align-items:stretch">
-        <select id="addName" onchange="syncUnit()" title="Ingredient" style="flex:2.4;min-width:0;padding:9px 6px;border-radius:9px;border:1px solid #e3d6c2;background:#fff;font-size:12.5px"></select>
-        <input type="number" id="addQty" min="0" step="0.1" placeholder="Qty" title="How much to buy" style="flex:1;min-width:0;padding:9px 6px;font-size:13px;font-weight:700;text-align:center" oninput="calcLine()">
-        <select id="addUnit" title="Unit" style="flex:0 0 auto;width:52px;padding:9px 2px;border-radius:9px;border:1px solid #e3d6c2;background:#fff;font-size:12px">
+      <div class="row" style="gap:5px;align-items:center">
+        <select id="addName" onchange="syncUnit()" title="Ingredient" style="flex:2.4;min-width:0;height:40px;padding:0 6px;border-radius:9px;border:1px solid #e3d6c2;background:#fff;font-size:12.5px;text-align:center;text-align-last:center"></select>
+        <input type="number" id="addQty" min="0" step="0.1" placeholder="Qty" title="How much to buy" style="flex:1;min-width:0;height:40px;padding:0 6px;font-size:13px;font-weight:700;text-align:center" oninput="calcLine()">
+        <select id="addUnit" title="Unit" style="flex:0 0 auto;width:52px;height:40px;padding:0 2px;border-radius:9px;border:1px solid #e3d6c2;background:#fff;font-size:12px;text-align:center;text-align-last:center">
           ${units.map((u) => `<option value="${esc(u)}">${esc(u)}</option>`).join("")}
         </select>
-        <input type="number" id="addPrice" min="0" step="0.01" placeholder="LKR" title="Price per unit (optional)" style="flex:1.1;min-width:0;padding:9px 6px;font-size:13px;text-align:center" oninput="calcLine()">
-        <button type="button" class="btn" style="width:auto;padding:9px 13px;flex:0 0 auto;font-size:14px" onclick="submitStock()">＋</button>
+        <input type="number" id="addPrice" min="0" step="0.01" placeholder="LKR" title="Price per unit (optional)" style="flex:1.1;min-width:0;height:40px;padding:0 6px;font-size:13px;text-align:center" oninput="calcLine()">
+        <button type="button" class="btn" style="width:auto;height:40px;padding:0 14px;flex:0 0 auto;font-size:15px" onclick="submitStock()">＋</button>
       </div>
-      <div id="addLineTotal" class="sub" style="font-size:11.5px;margin-top:7px;color:#1d7a34;display:none"></div>
+      <div id="addLineTotal" class="sub" style="font-size:11.5px;margin-top:7px;color:#1d7a34;display:none;text-align:center"></div>
     </div>
     <input type="hidden" id="addCat" value="${esc(catKeys[0] || "Vegi")}">
     <input type="hidden" id="addCatLabel" value="Vegi">
