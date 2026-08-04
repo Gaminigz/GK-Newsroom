@@ -316,31 +316,117 @@ function costsPage(shop) {
       <span style="color:#1d7a34;font-size:12.5px;font-weight:700">✅ Average margin 36% · target ≥ 30% before posting</span></div>`);
 }
 
-function stockPage(shop) {
-  const row = (code, name, qty, sub, st, kind) => `
-    <div class="card row" style="margin-top:9px;padding:11px 13px">
-      <span style="width:36px;height:36px;border-radius:10px;background:#f0e7de;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11.5px;flex:0 0 auto">${code}</span>
-      <div style="flex:1;min-width:0"><strong style="font-size:13.5px">${name} <span class="sub" style="font-weight:600">${qty}</span></strong>
-      <div class="sub" style="font-size:11.5px">${sub}</div></div>${statusPill(st, kind)}</div>`;
-  return page(shop, "stock", "Kitchen stock", "ගබඩාව", `
-    <div class="seg" style="margin-top:12px">
-      <label><input type="radio" name="stab" checked><span class="opt" style="font-size:12px;padding:6px 12px">Full · 42</span></label>
-      <label><input type="radio" name="stab"><span class="opt" style="font-size:12px;padding:6px 12px">Vegi</span></label>
-      <label><input type="radio" name="stab"><span class="opt" style="font-size:12px;padding:6px 12px">Meat</span></label>
-      <label><input type="radio" name="stab"><span class="opt" style="font-size:12px;padding:6px 12px">Dry</span></label>
-      <label><input type="radio" name="stab"><span class="opt" style="font-size:12px;padding:6px 12px">Spices</span></label>
+function stockPage(shop, extras = {}) {
+  const id = String(shop._id);
+  const cats = extras.ingredientCats || {};      // { Vegi:{label,labelSi,items:[{name,si,unit}]}, ... }
+  const stock = extras.stock || [];              // [{ _id, name, category, qty, unit }]
+  const units = extras.units || ["kg", "L", "packs", "pcs"];
+  const msg = extras.msg || "";
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  const catKeys = Object.keys(cats);
+  const initials = (n) => n.replace(/[^A-Za-z ]/g, "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "··";
+
+  // Tabs: All + one per category, with live counts of what's in stock.
+  const countFor = (cat) => stock.filter((s) => s.category === cat).length;
+  const tabs = [`<button type="button" class="chip on" data-cat="All" onclick="stockTab('All',this)">All · ${stock.length}</button>`]
+    .concat(catKeys.map((c) => `<button type="button" class="chip" data-cat="${esc(c)}" onclick="stockTab('${esc(c)}',this)">${esc(c)} · ${countFor(c)}</button>`))
+    .join("");
+
+  // Client-side data: category → its ingredient options (name+unit).
+  const catData = JSON.stringify(Object.fromEntries(
+    catKeys.map((c) => [c, cats[c].items.map((it) => ({ name: it.name, si: it.si, unit: it.unit }))])
+  ));
+
+  const stockRow = (s) => `
+    <div class="card row stockrow" data-cat="${esc(s.category)}" style="margin-top:9px;padding:11px 13px">
+      <span style="width:36px;height:36px;border-radius:10px;background:#f0e7de;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11.5px;flex:0 0 auto">${esc(initials(s.name))}</span>
+      <div style="flex:1;min-width:0"><strong style="font-size:13.5px">${esc(s.name)} <span class="sub" style="font-weight:600">${esc(String(s.qty))} ${esc(s.unit)}</span></strong>
+      <div class="sub" style="font-size:11.5px">${esc(s.category)}${s.si ? ` · ${esc(s.si)}` : ""}</div></div>
+      <form method="POST" action="/app/owner/${id}/stock/${String(s._id)}/remove" onsubmit="return confirm('Remove ${esc(s.name)} from stock?')" style="margin:0">
+        <button class="btn ghost" style="width:auto;padding:6px 10px;font-size:11px;color:#b3261e">✕</button>
+      </form>
+    </div>`;
+
+  const emptyState = `<div class="card" style="margin-top:12px;padding:14px;background:#fdf0ec;border-color:#f3cfc2;font-size:12.5px;color:#946200;text-align:center">
+    Your kitchen store is empty. Pick a category above, choose the vegetables, meats, dry goods and spices you use for your menu, and set how much you buy — 35Ai keeps track from there.<br><span class="si" style="display:inline-block;margin-top:6px">ඔබේ ගබඩාව හිස්. ඉහළින් වර්ගයක් තෝරා, ඔබ භාවිත කරන ද්‍රව්‍ය එකතු කරන්න.</span></div>`;
+
+  return page(shop, "stock", "Kitchen Stock", "කුස්සි ගබඩාව", `
+    ${msg ? `<div class="card" style="margin-top:10px;padding:10px 13px;background:#e8f6ec;border-color:#bfe5c8;font-size:12.5px;color:#1d7a34">${esc(msg)}</div>` : ""}
+
+    <div class="sub" style="font-size:12.5px;margin-top:8px">Build your store once — pick the items you cook with, set what you buy, and 35Ai tracks it against your menu.<br><span class="si">ඔබ භාවිත කරන ද්‍රව්‍ය එකතු කර ප්‍රමාණය දෙන්න.</span></div>
+
+    <div class="chips" style="display:flex;gap:8px;margin-top:12px;overflow-x:auto;-webkit-overflow-scrolling:touch">${tabs}</div>
+
+    <!-- Add an ingredient -->
+    <div class="card" style="margin-top:14px;padding:13px 14px;background:#fdf7ee;border-color:#efe0c8">
+      <strong style="font-size:13px">＋ Add to store <span class="si">ගබඩාවට එක් කරන්න</span></strong>
+      <label style="margin-top:8px">CATEGORY</label>
+      <select id="addCat" onchange="fillIngredients()" style="width:100%;padding:10px;border-radius:10px;border:1px solid #e3d6c2;background:#fff;font-size:14px">
+        ${catKeys.map((c) => `<option value="${esc(c)}">${esc(c)} · ${esc(cats[c].labelSi || "")}</option>`).join("")}
+      </select>
+      <label style="margin-top:8px">INGREDIENT <span class="si">ද්‍රව්‍යය</span></label>
+      <select id="addName" onchange="syncUnit()" style="width:100%;padding:10px;border-radius:10px;border:1px solid #e3d6c2;background:#fff;font-size:14px"></select>
+      <div class="row" style="gap:8px;margin-top:8px">
+        <div style="flex:2"><label>QUANTITY YOU BUY</label>
+          <input type="number" id="addQty" min="0" step="0.1" placeholder="e.g. 5" style="font-size:15px;font-weight:700"></div>
+        <div style="flex:1"><label>UNIT</label>
+          <select id="addUnit" style="width:100%;padding:10px;border-radius:10px;border:1px solid #e3d6c2;background:#fff;font-size:14px">
+            ${units.map((u) => `<option value="${esc(u)}">${esc(u)}</option>`).join("")}
+          </select></div>
+      </div>
+      <button type="button" class="btn" style="margin-top:12px" onclick="submitStock()">Add to kitchen store</button>
     </div>
-    <div class="card" style="margin-top:12px;padding:10px 14px;background:#fdecea;border-color:#efc4bf">
-      <strong style="color:#b3261e;font-size:13px">❗ Use today — coconut milk, batch of 9 Jul</strong>
-      <div class="sub" style="font-size:11.5px">Oldest batch always cooks first · first in, first out</div></div>
-    ${row("CM", "Coconut milk", "2 L", "2 batches · oldest in 9 Jul · min 2 L · max 10 L · avg use 3 L / day", "Use today", "bad")}
-    ${row("CH", "Chicken (curry cut)", "4.5 kg", "1 batch · in 10 Jul, 6:20 AM · min 5 kg · max 15 kg · avg use 4 kg / day", "Use first", "warn")}
-    ${row("GB", "Green beans", "1.2 kg", "1 batch · in 10 Jul · below minimum · min 2 kg · max 6 kg", "Low", "warn")}
-    ${row("RR", "Red rice", "18 kg", "2 batches · oldest in 2 Jul · dry store · min 10 kg · max 40 kg", "OK", "ok")}
-    ${row("DC", "Dried chili", "8 packs", "1 batch · in 28 Jun · dry store · min 4 · max 20 packs", "OK", "ok")}
-    <div class="row" style="gap:10px;margin-top:16px">
-      <button class="btn" style="flex:1;background:#191512" disabled>+ Receive stock</button>
-      <button class="btn ghost" style="flex:1" disabled>Log waste</button></div>`);
+
+    <!-- Current stock -->
+    <div class="row" style="justify-content:space-between;margin-top:18px"><strong style="font-size:14px">In your store <span class="si">ගබඩාවේ</span></strong><span class="sub" id="stockCount" style="font-size:12px">${stock.length} items</span></div>
+    <div id="stockList">
+      ${stock.length ? stock.map(stockRow).join("") : emptyState}
+    </div>
+
+    <form method="POST" action="/app/owner/${id}/stock/add" id="stockAddForm" style="display:none">
+      <input type="hidden" name="name" id="fName">
+      <input type="hidden" name="category" id="fCat">
+      <input type="hidden" name="qty" id="fQty">
+      <input type="hidden" name="unit" id="fUnit">
+      <input type="hidden" name="si" id="fSi">
+    </form>
+
+    <script>
+    var CAT_DATA = ${catData};
+    function stockTab(cat, btn){
+      document.querySelectorAll('.chips .chip').forEach(function(c){ c.classList.remove('on'); });
+      btn.classList.add('on');
+      document.querySelectorAll('.stockrow').forEach(function(r){
+        r.style.display = (cat==='All' || r.dataset.cat===cat) ? '' : 'none';
+      });
+    }
+    function fillIngredients(){
+      var cat = document.getElementById('addCat').value;
+      var sel = document.getElementById('addName');
+      var opts = (CAT_DATA[cat]||[]);
+      sel.innerHTML = opts.map(function(o){ return '<option value="'+o.name.replace(/"/g,'&quot;')+'" data-unit="'+o.unit+'" data-si="'+(o.si||'').replace(/"/g,'&quot;')+'">'+o.name+(o.si?' · '+o.si:'')+'</option>'; }).join('');
+      syncUnit();
+    }
+    function syncUnit(){
+      var sel = document.getElementById('addName');
+      var opt = sel.options[sel.selectedIndex];
+      if(opt){ document.getElementById('addUnit').value = opt.dataset.unit || 'kg'; }
+    }
+    function submitStock(){
+      var sel = document.getElementById('addName');
+      var opt = sel.options[sel.selectedIndex];
+      var qty = document.getElementById('addQty').value;
+      if(!opt || !qty || Number(qty)<=0){ alert('Pick an ingredient and enter a quantity.'); return; }
+      document.getElementById('fName').value = opt.value;
+      document.getElementById('fCat').value = document.getElementById('addCat').value;
+      document.getElementById('fQty').value = qty;
+      document.getElementById('fUnit').value = document.getElementById('addUnit').value;
+      document.getElementById('fSi').value = opt.dataset.si || '';
+      document.getElementById('stockAddForm').submit();
+    }
+    fillIngredients();
+    </script>`);
 }
 
 function purchasingPage(shop) {

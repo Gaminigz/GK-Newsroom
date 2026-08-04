@@ -31,6 +31,7 @@ import QRCode from "qrcode";
 import { getDb } from "./mongo.ts";
 import { newCode, sendVerificationEmail, sendPasswordResetEmail } from "./mail.mjs";
 import { loadPresetDishes, generateRecipe, priceIngredient } from "./ai-dish.mjs";
+import { LANKA_INGREDIENTS, STOCK_UNITS, INGREDIENT_INDEX } from "../data/lanka-ingredients.mjs";
 
 const ORANGE = "#d9542b";
 const PUBLIC_BASE = process.env.PUBLIC_BASE || "https://web-production-2b43c.up.railway.app";
@@ -2281,6 +2282,15 @@ export async function handleApp(req, res, url) {
     if (shop && m[2] === "plan") {
       extras.presetDishes = await loadPresetDishes(await col("lanka_dishes"));
     }
+    // Kitchen Stock: the categorised ingredient catalogue + the shop's
+    // saved store contents.
+    if (shop && m[2] === "stock") {
+      extras.ingredientCats = LANKA_INGREDIENTS;
+      extras.units = STOCK_UNITS;
+      extras.msg = url.searchParams.get("msg") || "";
+      extras.stock = await (await col("kitchen_stock"))
+        .find({ shopId: m[1] }).sort({ category: 1, name: 1 }).toArray();
+    }
     const pageHtml = shop ? suitePage(shop, m[2], extras) : null;
     if (pageHtml) { html(res, pageHtml); return; }
     res.writeHead(404).end("not found");
@@ -2317,6 +2327,41 @@ export async function handleApp(req, res, url) {
       return;
     }
     redirect(res, `/app/owner/${m[1]}/suite/menu?msg=${encodeURIComponent("Pick a name, at least one dish, and a price.")}`);
+    return;
+  }
+
+  // Kitchen Stock: add or update an ingredient in the shop's store.
+  // Upsert by shopId+name so re-adding the same item updates its qty.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/stock\/add$/);
+  if (m && req.method === "POST") {
+    const form = await readForm(req);
+    const name = String(form.get("name") || "").trim().slice(0, 60);
+    const qty = Math.max(0, Number(form.get("qty")) || 0);
+    const unit = STOCK_UNITS.includes(form.get("unit")) ? form.get("unit") : "kg";
+    // Category comes from the form but we trust the ingredient index if known.
+    const known = INGREDIENT_INDEX[name.toLowerCase()];
+    const category = known ? known.category : String(form.get("category") || "Vegi").slice(0, 20);
+    const si = known ? known.si : String(form.get("si") || "").slice(0, 60);
+    if (name && qty > 0) {
+      await (await col("kitchen_stock")).updateOne(
+        { shopId: m[1], name },
+        { $set: { shopId: m[1], name, category, si, qty, unit, updatedAt: new Date() },
+          $setOnInsert: { addedAt: new Date() } },
+        { upsert: true },
+      );
+      redirect(res, `/app/owner/${m[1]}/suite/stock?msg=${encodeURIComponent(`${name} saved to store`)}`);
+      return;
+    }
+    redirect(res, `/app/owner/${m[1]}/suite/stock?msg=${encodeURIComponent("Pick an ingredient and a quantity.")}`);
+    return;
+  }
+
+  // Kitchen Stock: remove an ingredient from the store.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/stock\/([a-f0-9]{24})\/remove$/);
+  if (m && req.method === "POST") {
+    const _id = await oid(m[2]);
+    if (_id) await (await col("kitchen_stock")).deleteOne({ _id, shopId: m[1] });
+    redirect(res, `/app/owner/${m[1]}/suite/stock?msg=${encodeURIComponent("Removed from store")}`);
     return;
   }
 
