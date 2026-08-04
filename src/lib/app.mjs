@@ -2338,6 +2338,7 @@ export async function handleApp(req, res, url) {
     const name = String(form.get("name") || "").trim().slice(0, 60);
     const qty = Math.max(0, Number(form.get("qty")) || 0);
     const unit = STOCK_UNITS.includes(form.get("unit")) ? form.get("unit") : "kg";
+    const price = Math.max(0, Number(form.get("price")) || 0); // optional LKR per unit
     // Category comes from the form but we trust the ingredient index if known.
     const known = INGREDIENT_INDEX[name.toLowerCase()];
     const category = known ? known.category : String(form.get("category") || "Vegi").slice(0, 20);
@@ -2345,7 +2346,7 @@ export async function handleApp(req, res, url) {
     if (name && qty > 0) {
       await (await col("kitchen_stock")).updateOne(
         { shopId: m[1], name },
-        { $set: { shopId: m[1], name, category, si, qty, unit, updatedAt: new Date() },
+        { $set: { shopId: m[1], name, category, si, qty, unit, price, updatedAt: new Date() },
           $setOnInsert: { addedAt: new Date() } },
         { upsert: true },
       );

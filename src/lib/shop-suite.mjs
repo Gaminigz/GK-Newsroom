@@ -345,39 +345,47 @@ function stockPage(shop, extras = {}) {
     const dt = new Date(d);
     return `${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")}/${dt.getFullYear()}`;
   };
-  const stockRow = (s) => `
+  const stockRow = (s) => {
+    const price = Number(s.price) || 0;
+    const lineTotal = price > 0 ? Math.round(price * (Number(s.qty) || 0)) : 0;
+    return `
     <div class="card row stockrow" data-cat="${esc(s.category)}" style="margin-top:9px;padding:11px 13px">
       <span style="width:36px;height:36px;border-radius:10px;background:#f0e7de;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11.5px;flex:0 0 auto">${esc(initials(s.name))}</span>
       <div style="flex:1;min-width:0"><strong style="font-size:13.5px">${esc(s.name)} <span class="sub" style="font-weight:600">${esc(String(s.qty))} ${esc(s.unit)}</span></strong>
-      <div class="sub" style="font-size:11.5px">${esc(s.category)}${s.si ? ` · ${esc(s.si)}` : ""}${s.addedAt ? ` · added ${fmtDate(s.addedAt)}` : ""}</div></div>
+      <div class="sub" style="font-size:11.5px">${esc(s.category)}${s.si ? ` · ${esc(s.si)}` : ""}${s.addedAt ? ` · ${fmtDate(s.addedAt)}` : ""}</div>
+      ${price > 0 ? `<div class="sub" style="font-size:11.5px;color:#946200;margin-top:2px">LKR ${price}/${esc(s.unit)} × ${esc(String(s.qty))} = <strong style="color:#d9542b">LKR ${lineTotal.toLocaleString()}</strong></div>` : ""}</div>
       <form method="POST" action="/app/owner/${id}/stock/${String(s._id)}/remove" onsubmit="return confirm('Remove ${esc(s.name)} from stock?')" style="margin:0">
         <button class="btn ghost" style="width:auto;padding:6px 10px;font-size:11px;color:#b3261e">✕</button>
       </form>
     </div>`;
+  };
 
   const emptyState = `<div class="card" style="margin-top:12px;padding:14px;background:#fdf0ec;border-color:#f3cfc2;font-size:12.5px;color:#946200;text-align:center">
     Your kitchen store is empty. Pick a category above, choose the vegetables, meats, dry goods and spices you use for your menu, and set how much you buy — 35Ai keeps track from there.<br><span class="si" style="display:inline-block;margin-top:6px">ඔබේ ගබඩාව හිස්. ඉහළින් වර්ගයක් තෝරා, ඔබ භාවිත කරන ද්‍රව්‍ය එකතු කරන්න.</span></div>`;
 
   return page(shop, "stock", "Kitchen Stock", "කුස්සි ගබඩාව", `
-    ${msg ? `<div class="card" style="margin-top:10px;padding:10px 13px;background:#e8f6ec;border-color:#bfe5c8;font-size:12.5px;color:#1d7a34">${esc(msg)}</div>` : ""}
-
-    <div class="sub" style="font-size:12.5px;margin-top:8px">Build your store once — pick the items you cook with, set what you buy, and 35Ai tracks it against your menu.<br><span class="si">ඔබ භාවිත කරන ද්‍රව්‍ය එකතු කර ප්‍රමාණය දෙන්න.</span></div>
+    <div class="sub" style="font-size:11px;margin-top:8px;line-height:1.45">Build your store once — pick the items you cook with, set what you buy, and 35Ai tracks it against your menu.<br><span class="si" style="font-size:12.4px">ඔබ භාවිත කරන ද්‍රව්‍ය එකතු කර ප්‍රමාණය දෙන්න.</span></div>
 
     <div class="chips" style="display:flex;gap:8px;margin-top:12px;overflow-x:auto;-webkit-overflow-scrolling:touch">${tabs}</div>
 
     <!-- Add an ingredient — dropdown follows the selected category tab -->
     <div class="card" style="margin-top:14px;padding:13px 14px;background:#fdf7ee;border-color:#efe0c8">
-      <div class="row" style="justify-content:space-between"><strong style="font-size:13px">＋ Add to <span id="addCatLabel">Vegi</span> <span class="si">ගබඩාවට එක් කරන්න</span></strong></div>
+      <div class="row" style="justify-content:space-between"><strong style="font-size:13px">＋ Add to <span id="addCatLabel">Vegi</span> <span class="si" style="font-size:12.4px">ගබඩාවට එක් කරන්න</span></strong></div>
       <select id="addName" onchange="syncUnit()" style="width:100%;padding:11px;border-radius:10px;border:1px solid #e3d6c2;background:#fff;font-size:14px;margin-top:8px"></select>
-      <div class="row" style="gap:8px;margin-top:8px;align-items:flex-end">
-        <div style="flex:2"><label>HOW MUCH TO BUY <span class="si">කීයද?</span></label>
-          <input type="number" id="addQty" min="0" step="0.1" placeholder="e.g. 5" style="font-size:15px;font-weight:700"></div>
+      <div class="row" style="gap:8px;margin-top:8px">
+        <div style="flex:1"><label>HOW MUCH <span class="si" style="font-size:12.4px">කීයද?</span></label>
+          <input type="number" id="addQty" min="0" step="0.1" placeholder="e.g. 5" style="font-size:15px;font-weight:700" oninput="calcLine()"></div>
         <div style="flex:1"><label>UNIT</label>
           <select id="addUnit" style="width:100%;padding:11px;border-radius:10px;border:1px solid #e3d6c2;background:#fff;font-size:14px">
             ${units.map((u) => `<option value="${esc(u)}">${esc(u)}</option>`).join("")}
           </select></div>
+      </div>
+      <div class="row" style="gap:8px;margin-top:8px;align-items:flex-end">
+        <div style="flex:1"><label>PRICE / UNIT · LKR <span class="sub" style="font-weight:400">optional</span></label>
+          <input type="number" id="addPrice" min="0" step="0.01" placeholder="e.g. 220" style="font-size:15px" oninput="calcLine()"></div>
         <button type="button" class="btn" style="width:auto;padding:11px 18px;flex:0 0 auto" onclick="submitStock()">＋ Add</button>
       </div>
+      <div id="addLineTotal" class="sub" style="font-size:12px;margin-top:8px;color:#1d7a34;display:none"></div>
     </div>
     <input type="hidden" id="addCat" value="${esc(catKeys[0] || "Vegi")}">
 
@@ -393,6 +401,7 @@ function stockPage(shop, extras = {}) {
       <input type="hidden" name="qty" id="fQty">
       <input type="hidden" name="unit" id="fUnit">
       <input type="hidden" name="si" id="fSi">
+      <input type="hidden" name="price" id="fPrice">
     </form>
 
     <script>
@@ -424,6 +433,15 @@ function stockPage(shop, extras = {}) {
       var opt = sel.options[sel.selectedIndex];
       if(opt){ document.getElementById('addUnit').value = opt.dataset.unit || 'kg'; }
     }
+    function calcLine(){
+      var qty = Number(document.getElementById('addQty').value)||0;
+      var price = Number(document.getElementById('addPrice').value)||0;
+      var el = document.getElementById('addLineTotal');
+      if(qty>0 && price>0){
+        el.style.display='';
+        el.innerHTML = 'Total value: <strong style="color:#d9542b">LKR '+Math.round(qty*price).toLocaleString()+'</strong> ('+price+' × '+qty+')';
+      } else { el.style.display='none'; }
+    }
     function submitStock(){
       var sel = document.getElementById('addName');
       var opt = sel.options[sel.selectedIndex];
@@ -434,6 +452,7 @@ function stockPage(shop, extras = {}) {
       document.getElementById('fQty').value = qty;
       document.getElementById('fUnit').value = document.getElementById('addUnit').value;
       document.getElementById('fSi').value = opt.dataset.si || '';
+      document.getElementById('fPrice').value = document.getElementById('addPrice').value || '';
       document.getElementById('stockAddForm').submit();
     }
     fillIngredients();
