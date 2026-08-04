@@ -171,7 +171,7 @@ async function fetchWikimediaImage(query, categoryFallback) {
  *  Wikimedia search term — the Strategy 4 fallback above. */
 function genericTermFor(category) {
   const c = String(category || "").toLowerCase();
-  if (c.includes("curry")) return "Sri Lankan curry";
+  if (c.includes("curr")) return "Sri Lankan curry"; // matches "curry" and "curries"
   if (c.includes("sweet") || c.includes("cake")) return "Sri Lankan sweets";
   if (c.includes("bakery") || c.includes("bun") || c.includes("snack")) return "Sri Lankan bakery";
   if (c.includes("sambol") || c.includes("salad") || c.includes("relish")) return "Sri Lankan sambol";
@@ -217,6 +217,10 @@ async function main() {
   for (const s of SPICES) {
     const dest = path.join(OUT, "spices", `${s.id}.jpg`);
     if (existsSync(dest) && !FORCE) { console.log(`skip ${s.id} (exists)`); ok++; continue; }
+    // Small delay between items — Wikimedia's anonymous API rate-limits
+    // rapid bulk requests, which showed up as false "no image found"
+    // misses when running large batches back to back.
+    await new Promise((res) => setTimeout(res, 400));
     try {
       // Use Wikimedia Commons (free) instead of Imagen. Category-level
       // fallback term tried last, before paying for Gemini image-gen.
