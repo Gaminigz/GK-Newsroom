@@ -327,10 +327,12 @@ function stockPage(shop, extras = {}) {
   const catKeys = Object.keys(cats);
   const initials = (n) => n.replace(/[^A-Za-z ]/g, "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "··";
 
-  // Tabs: All + one per category, with live counts of what's in stock.
+  // Tabs: one per category (Vegi/Meat/Dry/Spices) plus All. Tapping a
+  // category tab BOTH filters the stock list AND switches the add-form's
+  // ingredient dropdown to that category — one control, not two.
   const countFor = (cat) => stock.filter((s) => s.category === cat).length;
-  const tabs = [`<button type="button" class="chip on" data-cat="All" onclick="stockTab('All',this)">All · ${stock.length}</button>`]
-    .concat(catKeys.map((c) => `<button type="button" class="chip" data-cat="${esc(c)}" onclick="stockTab('${esc(c)}',this)">${esc(c)} · ${countFor(c)}</button>`))
+  const tabs = catKeys.map((c, i) => `<button type="button" class="chip${i === 0 ? " on" : ""}" data-cat="${esc(c)}" onclick="stockTab('${esc(c)}',this)">${esc(c)} · ${countFor(c)}</button>`)
+    .concat([`<button type="button" class="chip" data-cat="All" onclick="stockTab('All',this)">All · ${stock.length}</button>`])
     .join("");
 
   // Client-side data: category → its ingredient options (name+unit).
@@ -338,11 +340,16 @@ function stockPage(shop, extras = {}) {
     catKeys.map((c) => [c, cats[c].items.map((it) => ({ name: it.name, si: it.si, unit: it.unit }))])
   ));
 
+  const fmtDate = (d) => {
+    if (!d) return "";
+    const dt = new Date(d);
+    return `${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")}/${dt.getFullYear()}`;
+  };
   const stockRow = (s) => `
     <div class="card row stockrow" data-cat="${esc(s.category)}" style="margin-top:9px;padding:11px 13px">
       <span style="width:36px;height:36px;border-radius:10px;background:#f0e7de;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11.5px;flex:0 0 auto">${esc(initials(s.name))}</span>
       <div style="flex:1;min-width:0"><strong style="font-size:13.5px">${esc(s.name)} <span class="sub" style="font-weight:600">${esc(String(s.qty))} ${esc(s.unit)}</span></strong>
-      <div class="sub" style="font-size:11.5px">${esc(s.category)}${s.si ? ` · ${esc(s.si)}` : ""}</div></div>
+      <div class="sub" style="font-size:11.5px">${esc(s.category)}${s.si ? ` · ${esc(s.si)}` : ""}${s.addedAt ? ` · added ${fmtDate(s.addedAt)}` : ""}</div></div>
       <form method="POST" action="/app/owner/${id}/stock/${String(s._id)}/remove" onsubmit="return confirm('Remove ${esc(s.name)} from stock?')" style="margin:0">
         <button class="btn ghost" style="width:auto;padding:6px 10px;font-size:11px;color:#b3261e">✕</button>
       </form>
@@ -358,25 +365,21 @@ function stockPage(shop, extras = {}) {
 
     <div class="chips" style="display:flex;gap:8px;margin-top:12px;overflow-x:auto;-webkit-overflow-scrolling:touch">${tabs}</div>
 
-    <!-- Add an ingredient -->
+    <!-- Add an ingredient — dropdown follows the selected category tab -->
     <div class="card" style="margin-top:14px;padding:13px 14px;background:#fdf7ee;border-color:#efe0c8">
-      <strong style="font-size:13px">＋ Add to store <span class="si">ගබඩාවට එක් කරන්න</span></strong>
-      <label style="margin-top:8px">CATEGORY</label>
-      <select id="addCat" onchange="fillIngredients()" style="width:100%;padding:10px;border-radius:10px;border:1px solid #e3d6c2;background:#fff;font-size:14px">
-        ${catKeys.map((c) => `<option value="${esc(c)}">${esc(c)} · ${esc(cats[c].labelSi || "")}</option>`).join("")}
-      </select>
-      <label style="margin-top:8px">INGREDIENT <span class="si">ද්‍රව්‍යය</span></label>
-      <select id="addName" onchange="syncUnit()" style="width:100%;padding:10px;border-radius:10px;border:1px solid #e3d6c2;background:#fff;font-size:14px"></select>
-      <div class="row" style="gap:8px;margin-top:8px">
-        <div style="flex:2"><label>QUANTITY YOU BUY</label>
+      <div class="row" style="justify-content:space-between"><strong style="font-size:13px">＋ Add to <span id="addCatLabel">Vegi</span> <span class="si">ගබඩාවට එක් කරන්න</span></strong></div>
+      <select id="addName" onchange="syncUnit()" style="width:100%;padding:11px;border-radius:10px;border:1px solid #e3d6c2;background:#fff;font-size:14px;margin-top:8px"></select>
+      <div class="row" style="gap:8px;margin-top:8px;align-items:flex-end">
+        <div style="flex:2"><label>HOW MUCH TO BUY <span class="si">කීයද?</span></label>
           <input type="number" id="addQty" min="0" step="0.1" placeholder="e.g. 5" style="font-size:15px;font-weight:700"></div>
         <div style="flex:1"><label>UNIT</label>
-          <select id="addUnit" style="width:100%;padding:10px;border-radius:10px;border:1px solid #e3d6c2;background:#fff;font-size:14px">
+          <select id="addUnit" style="width:100%;padding:11px;border-radius:10px;border:1px solid #e3d6c2;background:#fff;font-size:14px">
             ${units.map((u) => `<option value="${esc(u)}">${esc(u)}</option>`).join("")}
           </select></div>
+        <button type="button" class="btn" style="width:auto;padding:11px 18px;flex:0 0 auto" onclick="submitStock()">＋ Add</button>
       </div>
-      <button type="button" class="btn" style="margin-top:12px" onclick="submitStock()">Add to kitchen store</button>
     </div>
+    <input type="hidden" id="addCat" value="${esc(catKeys[0] || "Vegi")}">
 
     <!-- Current stock -->
     <div class="row" style="justify-content:space-between;margin-top:18px"><strong style="font-size:14px">In your store <span class="si">ගබඩාවේ</span></strong><span class="sub" id="stockCount" style="font-size:12px">${stock.length} items</span></div>
@@ -397,9 +400,17 @@ function stockPage(shop, extras = {}) {
     function stockTab(cat, btn){
       document.querySelectorAll('.chips .chip').forEach(function(c){ c.classList.remove('on'); });
       btn.classList.add('on');
+      // Filter the stored-items list.
       document.querySelectorAll('.stockrow').forEach(function(r){
         r.style.display = (cat==='All' || r.dataset.cat===cat) ? '' : 'none';
       });
+      // Switch the add-form to this category (skip for the All tab —
+      // keep whatever category was last active for adding).
+      if(cat!=='All'){
+        document.getElementById('addCat').value = cat;
+        document.getElementById('addCatLabel').textContent = cat;
+        fillIngredients();
+      }
     }
     function fillIngredients(){
       var cat = document.getElementById('addCat').value;
@@ -417,7 +428,7 @@ function stockPage(shop, extras = {}) {
       var sel = document.getElementById('addName');
       var opt = sel.options[sel.selectedIndex];
       var qty = document.getElementById('addQty').value;
-      if(!opt || !qty || Number(qty)<=0){ alert('Pick an ingredient and enter a quantity.'); return; }
+      if(!opt || !qty || Number(qty)<=0){ alert('Pick an ingredient and enter how much to buy.'); return; }
       document.getElementById('fName').value = opt.value;
       document.getElementById('fCat').value = document.getElementById('addCat').value;
       document.getElementById('fQty').value = qty;
