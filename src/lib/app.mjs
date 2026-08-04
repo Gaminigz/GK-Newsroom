@@ -2277,6 +2277,10 @@ export async function handleApp(req, res, url) {
       // dishes added via the newsroom without needing a code redeploy.
       extras.presetDishes = await loadPresetDishes(await col("lanka_dishes"));
     }
+    // Purchase Planner also needs the dish catalogue for its dish picker.
+    if (shop && m[2] === "plan") {
+      extras.presetDishes = await loadPresetDishes(await col("lanka_dishes"));
+    }
     const pageHtml = shop ? suitePage(shop, m[2], extras) : null;
     if (pageHtml) { html(res, pageHtml); return; }
     res.writeHead(404).end("not found");

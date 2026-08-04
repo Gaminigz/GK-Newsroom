@@ -380,25 +380,109 @@ function purchasingPage(shop) {
       <strong style="color:#fff">$5.46 / LKR 1,760</strong></div>`);
 }
 
-function planPage(shop) {
-  const group = (init, name, sub, rows, subtotal) => `
-    <div class="card" style="margin-top:12px;padding:12px 14px">
-      <div class="row"><span style="width:30px;height:30px;border-radius:9px;background:#f0e7de;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;flex:0 0 auto">${init}</span>
-      <div style="flex:1;min-width:0"><strong style="font-size:13px">${name}</strong><div class="sub" style="font-size:11px">${sub}</div></div></div>
-      ${rows.map(([n, p]) => `<div class="row" style="justify-content:space-between;font-size:13px;margin-top:8px"><span>${n}</span><strong>${p}</strong></div>`).join("")}
-      <div class="row" style="justify-content:space-between;border-top:1px solid #f0e7de;margin-top:9px;padding-top:8px;font-size:13px"><span class="sub">Subtotal</span><strong>${subtotal}</strong></div></div>`;
-  return page(shop, "plan", "Purchase plan", "සැලැස්ම", `
-    <p class="sub" style="margin-top:10px;font-size:12.5px">Auto-created from Purchasing · your shopping list at the market</p>
-    ${group("MM", "New Manning Market", "open from 5 AM · pay cash", [["Coconut × 4 pc", "$1.98 / LKR 640"], ["Red rice × 2 kg", "$1.98 / LKR 640"]], "$3.97 / LKR 1,280")}
-    ${group("LF", "Lanka Fresh Coconut", "delivers · order before 3 PM", [["Coconut milk × 1 L", "$1.49 / LKR 480"]], "$1.49 / LKR 480")}
-    <div class="card row" style="margin-top:12px;padding:12px 14px;background:#191512;border-color:#191512">
-      <div style="flex:1;color:#fff"><span style="font-size:10.5px;opacity:.75">TOTAL TO BUY · 3 ITEMS · 2 SUPPLIERS</span><br><strong style="font-size:15px;color:#ffb08f">$5.46 / LKR 1,760</strong></div>
-      <span class="pill" style="background:#2e2a26;color:#fff;border:1px solid #4a443e">Share list</span></div>
-    <div class="card" style="margin-top:10px;padding:10px 14px;background:#e8f6ec;border-color:#bfe5c8">
-      <span style="color:#1d7a34;font-size:12.5px;font-weight:700">✅ Nothing forgotten — the plan updates when stock or prices change</span></div>
-    <div class="row" style="gap:10px;margin-top:14px">
-      <button class="btn" style="flex:2" disabled>Mark all bought</button>
-      <button class="btn ghost" style="flex:1" disabled>Edit plan</button></div>`);
+function planPage(shop, extras = {}) {
+  const id = String(shop._id);
+  const presetDishes = extras.presetDishes || [];
+  const listId = "planDishList";
+  const options = presetDishes.map((d) => `<option value="${String(d).replace(/"/g, "&quot;")}">`).join("");
+  return page(shop, "plan", "Purchase Plan", "මිලදී ගැනීමේ සැලැස්ම", `
+    <div class="sub" style="font-size:12.5px;margin-top:8px">Pick the dishes you'll cook and how many people you're serving. 35Ai scales every recipe and builds one shopping list — with approximate market cost.<br><span class="si">කෑම සහ පුද්ගල ගණන දෙන්න — 35Ai අවශ්‍ය අමුද්‍රව්‍ය ප්‍රමාණය හා මිල ගණනය කරයි.</span></div>
+
+    <!-- Quick headcount presets -->
+    <label style="margin-top:14px">HOW MANY PEOPLE? <span class="si">කී දෙනෙක්ද?</span></label>
+    <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:6px">
+      <button type="button" class="btn ghost planppl" data-n="10" style="width:auto;padding:8px 14px" onclick="setPpl(10)">Daily · 10</button>
+      <button type="button" class="btn ghost planppl" data-n="25" style="width:auto;padding:8px 14px" onclick="setPpl(25)">Party · 25</button>
+      <button type="button" class="btn ghost planppl" data-n="50" style="width:auto;padding:8px 14px" onclick="setPpl(50)">Catering · 50</button>
+      <button type="button" class="btn ghost planppl" data-n="100" style="width:auto;padding:8px 14px" onclick="setPpl(100)">Event · 100</button>
+    </div>
+    <input type="number" id="planPpl" min="1" value="10" style="margin-top:8px;font-size:16px;font-weight:700" oninput="recalcPlan()">
+
+    <label style="margin-top:16px">ADD A DISH <span class="si">කෑමක් එක් කරන්න</span></label>
+    <div class="row" style="gap:8px">
+      <input type="text" id="planDishInput" list="${listId}" placeholder="e.g. Kukul Mas Curry" style="flex:1">
+      <button type="button" class="btn" style="width:auto;padding:11px 16px" onclick="addPlanDish()">＋ Add</button>
+    </div>
+    <datalist id="${listId}">${options}</datalist>
+    <div id="planStatus" class="sub" style="font-size:12px;margin-top:6px;text-align:center"></div>
+
+    <div id="planDishes" style="margin-top:12px"></div>
+
+    <div id="planResult" style="display:none;margin-top:18px">
+      <div class="row" style="justify-content:space-between"><strong style="font-size:14px">Shopping list <span class="si">සාප්පු ලැයිස්තුව</span></strong><span id="planFor" class="sub" style="font-size:12px"></span></div>
+      <div id="planList"></div>
+      <div class="card" style="margin-top:12px;padding:13px 15px;background:#191512;border-color:#191512">
+        <div style="color:#fff"><span style="font-size:10.5px;opacity:.75" id="planTotLabel">ESTIMATED TOTAL TO BUY</span><br><strong style="font-size:16px;color:#ffb08f" id="planTotal">LKR 0</strong></div>
+      </div>
+      <div class="sub" style="font-size:11px;margin-top:8px">Amounts and prices are planning estimates from a common Sri Lankan ingredient library — real market prices vary by day and supplier.</div>
+    </div>
+
+    <script>
+    var planItems = []; // { dish, servings, ingredients:[{name,quantity,unit,lkr}] }
+    function setPpl(n){ document.getElementById('planPpl').value = n; recalcPlan(); }
+    async function addPlanDish(){
+      var inp = document.getElementById('planDishInput');
+      var dish = inp.value.trim();
+      if(!dish){ return; }
+      if(planItems.some(function(p){return p.dish.toLowerCase()===dish.toLowerCase();})){ inp.value=''; return; }
+      var s = document.getElementById('planStatus');
+      s.textContent = '⏳ 35Ai working out ' + dish + '…';
+      try{
+        var body = new URLSearchParams({dish: dish}).toString();
+        var r = await fetch('/app/owner/${id}/dishes/ai-recipe',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body});
+        var j = await r.json();
+        if(!j.ok){ s.textContent = '❌ ' + (j.error||'35Ai failed'); return; }
+        planItems.push({ dish: dish, servings: j.servings||1, ingredients: j.ingredients });
+        s.textContent = '';
+        inp.value = '';
+        renderPlanDishes();
+        recalcPlan();
+      }catch(e){ s.textContent = '❌ ' + e.message; }
+    }
+    function removePlanDish(i){ planItems.splice(i,1); renderPlanDishes(); recalcPlan(); }
+    function renderPlanDishes(){
+      var box = document.getElementById('planDishes');
+      if(!planItems.length){ box.innerHTML=''; return; }
+      box.innerHTML = planItems.map(function(p,i){
+        return '<div class="card row" style="margin-top:8px;padding:10px 13px">'
+          + '<div style="flex:1;min-width:0"><strong style="font-size:13.5px">'+p.dish+'</strong>'
+          + '<div class="sub" style="font-size:11.5px">'+p.ingredients.length+' ingredients · recipe for '+p.servings+'</div></div>'
+          + '<button class="btn ghost" style="width:auto;padding:6px 10px;font-size:11.5px;color:#b3261e" onclick="removePlanDish('+i+')">Remove</button></div>';
+      }).join('');
+    }
+    function recalcPlan(){
+      var ppl = Math.max(1, Number(document.getElementById('planPpl').value)||1);
+      var res = document.getElementById('planResult');
+      if(!planItems.length){ res.style.display='none'; return; }
+      res.style.display='';
+      document.getElementById('planFor').textContent = 'for ' + ppl + ' people';
+      // Merge ingredients across all dishes, scaling per-serving qty × ppl.
+      var merged = {}; // key: name+unit -> {name, unit, qty, lkr}
+      planItems.forEach(function(p){
+        var factor = ppl / (p.servings||1);
+        p.ingredients.forEach(function(ing){
+          var key = (ing.name+'|'+(ing.unit||'')).toLowerCase();
+          if(!merged[key]) merged[key] = { name: ing.name, unit: ing.unit||'', qty:0, lkr:0, priced:false };
+          merged[key].qty += (Number(ing.quantity)||0) * factor;
+          if(ing.lkr!=null){ merged[key].lkr += (Number(ing.lkr)||0) * factor; merged[key].priced=true; }
+        });
+      });
+      var rows = Object.keys(merged).map(function(k){return merged[k];})
+        .sort(function(a,b){ return b.lkr - a.lkr; });
+      var total = 0;
+      var html = rows.map(function(m){
+        total += m.lkr;
+        var qty = m.qty>=1000 ? (m.qty/1000).toFixed(m.qty>=10000?0:1)+' '+(m.unit==='ml'?'L':'kg') : Math.round(m.qty)+' '+m.unit;
+        var price = m.priced ? 'LKR ' + Math.round(m.lkr) : '<span style="color:#c8c1b8">—</span>';
+        return '<div class="card row" style="margin-top:6px;padding:9px 13px"><div style="flex:1;min-width:0"><strong style="font-size:13px">'+m.name+'</strong>'
+          + '<div class="sub" style="font-size:11.5px">'+qty+'</div></div>'
+          + '<span style="font-size:12.5px;font-weight:700">'+price+'</span></div>';
+      }).join('');
+      document.getElementById('planList').innerHTML = html;
+      document.getElementById('planTotLabel').textContent = 'ESTIMATED TOTAL TO BUY · '+rows.length+' ITEMS · '+ppl+' PEOPLE';
+      document.getElementById('planTotal').textContent = 'LKR ' + Math.round(total).toLocaleString();
+    }
+    </script>`);
 }
 
 function booksPage(shop) {
