@@ -88,10 +88,12 @@ async function geminiGenerateImage(ai, prompt) {
 
 /**
  * Fetch a free photo from Wikimedia Commons.
- * Tries 3 strategies in order: Commons file search, Wikipedia pageimages (multiple terms), Commons generator.
- * Returns a Buffer or throws.
+ * Tries 4 strategies in order: Commons file search, Wikipedia pageimages
+ * (multiple terms), Commons generator, then a generic category-level term
+ * (e.g. "Sri Lankan sweet") as a last free attempt before the caller falls
+ * back to paid Gemini image generation. Returns a Buffer or throws.
  */
-async function fetchWikimediaImage(query) {
+async function fetchWikimediaImage(query, categoryFallback) {
   const UA = { 'User-Agent': 'GK-Newsroom/1.0 (gksmart.ai)' };
 
   async function tryDownload(url) {
@@ -143,7 +145,39 @@ async function fetchWikimediaImage(query) {
     }
   }
 
+  // Strategy 4: generic category-level term (e.g. "Sri Lankan sweet",
+  // "Sri Lankan curry") — a real, on-theme photo even if it's not the
+  // exact dish, one more free attempt before paying for Gemini image-gen.
+  if (categoryFallback) {
+    const genericUrl = `https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(categoryFallback)}&srnamespace=6&format=json&srlimit=5`;
+    const data = await fetch(genericUrl, { headers: UA }).then(r => r.json());
+    const hits = data?.query?.search ?? [];
+    for (const hit of hits) {
+      const infoUrl = `https://commons.wikimedia.org/w/api.php?action=query&titles=${encodeURIComponent(hit.title)}&prop=imageinfo&iiprop=url|mime&format=json`;
+      const info = await fetch(infoUrl, { headers: UA }).then(r => r.json());
+      const pages = Object.values(info?.query?.pages ?? {});
+      const ii = pages[0]?.imageinfo?.[0];
+      if (ii?.url && /image\/(jpeg|png|webp)/.test(ii.mime ?? '')) {
+        const buf = await tryDownload(ii.url);
+        if (buf) return buf;
+      }
+    }
+  }
+
   throw new Error(`no Wikimedia image found for: ${query}`);
+}
+
+/** Maps a dish/spice/bakery category to a broad, reliably-photographed
+ *  Wikimedia search term — the Strategy 4 fallback above. */
+function genericTermFor(category) {
+  const c = String(category || "").toLowerCase();
+  if (c.includes("curry")) return "Sri Lankan curry";
+  if (c.includes("sweet") || c.includes("cake")) return "Sri Lankan sweets";
+  if (c.includes("bakery") || c.includes("bun") || c.includes("snack")) return "Sri Lankan bakery";
+  if (c.includes("sambol") || c.includes("salad") || c.includes("relish")) return "Sri Lankan sambol";
+  if (c.includes("fried") || c.includes("bite") || c.includes("dry")) return "Sri Lankan fried snack";
+  if (c.includes("spice") || c.includes("blend") || c.includes("seed") || c.includes("bark") || c.includes("leaf") || c.includes("pod")) return "Sri Lankan spices";
+  return "Sri Lankan food";
 }
 
 async function downloadGkLogo() {
@@ -184,8 +218,9 @@ async function main() {
     const dest = path.join(OUT, "spices", `${s.id}.jpg`);
     if (existsSync(dest) && !FORCE) { console.log(`skip ${s.id} (exists)`); ok++; continue; }
     try {
-      // Use Wikimedia Commons (free) instead of Imagen
-      const buf = await fetchWikimediaImage(s.imgQuery);
+      // Use Wikimedia Commons (free) instead of Imagen. Category-level
+      // fallback term tried last, before paying for Gemini image-gen.
+      const buf = await fetchWikimediaImage(s.imgQuery, genericTermFor(s.category));
       await sharp(buf).resize(800, 450, { fit: 'cover' }).jpeg({ quality: 82 }).toFile(dest);
       console.log(`\u2713 spices/${s.id}.jpg (wikimedia \u2014 FREE)`);
       ok++;

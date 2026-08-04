@@ -1,11 +1,14 @@
 /**
- * 3una5aha spice mini-podcasts — one 1–2 minute Dara & Maly episode per
+ * 3una5aha spice mini-podcasts — one 25–35 second Dara & Maly episode per
  * spice, generated ONCE and stored in Mongo (`spice_podcast`, _id =
  * spice id, audio as BSON Binary WAV) so the /food page streams the
  * back-catalog instantly forever.
  *
  * Generation is idempotent: a ready episode is never re-paid for.
- * Cost ≈ $0.35 per spice (TTS-dominated), one-time.
+ * Script length was cut from 150–210 words (60–90s) to 70–90 words
+ * (25–35s) — TTS is billed by output length, so this is the single
+ * biggest cost lever for the 238-post catalogue while still shipping
+ * a real two-voice audio clip on every post.
  */
 
 import { GoogleGenAI } from "@google/genai";
@@ -31,16 +34,17 @@ function getApiKey(): string {
   return key;
 }
 
-const SCRIPT_PROMPT = `You write 60-90 second mini-episodes of "3una5aha" — a bite-size
-podcast about the spices of Sri Lankan cooking, hosted by the same two Yai newsroom
-voices, Dara and Maly, in Phnom Penh.
+const SCRIPT_PROMPT = `You write ultra-short 25-35 second mini-episodes of "3una5aha" — a
+bite-size podcast about the spices of Sri Lankan cooking, hosted by the same two Yai
+newsroom voices, Dara and Maly, in Phnom Penh.
 
 Hosts:
 - Dara — curious, asks what it smells/tastes like, where it goes.
 - Maly — the food storyteller, warm and concrete.
 
 Write ONE mini-episode about the spice given below. Rules:
-- Total 150–210 words (60–90 seconds spoken).
+- Total 70–90 words (25–35 seconds spoken) — be economical, cut anything not essential.
+- 3-4 exchanges total (Dara, Maly, Dara, Maly — or similar), not more.
 - Open with Dara naming the spice (English + how the Sinhala name sounds).
 - Use ONLY the facts provided; you may add universally known culinary facts, but
   never invent statistics or history that isn't common knowledge.
@@ -76,7 +80,8 @@ async function writeScript(ai: GoogleGenAI, spice: Spice): Promise<string> {
     throw new Error("unusable script");
   }
   const words = text.split(/\s+/).length;
-  if (words < 100) throw new Error(`script too short (${words} words)`);
+  if (words < 50) throw new Error(`script too short (${words} words)`);
+  if (words > 130) throw new Error(`script too long (${words} words) — re-prompt for brevity`);
   return text;
 }
 
