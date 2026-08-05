@@ -36,6 +36,10 @@ import { CURRENCIES, CURRENCY_CODES, currencyOf, fmtMoney } from "../data/curren
 
 const ORANGE = "#d9542b";
 const PUBLIC_BASE = process.env.PUBLIC_BASE || "https://web-production-2b43c.up.railway.app";
+const PROVIDER_LABEL = { apple: "Apple", google: "Google", facebook: "Facebook", sms: "SMS", email: "email" };
+const DIET_OPTIONS = ["Vegetarian", "Vegan", "Halal", "No pork", "No beef", "No seafood"];
+const CUISINE_OPTIONS = ["Rice & curry", "Kottu", "Hoppers", "String hoppers", "Short eats", "Bakery", "Sweets"];
+const LANG_OPTIONS = ["en", "si", "ta"];
 
 /* ------------------------------------------------------------- helpers */
 
@@ -612,7 +616,7 @@ async function userProfilePage(req, flash = "") {
       <div style="flex:1;min-width:0">
         <div class="sub" style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;line-height:1.1">Account</div>
         <strong style="font-size:17px;line-height:1.15;display:block">${u ? esc(u.name || email) : "Guest"}</strong>
-        <div class="sub" style="font-size:11px;line-height:1.15">${u ? `${esc(email)} ${u.verified ? '<span style="color:#1d9d4b">✓ verified</span>' : '<a href="/app/verify" style="color:#d92d20;text-decoration:underline">● verify email</a>'}` : "Not signed in"}</div>
+        <div class="sub" style="font-size:11px;line-height:1.15">${u ? `${esc(email)}${u.provider ? ` · via ${PROVIDER_LABEL[u.provider] || u.provider}` : ""} ${u.verified ? '<span style="color:#1d9d4b">✓</span>' : '<a href="/app/verify" style="color:#d92d20;text-decoration:underline">● verify email</a>'}` : "Not signed in"}</div>
       </div>
       ${u ? `<label for="avIn" class="thumb" id="avBox" style="width:52px;height:52px;border-radius:99px;cursor:pointer;background-size:cover;background-position:center;position:relative;flex:0 0 auto;${u.avatar ? `background-image:url(${u.avatar})` : ""}"><span id="avHint" style="font-size:18px">${u.avatar ? "" : "👤"}</span><span style="position:absolute;right:-3px;bottom:-3px;width:22px;height:22px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;border:2px solid #faf7f4;pointer-events:none">📷</span></label>` : ""}
     </div>
@@ -624,7 +628,29 @@ async function userProfilePage(req, flash = "") {
       <input type="text" name="name" value="${esc(u.name ?? "")}" placeholder="Your name">
       <label>PHONE</label>
       <input type="tel" name="phone" value="${esc(u.phone ?? phone)}" placeholder="+94 77 123 4567">
-      <button class="btn" style="margin-top:14px">Save profile</button>
+      <label>WHATSAPP <span style="font-weight:400">— leave blank if same as phone</span></label>
+      <input type="tel" name="whatsapp" value="${esc(u.whatsapp ?? "")}" placeholder="+94 77 123 4567">
+      <label>TELEGRAM</label>
+      <input type="text" name="telegram" value="${esc(u.telegram ?? "")}" placeholder="@yourhandle">
+      <label>HOME CITY <span style="font-weight:400">— we'll surface shops near you</span></label>
+      <input type="text" name="city" value="${esc(u.city ?? "")}" placeholder="Colombo, Kandy, Galle…">
+      <label>CURRENCY <span style="font-weight:400">— view prices in your currency</span></label>
+      <select name="currency" style="width:100%;padding:11px;border-radius:10px;border:1px solid #e3d6c2;background:#fff;font-size:14px">
+        ${CURRENCIES.map((c) => `<option value="${c.code}"${(u.currency || "LKR") === c.code ? " selected" : ""}>${c.code} · ${esc(c.name)} (${esc(c.symbol)})</option>`).join("")}
+      </select>
+      <label>LANGUAGE</label>
+      <div class="seg">
+        ${[["en", "English"], ["si", "සිංහල"], ["ta", "தமிழ்"]].map(([v, l]) => `<label><input type="radio" name="lang" value="${v}"${(u.lang || "en") === v ? " checked" : ""}><span class="opt">${l}</span></label>`).join("")}
+      </div>
+      <label>DIET <span style="font-weight:400">— we'll flag matching dishes</span></label>
+      <div class="seg">
+        ${["Vegetarian", "Vegan", "Halal", "No pork", "No beef", "No seafood"].map((d) => `<label><input type="checkbox" name="diet" value="${esc(d)}"${(u.diet || []).includes(d) ? " checked" : ""}><span class="opt">${d}</span></label>`).join("")}
+      </div>
+      <label>DISHES YOU LOVE</label>
+      <div class="seg">
+        ${["Rice & curry", "Kottu", "Hoppers", "String hoppers", "Short eats", "Bakery", "Sweets"].map((d) => `<label><input type="checkbox" name="cuisine" value="${esc(d)}"${(u.cuisines || []).includes(d) ? " checked" : ""}><span class="opt">${d}</span></label>`).join("")}
+      </div>
+      <button class="btn" style="margin-top:18px">Save profile</button>
     </form>
     <strong style="display:block;margin:20px 0 8px">Change password — pick one</strong>
     <form method="POST" action="/app/profile/password" class="card" style="padding:12px 14px">
@@ -2028,9 +2054,17 @@ export async function handleApp(req, res, url) {
       const avatar = String(form.get("avatar") || "");
       const avatarOk = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(avatar) && avatar.length < 400_000;
       const phone = String(form.get("phone") || "").trim().slice(0, 24);
+      const lang = LANG_OPTIONS.includes(form.get("lang")) ? form.get("lang") : "en";
+      const currency = CURRENCY_CODES.includes(form.get("currency")) ? form.get("currency") : "LKR";
+      const diet = (form.getAll ? form.getAll("diet") : []).filter((d) => DIET_OPTIONS.includes(d));
+      const cuisines = (form.getAll ? form.getAll("cuisine") : []).filter((c) => CUISINE_OPTIONS.includes(c));
       await (await col("app_users")).updateOne({ email }, { $set: {
         name: String(form.get("name") || "").trim().slice(0, 60),
         phone,
+        whatsapp: String(form.get("whatsapp") || "").trim().slice(0, 24),
+        telegram: String(form.get("telegram") || "").trim().slice(0, 40),
+        city: String(form.get("city") || "").trim().slice(0, 80),
+        currency, lang, diet, cuisines,
         ...(avatarOk ? { avatar } : {}),
       } });
       res.setHeader("Set-Cookie", `app_phone=${encodeURIComponent(phone)}; Path=/app; Max-Age=31536000; SameSite=Lax`);
