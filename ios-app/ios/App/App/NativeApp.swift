@@ -752,8 +752,7 @@ struct WebSheet: View {
 struct ManagerView: View {
     var body: some View {
         WebViewRepresentable(url: API.base.appendingPathComponent("/app/manager"))
-            .navigationTitle("Shop Manager")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarHidden(true)
             .ignoresSafeArea(.container, edges: .bottom)
     }
 }

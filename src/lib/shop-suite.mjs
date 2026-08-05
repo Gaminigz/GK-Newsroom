@@ -53,11 +53,14 @@ export function ownerHubPage(shop, toast = "") {
     noBack: true,
     toast,
     body: `
-    <div class="row" style="gap:9px;margin-bottom:4px;align-items:flex-start">
+    <div class="row" style="gap:9px;align-items:center">
       <a class="back" style="margin:0;flex:0 0 auto" href="/app/home">‹</a>
-      <div style="flex:1;min-width:0"><strong style="font-size:17px">${esc(shop.name)}</strong>
+      <strong style="font-size:19px;flex:1;min-width:0">Shop Manager</strong>
+    </div>
+    <div class="row" style="gap:9px;margin-top:8px;align-items:flex-start">
+      <div style="flex:1;min-width:0"><strong style="font-size:16px">${esc(shop.name)}</strong>
       <div class="sub" style="font-size:11.5px">Shop owner mode · ${esc(shop.owner || "")}</div></div>
-      <a href="/app/owner/${id}/qr" style="flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:5px;text-decoration:none;margin-top:28px">
+      <a href="/app/owner/${id}/qr" style="flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:5px;text-decoration:none">
         ${hubCircle("▦", 54, true)}
         <span style="font-size:10px;font-weight:700;color:#1a1a1a">Table QR</span></a>
     </div>
