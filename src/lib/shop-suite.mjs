@@ -53,19 +53,18 @@ export function ownerHubPage(shop, toast = "") {
     noBack: true,
     toast,
     body: `
-    <div class="row" style="gap:9px;align-items:center">
+    <div class="row" style="gap:10px;align-items:center;margin-top:-26px;padding-right:80px">
       <a class="back" style="margin:0;flex:0 0 auto" href="/app/home">‹</a>
-      <strong style="font-size:19px;flex:1;min-width:0">Shop Manager</strong>
+      <div style="flex:1;min-width:0">
+        <div class="sub" style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;line-height:1.1">Shop Manager</div>
+        <strong style="font-size:17px;line-height:1.15;display:block">${esc(shop.name)}</strong>
+        <div class="sub" style="font-size:11px;line-height:1.15">Owner · ${esc(shop.owner || "")}</div>
+      </div>
+      <a href="/app/owner/${id}/qr" style="flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:4px;text-decoration:none">
+        ${hubCircle("▦", 46, true)}
+        <span style="font-size:9.5px;font-weight:700;color:#1a1a1a">Table QR</span></a>
     </div>
-    <div class="row" style="gap:9px;margin-top:8px;align-items:flex-start">
-      <div style="flex:1;min-width:0"><strong style="font-size:16px">${esc(shop.name)}</strong>
-      <div class="sub" style="font-size:11.5px">Shop owner mode · ${esc(shop.owner || "")}</div></div>
-      <a href="/app/owner/${id}/qr" style="flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:5px;text-decoration:none">
-        ${hubCircle("▦", 54, true)}
-        <span style="font-size:10px;font-weight:700;color:#1a1a1a">Table QR</span></a>
-    </div>
-    <div class="sub" style="font-size:12.5px;margin:6px 0 16px">All shop functions — tap a button. <span class="si">සියලු කාර්යයන්</span></div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:22px 8px">${tiles}</div>`,
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:22px 8px;margin-top:14px">${tiles}</div>`,
   });
 }
 
