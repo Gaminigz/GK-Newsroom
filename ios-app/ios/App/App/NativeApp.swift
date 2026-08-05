@@ -855,6 +855,15 @@ private func nativeURL(_ url: URL) -> URL {
 struct WebViewRepresentable: UIViewRepresentable {
     let url: URL
     var reloadKey: UUID? = nil
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    class Coordinator {
+        // Remember the reloadKey we've already applied so we can force a
+        // reload ONLY when the parent view intentionally bumps it (e.g. a
+        // tab-appear), not on every SwiftUI recompute.
+        var lastReloadKey: UUID?
+    }
+
     func makeUIView(context: Context) -> WKWebView {
         let web = WKWebView()
         // Share the native session (e.g. Apple sign-in cookie) with the web pages.
@@ -864,15 +873,19 @@ struct WebViewRepresentable: UIViewRepresentable {
         for c in cookies { group.enter(); store.setCookie(c) { group.leave() } }
         let target = nativeURL(url)
         group.notify(queue: .main) { web.load(URLRequest(url: target)) }
+        context.coordinator.lastReloadKey = reloadKey
         return web
     }
+
     func updateUIView(_ uiView: WKWebView, context: Context) {
-        // If the reload key changes (e.g. tab reappears), snap back to the
-        // initial URL — don't leave the WebView on whatever page an internal
-        // link navigated it to.
-        let target = nativeURL(url)
-        if reloadKey != nil && uiView.url?.absoluteString != target.absoluteString {
-            uiView.load(URLRequest(url: target))
+        // Only force the initial URL back when reloadKey CHANGES. Reloading
+        // whenever uiView.url != target was too aggressive — every SwiftUI
+        // recompute (which happens for many reasons unrelated to navigation)
+        // would kick the user out of any sub-page they navigated to inside
+        // the WebView, and that looked like being logged out.
+        if let key = reloadKey, key != context.coordinator.lastReloadKey {
+            context.coordinator.lastReloadKey = key
+            uiView.load(URLRequest(url: nativeURL(url)))
         }
     }
 }
