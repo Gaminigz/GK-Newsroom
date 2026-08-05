@@ -2,6 +2,65 @@
 
 ---
 
+## 🚨 2026-08-05 — MONGO SPLIT: repoint news reads BEFORE deleting old data (from the APP session)
+
+You've copied the news data to a new Mongo, but as of this note the OLD
+shared cluster (`MONGO_URL` on the Railway **web** service —
+`…0e2hg.mongodb.net`, DB `gk_newsroom`) **still contains all of it** and the
+web service **still serves `/food`, `/ai`, `/accounting` from that old
+cluster** (one `MONGO_URL`, no second connection). So:
+
+> ⛔ **Do NOT delete the news collections from the old cluster until the news
+> pages are repointed to the new Mongo — or `/food`, `/ai`, `/accounting`
+> will go blank.** They read live from Mongo (`spice_podcast`, `ai_feed_*`,
+> `gov_*`, etc.), which is exactly what you're deleting.
+
+### The clean end-state
+- **Old cluster (Cluster0 / `gk_newsroom`)** → APP only. After the news
+  collections are removed it drops from **639 MB → ~2 MB** (app uses almost
+  nothing). Writes are already unblocked.
+- **New cluster** → all the heavy news data + serving.
+
+### Steps (in this order)
+1. **Add the new connection to the web service** without removing the old:
+   `railway variables --service web --set "NEWS_MONGO_URL=<new cluster srv string>"`
+   (keep `MONGO_URL` as-is — the app needs it).
+2. **Route news collections to `NEWS_MONGO_URL`.** In `src/lib/mongo.ts` add a
+   second client/getter (e.g. `getNewsDb()` reading `NEWS_MONGO_URL`), and in
+   the news libs/pages (`serve-web.mjs` `/food`,`/ai`,`/accounting` blocks;
+   `spice-podcast.ts`, `gov-podcast.ts`, `podcast.ts`, the fetch/telegram/
+   garment scripts) swap their `getDb()` → `getNewsDb()`. App code
+   (`app.mjs`, `shop-suite.mjs`) keeps `getDb()` unchanged.
+3. **Deploy + verify** `/food`, `/ai`, `/accounting` all still return 200 with
+   content (they're now reading the NEW cluster).
+4. **Only then** delete the news collections from the OLD cluster to reclaim
+   the ~637 MB.
+
+### Collection ownership (what moves vs what stays)
+- **NEWS → new cluster (move + then delete from old):** `spice_podcast`,
+  `ai_feed_podcast`, `gov_podcast`, `ai_feed_items`, `ai_country_items`,
+  `gov_feed_items`, `brands`, `brand_signals`, `garment_orgs`,
+  `garment_org_items`, `garment_press_items`, `garment_outlets`,
+  `tg_channels`, `push_tokens`, `counters`.
+- **APP → stays on the old cluster, do NOT move/delete:** `shop_owners`,
+  `app_dishes`, `app_orders`, `app_users`, `kitchen_stock`, `app_dish_recipes`.
+- **SHARED catalogue (`lanka_dishes`, `lanka_spices`, `lanka_bakery`):** tiny
+  (~0.1 MB total). The **app's Plan Menu** reads these from the OLD cluster —
+  leave a copy there. `/food` also reads them; if you point `/food` at the new
+  cluster, **seed a copy into the new cluster too** (`npm run seed:lanka`
+  against `NEWS_MONGO_URL`) so both have them. They stay in sync because both
+  are re-seedable from `src/data/lanka-*.mjs`.
+- Note: `/food` rich cards come from the in-code `src/data/spices.ts` (not
+  Mongo) + `spice_podcast` audio (Mongo, NEWS). Only the audio needs the new
+  connection.
+
+### App-side status (done, no action needed from you)
+- 35Ai recipe lookups are now **catalogue-first** (read `spices.ts` ingredients,
+  no Gemini) — unaffected by the Mongo split or the Gemini spend cap.
+- App writes confirmed working again.
+
+---
+
 ## 🆕 2026-08-04 ADDENDUM — 3una5aha food catalogue + /food channel (from the APP session)
 
 The app session expanded the **/food** Sri Lankan food channel massively and
