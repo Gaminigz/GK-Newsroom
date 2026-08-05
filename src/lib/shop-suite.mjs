@@ -20,12 +20,12 @@ export const SUITE_TILES = [
   { key: "menu", label: "Plan Menu", emoji: "🍱" },
   { key: "costs", label: "Cost sheet", emoji: "🧮" },
   { key: "stock", label: "Kitchen stock", emoji: "📦" },
-  { key: "purchasing", label: "Buying & bills", emoji: "🛒" },
   { key: "plan", label: "Purchasing", emoji: "🧾" },
-  { key: "books", label: "Shop accounting", emoji: "📚" },
+  { key: "purchasing", label: "Buying & bills", emoji: "🛒" },
   { key: "salaries", label: "Staff salaries entries", emoji: "💬" },
   { key: "staff", label: "Staff Pay", emoji: "👥" },
   { key: "utilities", label: "Utilities Pay", emoji: "💡" },
+  { key: "books", label: "Shop accounting", emoji: "📚" },
   { key: "health", label: "Business health", emoji: "❤️" },
 ];
 
