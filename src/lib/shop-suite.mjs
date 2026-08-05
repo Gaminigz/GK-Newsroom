@@ -533,7 +533,7 @@ function purchasingPage(shop, extras = {}) {
   const supplierCard = (s, i) => {
     const on = i === 0;
     return `
-    <div class="card" style="margin:0 0 8px;padding:10px 11px;${on ? "background:#191512;border-color:#191512;color:#fff" : ""}">
+    <div class="card" style="margin:0;padding:10px 11px;min-width:0;${on ? "background:#191512;border-color:#191512;color:#fff" : ""}">
       <div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px">
         <span style="display:inline-flex;width:28px;height:28px;border-radius:8px;background:${on ? "#2e2a26" : "#f0e7de"};align-items:center;justify-content:center;font-size:10.5px;font-weight:800;color:${on ? "#fff" : "#1a1a1a"};flex:0 0 auto">${escP(initials(s.name))}</span>
         <div class="row" style="gap:4px;flex:0 0 auto">
@@ -570,7 +570,7 @@ function purchasingPage(shop, extras = {}) {
       </div>
     </form>
     ${suppliers.length
-      ? `<div style="margin-top:10px">${suppliers.map((s, i) => supplierCard(s, i)).join("")}</div>`
+      ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">${suppliers.map((s, i) => supplierCard(s, i)).join("")}</div>`
       : `<div class="sub card" style="margin-top:10px;padding:11px 13px;font-size:12.5px">No suppliers yet — tap <strong style="color:${ORANGE}">+</strong> above to add one.</div>`
     }
     <script>
