@@ -527,18 +527,26 @@ function purchasingPage(shop, extras = {}) {
     <div class="card" style="margin-top:12px;padding:11px 13px;background:#e8f6ec;border-color:#bfe5c8">
       <span style="font-size:11.5px;font-weight:700;color:#1d7a34">✓ Store is well stocked — nothing is running low right now.</span>
     </div>`;
-  const supplierCard = (s) => `
-    <div class="card" style="margin:0 0 8px;padding:10px 11px">
-      <div class="row" style="gap:8px;align-items:center">
-        <span style="display:inline-flex;width:28px;height:28px;border-radius:8px;background:#f0e7de;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;color:#1a1a1a;flex:0 0 auto">${escP(initials(s.name))}</span>
-        <strong style="flex:1;min-width:0;font-size:12.5px;line-height:1.2">${escP(s.name)}</strong>
-        ${s.mapsUrl ? `<a href="${escP(s.mapsUrl)}" target="_blank" style="flex:0 0 auto;font-size:13px;text-decoration:none" title="Open in Maps">📍</a>` : ""}
-        <form method="POST" action="/app/owner/${id}/suppliers/${String(s._id)}/remove" onsubmit="return confirm('Remove ${escP(s.name)}?')" style="margin:0">
-          <button class="btn ghost" style="width:auto;padding:3px 7px;font-size:10px;color:#b3261e" title="Remove">✕</button>
-        </form>
+  // First supplier renders 'active' (dark) — visual anchor for the current
+  // selection in the section. Cards are stacked compact: initials badge on
+  // top, name, then category subtitle in the muted line beneath.
+  const supplierCard = (s, i) => {
+    const on = i === 0;
+    return `
+    <div class="card" style="margin:0 0 8px;padding:10px 11px;${on ? "background:#191512;border-color:#191512;color:#fff" : ""}">
+      <div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px">
+        <span style="display:inline-flex;width:28px;height:28px;border-radius:8px;background:${on ? "#2e2a26" : "#f0e7de"};align-items:center;justify-content:center;font-size:10.5px;font-weight:800;color:${on ? "#fff" : "#1a1a1a"};flex:0 0 auto">${escP(initials(s.name))}</span>
+        <div class="row" style="gap:4px;flex:0 0 auto">
+          ${s.mapsUrl ? `<a href="${escP(s.mapsUrl)}" target="_blank" style="font-size:13px;text-decoration:none;opacity:${on ? ".9" : "1"}" title="Open in Maps">📍</a>` : ""}
+          <form method="POST" action="/app/owner/${id}/suppliers/${String(s._id)}/remove" onsubmit="return confirm('Remove ${escP(s.name)}?')" style="margin:0">
+            <button class="btn ghost" style="width:auto;padding:2px 6px;font-size:10px;color:${on ? "#ffb08f" : "#b3261e"};background:transparent;border:0" title="Remove">✕</button>
+          </form>
+        </div>
       </div>
-      ${(s.categories || []).length ? `<div style="margin-top:4px"><span style="font-size:10.5px;color:#6b6560">${(s.categories || []).map(escP).join(" · ")}</span></div>` : ""}
+      <strong style="display:block;font-size:12.5px;margin-top:6px;line-height:1.25">${escP(s.name)}</strong>
+      ${(s.categories || []).length ? `<span style="font-size:10.5px;${on ? "opacity:.7" : "color:#6b6560"}">${(s.categories || []).map((c) => escP(c).toLowerCase()).join(" · ")}</span>` : ""}
     </div>`;
+  };
   return page(shop, "purchasing", "Buying &amp; bills", "මිලදී ගැනීම් සහ බිල්", `
     ${runningLowBlock}
     <div class="row" style="justify-content:space-between;align-items:center;margin-top:14px">
@@ -562,7 +570,7 @@ function purchasingPage(shop, extras = {}) {
       </div>
     </form>
     ${suppliers.length
-      ? `<div style="margin-top:10px">${suppliers.map(supplierCard).join("")}</div>`
+      ? `<div style="margin-top:10px">${suppliers.map((s, i) => supplierCard(s, i)).join("")}</div>`
       : `<div class="sub card" style="margin-top:10px;padding:11px 13px;font-size:12.5px">No suppliers yet — tap <strong style="color:${ORANGE}">+</strong> above to add one.</div>`
     }
     <script>
