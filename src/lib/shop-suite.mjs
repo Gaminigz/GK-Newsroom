@@ -364,14 +364,14 @@ function stockPage(shop, extras = {}) {
           <button class="btn ghost" style="width:auto;padding:6px 10px;font-size:11px;color:#b3261e">✕</button>
         </form>
       </div>
-      <form id="edit-${sid}" method="POST" action="/app/owner/${id}/stock/${sid}/edit" class="editForm" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed #ece3da">
-        <div class="row" style="gap:5px">
-          <input type="number" name="qty" min="0" step="0.1" value="${esc(String(s.qty || ""))}" placeholder="Qty" style="flex:1.2;height:38px;padding:0 8px;font-size:13px;text-align:center;font-weight:700">
-          <select name="unit" style="flex:0 0 auto;width:64px;height:38px;padding:0 4px;border-radius:9px;border:1px solid #e3d6c2;background:#fff;font-size:12px;text-align:center;text-align-last:center">
+      <form id="edit-${sid}" method="POST" action="/app/owner/${id}/stock/${sid}/edit" class="editForm" style="display:none;margin-top:9px;padding-top:9px;border-top:1px dashed #ece3da">
+        <div class="row" style="gap:4px">
+          <input type="number" name="qty" min="0" step="0.1" value="${esc(String(s.qty || ""))}" placeholder="Qty" style="flex:1;min-width:0;height:34px;padding:0 4px;font-size:12px;text-align:center;font-weight:700;border-radius:8px;border:1px solid #e3d6c2">
+          <select name="unit" style="flex:0 0 auto;width:52px;height:34px;padding:0 2px;border-radius:8px;border:1px solid #e3d6c2;background:#fff;font-size:11px;text-align:center;text-align-last:center">
             ${units.map((u) => `<option value="${esc(u)}"${s.unit === u ? " selected" : ""}>${esc(u)}</option>`).join("")}
           </select>
-          <input type="number" name="price" min="0" step="0.01" value="${esc(String(s.price || ""))}" placeholder="${esc(cur.symbol)}" style="flex:1.2;height:38px;padding:0 8px;font-size:13px;text-align:center">
-          <button type="submit" class="btn" style="width:auto;height:38px;padding:0 14px;flex:0 0 auto;font-size:13px">Save</button>
+          <input type="number" name="price" min="0" step="0.01" value="${esc(String(s.price || ""))}" placeholder="${esc(cur.symbol)}" style="flex:1;min-width:0;height:34px;padding:0 4px;font-size:12px;text-align:center;border-radius:8px;border:1px solid #e3d6c2">
+          <button type="submit" class="btn" title="Save" style="width:38px;height:34px;padding:0;flex:0 0 auto;font-size:14px;border-radius:8px">✓</button>
         </div>
       </form>
     </div>`;
