@@ -330,12 +330,16 @@ function stockPage(shop, extras = {}) {
   const catKeys = Object.keys(cats);
   const initials = (n) => n.replace(/[^A-Za-z ]/g, "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "··";
 
-  // Tabs: one per category (Vegi/Meat/Dry/Spices) plus All. Tapping a
+  // Tabs: one per category (Vegi/Meat/Dry/Spices) plus All. The label is
+  // "<stocked>/<available>" — how many items the shop has in stock vs how
+  // many ingredient types the picker offers for that category. Tapping a
   // category tab BOTH filters the stock list AND switches the add-form's
   // ingredient dropdown to that category — one control, not two.
   const countFor = (cat) => stock.filter((s) => s.category === cat).length;
-  const tabs = catKeys.map((c, i) => `<button type="button" class="chip${i === 0 ? " on" : ""}" data-cat="${esc(c)}" onclick="stockTab('${esc(c)}',this)">${esc(c)} · ${countFor(c)}</button>`)
-    .concat([`<button type="button" class="chip" data-cat="All" onclick="stockTab('All',this)">All · ${stock.length}</button>`])
+  const availableFor = (cat) => (cats[cat]?.items?.length ?? 0);
+  const totalAvailable = catKeys.reduce((n, c) => n + availableFor(c), 0);
+  const tabs = catKeys.map((c, i) => `<button type="button" class="chip${i === 0 ? " on" : ""}" data-cat="${esc(c)}" onclick="stockTab('${esc(c)}',this)">${esc(c)} · ${countFor(c)}<span class="sub" style="font-weight:500">/${availableFor(c)}</span></button>`)
+    .concat([`<button type="button" class="chip" data-cat="All" onclick="stockTab('All',this)">All · ${stock.length}<span class="sub" style="font-weight:500">/${totalAvailable}</span></button>`])
     .join("");
 
   // Client-side data: category → its ingredient options (name+unit).
