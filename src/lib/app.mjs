@@ -2470,11 +2470,14 @@ export async function handleApp(req, res, url) {
     // Buying & bills: surface items running low from the shop's own stock
     // + the shop's supplier directory.
     if (shop && m[2] === "purchasing") {
-      const LOW = { kg: 2, L: 2, g: 500, ml: 500, nos: 6, packs: 1, pcs: 5 };
+      const LOW_DEFAULT = { kg: 2, L: 2, g: 500, ml: 500, nos: 6, packs: 1, pcs: 5 };
       const all = await (await col("kitchen_stock"))
         .find({ shopId: m[1] }).toArray();
       extras.runningLow = all
-        .filter((s) => Number(s.qty) <= (LOW[s.unit] ?? 1))
+        .filter((s) => {
+          const threshold = s.minQty != null && s.minQty !== "" ? Number(s.minQty) : (LOW_DEFAULT[s.unit] ?? 1);
+          return Number(s.qty) <= threshold;
+        })
         .sort((a, b) => (Number(a.qty) || 0) - (Number(b.qty) || 0));
       extras.suppliers = await (await col("suppliers"))
         .find({ shopId: m[1] }).sort({ createdAt: 1 }).toArray();
@@ -2600,7 +2603,7 @@ export async function handleApp(req, res, url) {
     return;
   }
 
-  // Kitchen Stock: edit qty / unit / price for an existing item.
+  // Kitchen Stock: edit qty / unit / price / min-max for an existing item.
   m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/stock\/([a-f0-9]{24})\/edit$/);
   if (m && req.method === "POST") {
     const _id = await oid(m[2]);
@@ -2609,7 +2612,11 @@ export async function handleApp(req, res, url) {
       const qty = Math.max(0, Number(form.get("qty")) || 0);
       const price = Math.max(0, Number(form.get("price")) || 0);
       const unit = STOCK_UNITS.includes(form.get("unit")) ? form.get("unit") : undefined;
-      const set = { qty, price, updatedAt: new Date() };
+      const minRaw = form.get("minQty");
+      const maxRaw = form.get("maxQty");
+      const minQty = minRaw != null && minRaw !== "" ? Math.max(0, Number(minRaw)) : null;
+      const maxQty = maxRaw != null && maxRaw !== "" ? Math.max(0, Number(maxRaw)) : null;
+      const set = { qty, price, minQty, maxQty, updatedAt: new Date() };
       if (unit) set.unit = unit;
       await (await col("kitchen_stock")).updateOne({ _id, shopId: m[1] }, { $set: set });
     }

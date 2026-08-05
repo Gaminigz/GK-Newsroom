@@ -382,6 +382,16 @@ function stockPage(shop, extras = {}) {
           <input type="number" name="price" min="0" step="0.01" value="${esc(String(s.price || ""))}" placeholder="${esc(cur.symbol)}" style="min-width:0;height:34px;padding:0 4px;font-size:12px;text-align:center;border-radius:8px;border:1px solid #e3d6c2">
           <button type="submit" class="btn" title="Save" style="min-width:0;width:100%;height:34px;padding:0;font-size:14px;border-radius:8px">✓</button>
         </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px;align-items:center">
+          <div style="position:relative">
+            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:9.5px;font-weight:700;letter-spacing:.04em;color:#b3261e;pointer-events:none">MIN</span>
+            <input type="number" name="minQty" min="0" step="0.1" value="${esc(String(s.minQty ?? ""))}" placeholder="reach → RUNNING LOW" title="When qty falls to this, RUNNING LOW is flagged" style="width:100%;min-width:0;height:32px;padding:0 8px 0 40px;font-size:11.5px;text-align:right;border-radius:8px;border:1px solid #f1c1bb;background:#fff8f5">
+          </div>
+          <div style="position:relative">
+            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:9.5px;font-weight:700;letter-spacing:.04em;color:#1d7a34;pointer-events:none">MAX</span>
+            <input type="number" name="maxQty" min="0" step="0.1" value="${esc(String(s.maxQty ?? ""))}" placeholder="ideal stock level" title="Target stock level after replenishment" style="width:100%;min-width:0;height:32px;padding:0 8px 0 40px;font-size:11.5px;text-align:right;border-radius:8px;border:1px solid #bfe5c8;background:#f4faf5">
+          </div>
+        </div>
       </form>
     </div>`;
   };
