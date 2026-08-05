@@ -369,8 +369,10 @@ function stockPage(shop, extras = {}) {
         </form>
       </div>
       <form id="edit-${sid}" method="POST" action="/app/owner/${id}/stock/${sid}/edit" class="editForm" style="display:none;margin-top:9px;padding-top:9px;border-top:1px dashed #ece3da">
-        <div style="display:grid;grid-template-columns:1fr 56px 1fr 42px;gap:5px;align-items:center">
-          <input type="number" name="qty" min="0" step="0.1" value="${esc(String(s.qty || ""))}" placeholder="Qty" style="min-width:0;height:34px;padding:0 4px;font-size:12px;text-align:center;font-weight:700;border-radius:8px;border:1px solid #e3d6c2">
+        <div style="display:grid;grid-template-columns:32px 1fr 32px 52px 1fr 38px;gap:3px;align-items:center">
+          <button type="button" class="btn ghost stepDown" title="Issue / use stock" style="min-width:0;width:100%;height:34px;padding:0;font-size:16px;font-weight:800;color:#b3261e;border-radius:8px;border:1px solid #f1c1bb">−</button>
+          <input type="number" name="qty" min="0" step="0.1" value="${esc(String(s.qty || ""))}" placeholder="Qty" style="min-width:0;height:34px;padding:0 2px;font-size:12px;text-align:center;font-weight:700;border-radius:8px;border:1px solid #e3d6c2">
+          <button type="button" class="btn ghost stepUp" title="Add to stock" style="min-width:0;width:100%;height:34px;padding:0;font-size:16px;font-weight:800;color:#1d7a34;border-radius:8px;border:1px solid #bfe5c8">+</button>
           <select name="unit" style="min-width:0;height:34px;padding:0 2px;border-radius:8px;border:1px solid #e3d6c2;background:#fff;font-size:11px;text-align:center;text-align-last:center">
             ${units.map((u) => `<option value="${esc(u)}"${s.unit === u ? " selected" : ""}>${esc(u)}</option>`).join("")}
           </select>
@@ -483,6 +485,21 @@ function stockPage(shop, extras = {}) {
         f.style.display = open ? 'none' : 'block';
         if(!open){ var q = f.querySelector('input[name=qty]'); if(q){ q.focus(); q.select(); } }
       });
+    });
+    // − / + quick-adjust: bump qty by 1 (or 0.1 for sub-unit items).
+    function stepQty(row, delta){
+      var q = row.querySelector('input[name=qty]');
+      if(!q) return;
+      var v = Number(q.value) || 0;
+      var step = v < 5 ? 0.5 : 1;
+      var next = Math.max(0, +(v + delta * step).toFixed(2));
+      q.value = String(next);
+    }
+    document.querySelectorAll('.editForm .stepUp').forEach(function(b){
+      b.addEventListener('click', function(){ stepQty(b.closest('.editForm'), 1); });
+    });
+    document.querySelectorAll('.editForm .stepDown').forEach(function(b){
+      b.addEventListener('click', function(){ stepQty(b.closest('.editForm'), -1); });
     });
     </script>`);
 }
