@@ -337,14 +337,19 @@ ${noBack ? "" : `<a class="back${backFloat ? " float" : ""}" href="${back ? esc(
 ${body}
 ${nav}
 <script>
-// When loaded inside the native app's WKWebView (URL has ?native=1), hide
-// the web nav — the native TabView already provides one. sessionStorage
-// keeps the flag sticky across in-page navigation so links stay chromeless.
+// When loaded inside the native app's WKWebView, hide the web .nav bar —
+// the native TabView already provides one. Detection is layered so
+// redirects (which strip ?native=1) still hide the nav:
+//   1. ?native=1 in the URL         (initial load from Swift)
+//   2. sessionStorage 'native'      (sticky within the same WebView)
+//   3. cookie 'native=1'            (set by Swift on WebView creation;
+//                                    survives all server redirects)
 (function(){
   var here = new URLSearchParams(location.search).get('native') === '1';
   var sticky = false;
   try { sticky = sessionStorage.getItem('native') === '1'; } catch(e) {}
-  if (here || sticky) {
+  var viaCookie = /(?:^|;\s*)native=1(?:;|$)/.test(document.cookie);
+  if (here || sticky || viaCookie) {
     try { sessionStorage.setItem('native','1'); } catch(e) {}
     var s = document.createElement('style');
     s.textContent = '.nav{display:none!important} body{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 20px)!important}';

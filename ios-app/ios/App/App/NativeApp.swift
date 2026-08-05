@@ -871,6 +871,15 @@ struct WebViewRepresentable: UIViewRepresentable {
         let store = web.configuration.websiteDataStore.httpCookieStore
         let group = DispatchGroup()
         for c in cookies { group.enter(); store.setCookie(c) { group.leave() } }
+        // A 'native=1' cookie so the server-rendered page can hide its own
+        // .nav bar. Cookies survive redirects (unlike the ?native=1 query
+        // param) and every same-origin request carries it, so any page the
+        // WebView lands on knows it's inside the native app.
+        if let host = API.base.host, let native = HTTPCookie(properties: [
+            .domain: host, .path: "/", .name: "native", .value: "1",
+        ]) {
+            group.enter(); store.setCookie(native) { group.leave() }
+        }
         let target = nativeURL(url)
         group.notify(queue: .main) { web.load(URLRequest(url: target)) }
         context.coordinator.lastReloadKey = reloadKey
