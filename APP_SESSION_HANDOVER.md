@@ -10,26 +10,32 @@ session. The newsroom/feed side is a **separate session** (see
 
 ## 0. STATUS — read this first
 
-### 🔴 The one live blocker: MongoDB is full → app WRITES are blocked
-- The shared Atlas cluster (`MONGO_URL` on the Railway **web** service —
-  `…0e2hg.mongodb.net`, DB `gk_newsroom`) is at **512 MB / 512 MB (free tier)**.
-- **All app writes fail with HTTP 500** — new orders, saving kitchen stock,
-  shop profile, dishes, new shops. Reads all work fine.
-- **Cause:** the newsroom audio blobs fill the cluster —
-  `spice_podcast` 396 MB + `ai_feed_podcast` 152 MB + `gov_podcast` 85 MB ≈ 633 MB.
-  The **app itself only uses ~2 MB.**
-- **Fix is 100% news-side, no app code change:** the news session was asked
-  to delete those audio collections from this cluster (they've copied them to
-  a new Mongo). The moment they delete, storage drops 639 MB → ~2 MB and
-  **writes unblock instantly**. Instructions + safe ordering are at the top of
-  `NEWSROOM_HANDOVER.md` (repoint `/food`+`/ai` to the new cluster BEFORE
-  deleting, or those pages go blank).
-- **How to check if it's cleared:** run a write test —
+### ✅ RESOLVED (2026-08-05 late): Mongo write-block is FIXED
+Earlier today app writes were failing (HTTP 500) because the Mongo cluster was
+full of newsroom audio. **This is now resolved** — the news session migrated
+everything to a new Atlas cluster (single shared `MONGO_URL`, no split needed)
+and deleted 116 audio episodes to get under the free-tier cap.
+
+**Verified working just now:** a real kitchen-stock write returned **303** and
+persisted in Mongo (`Carrot 6 kg @90` confirmed via direct query); `shop_owners`
+data intact; `/app/orders` 200. All app data migrated with parity.
+
+- **No app code change was needed** — `app.mjs`/`shop-suite.mjs` read the new
+  cluster automatically via the same `getDb()`/`MONGO_URL`. Do NOT add
+  `NEWS_MONGO_URL`/`getNewsDb()` (the split plan in `NEWSROOM_HANDOVER.md` was
+  made moot — everything is one cluster).
+- **Update your local `.env`** if you run `npm run web` locally: pull the
+  current `MONGO_URL` with `railway variables --service web` (gitignored, not in
+  the repo). A stale old value points at the now-empty old cluster and makes
+  app data look vanished (it moved, didn't vanish).
+- **⚠️ Not durable:** 131 spice episodes still hold audio in Mongo. If the news
+  session runs `spicecast`/`spicecast:local` again it can re-hit the cap. That's
+  their concern (paid tier or move audio to blob store) — but if app writes
+  start 500ing again, this is why; check `NEWSROOM_HANDOVER.md`.
+- **Re-check anytime** with a write test:
   ```
   railway run --service web node -e "const {MongoClient}=require('mongodb');(async()=>{const c=new MongoClient(process.env.MONGO_URL);await c.connect();const db=c.db(process.env.MONGO_DB||'gk_newsroom');try{await db.collection('kitchen_stock').updateOne({shopId:'_wt',name:'_t'},{\$set:{qty:1}},{upsert:true});await db.collection('kitchen_stock').deleteOne({shopId:'_wt'});console.log('WRITES: unblocked')}catch(e){console.log('WRITES: BLOCKED',e.message.slice(0,60))}await c.close()})()"
   ```
-  When it says "unblocked", verify a real flow: log in as owner and add a
-  kitchen-stock item (should 303, not 500).
 
 ### 🟡 Pending: native App Store / Play resubmission
 All the native changes below are **built and simulator-tested but NOT shipped**
