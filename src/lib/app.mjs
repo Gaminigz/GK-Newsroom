@@ -2031,16 +2031,27 @@ export async function handleApp(req, res, url) {
       html(res, emailLoginPage("Wrong password."), 401);
       return;
     }
+    // Make sure the demo accounts have an app_users row so /app/profile renders
+    // as signed-in (personal Account) — buyer and owner both need this.
+    await (await col("app_users")).updateOne(
+      { email },
+      { $setOnInsert: { email, provider: "email", verified: true, createdAt: new Date() } },
+      { upsert: true },
+    );
     // If this email owns a shop, land on its dashboard; otherwise browse as buyer.
     const ownShop = await (await col("shop_owners")).findOne({ email });
     if (ownShop) {
       res.setHeader("Set-Cookie", [
         `app_user=email; Path=/app; Max-Age=31536000; SameSite=Lax`,
+        `app_email=${encodeURIComponent(email)}; Path=/app; Max-Age=31536000; SameSite=Lax`,
         `app_shop=${String(ownShop._id)}; Path=/app; Max-Age=31536000; SameSite=Lax`,
       ]);
       redirect(res, `/app/owner/${String(ownShop._id)}`);
     } else {
-      res.setHeader("Set-Cookie", `app_user=email; Path=/app; Max-Age=31536000; SameSite=Lax`);
+      res.setHeader("Set-Cookie", [
+        `app_user=email; Path=/app; Max-Age=31536000; SameSite=Lax`,
+        `app_email=${encodeURIComponent(email)}; Path=/app; Max-Age=31536000; SameSite=Lax`,
+      ]);
       redirect(res, "/app/home");
     }
     return;
