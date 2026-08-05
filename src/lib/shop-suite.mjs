@@ -365,13 +365,13 @@ function stockPage(shop, extras = {}) {
         </form>
       </div>
       <form id="edit-${sid}" method="POST" action="/app/owner/${id}/stock/${sid}/edit" class="editForm" style="display:none;margin-top:9px;padding-top:9px;border-top:1px dashed #ece3da">
-        <div class="row" style="gap:4px">
-          <input type="number" name="qty" min="0" step="0.1" value="${esc(String(s.qty || ""))}" placeholder="Qty" style="flex:1;min-width:0;height:34px;padding:0 4px;font-size:12px;text-align:center;font-weight:700;border-radius:8px;border:1px solid #e3d6c2">
-          <select name="unit" style="flex:0 0 auto;width:52px;height:34px;padding:0 2px;border-radius:8px;border:1px solid #e3d6c2;background:#fff;font-size:11px;text-align:center;text-align-last:center">
+        <div style="display:grid;grid-template-columns:1fr 56px 1fr 42px;gap:5px;align-items:center">
+          <input type="number" name="qty" min="0" step="0.1" value="${esc(String(s.qty || ""))}" placeholder="Qty" style="min-width:0;height:34px;padding:0 4px;font-size:12px;text-align:center;font-weight:700;border-radius:8px;border:1px solid #e3d6c2">
+          <select name="unit" style="min-width:0;height:34px;padding:0 2px;border-radius:8px;border:1px solid #e3d6c2;background:#fff;font-size:11px;text-align:center;text-align-last:center">
             ${units.map((u) => `<option value="${esc(u)}"${s.unit === u ? " selected" : ""}>${esc(u)}</option>`).join("")}
           </select>
-          <input type="number" name="price" min="0" step="0.01" value="${esc(String(s.price || ""))}" placeholder="${esc(cur.symbol)}" style="flex:1;min-width:0;height:34px;padding:0 4px;font-size:12px;text-align:center;border-radius:8px;border:1px solid #e3d6c2">
-          <button type="submit" class="btn" title="Save" style="width:38px;height:34px;padding:0;flex:0 0 auto;font-size:14px;border-radius:8px">✓</button>
+          <input type="number" name="price" min="0" step="0.01" value="${esc(String(s.price || ""))}" placeholder="${esc(cur.symbol)}" style="min-width:0;height:34px;padding:0 4px;font-size:12px;text-align:center;border-radius:8px;border:1px solid #e3d6c2">
+          <button type="submit" class="btn" title="Save" style="min-width:0;width:100%;height:34px;padding:0;font-size:14px;border-radius:8px">✓</button>
         </div>
       </form>
     </div>`;
