@@ -559,9 +559,9 @@ function purchasingPage(shop, extras = {}) {
   };
   return page(shop, "purchasing", "Buying &amp; bills", "මිලදී ගැනීම් සහ බිල්", `
     ${runningLowBlock}
-    <div class="row" style="justify-content:space-between;align-items:center;margin-top:14px">
+    <div class="row" style="gap:10px;align-items:center;margin-top:14px">
       <strong style="font-size:14px">Suppliers <span class="si">සැපයුම්කරුවන්</span></strong>
-      <button type="button" id="addSupBtn" title="Add supplier" style="width:34px;height:34px;border-radius:99px;background:${ORANGE};color:#fff;border:0;font-size:20px;font-weight:800;line-height:1;cursor:pointer;box-shadow:0 3px 10px #d9542b40">+</button>
+      <button type="button" id="addSupBtn" title="Add supplier" style="width:28px;height:28px;border-radius:99px;background:${ORANGE};color:#fff;border:0;font-size:17px;font-weight:800;line-height:1;cursor:pointer;box-shadow:0 2px 6px #d9542b40;padding:0">+</button>
     </div>
     <form id="addSupForm" method="POST" action="/app/owner/${id}/suppliers/add" style="display:none;margin-top:10px" class="card" style2="padding:12px 13px">
       <div style="padding:12px 13px">
@@ -609,8 +609,9 @@ function planPage(shop, extras = {}) {
   const id = String(shop._id);
   const cur = extras.currency || { code: "LKR", symbol: "Rs" };
   const storeBuys = extras.storeBuys || [];
+  const suppliers = extras.suppliers || [];
   const escS = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const buyTotal = storeBuys.reduce((n, b) => n + (Number(b.qty) || 0) * (Number(b.price) || 0), 0);
+  const buyTotal = storeBuys.reduce((n, b) => n + (Number(b.buyQty || b.qty) || 0) * (Number(b.price) || 0), 0);
 
   const emptyState = `<div class="card" style="margin-top:14px;padding:16px;text-align:center">
       <div style="font-size:30px">🛒</div>
@@ -625,15 +626,30 @@ function planPage(shop, extras = {}) {
       <span class="sub" style="font-size:12px">${storeBuys.length} item${storeBuys.length === 1 ? "" : "s"}</span>
     </div>
     ${storeBuys.map((b) => {
+      const sid = String(b._id);
       const q = Number(b.qty) || 0;
       const p = Number(b.price) || 0;
-      const line = p > 0 ? Math.round(q * p) : 0;
-      return `<div class="card row" style="margin-top:6px;padding:9px 13px">
-        <div style="flex:1;min-width:0"><strong style="font-size:13px">${escS(b.name)}</strong>
-        <div class="sub" style="font-size:11.5px">${escS(b.category || "")}${b.qty ? ` · ${escS(String(b.qty))} ${escS(b.unit || "")}` : ""}${p > 0 ? ` · ${escS(cur.symbol)} ${p}/${escS(b.unit || "")}` : ""}</div></div>
-        ${line > 0 ? `<span style="font-size:12.5px;font-weight:700;color:#d9542b;flex:0 0 auto">${escS(cur.symbol)} ${line.toLocaleString()}</span>` : ""}
-        <form method="POST" action="/app/owner/${id}/stock/${String(b._id)}/buy" style="margin:0">
-          <button class="btn ghost" style="width:auto;padding:5px 8px;font-size:11px;color:#b3261e" title="Remove from Purchase Plan">✕</button>
+      const bq = b.buyQty != null && b.buyQty !== "" ? Number(b.buyQty) : (Number(b.maxQty) ? Math.max(0, Number(b.maxQty) - q) : 0);
+      const line = p > 0 && bq > 0 ? Math.round(bq * p) : 0;
+      const supplierOptions = suppliers.map((sup) => `<option value="${String(sup._id)}"${String(b.buySupplierId || "") === String(sup._id) ? " selected" : ""}>${escS(sup.name)}</option>`).join("");
+      return `<div class="card" style="margin-top:6px;padding:9px 11px 10px 13px">
+        <div class="row" style="gap:6px">
+          <div style="flex:1;min-width:0">
+            <strong style="font-size:13px">${escS(b.name)}</strong>
+            <div class="sub" style="font-size:11px">${escS(b.category || "")}${b.qty ? ` · in store ${escS(String(b.qty))} ${escS(b.unit || "")}` : ""}${p > 0 ? ` · ${escS(cur.symbol)} ${p}/${escS(b.unit || "")}` : ""}${b.minQty != null ? ` · min ${escS(String(b.minQty))}` : ""}${b.maxQty != null ? ` · max ${escS(String(b.maxQty))}` : ""}</div>
+          </div>
+          ${line > 0 ? `<span style="font-size:12.5px;font-weight:700;color:#d9542b;flex:0 0 auto">${escS(cur.symbol)} ${line.toLocaleString()}</span>` : ""}
+          <form method="POST" action="/app/owner/${id}/stock/${sid}/buy" style="margin:0;flex:0 0 auto">
+            <button class="btn ghost" style="width:auto;padding:5px 7px;font-size:11px;color:#b3261e" title="Remove from Purchasing">✕</button>
+          </form>
+        </div>
+        <form method="POST" action="/app/owner/${id}/stock/${sid}/buy-plan" style="margin-top:8px;display:grid;grid-template-columns:1fr 78px 36px;gap:4px;align-items:center">
+          <select name="buySupplierId" style="min-width:0;height:32px;padding:0 6px;border-radius:8px;border:1px solid #e3d6c2;background:#fff;font-size:11.5px">
+            <option value="">Pick supplier…</option>
+            ${supplierOptions}
+          </select>
+          <input type="number" name="buyQty" min="0" step="0.1" value="${escS(String(b.buyQty ?? ""))}" placeholder="Buy ${escS(b.unit || "qty")}" title="Planned buy quantity in ${escS(b.unit || "unit")}" style="min-width:0;height:32px;padding:0 6px;font-size:11.5px;text-align:center;font-weight:700;border-radius:8px;border:1px solid #e3d6c2">
+          <button type="submit" class="btn" title="Save" style="width:100%;min-width:0;height:32px;padding:0;font-size:13px;border-radius:8px">✓</button>
         </form>
       </div>`;
     }).join("")}

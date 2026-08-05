@@ -2456,6 +2456,9 @@ export async function handleApp(req, res, url) {
       // Items the owner flagged 🛒 in Kitchen Stock — surface at the top.
       extras.storeBuys = await (await col("kitchen_stock"))
         .find({ shopId: m[1], buyNext: true }).sort({ buyNextAt: -1 }).toArray();
+      // Supplier dropdown for each buy line.
+      extras.suppliers = await (await col("suppliers"))
+        .find({ shopId: m[1] }).sort({ name: 1 }).toArray();
     }
     // Kitchen Stock: the categorised ingredient catalogue + the shop's
     // saved store contents.
@@ -2583,6 +2586,23 @@ export async function handleApp(req, res, url) {
     const _id = await oid(m[2]);
     if (_id) await (await col("suppliers")).deleteOne({ _id, shopId: m[1] });
     redirect(res, `/app/owner/${m[1]}/suite/purchasing?msg=${encodeURIComponent("Supplier removed")}`);
+    return;
+  }
+
+  // Purchasing plan: set which supplier will supply this item + planned buy qty.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/stock\/([a-f0-9]{24})\/buy-plan$/);
+  if (m && req.method === "POST") {
+    const _id = await oid(m[2]);
+    if (_id) {
+      const form = await readForm(req);
+      const supRaw = String(form.get("buySupplierId") || "").trim();
+      const buySupplierId = supRaw && /^[a-f0-9]{24}$/i.test(supRaw) ? supRaw : null;
+      const bqRaw = form.get("buyQty");
+      const buyQty = bqRaw != null && bqRaw !== "" ? Math.max(0, Number(bqRaw)) : null;
+      await (await col("kitchen_stock")).updateOne({ _id, shopId: m[1] },
+        { $set: { buySupplierId, buyQty, buyPlanAt: new Date() } });
+    }
+    redirect(res, `/app/owner/${m[1]}/suite/plan?msg=${encodeURIComponent("Saved")}`);
     return;
   }
 
