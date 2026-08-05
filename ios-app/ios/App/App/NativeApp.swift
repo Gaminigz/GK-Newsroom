@@ -828,15 +828,33 @@ struct WebSheet: View {
 // planner, etc.). Non-owners see an "open your shop" prompt.
 
 struct ManagerView: View {
+    // Bumping this key forces WebViewRepresentable to reload the URL, so the
+    // tab always lands back on /app/manager (not wherever the WebView last
+    // navigated to via in-page links).
+    @State private var reloadKey = UUID()
     var body: some View {
-        WebViewRepresentable(url: API.base.appendingPathComponent("/app/manager"))
+        WebViewRepresentable(url: API.base.appendingPathComponent("/app/manager"), reloadKey: reloadKey)
             .navigationBarHidden(true)
             .ignoresSafeArea(.container, edges: .bottom)
+            .onAppear { reloadKey = UUID() }
     }
+}
+
+/// Appends `?native=1` to the URL so the server-rendered page can hide its
+/// own `.nav` bar (the native TabView already provides one — see shell.js).
+private func nativeURL(_ url: URL) -> URL {
+    var comps = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+    var items = comps.queryItems ?? []
+    if !items.contains(where: { $0.name == "native" }) {
+        items.append(URLQueryItem(name: "native", value: "1"))
+    }
+    comps.queryItems = items
+    return comps.url ?? url
 }
 
 struct WebViewRepresentable: UIViewRepresentable {
     let url: URL
+    var reloadKey: UUID? = nil
     func makeUIView(context: Context) -> WKWebView {
         let web = WKWebView()
         // Share the native session (e.g. Apple sign-in cookie) with the web pages.
@@ -844,10 +862,19 @@ struct WebViewRepresentable: UIViewRepresentable {
         let store = web.configuration.websiteDataStore.httpCookieStore
         let group = DispatchGroup()
         for c in cookies { group.enter(); store.setCookie(c) { group.leave() } }
-        group.notify(queue: .main) { web.load(URLRequest(url: url)) }
+        let target = nativeURL(url)
+        group.notify(queue: .main) { web.load(URLRequest(url: target)) }
         return web
     }
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    func updateUIView(_ uiView: WKWebView, context: Context) {
+        // If the reload key changes (e.g. tab reappears), snap back to the
+        // initial URL — don't leave the WebView on whatever page an internal
+        // link navigated it to.
+        let target = nativeURL(url)
+        if reloadKey != nil && uiView.url?.absoluteString != target.absoluteString {
+            uiView.load(URLRequest(url: target))
+        }
+    }
 }
 
 // MARK: - Push registration (native, no web bridge needed)
