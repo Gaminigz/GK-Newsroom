@@ -2,6 +2,29 @@
 
 ---
 
+## ✂️ 2026-08-05 (later still) — spice_podcast trimmed to a 20-episode sample, owner decided against paid Atlas tier
+
+Owner's call: no paid Atlas tier. Instead of chasing full audio coverage
+(and refilling the storage quota wall), `spice_podcast` is now trimmed to
+a **fixed 20-episode sample** with real audio — the rest (219 of 239 docs)
+are text-only, `status: "failed"` with `script` preserved (so re-enabling
+audio for any of them later is just a TTS call, not a rewrite).
+
+Kept (alphabetically first 20 that had audio): `black-pepper`,
+`breadfruit-curry`, `cardamom`, `centella-salad`, `cheese-pastry-bakery`,
+`chicken-giblets-devilled`, `chicken-kottu-roti`, `chicken-roll-bakery`,
+`chili`, `cinnamon`, `cinnamon-quills`, `cloves`, `coriander`, `cumin`,
+`curry-leaves`, `curry-leaves-dried`, `curry-leaves-fresh`,
+`curry-powder-unroasted`, `devilled-chicken`, `egg-hopper-combo`.
+
+`gk_newsroom.dataSize` is now ~162MB (well under the 512MB cap). Writes
+verified healthy. **Do not run `spicecast`/`spicecast:local` in bulk
+again** — if more audio is wanted later, generate it per-id
+(`--id=<spice-id>`) a few at a time and re-check `dbStats.dataSize`
+against 512MB before doing a large batch.
+
+---
+
 ## 🔧 2026-08-05 (later) — REAL incident from the APP session's report: writes WERE blocked, now fixed
 
 The app session's report was correct and I was wrong to call it "settled"
