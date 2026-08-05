@@ -2448,6 +2448,9 @@ export async function handleApp(req, res, url) {
     if (shop && m[2] === "plan") {
       extras.presetDishes = await loadPresetDishes(await col("lanka_dishes"));
       extras.currency = currencyOf(shop);
+      // Items the owner flagged 🛒 in Kitchen Stock — surface at the top.
+      extras.storeBuys = await (await col("kitchen_stock"))
+        .find({ shopId: m[1], buyNext: true }).sort({ buyNextAt: -1 }).toArray();
     }
     // Kitchen Stock: the categorised ingredient catalogue + the shop's
     // saved store contents.
@@ -2531,6 +2534,23 @@ export async function handleApp(req, res, url) {
     const _id = await oid(m[2]);
     if (_id) await (await col("kitchen_stock")).deleteOne({ _id, shopId: m[1] });
     redirect(res, `/app/owner/${m[1]}/suite/stock?msg=${encodeURIComponent("Removed from store")}`);
+    return;
+  }
+
+  // Kitchen Stock: toggle 'buyNext' so the item lands in the Purchase Plan.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/stock\/([a-f0-9]{24})\/buy$/);
+  if (m && req.method === "POST") {
+    const _id = await oid(m[2]);
+    if (_id) {
+      const cur = await (await col("kitchen_stock")).findOne({ _id, shopId: m[1] });
+      const next = !cur?.buyNext;
+      await (await col("kitchen_stock")).updateOne({ _id, shopId: m[1] },
+        { $set: { buyNext: next, buyNextAt: next ? new Date() : null } });
+      const msg = next ? `${cur?.name || "Item"} sent to Purchase Plan` : "Removed from Purchase Plan";
+      redirect(res, `/app/owner/${m[1]}/suite/stock?msg=${encodeURIComponent(msg)}`);
+    } else {
+      redirect(res, `/app/owner/${m[1]}/suite/stock`);
+    }
     return;
   }
 

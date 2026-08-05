@@ -363,9 +363,12 @@ function stockPage(shop, extras = {}) {
         <div style="flex:1;min-width:0"><strong style="font-size:13.5px">${esc(s.name)} <span class="sub" style="font-weight:600">${esc(String(s.qty))} ${esc(s.unit)}</span></strong>
         <div class="sub" style="font-size:11.5px">${esc(s.category)}${s.si ? ` · ${esc(s.si)}` : ""}${s.addedAt ? ` · ${fmtDate(s.addedAt)}` : ""}</div>
         ${price > 0 ? `<div class="sub" style="font-size:11.5px;color:#946200;margin-top:2px">${esc(cur.symbol)} ${price}/${esc(s.unit)} × ${esc(String(s.qty))} = <strong style="color:#d9542b">${esc(cur.symbol)} ${lineTotal.toLocaleString()}</strong></div>` : ""}</div>
-        <button type="button" class="btn ghost editBtn" data-target="edit-${sid}" style="width:auto;padding:6px 9px;font-size:13px;color:#4a443f">✎</button>
+        <button type="button" class="btn ghost editBtn" data-target="edit-${sid}" style="width:auto;padding:6px 9px;font-size:13px;color:#4a443f" title="Edit">✎</button>
+        <form method="POST" action="/app/owner/${id}/stock/${sid}/buy" style="margin:0" title="${s.buyNext ? "Remove from Purchase Plan" : "Send to Purchase Plan"}">
+          <button class="btn ghost" style="width:auto;padding:6px 9px;font-size:13px;${s.buyNext ? "background:#d9542b;border-color:#d9542b;color:#fff" : "color:#1d7a34"}">🛒</button>
+        </form>
         <form method="POST" action="/app/owner/${id}/stock/${sid}/remove" onsubmit="return confirm('Remove ${esc(s.name)} from stock?')" style="margin:0">
-          <button class="btn ghost" style="width:auto;padding:6px 10px;font-size:11px;color:#b3261e">✕</button>
+          <button class="btn ghost" style="width:auto;padding:6px 10px;font-size:11px;color:#b3261e" title="Delete">✕</button>
         </form>
       </div>
       <form id="edit-${sid}" method="POST" action="/app/owner/${id}/stock/${sid}/edit" class="editForm" style="display:none;margin-top:9px;padding-top:9px;border-top:1px dashed #ece3da">
@@ -546,8 +549,33 @@ function planPage(shop, extras = {}) {
   const presetDishes = extras.presetDishes || [];
   const listId = "planDishList";
   const options = presetDishes.map((d) => `<option value="${String(d).replace(/"/g, "&quot;")}">`).join("");
+  const cur = extras.currency || { code: "LKR", symbol: "Rs" };
+  const storeBuys = extras.storeBuys || [];
+  const escS = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const buyTotal = storeBuys.reduce((n, b) => n + (Number(b.qty) || 0) * (Number(b.price) || 0), 0);
+  const storeBuysBlock = storeBuys.length ? `
+    <div class="row" style="justify-content:space-between;margin-top:14px">
+      <strong style="font-size:14px">From your kitchen store <span class="si">ඔබේ ගබඩාවෙන්</span></strong>
+      <span class="sub" style="font-size:12px">${storeBuys.length} item${storeBuys.length === 1 ? "" : "s"}</span>
+    </div>
+    ${storeBuys.map((b) => {
+      const q = Number(b.qty) || 0;
+      const p = Number(b.price) || 0;
+      const line = p > 0 ? Math.round(q * p) : 0;
+      return `<div class="card row" style="margin-top:6px;padding:9px 13px">
+        <div style="flex:1;min-width:0"><strong style="font-size:13px">${escS(b.name)}</strong>
+        <div class="sub" style="font-size:11.5px">${escS(b.category || "")}${b.qty ? ` · ${escS(String(b.qty))} ${escS(b.unit || "")}` : ""}${p > 0 ? ` · ${escS(cur.symbol)} ${p}/${escS(b.unit || "")}` : ""}</div></div>
+        ${line > 0 ? `<span style="font-size:12.5px;font-weight:700;color:#d9542b;flex:0 0 auto">${escS(cur.symbol)} ${line.toLocaleString()}</span>` : ""}
+        <form method="POST" action="/app/owner/${id}/stock/${String(b._id)}/buy" style="margin:0">
+          <button class="btn ghost" style="width:auto;padding:5px 8px;font-size:11px;color:#b3261e" title="Remove from Purchase Plan">✕</button>
+        </form>
+      </div>`;
+    }).join("")}
+    ${buyTotal > 0 ? `<div class="card row" style="margin-top:6px;padding:9px 13px;background:#fdf3d7;border-color:#efdba8"><strong style="flex:1;font-size:12.5px;color:#946200">Subtotal from store</strong><strong style="font-size:13.5px;color:#946200">${escS(cur.symbol)} ${buyTotal.toLocaleString()}</strong></div>` : ""}` : "";
+
   return page(shop, "plan", "Purchase Plan", "මිලදී ගැනීමේ සැලැස්ම", `
     <div class="sub" style="font-size:12.5px;margin-top:8px">Pick the dishes you'll cook and how many people you're serving. 35Ai scales every recipe and builds one shopping list — with approximate market cost.<br><span class="si">කෑම සහ පුද්ගල ගණන දෙන්න — 35Ai අවශ්‍ය අමුද්‍රව්‍ය ප්‍රමාණය හා මිල ගණනය කරයි.</span></div>
+    ${storeBuysBlock}
 
     <!-- Quick headcount presets -->
     <label style="margin-top:14px">HOW MANY PEOPLE? <span class="si">කී දෙනෙක්ද?</span></label>
