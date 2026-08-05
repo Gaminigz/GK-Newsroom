@@ -20,8 +20,8 @@ export const SUITE_TILES = [
   { key: "menu", label: "Plan Menu", emoji: "🍱" },
   { key: "costs", label: "Cost sheet", emoji: "🧮" },
   { key: "stock", label: "Kitchen stock", emoji: "📦" },
-  { key: "purchasing", label: "Purchasing", emoji: "🛒" },
-  { key: "plan", label: "Purchase plan", emoji: "🧾" },
+  { key: "purchasing", label: "Buying & bills", emoji: "🛒" },
+  { key: "plan", label: "Purchasing", emoji: "🧾" },
   { key: "books", label: "Shop accounting", emoji: "📚" },
   { key: "salaries", label: "Staff salaries entries", emoji: "💬" },
   { key: "staff", label: "Staff Pay", emoji: "👥" },
@@ -517,7 +517,7 @@ function purchasingPage(shop) {
     <div class="card row" style="margin:0 0 8px;padding:9px 11px;${qty ? "background:#fdf0ec;border-color:#f3cfc2" : ""}">
       <div style="flex:1;min-width:0"><strong style="font-size:12.5px">${name}</strong><div class="sub" style="font-size:11px">${price}</div></div>
       <span class="sub" style="font-size:15px;padding:0 5px">−</span><strong style="font-size:12.5px;min-width:26px;text-align:center">${qty || 0}</strong><span style="color:${ORANGE};font-size:15px;padding:0 5px">＋</span></div>`;
-  return page(shop, "purchasing", "Purchasing", "මිලදී ගැනීම්", `
+  return page(shop, "purchasing", "Buying &amp; bills", "මිලදී ගැනීම් සහ බිල්", `
     <div class="card" style="margin-top:12px;padding:9px 13px;background:#fdf3d7;border-color:#efdba8">
       <span style="font-size:10.5px;font-weight:800;color:#946200">RUNNING LOW</span>
       <span class="pill" style="font-size:11px;margin-left:6px">Coconut milk · 2 L</span>
@@ -579,7 +579,7 @@ function planPage(shop, extras = {}) {
     ${buyTotal > 0 ? `<div class="card row" style="margin-top:8px;padding:11px 14px;background:#191512;border-color:#191512"><strong style="flex:1;font-size:12px;color:#fff;opacity:.8;letter-spacing:.04em">ESTIMATED TOTAL TO BUY · ${storeBuys.length} ITEMS</strong><strong style="font-size:15px;color:#ffb08f">${escS(cur.symbol)} ${buyTotal.toLocaleString()}</strong></div>` : ""}
     <div class="sub" style="font-size:11px;margin-top:10px">Add or remove items with the 🛒 button on each Kitchen Stock row.</div>` : emptyState;
 
-  return page(shop, "plan", "Purchase Plan", "මිලදී ගැනීමේ සැලැස්ම", `
+  return page(shop, "plan", "Purchasing", "මිලදී ගැනීම්", `
     <div class="sub" style="font-size:12.5px;margin-top:8px">Items you flagged with 🛒 in Kitchen Stock — your shopping list, priced at what you paid last time.<br><span class="si">කුස්සි ගබඩාවේ 🛒 කරන ලද ද්‍රව්‍ය මෙතැන පෙන්වයි.</span></div>
     ${list}`);
 }
