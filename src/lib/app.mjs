@@ -588,6 +588,7 @@ async function userProfilePage(req, flash = "") {
   const c = cookies(req);
   const email = decodeURIComponent(c.app_email || "");
   const u = email ? await (await col("app_users")).findOne({ email }) : null;
+  const ownedShop = email ? await (await col("shop_owners")).findOne({ email }) : null;
   const favIds = (c.app_favs || "").split("|").filter(Boolean);
   const owners = await col("shop_owners");
   const favShops = favIds.length
@@ -650,6 +651,19 @@ async function userProfilePage(req, flash = "") {
       <div class="seg">
         ${["Rice & curry", "Kottu", "Hoppers", "String hoppers", "Short eats", "Bakery", "Sweets"].map((d) => `<label><input type="checkbox" name="cuisine" value="${esc(d)}"${(u.cuisines || []).includes(d) ? " checked" : ""}><span class="opt">${d}</span></label>`).join("")}
       </div>
+      ${ownedShop ? `
+      <label style="margin-top:20px">SHOP PHOTOS <span style="font-weight:400">— 1 front · 2 inside · 3 &amp; 4 dishes</span></label>
+      <div class="sub" style="font-size:11.5px;margin:-2px 0 8px">Live on your shop page. Also editable in Shop Manager → Shop Profile.</div>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        ${[
+          { n: 1, field: "frontPhoto", hint: "shop front", val: ownedShop.frontPhoto || "" },
+          { n: 2, field: "photo2", hint: "inside", val: ownedShop.photo2 || "" },
+          { n: 3, field: "photo3", hint: "dish 1", val: ownedShop.photo3 || "" },
+          { n: 4, field: "photo4", hint: "dish 2", val: ownedShop.photo4 || "" },
+        ].map(({ n, field, hint, val }) => `<label for="ph${n}In" class="thumb" id="ph${n}Box" style="width:calc(50% - 4px);height:110px;font-size:12px;color:#8a827b;cursor:pointer;background-size:cover;background-position:center;position:relative;${val ? `background-image:url(${val})` : ""}"><span id="ph${n}Hint">${val ? "" : hint}</span><span style="position:absolute;right:-6px;bottom:-6px;width:30px;height:30px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;border:2.5px solid #faf7f4;pointer-events:none">📷</span></label>
+        <input type="file" id="ph${n}In" accept="image/*" style="display:none">
+        <input type="hidden" name="${field}" id="ph${n}Data">`).join("")}
+      </div>` : ""}
       <button class="btn" style="margin-top:18px">Save profile</button>
     </form>
     <strong style="display:block;margin:20px 0 8px">Change password — pick one</strong>
@@ -684,6 +698,27 @@ async function userProfilePage(req, flash = "") {
         };
         img.src = URL.createObjectURL(f);
       });
+      // Shop-photo uploads (only present when the user owns a shop)
+      function wirePh(n) {
+        var input = document.getElementById('ph'+n+'In'); if (!input) return;
+        input.addEventListener('change', function(e){
+          var f = e.target.files[0]; if (!f) return;
+          var img = new Image();
+          img.onload = function(){
+            var c = document.createElement('canvas');
+            var sc = Math.min(1, 800 / Math.max(img.width, img.height));
+            c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+            c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+            var data = c.toDataURL('image/jpeg', 0.8);
+            document.getElementById('ph'+n+'Data').value = data;
+            document.getElementById('ph'+n+'Box').style.backgroundImage = 'url(' + data + ')';
+            document.getElementById('ph'+n+'Hint').textContent = '';
+            URL.revokeObjectURL(img.src);
+          };
+          img.src = URL.createObjectURL(f);
+        });
+      }
+      for (var i = 1; i <= 4; i++) wirePh(i);
     </script>`
     : `<a class="btn" style="margin-top:14px;padding:12px" href="/app">Sign in to save favourites</a>
        <div class="sub" style="font-size:11.5px;margin:6px 2px 0">Apple · Google · email — your photo, name, phone and favourites live on the account.</div>`}
@@ -2061,7 +2096,7 @@ export async function handleApp(req, res, url) {
     if (req.method === "POST") {
       const email = decodeURIComponent(cookies(req).app_email || "");
       if (!email) { redirect(res, "/app/profile"); return; }
-      const form = await readForm(req, 600_000);
+      const form = await readForm(req, 3_500_000); // up to 4 shop photos for owners
       const avatar = String(form.get("avatar") || "");
       const avatarOk = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(avatar) && avatar.length < 400_000;
       const phone = String(form.get("phone") || "").trim().slice(0, 24);
@@ -2078,6 +2113,21 @@ export async function handleApp(req, res, url) {
         currency, lang, diet, cuisines,
         ...(avatarOk ? { avatar } : {}),
       } });
+      // If this user owns a shop, also persist the 4 shop photos when supplied.
+      const ownShop = await (await col("shop_owners")).findOne({ email });
+      if (ownShop) {
+        const photoOk = (v) => /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(v) && v.length < 600_000;
+        const shopSet = {};
+        const front = String(form.get("frontPhoto") || "");
+        if (photoOk(front)) shopSet.frontPhoto = front;
+        for (const n of [2, 3, 4]) {
+          const v = String(form.get("photo" + n) || "");
+          if (photoOk(v)) shopSet["photo" + n] = v;
+        }
+        if (Object.keys(shopSet).length) {
+          await (await col("shop_owners")).updateOne({ _id: ownShop._id }, { $set: shopSet });
+        }
+      }
       res.setHeader("Set-Cookie", `app_phone=${encodeURIComponent(phone)}; Path=/app; Max-Age=31536000; SameSite=Lax`);
       html(res, await userProfilePage({ headers: { cookie: (req.headers.cookie || "").replace(/app_phone=[^;]*/, "app_phone=" + encodeURIComponent(phone)) } }, "Profile saved"));
     } else {
