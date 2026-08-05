@@ -607,16 +607,17 @@ async function userProfilePage(req, flash = "") {
     noBack: true,
     toast: flash,
     body: `
-    <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/home">‹</a><h1>Profile</h1></div>
-    ${u ? `
-    <form method="POST" action="/app/profile">
-      <div class="row" style="gap:14px;margin-top:10px">
-        <label for="avIn" class="thumb" id="avBox" style="width:76px;height:76px;border-radius:99px;cursor:pointer;background-size:cover;background-position:center;position:relative;flex:0 0 auto;${u.avatar ? `background-image:url(${u.avatar})` : ""}"><span id="avHint" style="font-size:20px">${u.avatar ? "" : "👤"}</span><span style="position:absolute;right:-4px;bottom:-4px;width:26px;height:26px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;border:2px solid #faf7f4;pointer-events:none">📷</span></label>
-        <div style="flex:1;min-width:0">
-          <strong>${esc(u.name || email)}</strong>
-          <div class="sub" style="font-size:12.5px">${esc(email)} ${u.verified ? '<span style="color:#1d9d4b">✓ verified</span>' : '<a href="/app/verify" style="color:#d92d20;text-decoration:underline">● verify email</a>'}</div>
-        </div>
+    <div class="row" style="gap:10px;align-items:center;margin-top:-26px;padding-right:80px">
+      <a class="back" style="margin:0;flex:0 0 auto" href="/app/home">‹</a>
+      <div style="flex:1;min-width:0">
+        <div class="sub" style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;line-height:1.1">Account</div>
+        <strong style="font-size:17px;line-height:1.15;display:block">${u ? esc(u.name || email) : "Guest"}</strong>
+        <div class="sub" style="font-size:11px;line-height:1.15">${u ? `${esc(email)} ${u.verified ? '<span style="color:#1d9d4b">✓ verified</span>' : '<a href="/app/verify" style="color:#d92d20;text-decoration:underline">● verify email</a>'}` : "Not signed in"}</div>
       </div>
+      ${u ? `<label for="avIn" class="thumb" id="avBox" style="width:52px;height:52px;border-radius:99px;cursor:pointer;background-size:cover;background-position:center;position:relative;flex:0 0 auto;${u.avatar ? `background-image:url(${u.avatar})` : ""}"><span id="avHint" style="font-size:18px">${u.avatar ? "" : "👤"}</span><span style="position:absolute;right:-3px;bottom:-3px;width:22px;height:22px;border-radius:99px;background:#d9542b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;border:2px solid #faf7f4;pointer-events:none">📷</span></label>` : ""}
+    </div>
+    ${u ? `
+    <form method="POST" action="/app/profile" style="margin-top:14px">
       <input type="file" id="avIn" accept="image/*" style="display:none">
       <input type="hidden" name="avatar" id="avData">
       <label>NAME</label>
@@ -658,12 +659,11 @@ async function userProfilePage(req, flash = "") {
         img.src = URL.createObjectURL(f);
       });
     </script>`
-    : `<div class="card" style="margin-top:10px"><strong>Sign in to manage your profile</strong>
-       <div class="sub" style="font-size:12.5px;margin:4px 0 10px">Use the same account you sign in with — Apple, Google or email. Your photo, name, phone and favourites live on it.</div>
-       <a class="btn" style="padding:11px" href="/app">Sign in</a></div>`}
-    <strong style="display:block;margin:20px 0 8px">★ My favourites</strong>
-    ${favShops.map((sh) => shopRow(sh, "★ favourite")).join("") || `<div class="sub card">Hold a shop pin on the map or tap ☆ on a shop page to save it here.</div>`}
-    ${usedShops.length ? `<strong style="display:block;margin:16px 0 8px">Ordered before</strong>${usedShops.map((sh) => shopRow(sh, "ordered before")).join("")}` : ""}`,
+    : `<a class="btn" style="margin-top:14px;padding:12px" href="/app">Sign in to save favourites</a>
+       <div class="sub" style="font-size:11.5px;margin:6px 2px 0">Apple · Google · email — your photo, name, phone and favourites live on the account.</div>`}
+    <strong style="display:block;margin:18px 0 6px;font-size:14px">★ My favourites</strong>
+    ${favShops.map((sh) => shopRow(sh, "★ favourite")).join("") || `<div class="sub card" style="padding:11px 13px;margin:0;font-size:12.5px">Tap ☆ on a shop page or long-press a map pin to save it here.</div>`}
+    ${usedShops.length ? `<strong style="display:block;margin:14px 0 6px;font-size:14px">Ordered before</strong>${usedShops.map((sh) => shopRow(sh, "ordered before")).join("")}` : ""}`,
   });
 }
 
