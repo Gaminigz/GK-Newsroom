@@ -624,32 +624,91 @@ struct ShopsMapView: View {
 
 struct AccountView: View {
     @AppStorage("signedInEmail") private var signedInEmail = ""
+    @AppStorage("signedInProvider") private var signedInProvider = ""
     @State private var webURL: IdentifiedURL?
 
+    /// Refresh sign-in state from the WKWebView cookie jar (where web sign-in
+    /// actually stores cookies). Any web sign-in (Email / SMS / Guest) sets
+    /// `app_email` + `app_user`; we mirror that into @AppStorage so this view
+    /// knows the user is in.
+    private func refreshFromCookies() {
+        WKWebsiteDataStore.default().httpCookieStore.getAllCookies { cookies in
+            let ours = cookies.filter { $0.domain.contains("railway.app") || $0.domain.contains("web-production") }
+            let email = ours.first(where: { $0.name == "app_email" })?.value.removingPercentEncoding
+            let provider = ours.first(where: { $0.name == "app_user" })?.value
+            DispatchQueue.main.async {
+                if let email = email, !email.isEmpty {
+                    signedInEmail = email
+                    signedInProvider = provider ?? signedInProvider
+                }
+            }
+        }
+    }
+
+    private func providerLabel(_ p: String) -> String {
+        switch p {
+        case "apple": return "Apple"
+        case "google": return "Google"
+        case "email": return "email"
+        case "sms": return "SMS"
+        case "guest": return "Guest"
+        default: return "your account"
+        }
+    }
+
     var body: some View {
+        list
+    }
+
+    @ViewBuilder
+    private var list: some View {
+        if #available(iOS 17.0, *) {
+            listBody.listSectionSpacing(6)
+        } else {
+            listBody
+        }
+    }
+
+    private var listBody: some View {
         List {
             Section {
                 if signedInEmail.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Sign in to sync your favourites and verify your account. Browsing and ordering work without an account too.")
-                            .font(.footnote).foregroundColor(.secondary)
-                        SignInWithAppleButton(.signIn) { req in
-                            req.requestedScopes = [.email, .fullName]
-                        } onCompletion: { result in
-                            Task { await handleApple(result) }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Sign in to sync favourites & orders. Browsing works without an account.")
+                            .font(.caption2).foregroundColor(.secondary)
+                        // 2×2 grid — matches the web welcome page (Apple · Email · SMS · Guest)
+                        HStack(spacing: 6) {
+                            SignInWithAppleButton(.signIn) { req in
+                                req.requestedScopes = [.email, .fullName]
+                            } onCompletion: { result in
+                                Task { await handleApple(result) }
+                            }
+                            .frame(height: 40)
+                            .signInWithAppleButtonStyle(.black)
+                            webSignInButton("✉︎  Email", path: "/app")
                         }
-                        .frame(height: 46)
-                        .signInWithAppleButtonStyle(.black)
-                    }.padding(.vertical, 6)
+                        HStack(spacing: 6) {
+                            webSignInButton("💬  SMS", path: "/app")
+                            webSignInButton("👀  Guest", path: "/app")
+                        }
+                    }.padding(.vertical, 2)
                 } else {
                     HStack {
                         Image(systemName: "checkmark.seal.fill").foregroundColor(.green)
                         VStack(alignment: .leading) {
-                            Text("Signed in with Apple").font(.subheadline.weight(.semibold))
+                            Text("Signed in with \(providerLabel(signedInProvider))")
+                                .font(.subheadline.weight(.semibold))
                             Text(signedInEmail).font(.caption).foregroundColor(.secondary)
                         }
                         Spacer()
-                        Button("Sign out") { signedInEmail = "" }.font(.caption)
+                        Button("Sign out") {
+                            signedInEmail = ""; signedInProvider = ""
+                            WKWebsiteDataStore.default().httpCookieStore.getAllCookies { cookies in
+                                for c in cookies where c.domain.contains("railway.app") || c.domain.contains("web-production") {
+                                    WKWebsiteDataStore.default().httpCookieStore.delete(c)
+                                }
+                            }
+                        }.font(.caption)
                     }
                 }
             }
@@ -688,7 +747,25 @@ struct AccountView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Account")
-        .sheet(item: $webURL) { u in WebSheet(url: u.url, title: u.title) }
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $webURL, onDismiss: { refreshFromCookies() }) { u in WebSheet(url: u.url, title: u.title) }
+        .onAppear { refreshFromCookies() }
+    }
+
+    @ViewBuilder
+    func webSignInButton(_ label: String, path: String) -> some View {
+        Button {
+            webURL = IdentifiedURL(url: API.base.appendingPathComponent(path), title: "Sign in")
+        } label: {
+            Text(label)
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 40)
+                .foregroundColor(.primary)
+                .background(Color(UIColor.systemBackground))
+                .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color(UIColor.separator)))
+                .clipShape(RoundedRectangle(cornerRadius: 9))
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -718,6 +795,7 @@ struct AccountView: View {
         if !name.isEmpty { fields["name"] = name }
         if let status = try? await Net.postForm("/app/auth/apple", fields: fields), status == 200 {
             signedInEmail = cred.email ?? "Apple ID"
+            signedInProvider = "apple"
         }
     }
 }
