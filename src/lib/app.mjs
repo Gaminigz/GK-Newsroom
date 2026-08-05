@@ -2467,6 +2467,18 @@ export async function handleApp(req, res, url) {
       extras.stock = await (await col("kitchen_stock"))
         .find({ shopId: m[1] }).sort({ category: 1, name: 1 }).toArray();
     }
+    // Buying & bills: surface items running low from the shop's own stock
+    // + the shop's supplier directory.
+    if (shop && m[2] === "purchasing") {
+      const LOW = { kg: 2, L: 2, g: 500, ml: 500, nos: 6, packs: 1, pcs: 5 };
+      const all = await (await col("kitchen_stock"))
+        .find({ shopId: m[1] }).toArray();
+      extras.runningLow = all
+        .filter((s) => Number(s.qty) <= (LOW[s.unit] ?? 1))
+        .sort((a, b) => (Number(a.qty) || 0) - (Number(b.qty) || 0));
+      extras.suppliers = await (await col("suppliers"))
+        .find({ shopId: m[1] }).sort({ createdAt: 1 }).toArray();
+    }
     const pageHtml = shop ? suitePage(shop, m[2], extras) : null;
     if (pageHtml) { html(res, pageHtml); return; }
     res.writeHead(404).end("not found");
@@ -2539,6 +2551,35 @@ export async function handleApp(req, res, url) {
     const _id = await oid(m[2]);
     if (_id) await (await col("kitchen_stock")).deleteOne({ _id, shopId: m[1] });
     redirect(res, `/app/owner/${m[1]}/suite/stock?msg=${encodeURIComponent("Removed from store")}`);
+    return;
+  }
+
+  // Suppliers: add a new supplier to the shop's directory.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/suppliers\/add$/);
+  if (m && req.method === "POST") {
+    const form = await readForm(req);
+    const name = String(form.get("name") || "").trim().slice(0, 80);
+    let mapsUrl = String(form.get("mapsUrl") || "").trim().slice(0, 300);
+    if (mapsUrl && !/^https?:\/\//.test(mapsUrl)) mapsUrl = "https://" + mapsUrl;
+    const validCats = new Set(["Vegi", "Meat", "Dry", "Spice"]);
+    const cats = (form.getAll ? form.getAll("cat") : []).filter((c) => validCats.has(c));
+    if (name) {
+      await (await col("suppliers")).insertOne({
+        shopId: m[1], name, mapsUrl, categories: cats, createdAt: new Date(),
+      });
+      redirect(res, `/app/owner/${m[1]}/suite/purchasing?msg=${encodeURIComponent(`${name} added`)}`);
+    } else {
+      redirect(res, `/app/owner/${m[1]}/suite/purchasing?msg=${encodeURIComponent("Supplier name required")}`);
+    }
+    return;
+  }
+
+  // Suppliers: remove a supplier from the directory.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/suppliers\/([a-f0-9]{24})\/remove$/);
+  if (m && req.method === "POST") {
+    const _id = await oid(m[2]);
+    if (_id) await (await col("suppliers")).deleteOne({ _id, shopId: m[1] });
+    redirect(res, `/app/owner/${m[1]}/suite/purchasing?msg=${encodeURIComponent("Supplier removed")}`);
     return;
   }
 

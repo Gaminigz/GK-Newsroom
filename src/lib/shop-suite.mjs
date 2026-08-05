@@ -507,41 +507,77 @@ function stockPage(shop, extras = {}) {
     </script>`);
 }
 
-function purchasingPage(shop) {
-  const supplier = (init, name, sub, on) => `
-    <div class="card" style="margin:0 0 8px;padding:10px 11px;${on ? "background:#191512;border-color:#191512;color:#fff" : ""}">
-      <span style="display:inline-flex;width:26px;height:26px;border-radius:8px;background:${on ? "#2e2a26" : "#f0e7de"};align-items:center;justify-content:center;font-size:10.5px;font-weight:800;color:${on ? "#fff" : "#1a1a1a"}">${init}</span>
-      <strong style="display:block;font-size:12px;margin-top:5px">${name}</strong>
-      <span style="font-size:10px;opacity:.7">${sub}</span></div>`;
-  const item = (name, price, qty) => `
-    <div class="card row" style="margin:0 0 8px;padding:9px 11px;${qty ? "background:#fdf0ec;border-color:#f3cfc2" : ""}">
-      <div style="flex:1;min-width:0"><strong style="font-size:12.5px">${name}</strong><div class="sub" style="font-size:11px">${price}</div></div>
-      <span class="sub" style="font-size:15px;padding:0 5px">−</span><strong style="font-size:12.5px;min-width:26px;text-align:center">${qty || 0}</strong><span style="color:${ORANGE};font-size:15px;padding:0 5px">＋</span></div>`;
-  return page(shop, "purchasing", "Buying &amp; bills", "මිලදී ගැනීම් සහ බිල්", `
+function purchasingPage(shop, extras = {}) {
+  const id = String(shop._id);
+  const runningLow = extras.runningLow || [];
+  const suppliers = extras.suppliers || [];
+  const escP = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const initials = (n) => String(n || "").replace(/[^A-Za-z ]/g, "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "··";
+  // Each low-stock item becomes a form-button that queues itself into
+  // Purchasing (same /stock/:id/buy toggle used from Kitchen Stock).
+  const lowPill = (s) => `
+    <form method="POST" action="/app/owner/${id}/stock/${String(s._id)}/buy" style="display:inline;margin:0" title="Send to Purchasing">
+      <button class="pill" style="font-size:11px;margin-left:6px;background:${s.buyNext ? "#d9542b" : "#fff"};color:${s.buyNext ? "#fff" : "#946200"};border:1px solid ${s.buyNext ? "#d9542b" : "#efdba8"};cursor:pointer">${escP(s.name)} · ${escP(String(s.qty || 0))} ${escP(s.unit || "")}${s.buyNext ? " ✓" : ""}</button>
+    </form>`;
+  const runningLowBlock = runningLow.length ? `
     <div class="card" style="margin-top:12px;padding:9px 13px;background:#fdf3d7;border-color:#efdba8">
-      <span style="font-size:10.5px;font-weight:800;color:#946200">RUNNING LOW</span>
-      <span class="pill" style="font-size:11px;margin-left:6px">Coconut milk · 2 L</span>
-      <span class="pill" style="font-size:11px">Chicken · 4.5 kg</span>
-      <span class="pill" style="font-size:11px">Red lentils · 800 g</span></div>
-    <div class="row" style="gap:12px;margin-top:14px;align-items:flex-start">
-      <div style="flex:0 0 116px">
-        <div class="sub" style="font-size:10.5px;letter-spacing:.04em;margin-bottom:8px">SUPPLIERS</div>
-        ${supplier("MM", "New Manning Market", "veg · meat · fish", true)}
-        ${supplier("CA", "Ceylon Agro Traders", "rice · dry goods")}
-        ${supplier("LF", "Lanka Fresh Coconut", "coconut · oil")}
-        <span style="color:${ORANGE};font-size:11.5px;font-weight:700">+ Add supplier</span>
+      <span style="font-size:10.5px;font-weight:800;color:#946200">RUNNING LOW · ${runningLow.length}</span>
+      ${runningLow.map(lowPill).join("")}
+    </div>` : `
+    <div class="card" style="margin-top:12px;padding:11px 13px;background:#e8f6ec;border-color:#bfe5c8">
+      <span style="font-size:11.5px;font-weight:700;color:#1d7a34">✓ Store is well stocked — nothing is running low right now.</span>
+    </div>`;
+  const supplierCard = (s) => `
+    <div class="card" style="margin:0 0 8px;padding:10px 11px">
+      <div class="row" style="gap:8px;align-items:center">
+        <span style="display:inline-flex;width:28px;height:28px;border-radius:8px;background:#f0e7de;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;color:#1a1a1a;flex:0 0 auto">${escP(initials(s.name))}</span>
+        <strong style="flex:1;min-width:0;font-size:12.5px;line-height:1.2">${escP(s.name)}</strong>
+        ${s.mapsUrl ? `<a href="${escP(s.mapsUrl)}" target="_blank" style="flex:0 0 auto;font-size:13px;text-decoration:none" title="Open in Maps">📍</a>` : ""}
+        <form method="POST" action="/app/owner/${id}/suppliers/${String(s._id)}/remove" onsubmit="return confirm('Remove ${escP(s.name)}?')" style="margin:0">
+          <button class="btn ghost" style="width:auto;padding:3px 7px;font-size:10px;color:#b3261e" title="Remove">✕</button>
+        </form>
       </div>
-      <div style="flex:1;min-width:0">
-        <div class="sub" style="font-size:10.5px;letter-spacing:.04em;margin-bottom:8px">NEW MANNING MARKET — PRICE LIST</div>
-        ${item("Coconut", "$0.50 / LKR 160 / pc", "4 pc")}
-        ${item("Red rice", "$0.99 / LKR 320 / kg", "2 kg")}
-        ${item("White rice", "$0.81 / LKR 260 / kg")}
-        ${item("Chicken (curry cut)", "$3.56 / LKR 1,150 / kg")}
-        ${item("Coconut milk", "$1.49 / LKR 480 / L", "1 L")}
-      </div></div>
-    <div class="card row" style="margin-top:12px;padding:12px 14px;background:${ORANGE};border-color:${ORANGE}">
-      <div style="flex:1;color:#fff"><strong style="font-size:13px">Purchase plan · 3 items · auto-created</strong></div>
-      <strong style="color:#fff">$5.46 / LKR 1,760</strong></div>`);
+      ${(s.categories || []).length ? `<div style="margin-top:4px"><span style="font-size:10.5px;color:#6b6560">${(s.categories || []).map(escP).join(" · ")}</span></div>` : ""}
+    </div>`;
+  return page(shop, "purchasing", "Buying &amp; bills", "මිලදී ගැනීම් සහ බිල්", `
+    ${runningLowBlock}
+    <div class="row" style="justify-content:space-between;align-items:center;margin-top:14px">
+      <strong style="font-size:14px">Suppliers <span class="si">සැපයුම්කරුවන්</span></strong>
+      <button type="button" id="addSupBtn" title="Add supplier" style="width:34px;height:34px;border-radius:99px;background:${ORANGE};color:#fff;border:0;font-size:20px;font-weight:800;line-height:1;cursor:pointer;box-shadow:0 3px 10px #d9542b40">+</button>
+    </div>
+    <form id="addSupForm" method="POST" action="/app/owner/${id}/suppliers/add" style="display:none;margin-top:10px" class="card" style2="padding:12px 13px">
+      <div style="padding:12px 13px">
+        <label style="margin-top:0">SUPPLIER NAME</label>
+        <input type="text" name="name" required placeholder="e.g. New Manning Market" style="height:38px;font-size:13.5px">
+        <label>GOOGLE MAPS LOCATION <span style="font-weight:400">— Maps → Share → Copy link</span></label>
+        <input type="text" name="mapsUrl" placeholder="https://maps.app.goo.gl/…" style="height:38px;font-size:13px">
+        <label>CATEGORIES <span style="font-weight:400">— pick what they supply</span></label>
+        <div class="seg" style="gap:6px">
+          ${["Vegi", "Meat", "Dry", "Spice"].map((c) => `<label><input type="checkbox" name="cat" value="${c}"><span class="opt">${c}</span></label>`).join("")}
+        </div>
+        <div class="row" style="gap:8px;margin-top:14px">
+          <button type="button" id="cancelSup" class="btn ghost" style="flex:1">Cancel</button>
+          <button type="submit" class="btn" style="flex:2">Save supplier</button>
+        </div>
+      </div>
+    </form>
+    ${suppliers.length
+      ? `<div style="margin-top:10px">${suppliers.map(supplierCard).join("")}</div>`
+      : `<div class="sub card" style="margin-top:10px;padding:11px 13px;font-size:12.5px">No suppliers yet — tap <strong style="color:${ORANGE}">+</strong> above to add one.</div>`
+    }
+    <script>
+      (function(){
+        var openBtn = document.getElementById('addSupBtn');
+        var form = document.getElementById('addSupForm');
+        var cancel = document.getElementById('cancelSup');
+        if(!openBtn || !form) return;
+        function open(){ form.style.display=''; openBtn.style.transform='rotate(45deg)'; var n=form.querySelector('input[name=name]'); if(n) n.focus(); }
+        function close(){ form.style.display='none'; openBtn.style.transform=''; }
+        openBtn.addEventListener('click', function(){ form.style.display==='none' ? open() : close(); });
+        openBtn.style.transition = 'transform .15s';
+        if(cancel) cancel.addEventListener('click', close);
+      })();
+    </script>`);
 }
 
 function planPage(shop, extras = {}) {
