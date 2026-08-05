@@ -2534,6 +2534,23 @@ export async function handleApp(req, res, url) {
     return;
   }
 
+  // Kitchen Stock: edit qty / unit / price for an existing item.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/stock\/([a-f0-9]{24})\/edit$/);
+  if (m && req.method === "POST") {
+    const _id = await oid(m[2]);
+    if (_id) {
+      const form = await readForm(req);
+      const qty = Math.max(0, Number(form.get("qty")) || 0);
+      const price = Math.max(0, Number(form.get("price")) || 0);
+      const unit = STOCK_UNITS.includes(form.get("unit")) ? form.get("unit") : undefined;
+      const set = { qty, price, updatedAt: new Date() };
+      if (unit) set.unit = unit;
+      await (await col("kitchen_stock")).updateOne({ _id, shopId: m[1] }, { $set: set });
+    }
+    redirect(res, `/app/owner/${m[1]}/suite/stock?msg=${encodeURIComponent("Updated")}`);
+    return;
+  }
+
   // AI: generate per-serving ingredient recipe for a Sri Lankan dish name.
   // Cached in `app_dish_recipes` (keyed by lowercased dish name) — repeat
   // queries for the same dish don't re-hit Gemini.

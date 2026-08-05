@@ -351,14 +351,28 @@ function stockPage(shop, extras = {}) {
   const stockRow = (s) => {
     const price = Number(s.price) || 0;
     const lineTotal = price > 0 ? Math.round(price * (Number(s.qty) || 0)) : 0;
+    const sid = String(s._id);
     return `
-    <div class="card row stockrow" data-cat="${esc(s.category)}" style="margin-top:9px;padding:11px 13px">
-      <span style="width:36px;height:36px;border-radius:10px;background:#f0e7de;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11.5px;flex:0 0 auto">${esc(initials(s.name))}</span>
-      <div style="flex:1;min-width:0"><strong style="font-size:13.5px">${esc(s.name)} <span class="sub" style="font-weight:600">${esc(String(s.qty))} ${esc(s.unit)}</span></strong>
-      <div class="sub" style="font-size:11.5px">${esc(s.category)}${s.si ? ` · ${esc(s.si)}` : ""}${s.addedAt ? ` · ${fmtDate(s.addedAt)}` : ""}</div>
-      ${price > 0 ? `<div class="sub" style="font-size:11.5px;color:#946200;margin-top:2px">${esc(cur.symbol)} ${price}/${esc(s.unit)} × ${esc(String(s.qty))} = <strong style="color:#d9542b">${esc(cur.symbol)} ${lineTotal.toLocaleString()}</strong></div>` : ""}</div>
-      <form method="POST" action="/app/owner/${id}/stock/${String(s._id)}/remove" onsubmit="return confirm('Remove ${esc(s.name)} from stock?')" style="margin:0">
-        <button class="btn ghost" style="width:auto;padding:6px 10px;font-size:11px;color:#b3261e">✕</button>
+    <div class="card stockrow" data-cat="${esc(s.category)}" style="margin-top:9px;padding:11px 13px">
+      <div class="row">
+        <span style="width:36px;height:36px;border-radius:10px;background:#f0e7de;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11.5px;flex:0 0 auto">${esc(initials(s.name))}</span>
+        <div style="flex:1;min-width:0"><strong style="font-size:13.5px">${esc(s.name)} <span class="sub" style="font-weight:600">${esc(String(s.qty))} ${esc(s.unit)}</span></strong>
+        <div class="sub" style="font-size:11.5px">${esc(s.category)}${s.si ? ` · ${esc(s.si)}` : ""}${s.addedAt ? ` · ${fmtDate(s.addedAt)}` : ""}</div>
+        ${price > 0 ? `<div class="sub" style="font-size:11.5px;color:#946200;margin-top:2px">${esc(cur.symbol)} ${price}/${esc(s.unit)} × ${esc(String(s.qty))} = <strong style="color:#d9542b">${esc(cur.symbol)} ${lineTotal.toLocaleString()}</strong></div>` : ""}</div>
+        <button type="button" class="btn ghost editBtn" data-target="edit-${sid}" style="width:auto;padding:6px 9px;font-size:13px;color:#4a443f">✎</button>
+        <form method="POST" action="/app/owner/${id}/stock/${sid}/remove" onsubmit="return confirm('Remove ${esc(s.name)} from stock?')" style="margin:0">
+          <button class="btn ghost" style="width:auto;padding:6px 10px;font-size:11px;color:#b3261e">✕</button>
+        </form>
+      </div>
+      <form id="edit-${sid}" method="POST" action="/app/owner/${id}/stock/${sid}/edit" class="editForm" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed #ece3da">
+        <div class="row" style="gap:5px">
+          <input type="number" name="qty" min="0" step="0.1" value="${esc(String(s.qty || ""))}" placeholder="Qty" style="flex:1.2;height:38px;padding:0 8px;font-size:13px;text-align:center;font-weight:700">
+          <select name="unit" style="flex:0 0 auto;width:64px;height:38px;padding:0 4px;border-radius:9px;border:1px solid #e3d6c2;background:#fff;font-size:12px;text-align:center;text-align-last:center">
+            ${units.map((u) => `<option value="${esc(u)}"${s.unit === u ? " selected" : ""}>${esc(u)}</option>`).join("")}
+          </select>
+          <input type="number" name="price" min="0" step="0.01" value="${esc(String(s.price || ""))}" placeholder="${esc(cur.symbol)}" style="flex:1.2;height:38px;padding:0 8px;font-size:13px;text-align:center">
+          <button type="submit" class="btn" style="width:auto;height:38px;padding:0 14px;flex:0 0 auto;font-size:13px">Save</button>
+        </div>
       </form>
     </div>`;
   };
@@ -454,6 +468,18 @@ function stockPage(shop, extras = {}) {
       document.getElementById('stockAddForm').submit();
     }
     fillIngredients();
+    // Pencil icons open the inline edit form for each stock row.
+    document.querySelectorAll('.editBtn').forEach(function(b){
+      b.addEventListener('click', function(){
+        var f = document.getElementById(b.dataset.target);
+        if(!f) return;
+        var open = f.style.display !== 'none';
+        // Close other open edit forms so at most one is expanded.
+        document.querySelectorAll('.editForm').forEach(function(x){ x.style.display='none'; });
+        f.style.display = open ? 'none' : 'block';
+        if(!open){ var q = f.querySelector('input[name=qty]'); if(q){ q.focus(); q.select(); } }
+      });
+    });
     </script>`);
 }
 
