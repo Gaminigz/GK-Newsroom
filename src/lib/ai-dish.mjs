@@ -11,6 +11,51 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { LANKA_DISHES_FLAT, LANKA_DISHES_150 } from "../data/lanka-dishes-150.mjs";
+import { SPICES } from "../data/spices.ts";
+
+/* -------------------------------------------------------------------------
+ * Catalogue-first recipe resolver.
+ *
+ * The 247-dish catalogue (spices.ts) already carries a 5-person ingredient
+ * table for every prepared dish. We resolve recipes from THAT first — it's
+ * free, instant, works offline, and dodges the Gemini spend cap entirely.
+ * Gemini is only a last resort for dishes not in the catalogue.
+ * ---------------------------------------------------------------------- */
+
+const CATALOGUE_BY_NAME = new Map(
+  SPICES.filter((s) => Array.isArray(s.ingredients) && s.ingredients.length)
+    .map((s) => [s.name.toLowerCase(), s]),
+);
+
+/** Parse a "5-person" quantity string ("300 g", "1/2 tsp", "2 sprigs",
+ *  "1 medium", "as needed") into { quantity, unit }. Non-numeric amounts
+ *  return quantity:null (e.g. "to taste"). */
+function parseQty5(qty5) {
+  const s = String(qty5 || "").trim().toLowerCase();
+  if (!s || /as needed|to taste/.test(s)) return { quantity: null, unit: "" };
+  const m = s.match(/^([\d.]+(?:\/\d+)?)\s*(.*)$/);
+  if (!m) return { quantity: null, unit: s };
+  let num;
+  if (m[1].includes("/")) { const [a, b] = m[1].split("/").map(Number); num = b ? a / b : null; }
+  else num = parseFloat(m[1]);
+  if (num == null || Number.isNaN(num)) return { quantity: null, unit: m[2].trim() };
+  return { quantity: num, unit: m[2].trim() };
+}
+
+/** Look up a dish in the catalogue and return a per-serving recipe in the
+ *  same shape Gemini produces: { servings, ingredients:[{name,quantity,unit,notes}] }.
+ *  Returns null if the dish isn't in the catalogue. */
+export function catalogueRecipe(dishName) {
+  const s = CATALOGUE_BY_NAME.get(String(dishName || "").trim().toLowerCase());
+  if (!s) return null;
+  const ingredients = s.ingredients.map((ing) => {
+    const { quantity, unit } = parseQty5(ing.qty5);
+    // qty5 is for 5 servings → normalise to one serving.
+    const perServing = quantity != null ? Math.round((quantity / 5) * 100) / 100 : null;
+    return { name: ing.name, nameSi: ing.nameSi || "", quantity: perServing, unit, notes: "" };
+  });
+  return { servings: 1, ingredients, methodSummary: "" };
+}
 
 /** Seed list used to bootstrap the Mongo `lanka_dishes` collection.
  *  At runtime the app should call `loadPresetDishes(col)` to get the
@@ -133,8 +178,15 @@ const SYSTEM_PROMPT = `You are a Sri Lankan cooking expert. Given a dish name, p
 export async function generateRecipe(dishName, mongoCollection) {
   const key = String(dishName || "").trim().toLowerCase();
   if (!key) return { ok: false, error: "empty dish name" };
-  const cached = await mongoCollection.findOne({ _id: key });
-  if (cached && cached.recipe) return { ok: true, recipe: cached.recipe, cached: true };
+  // 1) Mongo cache (best data — real Gemini output with g/ml/piece units).
+  try {
+    const cached = await mongoCollection.findOne({ _id: key });
+    if (cached && cached.recipe) return { ok: true, recipe: cached.recipe, cached: true };
+  } catch { /* read hiccup — fall through to catalogue */ }
+  // 2) Catalogue (free, instant, offline — covers all prepared dishes).
+  const cat = catalogueRecipe(dishName);
+  if (cat && cat.ingredients.length) return { ok: true, recipe: cat, cached: true, source: "catalogue" };
+  // 3) Gemini — last resort for dishes not in the catalogue.
   if (!process.env.GEMINI_API_KEY) return { ok: false, error: "GEMINI_API_KEY not configured on the server" };
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -151,7 +203,8 @@ export async function generateRecipe(dishName, mongoCollection) {
     let recipe;
     try { recipe = JSON.parse(text); } catch { return { ok: false, error: "AI returned non-JSON" }; }
     if (!recipe || !Array.isArray(recipe.ingredients)) return { ok: false, error: "AI response missing ingredients" };
-    await mongoCollection.updateOne({ _id: key }, { $set: { _id: key, recipe, updatedAt: new Date() } }, { upsert: true });
+    // Best-effort cache — ignore write failures (e.g. Mongo storage full).
+    try { await mongoCollection.updateOne({ _id: key }, { $set: { _id: key, recipe, updatedAt: new Date() } }, { upsert: true }); } catch { /* non-fatal */ }
     return { ok: true, recipe };
   } catch (e) {
     return { ok: false, error: e.message || "AI call failed" };
