@@ -649,7 +649,10 @@ function planPage(shop, extras = {}) {
             ${supplierOptions}
           </select>
           <input type="number" name="buyQty" min="0" step="0.1" value="${escS(String(b.buyQty ?? ""))}" placeholder="Buy ${escS(b.unit || "qty")}" title="Planned buy quantity in ${escS(b.unit || "unit")}" style="min-width:0;height:32px;padding:0 6px;font-size:11.5px;text-align:center;font-weight:700;border-radius:8px;border:1px solid #e3d6c2">
-          <button type="submit" class="btn" title="Save" style="width:100%;min-width:0;height:32px;padding:0;font-size:13px;border-radius:8px">✓</button>
+          ${b.buySupplierId && Number(b.buyQty) > 0
+            ? `<button type="submit" title="Saved — tap to update" style="width:100%;min-width:0;height:32px;padding:0;font-size:13px;border-radius:8px;background:#fff;color:#1d7a34;border:1px solid #bfe5c8;font-weight:700">✓</button>`
+            : `<button type="submit" class="btn" title="Save" style="width:100%;min-width:0;height:32px;padding:0;font-size:13px;border-radius:8px">✓</button>`
+          }
         </form>
       </div>`;
     }).join("")}
