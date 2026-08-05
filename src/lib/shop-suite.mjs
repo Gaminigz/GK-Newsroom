@@ -521,6 +521,9 @@ function purchasingPage(shop, extras = {}) {
   const id = String(shop._id);
   const runningLow = extras.runningLow || [];
   const suppliers = extras.suppliers || [];
+  const itemsBySupplier = extras.itemsBySupplier || {};
+  const selectedSupplierId = extras.selectedSupplierId || "";
+  const cur = extras.currency || { code: "LKR", symbol: "Rs" };
   const escP = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const initials = (n) => String(n || "").replace(/[^A-Za-z ]/g, "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "··";
   // Each low-stock item becomes a form-button that queues itself into
@@ -537,26 +540,56 @@ function purchasingPage(shop, extras = {}) {
     <div class="card" style="margin-top:12px;padding:11px 13px;background:#e8f6ec;border-color:#bfe5c8">
       <span style="font-size:11.5px;font-weight:700;color:#1d7a34">✓ Store is well stocked — nothing is running low right now.</span>
     </div>`;
-  // First supplier renders 'active' (dark) — visual anchor for the current
-  // selection in the section. Cards are stacked compact: initials badge on
-  // top, name, then category subtitle in the muted line beneath.
-  const supplierCard = (s, i) => {
-    const on = i === 0;
+  // Whole card is a clickable link that toggles ?sup=<id> so the items
+  // panel below reveals what that supplier is going to supply. Selected
+  // supplier renders 'active' (dark). Remove ✕ and map 📍 stopPropagation
+  // so they can be tapped without collapsing/re-opening the panel.
+  const supplierCard = (s) => {
+    const sid = String(s._id);
+    const on = selectedSupplierId === sid;
+    const count = (itemsBySupplier[sid] || []).length;
+    const href = on ? "?native=1" : `?sup=${sid}&native=1`;
     return `
-    <div class="card" style="margin:0 0 6px;padding:10px 11px;min-width:0;${on ? "background:#191512;border-color:#191512;color:#fff" : ""}">
+    <a href="${href}" class="card" style="display:block;text-decoration:none;color:inherit;margin:0;padding:10px 11px;min-width:0;${on ? "background:#191512;border-color:#191512;color:#fff" : ""}">
       <div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px">
         <span style="display:inline-flex;width:28px;height:28px;border-radius:8px;background:${on ? "#2e2a26" : "#f0e7de"};align-items:center;justify-content:center;font-size:10.5px;font-weight:800;color:${on ? "#fff" : "#1a1a1a"};flex:0 0 auto">${escP(initials(s.name))}</span>
-        <div class="row" style="gap:4px;flex:0 0 auto">
-          ${s.mapsUrl ? `<a href="${escP(s.mapsUrl)}" target="_blank" style="font-size:13px;text-decoration:none;opacity:${on ? ".9" : "1"}" title="Open in Maps">📍</a>` : ""}
-          <form method="POST" action="/app/owner/${id}/suppliers/${String(s._id)}/remove" onsubmit="return confirm('Remove ${escP(s.name)}?')" style="margin:0">
+        <div class="row" style="gap:6px;flex:0 0 auto;align-items:center">
+          ${count > 0 ? `<span style="font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:99px;background:${on ? "#ffb08f" : "#fdf3d7"};color:${on ? "#191512" : "#946200"}">${count}</span>` : ""}
+          ${s.mapsUrl ? `<a href="${escP(s.mapsUrl)}" target="_blank" onclick="event.stopPropagation()" style="font-size:13px;text-decoration:none;opacity:${on ? ".9" : "1"}" title="Open in Maps">📍</a>` : ""}
+          <form method="POST" action="/app/owner/${id}/suppliers/${sid}/remove" onsubmit="event.stopPropagation();return confirm('Remove ${escP(s.name)}?')" style="margin:0" onclick="event.stopPropagation()">
             <button class="btn ghost" style="width:auto;padding:2px 6px;font-size:10px;color:${on ? "#ffb08f" : "#b3261e"};background:transparent;border:0" title="Remove">✕</button>
           </form>
         </div>
       </div>
       <strong style="display:block;font-size:12.5px;margin-top:6px;line-height:1.25">${escP(s.name)}</strong>
       ${(s.categories || []).length ? `<span style="font-size:10.5px;${on ? "opacity:.7" : "color:#6b6560"}">${(s.categories || []).map((c) => escP(c).toLowerCase()).join(" · ")}</span>` : ""}
-    </div>`;
+    </a>`;
   };
+
+  const selectedSupplier = selectedSupplierId ? suppliers.find((s) => String(s._id) === selectedSupplierId) : null;
+  const selItems = selectedSupplier ? (itemsBySupplier[selectedSupplierId] || []) : [];
+  const selTotal = selItems.reduce((n, it) => n + (Number(it.buyQty) || 0) * (Number(it.price) || 0), 0);
+  const selectedItemsBlock = selectedSupplier ? `
+    <div class="card" style="margin-top:12px;padding:12px 13px;border-color:#191512">
+      <div class="row" style="justify-content:space-between;align-items:baseline">
+        <strong style="font-size:13.5px">${escP(selectedSupplier.name)} <span class="sub" style="font-weight:500;font-size:11.5px">· ${selItems.length} item${selItems.length === 1 ? "" : "s"}</span></strong>
+        <a href="?native=1" style="font-size:11px;color:#b3261e;text-decoration:none">close ✕</a>
+      </div>
+      ${selItems.length === 0
+        ? `<div class="sub" style="font-size:12px;margin-top:8px">No items yet — go to <strong>Purchasing</strong> and pick <strong>${escP(selectedSupplier.name)}</strong> as the supplier on any 🛒 item.</div>`
+        : `${selItems.map((it) => {
+            const bq = Number(it.buyQty) || 0;
+            const price = Number(it.price) || 0;
+            const line = bq * price;
+            return `<div class="row" style="margin-top:8px;padding-top:8px;border-top:1px dashed #ece3da;gap:8px">
+              <div style="flex:1;min-width:0"><strong style="font-size:12.5px">${escP(it.name)}</strong>
+              <div class="sub" style="font-size:11px">buy ${bq} ${escP(it.unit || "")}${price > 0 ? ` · ${escP(cur.symbol)} ${price}/${escP(it.unit || "")}` : ""}</div></div>
+              ${line > 0 ? `<strong style="font-size:12.5px;color:#d9542b">${escP(cur.symbol)} ${line.toLocaleString()}</strong>` : ""}
+            </div>`;
+          }).join("")}
+          ${selTotal > 0 ? `<div class="row" style="justify-content:space-between;margin-top:10px;padding:9px 11px;background:#191512;color:#fff;border-radius:10px"><strong style="font-size:11.5px;opacity:.8;letter-spacing:.04em">TOTAL FROM ${escP(selectedSupplier.name.toUpperCase())}</strong><strong style="font-size:14px;color:#ffb08f">${escP(cur.symbol)} ${selTotal.toLocaleString()}</strong></div>` : ""}`
+      }
+    </div>` : "";
   return page(shop, "purchasing", "Buying &amp; bills", "මිලදී ගැනීම් සහ බිල්", `
     ${runningLowBlock}
     <div class="row" style="gap:10px;align-items:center;margin-top:14px">
@@ -580,14 +613,11 @@ function purchasingPage(shop, extras = {}) {
       </div>
     </form>
     ${suppliers.length
-      ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;align-items:start">
-          <div style="max-height:340px;overflow-y:auto;padding-right:4px;-webkit-overflow-scrolling:touch">
-            ${suppliers.map((s, i) => supplierCard(s, i)).join("")}
-          </div>
-          <div class="sub card" style="margin:0;padding:14px 12px;text-align:center;font-size:11.5px;background:#fdf7ee;border-color:#efe0c8;color:#946200">
-            Tap a supplier to see their price list <span class="si" style="display:block;margin-top:3px">මිල ලැයිස්තුව</span>
-          </div>
-        </div>`
+      ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;max-height:${selectedSupplier ? "220px" : "420px"};overflow-y:auto;padding:2px 4px 2px 0;-webkit-overflow-scrolling:touch">
+          ${suppliers.map((s) => supplierCard(s)).join("")}
+        </div>
+        ${selectedItemsBlock}
+        ${!selectedSupplier ? `<div class="sub" style="font-size:11.5px;margin-top:8px;text-align:center;color:#946200">Tap a supplier above to see what they'll be delivering <span class="si">— සැපයුම්කරු තෝරන්න</span></div>` : ""}`
       : `<div class="sub card" style="margin-top:10px;padding:11px 13px;font-size:12.5px">No suppliers yet — tap <strong style="color:${ORANGE}">+</strong> above to add one.</div>`
     }
     <script>

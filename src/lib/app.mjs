@@ -2484,6 +2484,19 @@ export async function handleApp(req, res, url) {
         .sort((a, b) => (Number(a.qty) || 0) - (Number(b.qty) || 0));
       extras.suppliers = await (await col("suppliers"))
         .find({ shopId: m[1] }).sort({ createdAt: 1 }).toArray();
+      // Count of items assigned to each supplier, keyed by supplier _id string.
+      extras.itemsBySupplier = {};
+      for (const it of all) {
+        if (it.buySupplierId) {
+          const k = String(it.buySupplierId);
+          (extras.itemsBySupplier[k] = extras.itemsBySupplier[k] || []).push(it);
+        }
+      }
+      // Which supplier is currently expanded (?sup=<id> in the URL)?
+      const supId = url.searchParams.get("sup");
+      if (supId && /^[a-f0-9]{24}$/i.test(supId)) {
+        extras.selectedSupplierId = supId;
+      }
     }
     const pageHtml = shop ? suitePage(shop, m[2], extras) : null;
     if (pageHtml) { html(res, pageHtml); return; }
