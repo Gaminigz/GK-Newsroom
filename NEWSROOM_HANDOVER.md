@@ -33,6 +33,32 @@ since there's only one cluster now, but if the app session added any new
 `seed:lanka`-style writes assuming a second connection, point them at
 `MONGO_URL` like everything else.
 
+### How the APP session should proceed from here
+
+1. **No code changes needed.** Don't touch `mongo.ts`, don't add
+   `getNewsDb()`/`NEWS_MONGO_URL` — `app.mjs`/`shop-suite.mjs` already read
+   the new cluster automatically via the existing `getDb()`/`MONGO_URL`.
+2. **Update your local `.env`** (it's gitignored, this repo doesn't carry the
+   credential) — pull the current value with
+   `railway variables --service web` (or ask the news session/Gamini for it)
+   and set `MONGO_URL` to match, so local `npm run web` hits the same cluster
+   as production. If your local `.env` still has the old
+   `...tt0e2hg...`-style string, it's stale — the old cluster's
+   `gk_newsroom` DB is empty now, so local runs against the old value will
+   look like all app data vanished (it didn't — it moved).
+3. **Verify your own flows for real, not just HTTP 200.** The news session
+   spot-checked route status codes and body sizes; it did not exercise
+   app-specific writes. Before calling this closed on your end, confirm
+   against the new cluster: login/session creation (`app_users`), placing an
+   order (`app_orders`), `shop_owners` dashboard data, `kitchen_stock`
+   read/write, and push token registration (`push_tokens`) — these are the
+   collections most likely to surface a subtle miss.
+4. **Network Access List is already open** (`0.0.0.0/0` on the new cluster),
+   so Railway and any dev machine can connect — nothing to change there.
+5. **Railway env vars are already updated** on both `web` and `newsroom`
+   services — nothing to set there either. This is purely a "make sure your
+   local dev + your mental model match prod" step.
+
 ---
 
 ## 🚨 2026-08-05 — MONGO SPLIT: repoint news reads BEFORE deleting old data (from the APP session)
