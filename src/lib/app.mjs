@@ -336,6 +336,22 @@ ${hideLogout ? "" : `<a class="logout" id="logoutBtn" href="/app/logout" hidden>
 ${noBack ? "" : `<a class="back${backFloat ? " float" : ""}" href="${back ? esc(back) : "/app"}" onclick="${back ? "" : "if(history.length>1){history.back();return false}"}">‹</a>`}
 ${body}
 ${nav}
+<script>
+// When loaded inside the native app's WKWebView (URL has ?native=1), hide
+// the web nav — the native TabView already provides one. sessionStorage
+// keeps the flag sticky across in-page navigation so links stay chromeless.
+(function(){
+  var here = new URLSearchParams(location.search).get('native') === '1';
+  var sticky = false;
+  try { sticky = sessionStorage.getItem('native') === '1'; } catch(e) {}
+  if (here || sticky) {
+    try { sessionStorage.setItem('native','1'); } catch(e) {}
+    var s = document.createElement('style');
+    s.textContent = '.nav{display:none!important} body{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 20px)!important}';
+    document.head.appendChild(s);
+  }
+})();
+</script>
 ${NATIVE_BRIDGE}
 </body>
 </html>`;
