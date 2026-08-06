@@ -16,7 +16,7 @@ const ORANGE = "#d9542b";
  *  Table QR is not in the grid — it sits top-right under the Logout pill. */
 export const SUITE_TILES = [
   { key: "dishes", label: "Setup Daily Menu", emoji: "🍛", real: (id) => `/app/owner/${id}/dishes` },
-  { key: "dashboard", label: "Dashboard", emoji: "📊" },
+  { key: "pos", label: "POS", emoji: "💳" },
   { key: "menu", label: "Plan Menu", emoji: "🍱" },
   { key: "costs", label: "Cost sheet", emoji: "🧮" },
   { key: "stock", label: "Kitchen stock", emoji: "📦" },
@@ -27,6 +27,7 @@ export const SUITE_TILES = [
   { key: "staff", label: "Staff Pay", emoji: "👥" },
   { key: "utilities", label: "Utilities Pay", emoji: "💡" },
   { key: "books", label: "Shop accounting", emoji: "📚" },
+  { key: "dashboard", label: "Dashboard", emoji: "📊" },
   { key: "health", label: "Business health", emoji: "❤️" },
 ];
 
@@ -96,6 +97,98 @@ const statusPill = (txt, kind) => {
 };
 
 /* --------------------------------------------------------- the screens */
+
+function posPage(shop, extras = {}) {
+  const id = String(shop._id);
+  const dishes = extras.dishes || [];
+  const todaysSales = extras.todaysSales || { count: 0, total: 0 };
+  const cur = extras.currency || { code: "LKR", symbol: "Rs" };
+  const escT = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const dishCard = (d) => `
+    <button type="button" class="posDish" data-id="${String(d._id)}" data-name="${escT(d.name)}" data-price="${Number(d.price) || 0}" style="display:flex;flex-direction:column;align-items:stretch;padding:0;background:#fff;border:1px solid #ece3da;border-radius:12px;overflow:hidden;cursor:pointer;text-align:left">
+      <div style="aspect-ratio:1.2;background:${d.photo ? `url('${escT(d.photo)}') center/cover` : "#f0e7de"};display:flex;align-items:flex-end;padding:6px 8px;color:#fff;text-shadow:0 1px 3px #0006"></div>
+      <div style="padding:7px 9px 8px">
+        <strong style="display:block;font-size:12px;line-height:1.2">${escT(d.name)}</strong>
+        <span class="sub" style="font-size:11px;color:#d9542b;font-weight:700">${escT(cur.symbol)} ${(Number(d.price) || 0).toLocaleString()}</span>
+      </div>
+    </button>`;
+  return page(shop, "pos", "POS", "වට්ටෝරුව", `
+    <div class="sub" style="font-size:12px;margin-top:8px;line-height:1.5">Tap a dish to add to the bill — tap it again to add another. Ring up when the customer's ready.<br><span class="si" style="font-size:12.4px">කෑමක් තෝරන්න · ඉගුන්න බිල් කරන්න.</span></div>
+
+    <!-- Running total pinned near top -->
+    <div id="posTotalBar" class="row" style="margin-top:12px;padding:11px 14px;background:#191512;border-color:#191512;border-radius:14px;color:#fff;justify-content:space-between">
+      <strong style="font-size:12px;opacity:.8;letter-spacing:.04em">CURRENT BILL · <span id="posCount">0</span> ITEM(S)</strong>
+      <strong style="font-size:15px;color:#ffb08f"><span id="posSymbol">${escT(cur.symbol)}</span> <span id="posTotal">0</span></strong>
+    </div>
+
+    ${dishes.length ? `
+      <label style="margin-top:14px">TAP TO ADD</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${dishes.map(dishCard).join("")}
+      </div>
+    ` : `<div class="sub card" style="margin-top:12px;padding:11px 13px;font-size:12.5px">No dishes yet — add some in <strong>Setup Daily Menu</strong> first, then come back.</div>`}
+
+    <label style="margin-top:16px">CURRENT BILL <span class="si">වර්තමාන බිල්</span></label>
+    <div id="posBasket" class="sub" style="font-size:12.5px">No items yet — tap a dish above.</div>
+
+    <div id="posRingWrap" style="display:none;margin-top:14px">
+      <button type="button" id="posClear" class="btn ghost" style="width:auto;padding:9px 14px;font-size:12px;color:#b3261e;margin-right:6px">Clear</button>
+      <button type="button" id="posRing" class="btn" style="width:auto;padding:12px 22px;font-size:14px">Ring up · <span id="posRingLabel">Rs 0</span></button>
+    </div>
+
+    <div style="margin-top:22px;padding-top:12px;border-top:1px solid #ece3da">
+      <div class="row" style="justify-content:space-between">
+        <strong style="font-size:13px">Today's sales <span class="si">අද විකුණුම්</span></strong>
+        <span class="sub" style="font-size:12px">${todaysSales.count} bill${todaysSales.count === 1 ? "" : "s"} · ${escT(cur.symbol)} ${todaysSales.total.toLocaleString()}</span>
+      </div>
+    </div>
+
+    <script>
+      var CUR_SYM = '${escT(cur.symbol)}';
+      var basket = [];  // [{id, name, price, qty}]
+      function render(){
+        var box = document.getElementById('posBasket');
+        var count = basket.reduce(function(n,i){return n+i.qty;},0);
+        var total = basket.reduce(function(n,i){return n+i.qty*i.price;},0);
+        document.getElementById('posCount').textContent = count;
+        document.getElementById('posTotal').textContent = total.toLocaleString();
+        document.getElementById('posRingLabel').textContent = CUR_SYM + ' ' + total.toLocaleString();
+        document.getElementById('posRingWrap').style.display = count ? 'block' : 'none';
+        if(!count){ box.innerHTML = 'No items yet — tap a dish above.'; return; }
+        box.innerHTML = basket.map(function(i,idx){
+          return '<div class="row" style="padding:6px 0;border-bottom:1px solid #ece3da;font-size:12.5px">'
+            + '<span style="flex:1;min-width:0"><strong>'+i.name+'</strong> <span class="sub">'+CUR_SYM+' '+i.price+' × '+i.qty+'</span></span>'
+            + '<strong style="color:#d9542b">'+CUR_SYM+' '+(i.price*i.qty).toLocaleString()+'</strong>'
+            + '<button type="button" data-idx="'+idx+'" class="posRm" style="background:none;border:0;color:#b3261e;font-size:14px;padding:0 4px;margin-left:6px;cursor:pointer">✕</button>'
+            + '</div>';
+        }).join('');
+        document.querySelectorAll('.posRm').forEach(function(b){
+          b.addEventListener('click', function(){ basket.splice(Number(b.dataset.idx),1); render(); });
+        });
+      }
+      document.querySelectorAll('.posDish').forEach(function(d){
+        d.addEventListener('click', function(){
+          var id = d.dataset.id, name = d.dataset.name, price = Number(d.dataset.price)||0;
+          var line = basket.find(function(l){return l.id===id;});
+          if(line){ line.qty++; } else { basket.push({id:id,name:name,price:price,qty:1}); }
+          render();
+        });
+      });
+      document.getElementById('posClear').addEventListener('click', function(){ basket = []; render(); });
+      document.getElementById('posRing').addEventListener('click', function(){
+        if(!basket.length) return;
+        var btn = document.getElementById('posRing');
+        btn.disabled = true; btn.textContent = 'Ringing up…';
+        fetch('/app/owner/${id}/pos/ring', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({items: basket})
+        })
+        .then(function(r){ if(r.ok) location.reload(); else { btn.disabled=false; btn.textContent='Ring up · '+CUR_SYM+' '+basket.reduce(function(n,i){return n+i.qty*i.price;},0).toLocaleString(); }})
+        .catch(function(){ btn.disabled=false; });
+      });
+    </script>`);
+}
 
 function dashboardPage(shop) {
   const row = (init, name, sub, price, st, kind) => `
@@ -1139,7 +1232,7 @@ function healthPage(shop) {
 const PAGES = {
   dashboard: dashboardPage, menu: menuPage, costs: costsPage, stock: stockPage,
   purchasing: purchasingPage, plan: planPage, books: booksPage,
-  history: billHistoryPage,
+  history: billHistoryPage, pos: posPage,
   salaries: salariesPage, staff: staffPage, utilities: utilitiesPage, health: healthPage,
 };
 

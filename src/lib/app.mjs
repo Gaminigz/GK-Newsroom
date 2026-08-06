@@ -2462,6 +2462,19 @@ export async function handleApp(req, res, url) {
       // dishes added via the newsroom without needing a code redeploy.
       extras.presetDishes = await loadPresetDishes(await col("lanka_dishes"));
     }
+    // POS needs the shop's dishes (with price + photo) + today's sales totals.
+    if (shop && m[2] === "pos") {
+      extras.currency = currencyOf(shop);
+      extras.dishes = await (await col("app_dishes"))
+        .find({ shopId: m[1], type: { $ne: "set" } }).sort({ createdAt: -1 }).toArray();
+      const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+      const bills = await (await col("pos_sales"))
+        .find({ shopId: m[1], createdAt: { $gte: startOfDay } }).toArray();
+      extras.todaysSales = {
+        count: bills.length,
+        total: bills.reduce((n, b) => n + (Number(b.total) || 0), 0),
+      };
+    }
     // Purchase Planner also needs the dish catalogue for its dish picker.
     if (shop && m[2] === "plan") {
       extras.presetDishes = await loadPresetDishes(await col("lanka_dishes"));
@@ -2646,6 +2659,25 @@ export async function handleApp(req, res, url) {
     } else {
       redirect(res, `/app/owner/${m[1]}/suite/purchasing?msg=${encodeURIComponent("Supplier name required")}`);
     }
+    return;
+  }
+
+  // POS: ring up a sale — accepts JSON {items:[{id,name,price,qty}]}.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/pos\/ring$/);
+  if (m && req.method === "POST") {
+    const body = await readBody(req, 60_000);
+    let doc;
+    try { doc = JSON.parse(body || "{}"); } catch { doc = {}; }
+    const items = Array.isArray(doc.items) ? doc.items.slice(0, 40) : [];
+    const cleaned = items
+      .filter((i) => i && typeof i.name === "string" && i.name.length <= 80 && Number(i.price) >= 0 && Number(i.qty) > 0 && Number(i.qty) <= 999)
+      .map((i) => ({ name: String(i.name).slice(0, 80), price: Number(i.price) || 0, qty: Math.min(999, Math.round(Number(i.qty))) }));
+    if (!cleaned.length) { res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: false, error: "empty basket" })); return; }
+    const total = cleaned.reduce((n, i) => n + i.price * i.qty, 0);
+    await (await col("pos_sales")).insertOne({
+      shopId: m[1], items: cleaned, total, createdAt: new Date(),
+    });
+    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true, total }));
     return;
   }
 
