@@ -2508,6 +2508,12 @@ export async function handleApp(req, res, url) {
           (extras.itemsBySupplier[k] = extras.itemsBySupplier[k] || []).push(it);
         }
       }
+      // Bill photo counts per supplier so each card can show a badge.
+      const billCounts = await (await col("supplier_bills")).aggregate([
+        { $match: { shopId: m[1] } },
+        { $group: { _id: "$supplierId", n: { $sum: 1 } } },
+      ]).toArray();
+      extras.billsBySupplier = Object.fromEntries(billCounts.map((b) => [String(b._id), b.n]));
       // Which supplier is currently expanded (?sup=<id> in the URL)?
       const supId = url.searchParams.get("sup");
       if (supId && /^[a-f0-9]{24}$/i.test(supId)) {
@@ -2606,6 +2612,22 @@ export async function handleApp(req, res, url) {
     } else {
       redirect(res, `/app/owner/${m[1]}/suite/purchasing?msg=${encodeURIComponent("Supplier name required")}`);
     }
+    return;
+  }
+
+  // Suppliers: upload a bill photo (Base64 JPEG data URI).
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/suppliers\/([a-f0-9]{24})\/bills$/);
+  if (m && req.method === "POST") {
+    const form = await readForm(req, 5_000_000);
+    const image = String(form.get("image") || "");
+    if (!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(image) || image.length > 4_500_000) {
+      res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: false, error: "bad image" }));
+      return;
+    }
+    await (await col("supplier_bills")).insertOne({
+      shopId: m[1], supplierId: m[2], image, uploadedAt: new Date(),
+    });
+    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
     return;
   }
 

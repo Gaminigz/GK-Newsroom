@@ -523,6 +523,7 @@ function purchasingPage(shop, extras = {}) {
   const runningLow = extras.runningLow || [];
   const suppliers = extras.suppliers || [];
   const itemsBySupplier = extras.itemsBySupplier || {};
+  const billsBySupplier = extras.billsBySupplier || {};
   const selectedSupplierId = extras.selectedSupplierId || "";
   const cur = extras.currency || { code: "LKR", symbol: "Rs" };
   const escP = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -562,6 +563,7 @@ function purchasingPage(shop, extras = {}) {
     const count = (itemsBySupplier[sid] || []).length;
     const href = on ? "?native=1" : `?sup=${sid}&native=1`;
     const accent = supAccent(s);
+    const billCount = (billsBySupplier[sid] || 0);
     return `
     <div class="card supCard" data-href="${href}" role="button" tabindex="0" style="cursor:pointer;margin:0;padding:10px 11px 10px 13px;min-width:0;border-left:4px solid ${accent};${on ? "background:#191512;border-color:#191512;border-left-color:" + accent + ";color:#fff" : "background:" + supTint(s)}">
       <div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px">
@@ -569,6 +571,10 @@ function purchasingPage(shop, extras = {}) {
         <div class="row" style="gap:6px;flex:0 0 auto;align-items:center">
           ${count > 0 ? `<span style="font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:99px;background:${on ? "#ffb08f" : "#fdf3d7"};color:${on ? "#191512" : "#946200"}">${count}</span>` : ""}
           ${s.mapsUrl ? `<a href="${escP(s.mapsUrl)}" target="_blank" onclick="event.stopPropagation()" style="font-size:13px;text-decoration:none;opacity:${on ? ".9" : "1"}" title="Open in Maps">📍</a>` : ""}
+          <label onclick="event.stopPropagation()" style="cursor:pointer;position:relative;font-size:13px;opacity:${on ? ".9" : "1"};line-height:1" title="Add a bill photo (camera or library)">
+            🧾${billCount > 0 ? `<span style="position:absolute;top:-4px;right:-8px;background:${accent};color:#fff;font-size:9px;font-weight:800;border-radius:99px;padding:1px 5px;min-width:14px;text-align:center">${billCount}</span>` : ""}
+            <input type="file" accept="image/*" class="billIn" data-supplier="${sid}" style="display:none" onclick="event.stopPropagation()">
+          </label>
           <form method="POST" action="/app/owner/${id}/suppliers/${sid}/remove" onsubmit="event.stopPropagation();return confirm('Remove ${escP(s.name)}?')" style="margin:0" onclick="event.stopPropagation()">
             <button class="btn ghost" style="width:auto;padding:2px 6px;font-size:10px;color:${on ? "#ffb08f" : "#b3261e"};background:transparent;border:0" title="Remove">✕</button>
           </form>
@@ -657,8 +663,32 @@ function purchasingPage(shop, extras = {}) {
         // because they wrap a nested map link and a remove form).
         document.querySelectorAll('.supCard').forEach(function(c){
           c.addEventListener('click', function(e){
-            if(e.target.closest('a,form,button')) return;
+            if(e.target.closest('a,form,button,label,input')) return;
             var href = c.getAttribute('data-href'); if(href) location.href = href;
+          });
+        });
+        // 🧾 bill photo uploader per supplier. Picks camera or library on
+        // iOS (native sheet), resizes client-side to 1200px JPEG, POSTs.
+        document.querySelectorAll('.billIn').forEach(function(inp){
+          inp.addEventListener('change', function(e){
+            var f = e.target.files[0]; if(!f) return;
+            var sid = inp.dataset.supplier;
+            var img = new Image();
+            img.onload = function(){
+              var c = document.createElement('canvas');
+              var sc = Math.min(1, 1200 / Math.max(img.width, img.height));
+              c.width = Math.round(img.width * sc);
+              c.height = Math.round(img.height * sc);
+              c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+              var data = c.toDataURL('image/jpeg', 0.7);
+              var fd = new FormData();
+              fd.append('image', data);
+              fetch('/app/owner/${id}/suppliers/'+sid+'/bills', {method:'POST', body: new URLSearchParams(fd)})
+                .then(function(r){ if(r.ok) location.reload(); else alert('Upload failed'); })
+                .catch(function(){ alert('Upload failed — check connection'); });
+              URL.revokeObjectURL(img.src);
+            };
+            img.src = URL.createObjectURL(f);
           });
         });
         openBtn.style.transition = 'transform .15s';
