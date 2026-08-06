@@ -570,7 +570,7 @@ function purchasingPage(shop, extras = {}) {
   const selItems = selectedSupplier ? (itemsBySupplier[selectedSupplierId] || []) : [];
   const selTotal = selItems.reduce((n, it) => n + (Number(it.buyQty) || 0) * (Number(it.price) || 0), 0);
   const selectedItemsBlock = selectedSupplier ? `
-    <div class="card" style="margin-top:12px;padding:12px 13px;border-color:#191512">
+    <div class="card" style="margin:0;padding:12px 13px;border-color:#191512">
       <div class="row" style="justify-content:space-between;align-items:baseline">
         <strong style="font-size:13.5px">${escP(selectedSupplier.name)} <span class="sub" style="font-weight:500;font-size:11.5px">· ${selItems.length} item${selItems.length === 1 ? "" : "s"}</span></strong>
         <a href="?native=1" style="font-size:11px;color:#b3261e;text-decoration:none">close ✕</a>
@@ -613,11 +613,14 @@ function purchasingPage(shop, extras = {}) {
       </div>
     </form>
     ${suppliers.length
-      ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;max-height:${selectedSupplier ? "220px" : "420px"};overflow-y:auto;padding:2px 4px 2px 0;-webkit-overflow-scrolling:touch">
-          ${suppliers.map((s) => supplierCard(s)).join("")}
-        </div>
-        ${selectedItemsBlock}
-        ${!selectedSupplier ? `<div class="sub" style="font-size:11.5px;margin-top:8px;text-align:center;color:#946200">Tap a supplier above to see what they'll be delivering <span class="si">— සැපයුම්කරු තෝරන්න</span></div>` : ""}`
+      ? `<div style="display:grid;grid-template-columns:42% 58%;gap:8px;margin-top:10px;align-items:start">
+          <div style="max-height:460px;overflow-y:auto;padding:2px 4px 2px 0;-webkit-overflow-scrolling:touch">
+            ${suppliers.map((s) => supplierCard(s)).join("")}
+          </div>
+          <div style="min-width:0">
+            ${selectedSupplier ? selectedItemsBlock : `<div class="sub card" style="margin:0;padding:14px 12px;text-align:center;font-size:11.5px;background:#fdf7ee;border-color:#efe0c8;color:#946200">Tap a supplier on the left to see the items they'll deliver <span class="si" style="display:block;margin-top:4px">වම් පස සැපයුම්කරුවෙකු තෝරන්න</span></div>`}
+          </div>
+        </div>`
       : `<div class="sub card" style="margin-top:10px;padding:11px 13px;font-size:12.5px">No suppliers yet — tap <strong style="color:${ORANGE}">+</strong> above to add one.</div>`
     }
     <script>
