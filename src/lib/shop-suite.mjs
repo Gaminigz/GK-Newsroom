@@ -693,6 +693,12 @@ function planPage(shop, extras = {}) {
       <strong style="font-size:14px">From your kitchen store <span class="si">ඔබේ ගබඩාවෙන්</span></strong>
       <span class="sub" style="font-size:12px">${storeBuys.length} item${storeBuys.length === 1 ? "" : "s"}</span>
     </div>
+    <div class="planList" style="max-height:520px;overflow-y:scroll;padding:2px 8px 2px 0;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;scrollbar-width:thin;scrollbar-color:#d9542b80 transparent">
+    <style>
+      .planList::-webkit-scrollbar { width: 6px; -webkit-appearance: none; }
+      .planList::-webkit-scrollbar-thumb { background: #d9542b80; border-radius: 3px; }
+      .planList::-webkit-scrollbar-track { background: transparent; }
+    </style>
     ${storeBuys.map((b) => {
       const sid = String(b._id);
       const q = Number(b.qty) || 0;
@@ -737,6 +743,7 @@ function planPage(shop, extras = {}) {
         </form>
       </div>`;
     }).join("")}
+    </div>
     <div class="sub" style="font-size:11px;margin-top:10px">Add or remove items with the 🛒 button on each Kitchen Stock row.</div>` : emptyState;
 
   return page(shop, "plan", "Purchasing", "මිලදී ගැනීම්", `
