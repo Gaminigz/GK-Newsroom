@@ -189,19 +189,33 @@ function posPage(shop, extras = {}) {
         });
         if(!count){ box.innerHTML = '<div class="sub" style="font-size:10.5px;padding:2px 0">Empty — tap a dish.</div>'; return; }
         box.innerHTML = basket.map(function(i,idx){
-          return '<div style="padding:4px 0;border-bottom:1px solid #ece3da;line-height:1.3">'
-            + '<div style="display:flex;justify-content:space-between;align-items:center">'
-            +   '<strong style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+i.name+'</strong>'
-            +   '<button type="button" data-idx="'+idx+'" class="posRm" style="background:none;border:0;color:#b3261e;font-size:12px;padding:0 2px;cursor:pointer">✕</button>'
+          return '<div style="padding:5px 0;border-bottom:1px solid #ece3da;line-height:1.3">'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;gap:4px">'
+            +   '<strong style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px">'+i.name+'</strong>'
+            +   '<button type="button" data-idx="'+idx+'" class="posRm" title="Remove line" style="background:none;border:0;color:#b3261e;font-size:11px;padding:0 2px;cursor:pointer">✕</button>'
             + '</div>'
-            + '<div style="display:flex;justify-content:space-between;color:#6b6560;font-size:9.5px">'
-            +   '<span>'+i.price+' × '+i.qty+'</span>'
-            +   '<strong style="color:#d9542b;font-size:10.5px">'+CUR_SYM+' '+(i.price*i.qty).toLocaleString()+'</strong>'
+            + '<div style="display:flex;align-items:center;gap:4px;margin-top:3px">'
+            +   '<button type="button" data-idx="'+idx+'" class="posDec" title="Reduce" style="width:22px;height:22px;background:#fdecea;border:1px solid #f1c1bb;border-radius:6px;color:#b3261e;font-size:14px;font-weight:800;line-height:1;padding:0;cursor:pointer">−</button>'
+            +   '<strong style="width:20px;text-align:center;font-size:11.5px">'+i.qty+'</strong>'
+            +   '<button type="button" data-idx="'+idx+'" class="posInc" title="Add" style="width:22px;height:22px;background:#e3f4e6;border:1px solid #bfe5c8;border-radius:6px;color:#1d7a34;font-size:14px;font-weight:800;line-height:1;padding:0;cursor:pointer">+</button>'
+            +   '<span style="flex:1;text-align:right;color:#6b6560;font-size:9.5px">'+i.price+' ea</span>'
             + '</div>'
+            + '<div style="text-align:right;margin-top:2px"><strong style="color:#d9542b;font-size:11px">'+CUR_SYM+' '+(i.price*i.qty).toLocaleString()+'</strong></div>'
             + '</div>';
         }).join('');
         document.querySelectorAll('.posRm').forEach(function(b){
           b.addEventListener('click', function(){ basket.splice(Number(b.dataset.idx),1); render(); });
+        });
+        document.querySelectorAll('.posDec').forEach(function(b){
+          b.addEventListener('click', function(){
+            var idx = Number(b.dataset.idx);
+            basket[idx].qty--;
+            if(basket[idx].qty <= 0) basket.splice(idx,1);
+            render();
+          });
+        });
+        document.querySelectorAll('.posInc').forEach(function(b){
+          b.addEventListener('click', function(){ basket[Number(b.dataset.idx)].qty++; render(); });
         });
       }
       document.querySelectorAll('.posDish').forEach(function(d){
