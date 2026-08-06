@@ -110,18 +110,21 @@ function posPage(shop, extras = {}) {
   const escT = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const countIn = (c) => c === "All" ? dishes.length : dishes.filter((d) => (d.category || "") === c).length;
   const cats = ["All", ...POS_CATEGORIES];
-  const chips = cats.map((c, i) => `<button type="button" class="posChip${i === 0 ? " on" : ""}" data-cat="${escT(c)}" onclick="posTab('${escT(c)}',this)" style="flex:0 0 auto;border:1px solid #e0d6cc;background:#fff;border-radius:99px;padding:6px 12px;font-size:11.5px;font-weight:600;color:#4a443f;white-space:nowrap;cursor:pointer">${escT(c)}<span class="sub" style="font-weight:500"> · ${countIn(c)}</span></button>`).join("");
+  const chips = cats.map((c, i) => `<button type="button" class="posChip${i === 0 ? " on" : ""}" data-cat="${escT(c)}" onclick="posTab('${escT(c)}',this)" style="flex:0 0 auto;border:1px solid #e0d6cc;background:#fff;border-radius:99px;padding:5px 10px;font-size:11px;font-weight:600;color:#4a443f;white-space:nowrap;cursor:pointer">${escT(c)}<span class="sub" style="font-weight:500"> · ${countIn(c)}</span></button>`).join("");
   const dishCard = (d) => `
-    <button type="button" class="posDish" data-cat="${escT(d.category || "")}" data-id="${String(d._id)}" data-name="${escT(d.name)}" data-price="${Number(d.price) || 0}" style="display:flex;flex-direction:column;align-items:stretch;padding:0;background:#fff;border:1px solid #ece3da;border-radius:10px;overflow:hidden;cursor:pointer;text-align:left;min-width:0">
-      <div style="aspect-ratio:1.15;background:${d.photo ? `url('${escT(d.photo)}') center/cover` : "#f0e7de"}"></div>
+    <div class="posDish" data-cat="${escT(d.category || "")}" data-id="${String(d._id)}" data-name="${escT(d.name)}" data-price="${Number(d.price) || 0}" role="button" tabindex="0" style="display:flex;flex-direction:column;align-items:stretch;padding:0;background:#fff;border:1px solid #ece3da;border-radius:10px;overflow:hidden;cursor:pointer;text-align:left;min-width:0">
+      <div style="aspect-ratio:1.15;background:${d.photo ? `url('${escT(d.photo)}') center/cover` : "#f0e7de"};position:relative">
+        <button type="button" class="posDishMinus" data-id="${String(d._id)}" title="Remove one" style="display:none;position:absolute;top:5px;left:5px;background:#b3261e;color:#fff;font-size:15px;font-weight:800;width:24px;height:24px;border-radius:99px;border:0;padding:0;cursor:pointer;line-height:1;box-shadow:0 1px 4px #0004">−</button>
+        <span class="posDishQty" data-id="${String(d._id)}" style="display:none;position:absolute;top:5px;right:5px;background:#191512;color:#fff;font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:99px;box-shadow:0 1px 4px #0004">×0</span>
+      </div>
       <div style="padding:5px 7px 6px">
         <strong style="display:block;font-size:11px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escT(d.name)}</strong>
         <span class="sub" style="font-size:10.5px;color:#d9542b;font-weight:700">${escT(cur.symbol)} ${(Number(d.price) || 0).toLocaleString()}</span>
       </div>
-    </button>`;
+    </div>`;
   return page(shop, "pos", "POS", "විකුණුම් කවුන්ටරය", `
     <div class="sub" style="font-size:11.5px;margin-top:6px;line-height:1.4">Pick a category → tap a dish to add. Bill on the right.<br><span class="si">වර්ගය · කෑම තෝරන්න.</span></div>
-    <div style="display:flex;gap:6px;margin-top:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px" id="posChips">${chips}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:10px" id="posChips">${chips}</div>
     ${dishes.length ? `
       <div style="display:grid;grid-template-columns:1fr 158px;gap:8px;margin-top:10px;align-items:start">
         <div id="posGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:520px;overflow-y:auto;padding-right:2px;overscroll-behavior:contain">
@@ -174,6 +177,16 @@ function posPage(shop, extras = {}) {
         document.getElementById('posCount').textContent = count;
         document.getElementById('posTotal').textContent = total.toLocaleString();
         document.getElementById('posRingWrap').style.display = count ? 'block' : 'none';
+        // Sync per-dish qty badges + minus buttons on the cards.
+        var byId = {}; basket.forEach(function(l){ byId[l.id] = l.qty; });
+        document.querySelectorAll('.posDishQty').forEach(function(b){
+          var q = byId[b.dataset.id] || 0;
+          b.textContent = '×' + q;
+          b.style.display = q > 0 ? 'inline-block' : 'none';
+        });
+        document.querySelectorAll('.posDishMinus').forEach(function(b){
+          b.style.display = (byId[b.dataset.id] || 0) > 0 ? 'block' : 'none';
+        });
         if(!count){ box.innerHTML = '<div class="sub" style="font-size:10.5px;padding:2px 0">Empty — tap a dish.</div>'; return; }
         box.innerHTML = basket.map(function(i,idx){
           return '<div style="padding:4px 0;border-bottom:1px solid #ece3da;line-height:1.3">'
@@ -192,10 +205,24 @@ function posPage(shop, extras = {}) {
         });
       }
       document.querySelectorAll('.posDish').forEach(function(d){
-        d.addEventListener('click', function(){
+        d.addEventListener('click', function(e){
+          // Ignore taps on the nested minus button — it has its own handler.
+          if(e.target.closest('.posDishMinus')) return;
           var did = d.dataset.id, name = d.dataset.name, price = Number(d.dataset.price)||0;
           var line = basket.find(function(l){return l.id===did;});
           if(line){ line.qty++; } else { basket.push({id:did,name:name,price:price,qty:1}); }
+          render();
+        });
+      });
+      // '−' on the card: decrement qty, remove the line at zero.
+      document.querySelectorAll('.posDishMinus').forEach(function(m){
+        m.addEventListener('click', function(e){
+          e.stopPropagation();
+          var did = m.dataset.id;
+          var idx = basket.findIndex(function(l){return l.id===did;});
+          if(idx < 0) return;
+          basket[idx].qty--;
+          if(basket[idx].qty <= 0) basket.splice(idx,1);
           render();
         });
       });
