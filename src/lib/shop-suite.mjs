@@ -688,6 +688,7 @@ function planPage(shop, extras = {}) {
     </div>`;
 
   const list = storeBuys.length ? `
+    ${buyTotal > 0 ? `<div class="card row" style="margin-top:10px;padding:11px 14px;background:#191512;border-color:#191512"><strong style="flex:1;font-size:12px;color:#fff;opacity:.8;letter-spacing:.04em">ESTIMATED TOTAL TO BUY · ${storeBuys.length} ITEMS</strong><strong style="font-size:15px;color:#ffb08f">${escS(cur.symbol)} ${buyTotal.toLocaleString()}</strong></div>` : ""}
     <div class="row" style="justify-content:space-between;margin-top:14px">
       <strong style="font-size:14px">From your kitchen store <span class="si">ඔබේ ගබඩාවෙන්</span></strong>
       <span class="sub" style="font-size:12px">${storeBuys.length} item${storeBuys.length === 1 ? "" : "s"}</span>
@@ -736,7 +737,6 @@ function planPage(shop, extras = {}) {
         </form>
       </div>`;
     }).join("")}
-    ${buyTotal > 0 ? `<div class="card row" style="margin-top:8px;padding:11px 14px;background:#191512;border-color:#191512"><strong style="flex:1;font-size:12px;color:#fff;opacity:.8;letter-spacing:.04em">ESTIMATED TOTAL TO BUY · ${storeBuys.length} ITEMS</strong><strong style="font-size:15px;color:#ffb08f">${escS(cur.symbol)} ${buyTotal.toLocaleString()}</strong></div>` : ""}
     <div class="sub" style="font-size:11px;margin-top:10px">Add or remove items with the 🛒 button on each Kitchen Stock row.</div>` : emptyState;
 
   return page(shop, "plan", "Purchasing", "මිලදී ගැනීම්", `
