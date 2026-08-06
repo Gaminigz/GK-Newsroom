@@ -70,13 +70,14 @@ export function ownerHubPage(shop, toast = "") {
 
 /* ----------------------------------------------- shared preview pieces */
 
-function page(shop, key, title, si, body) {
+function page(shop, key, title, si, body, backTo) {
   const id = String(shop._id);
+  const backHref = backTo || `/app/owner/${id}`;
   return shell({
     title: `${title} — ${shop.name}`,
     noBack: true,
     body: `
-    <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/owner/${id}">‹</a>
+    <div class="row" style="gap:10px"><a class="back" style="margin:0" href="${backHref}">‹</a>
       <h1 style="font-size:21px;flex:1;min-width:0">${title} <span class="si">${si}</span></h1></div>
     ${body}`,
   });
@@ -671,7 +672,12 @@ function planPage(shop, extras = {}) {
   const cur = extras.currency || { code: "LKR", symbol: "Rs" };
   const storeBuys = extras.storeBuys || [];
   const suppliers = extras.suppliers || [];
+  const marketPrices = extras.marketPrices || [];
   const escS = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  // Build a case-insensitive lookup: item name → market entry.
+  const marketByName = new Map();
+  for (const m of marketPrices) marketByName.set(String(m.name).toLowerCase(), m);
+  const marketFor = (b) => marketByName.get(String(b.name || "").toLowerCase());
   const buyTotal = storeBuys.reduce((n, b) => n + (Number(b.buyQty || b.qty) || 0) * (Number(b.price) || 0), 0);
 
   const emptyState = `<div class="card" style="margin-top:14px;padding:16px;text-align:center">
@@ -693,11 +699,24 @@ function planPage(shop, extras = {}) {
       const bq = b.buyQty != null && b.buyQty !== "" ? Number(b.buyQty) : (Number(b.maxQty) ? Math.max(0, Number(b.maxQty) - q) : 0);
       const line = p > 0 && bq > 0 ? Math.round(bq * p) : 0;
       const supplierOptions = suppliers.map((sup) => `<option value="${String(sup._id)}"${String(b.buySupplierId || "") === String(sup._id) ? " selected" : ""}>${escS(sup.name)}</option>`).join("");
+      const mkt = marketFor(b);
+      // Compare paid vs market only when both sides use the same base unit.
+      const canCompare = mkt && String(mkt.unit).toLowerCase() === String(b.unit || "").toLowerCase();
+      const marketBadge = mkt ? (() => {
+        if (canCompare && p > 0) {
+          const diff = Math.round(((p - mkt.lkr) / mkt.lkr) * 100);
+          const color = diff <= 0 ? "#1d7a34" : diff > 10 ? "#b3261e" : "#946200";
+          const arrow = diff < 0 ? "▼" : diff > 0 ? "▲" : "=";
+          return `<span style="color:${color};font-weight:700">${arrow} ${Math.abs(diff)}%</span> vs market ${escS(cur.symbol)} ${mkt.lkr}/${escS(mkt.unit)}`;
+        }
+        return `<span style="color:#946200;font-weight:700">market</span> ${escS(cur.symbol)} ${mkt.lkr}/${escS(mkt.unit)}`;
+      })() : "";
       return `<div class="card" style="margin-top:6px;padding:9px 11px 10px 13px">
         <div class="row" style="gap:6px">
           <div style="flex:1;min-width:0">
             <strong style="font-size:13px">${escS(b.name)}</strong>
             <div class="sub" style="font-size:11px">${escS(b.category || "")}${b.qty ? ` · in store ${escS(String(b.qty))} ${escS(b.unit || "")}` : ""}${p > 0 ? ` · ${escS(cur.symbol)} ${p}/${escS(b.unit || "")}` : ""}${b.minQty != null ? ` · min ${escS(String(b.minQty))}` : ""}${b.maxQty != null ? ` · max ${escS(String(b.maxQty))}` : ""}</div>
+            ${marketBadge ? `<div class="sub" style="font-size:11px;margin-top:2px">${marketBadge}</div>` : ""}
           </div>
           ${line > 0 ? `<span style="font-size:12.5px;font-weight:700;color:#d9542b;flex:0 0 auto">${escS(cur.symbol)} ${line.toLocaleString()}</span>` : ""}
           <form method="POST" action="/app/owner/${id}/stock/${sid}/buy" style="margin:0;flex:0 0 auto">
@@ -765,7 +784,7 @@ export function marketPricesPage(shop, extras = {}) {
           r.style.display = (catOk && qOk) ? '' : 'none';
         });
       }
-    </script>`);
+    </script>`, `/app/owner/${id}/suite/plan`);
 }
 
 function booksPage(shop) {

@@ -2472,6 +2472,9 @@ export async function handleApp(req, res, url) {
       // Supplier dropdown for each buy line.
       extras.suppliers = await (await col("suppliers"))
         .find({ shopId: m[1] }).sort({ name: 1 }).toArray();
+      // Market-price benchmarks so each row shows paid vs market ▲/▼%.
+      const { MARKET_PRICES } = await import("../data/market-prices.mjs");
+      extras.marketPrices = MARKET_PRICES;
     }
     // Kitchen Stock: the categorised ingredient catalogue + the shop's
     // saved store contents.
