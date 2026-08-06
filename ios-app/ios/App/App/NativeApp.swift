@@ -172,23 +172,47 @@ extension Color {
 // MARK: - Root
 
 struct RootView: View {
+    @State private var selectedTab: Int = 0
+    // Bumping this key from RootView is the ONLY way to force the Manager
+    // WebView back to /app/manager — we do it every time the Manager tab
+    // is tapped so tapping it when the WebView has drifted (e.g. via an
+    // in-page back link to /app/home) always snaps back.
+    @State private var managerReloadKey = UUID()
+
+    private var tabBinding: Binding<Int> {
+        Binding(
+            get: { selectedTab },
+            set: { newTab in
+                // If Manager tab is (re)selected — either from another tab
+                // OR by tapping it while already there — force a fresh load.
+                if newTab == 3 { managerReloadKey = UUID() }
+                selectedTab = newTab
+            }
+        )
+    }
+
     var body: some View {
-        TabView {
+        TabView(selection: tabBinding) {
             NavigationView { HomeView() }
                 .navigationViewStyle(.stack)
                 .tabItem { Label("Home", systemImage: "house.fill") }
+                .tag(0)
             NavigationView { OrdersView() }
                 .navigationViewStyle(.stack)
                 .tabItem { Label("Orders", systemImage: "bag.fill") }
+                .tag(1)
             NavigationView { ShopsMapView() }
                 .navigationViewStyle(.stack)
                 .tabItem { Label("Map", systemImage: "map.fill") }
-            NavigationView { ManagerView() }
+                .tag(2)
+            NavigationView { ManagerView(reloadKey: managerReloadKey) }
                 .navigationViewStyle(.stack)
                 .tabItem { Label("Manager", systemImage: "storefront.fill") }
+                .tag(3)
             NavigationView { AccountView() }
                 .navigationViewStyle(.stack)
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
+                .tag(4)
         }
         .accentColor(.brandOrange)
     }
@@ -828,15 +852,14 @@ struct WebSheet: View {
 // planner, etc.). Non-owners see an "open your shop" prompt.
 
 struct ManagerView: View {
-    // Bumping this key forces WebViewRepresentable to reload the URL, so the
-    // tab always lands back on /app/manager (not wherever the WebView last
-    // navigated to via in-page links).
-    @State private var reloadKey = UUID()
+    // Driven from RootView so we can bump it every time the Manager tab is
+    // (re)selected — the WebView snaps back to /app/manager on every tap,
+    // regardless of where in-page navigation drifted it to.
+    let reloadKey: UUID
     var body: some View {
         WebViewRepresentable(url: API.base.appendingPathComponent("/app/manager"), reloadKey: reloadKey)
             .navigationBarHidden(true)
             .ignoresSafeArea(.container, edges: .bottom)
-            .onAppear { reloadKey = UUID() }
     }
 }
 
