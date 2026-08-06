@@ -815,12 +815,12 @@ function billHistoryPage(shop, extras = {}) {
         .supScroll::-webkit-scrollbar-thumb { background: #d9542b80; border-radius: 3px; }
         .supScroll::-webkit-scrollbar-track { background: transparent; }
       </style>` : `<div class="sub card" style="margin-top:12px;padding:11px 13px;font-size:12.5px">No suppliers yet. Add some in <strong>Buying &amp; bills</strong> first.</div>`}
-    <div id="billModal" style="display:none;position:fixed;inset:0;background:#191512e6;z-index:200;align-items:center;justify-content:center;padding:20px;flex-direction:column">
-      <div style="position:absolute;top:14px;right:16px;font-size:22px;color:#fff;cursor:pointer" id="billModalClose">✕</div>
-      <img id="billModalImg" src="" alt="Bill" style="max-width:100%;max-height:75vh;object-fit:contain;border-radius:8px;background:#fff">
-      <div style="display:flex;gap:12px;align-items:center;margin-top:14px">
+    <div id="billModal" style="display:none;position:fixed;inset:0;background:#191512e6;z-index:200;align-items:center;justify-content:center;padding:20px 20px calc(env(safe-area-inset-bottom, 0px) + 110px);flex-direction:column">
+      <div style="position:absolute;top:14px;right:16px;font-size:22px;color:#fff;cursor:pointer;line-height:1;padding:6px" id="billModalClose">✕</div>
+      <img id="billModalImg" src="" alt="Bill" style="max-width:100%;max-height:62vh;object-fit:contain;border-radius:8px;background:#fff">
+      <div style="display:flex;gap:12px;align-items:center;margin-top:14px;flex-wrap:wrap;justify-content:center">
         <div id="billModalDate" style="color:#fff;font-size:13px;letter-spacing:.04em"></div>
-        <button type="button" id="billModalDelete" style="background:#b3261e;color:#fff;border:0;border-radius:99px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer">🗑 Delete bill</button>
+        <button type="button" id="billModalDelete" style="background:#b3261e;color:#fff;border:0;border-radius:99px;padding:8px 16px;font-size:12.5px;font-weight:700;cursor:pointer">🗑 Delete bill</button>
       </div>
     </div>
     <script>
