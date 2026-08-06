@@ -2649,6 +2649,15 @@ export async function handleApp(req, res, url) {
     return;
   }
 
+  // Bills: delete a single bill photo (from the Bill History modal).
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/bills\/([a-f0-9]{24})\/remove$/);
+  if (m && req.method === "POST") {
+    const _id = await oid(m[2]);
+    if (_id) await (await col("supplier_bills")).deleteOne({ _id, shopId: m[1] });
+    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
+    return;
+  }
+
   // Suppliers: upload a bill photo (Base64 JPEG data URI).
   m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/suppliers\/([a-f0-9]{24})\/bills$/);
   if (m && req.method === "POST") {

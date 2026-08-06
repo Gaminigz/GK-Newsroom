@@ -777,7 +777,7 @@ function billHistoryPage(shop, extras = {}) {
         ? `<div class="sub" style="font-size:11.5px;margin-top:6px;line-height:1.35">No bills uploaded yet${year ? " for this period" : ""}. Tap 🧾 on the supplier card in <strong>Buying &amp; bills</strong> to add one.</div>`
         : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px">
           ${selectedBills.map((b) => `
-            <button type="button" class="billThumb" data-src="${escH(b.image || "")}" data-date="${fmtDate(b.uploadedAt)}" style="display:block;text-align:left;padding:0;background:none;border:0;cursor:pointer;color:inherit">
+            <button type="button" class="billThumb" data-id="${String(b._id)}" data-src="${escH(b.image || "")}" data-date="${fmtDate(b.uploadedAt)}" style="display:block;text-align:left;padding:0;background:none;border:0;cursor:pointer;color:inherit">
               <div style="aspect-ratio:1;background:#fff url('${escH(b.image || "")}') center/cover;border:1px solid ${accent}55;border-radius:8px"></div>
               <div class="sub" style="font-size:10px;margin-top:3px;text-align:center">${fmtDate(b.uploadedAt)}</div>
             </button>`).join("")}
@@ -817,8 +817,11 @@ function billHistoryPage(shop, extras = {}) {
       </style>` : `<div class="sub card" style="margin-top:12px;padding:11px 13px;font-size:12.5px">No suppliers yet. Add some in <strong>Buying &amp; bills</strong> first.</div>`}
     <div id="billModal" style="display:none;position:fixed;inset:0;background:#191512e6;z-index:200;align-items:center;justify-content:center;padding:20px;flex-direction:column">
       <div style="position:absolute;top:14px;right:16px;font-size:22px;color:#fff;cursor:pointer" id="billModalClose">✕</div>
-      <img id="billModalImg" src="" alt="Bill" style="max-width:100%;max-height:80vh;object-fit:contain;border-radius:8px;background:#fff">
-      <div id="billModalDate" style="color:#fff;font-size:13px;margin-top:12px;letter-spacing:.04em"></div>
+      <img id="billModalImg" src="" alt="Bill" style="max-width:100%;max-height:75vh;object-fit:contain;border-radius:8px;background:#fff">
+      <div style="display:flex;gap:12px;align-items:center;margin-top:14px">
+        <div id="billModalDate" style="color:#fff;font-size:13px;letter-spacing:.04em"></div>
+        <button type="button" id="billModalDelete" style="background:#b3261e;color:#fff;border:0;border-radius:99px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer">🗑 Delete bill</button>
+      </div>
     </div>
     <script>
       document.querySelectorAll('.supCard').forEach(function(c){
@@ -833,19 +836,29 @@ function billHistoryPage(shop, extras = {}) {
         var img = document.getElementById('billModalImg');
         var dateEl = document.getElementById('billModalDate');
         var closeBtn = document.getElementById('billModalClose');
+        var delBtn = document.getElementById('billModalDelete');
         if(!modal) return;
-        function open(src, date){
+        var currentId = null;
+        function open(id, src, date){
+          currentId = id;
           img.src = src;
           dateEl.textContent = 'Bill of ' + date;
           modal.style.display = 'flex';
         }
-        function close(){ modal.style.display = 'none'; img.src = ''; }
+        function close(){ modal.style.display = 'none'; img.src = ''; currentId = null; }
         document.querySelectorAll('.billThumb').forEach(function(b){
-          b.addEventListener('click', function(){ open(b.dataset.src, b.dataset.date); });
+          b.addEventListener('click', function(){ open(b.dataset.id, b.dataset.src, b.dataset.date); });
         });
         closeBtn.addEventListener('click', close);
         modal.addEventListener('click', function(e){ if(e.target === modal) close(); });
         document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+        delBtn.addEventListener('click', function(){
+          if(!currentId) return;
+          if(!confirm('Delete this bill? This cannot be undone.')) return;
+          fetch('/app/owner/${id}/bills/'+currentId+'/remove', {method:'POST'})
+            .then(function(r){ if(r.ok) location.reload(); else alert('Delete failed'); })
+            .catch(function(){ alert('Delete failed'); });
+        });
       })();
     </script>`);
 }
