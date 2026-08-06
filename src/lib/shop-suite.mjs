@@ -98,68 +98,93 @@ const statusPill = (txt, kind) => {
 
 /* --------------------------------------------------------- the screens */
 
+const POS_CATEGORIES = [
+  "Starters", "Vegi meals", "Chicken", "Beef", "Mutton", "Pork", "Sea food", "Drinks", "Desserts",
+];
+
 function posPage(shop, extras = {}) {
   const id = String(shop._id);
   const dishes = extras.dishes || [];
   const todaysSales = extras.todaysSales || { count: 0, total: 0 };
   const cur = extras.currency || { code: "LKR", symbol: "Rs" };
   const escT = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const countIn = (c) => c === "All" ? dishes.length : dishes.filter((d) => (d.category || "") === c).length;
+  const cats = ["All", ...POS_CATEGORIES];
+  const chips = cats.map((c, i) => `<button type="button" class="posChip${i === 0 ? " on" : ""}" data-cat="${escT(c)}" onclick="posTab('${escT(c)}',this)" style="flex:0 0 auto;border:1px solid #e0d6cc;background:#fff;border-radius:99px;padding:6px 12px;font-size:11.5px;font-weight:600;color:#4a443f;white-space:nowrap;cursor:pointer">${escT(c)}<span class="sub" style="font-weight:500"> · ${countIn(c)}</span></button>`).join("");
   const dishCard = (d) => `
-    <button type="button" class="posDish" data-id="${String(d._id)}" data-name="${escT(d.name)}" data-price="${Number(d.price) || 0}" style="display:flex;flex-direction:column;align-items:stretch;padding:0;background:#fff;border:1px solid #ece3da;border-radius:12px;overflow:hidden;cursor:pointer;text-align:left">
-      <div style="aspect-ratio:1.2;background:${d.photo ? `url('${escT(d.photo)}') center/cover` : "#f0e7de"};display:flex;align-items:flex-end;padding:6px 8px;color:#fff;text-shadow:0 1px 3px #0006"></div>
-      <div style="padding:7px 9px 8px">
-        <strong style="display:block;font-size:12px;line-height:1.2">${escT(d.name)}</strong>
-        <span class="sub" style="font-size:11px;color:#d9542b;font-weight:700">${escT(cur.symbol)} ${(Number(d.price) || 0).toLocaleString()}</span>
+    <button type="button" class="posDish" data-cat="${escT(d.category || "")}" data-id="${String(d._id)}" data-name="${escT(d.name)}" data-price="${Number(d.price) || 0}" style="display:flex;flex-direction:column;align-items:stretch;padding:0;background:#fff;border:1px solid #ece3da;border-radius:10px;overflow:hidden;cursor:pointer;text-align:left;min-width:0">
+      <div style="aspect-ratio:1.15;background:${d.photo ? `url('${escT(d.photo)}') center/cover` : "#f0e7de"}"></div>
+      <div style="padding:5px 7px 6px">
+        <strong style="display:block;font-size:11px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escT(d.name)}</strong>
+        <span class="sub" style="font-size:10.5px;color:#d9542b;font-weight:700">${escT(cur.symbol)} ${(Number(d.price) || 0).toLocaleString()}</span>
       </div>
     </button>`;
   return page(shop, "pos", "POS", "වට්ටෝරුව", `
-    <div class="sub" style="font-size:12px;margin-top:8px;line-height:1.5">Tap a dish to add to the bill — tap it again to add another. Ring up when the customer's ready.<br><span class="si" style="font-size:12.4px">කෑමක් තෝරන්න · ඉගුන්න බිල් කරන්න.</span></div>
-
-    <!-- Running total pinned near top -->
-    <div id="posTotalBar" class="row" style="margin-top:12px;padding:11px 14px;background:#191512;border-color:#191512;border-radius:14px;color:#fff;justify-content:space-between">
-      <strong style="font-size:12px;opacity:.8;letter-spacing:.04em">CURRENT BILL · <span id="posCount">0</span> ITEM(S)</strong>
-      <strong style="font-size:15px;color:#ffb08f"><span id="posSymbol">${escT(cur.symbol)}</span> <span id="posTotal">0</span></strong>
-    </div>
-
+    <div class="sub" style="font-size:11.5px;margin-top:6px;line-height:1.4">Pick a category → tap a dish to add. Bill on the right.<br><span class="si">වර්ගය · කෑම තෝරන්න.</span></div>
+    <div style="display:flex;gap:6px;margin-top:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px" id="posChips">${chips}</div>
     ${dishes.length ? `
-      <label style="margin-top:14px">TAP TO ADD</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        ${dishes.map(dishCard).join("")}
+      <div style="display:grid;grid-template-columns:1fr 158px;gap:8px;margin-top:10px;align-items:start">
+        <div id="posGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:520px;overflow-y:auto;padding-right:2px;overscroll-behavior:contain">
+          ${dishes.map(dishCard).join("")}
+        </div>
+        <div style="position:sticky;top:0;min-width:0">
+          <div id="posTotalBar" style="padding:9px 11px;background:#191512;border-radius:12px;color:#fff">
+            <div style="font-size:9.5px;opacity:.75;letter-spacing:.06em">CURRENT BILL</div>
+            <strong style="font-size:16px;color:#ffb08f;display:block;margin-top:2px"><span id="posSymbol">${escT(cur.symbol)}</span> <span id="posTotal">0</span></strong>
+            <div style="font-size:10px;opacity:.7"><span id="posCount">0</span> item(s)</div>
+          </div>
+          <div id="posBasket" style="margin-top:6px;max-height:280px;overflow-y:auto;font-size:10.5px;padding-right:2px;overscroll-behavior:contain">
+            <div class="sub" style="font-size:10.5px;padding:2px 0">Empty — tap a dish.</div>
+          </div>
+          <div id="posRingWrap" style="display:none;margin-top:8px">
+            <button type="button" id="posRing" class="btn" style="width:100%;padding:11px 4px;font-size:12px">Ring up</button>
+            <button type="button" id="posClear" class="btn ghost" style="width:100%;padding:6px 4px;font-size:10.5px;color:#b3261e;margin-top:4px">Clear</button>
+          </div>
+        </div>
       </div>
     ` : `<div class="sub card" style="margin-top:12px;padding:11px 13px;font-size:12.5px">No dishes yet — add some in <strong>Setup Daily Menu</strong> first, then come back.</div>`}
 
-    <label style="margin-top:16px">CURRENT BILL <span class="si">වර්තමාන බිල්</span></label>
-    <div id="posBasket" class="sub" style="font-size:12.5px">No items yet — tap a dish above.</div>
-
-    <div id="posRingWrap" style="display:none;margin-top:14px">
-      <button type="button" id="posClear" class="btn ghost" style="width:auto;padding:9px 14px;font-size:12px;color:#b3261e;margin-right:6px">Clear</button>
-      <button type="button" id="posRing" class="btn" style="width:auto;padding:12px 22px;font-size:14px">Ring up · <span id="posRingLabel">Rs 0</span></button>
-    </div>
-
-    <div style="margin-top:22px;padding-top:12px;border-top:1px solid #ece3da">
+    <div style="margin-top:16px;padding-top:10px;border-top:1px solid #ece3da">
       <div class="row" style="justify-content:space-between">
-        <strong style="font-size:13px">Today's sales <span class="si">අද විකුණුම්</span></strong>
-        <span class="sub" style="font-size:12px">${todaysSales.count} bill${todaysSales.count === 1 ? "" : "s"} · ${escT(cur.symbol)} ${todaysSales.total.toLocaleString()}</span>
+        <strong style="font-size:12.5px">Today's sales <span class="si">අද</span></strong>
+        <span class="sub" style="font-size:11.5px">${todaysSales.count} bill${todaysSales.count === 1 ? "" : "s"} · ${escT(cur.symbol)} ${todaysSales.total.toLocaleString()}</span>
       </div>
     </div>
 
+    <style>
+      #posChips::-webkit-scrollbar,#posGrid::-webkit-scrollbar,#posBasket::-webkit-scrollbar{ display:none; }
+      .posChip.on{ background:#191512!important; border-color:#191512!important; color:#fff!important; }
+    </style>
     <script>
       var CUR_SYM = '${escT(cur.symbol)}';
-      var basket = [];  // [{id, name, price, qty}]
+      var basket = [];
+      var curCat = 'All';
+      function posTab(cat, btn){
+        curCat = cat;
+        document.querySelectorAll('#posChips .posChip').forEach(function(c){ c.classList.remove('on'); });
+        btn.classList.add('on');
+        document.querySelectorAll('.posDish').forEach(function(d){
+          d.style.display = (cat==='All' || d.dataset.cat===cat) ? '' : 'none';
+        });
+      }
       function render(){
         var box = document.getElementById('posBasket');
         var count = basket.reduce(function(n,i){return n+i.qty;},0);
         var total = basket.reduce(function(n,i){return n+i.qty*i.price;},0);
         document.getElementById('posCount').textContent = count;
         document.getElementById('posTotal').textContent = total.toLocaleString();
-        document.getElementById('posRingLabel').textContent = CUR_SYM + ' ' + total.toLocaleString();
         document.getElementById('posRingWrap').style.display = count ? 'block' : 'none';
-        if(!count){ box.innerHTML = 'No items yet — tap a dish above.'; return; }
+        if(!count){ box.innerHTML = '<div class="sub" style="font-size:10.5px;padding:2px 0">Empty — tap a dish.</div>'; return; }
         box.innerHTML = basket.map(function(i,idx){
-          return '<div class="row" style="padding:6px 0;border-bottom:1px solid #ece3da;font-size:12.5px">'
-            + '<span style="flex:1;min-width:0"><strong>'+i.name+'</strong> <span class="sub">'+CUR_SYM+' '+i.price+' × '+i.qty+'</span></span>'
-            + '<strong style="color:#d9542b">'+CUR_SYM+' '+(i.price*i.qty).toLocaleString()+'</strong>'
-            + '<button type="button" data-idx="'+idx+'" class="posRm" style="background:none;border:0;color:#b3261e;font-size:14px;padding:0 4px;margin-left:6px;cursor:pointer">✕</button>'
+          return '<div style="padding:4px 0;border-bottom:1px solid #ece3da;line-height:1.3">'
+            + '<div style="display:flex;justify-content:space-between;align-items:center">'
+            +   '<strong style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+i.name+'</strong>'
+            +   '<button type="button" data-idx="'+idx+'" class="posRm" style="background:none;border:0;color:#b3261e;font-size:12px;padding:0 2px;cursor:pointer">✕</button>'
+            + '</div>'
+            + '<div style="display:flex;justify-content:space-between;color:#6b6560;font-size:9.5px">'
+            +   '<span>'+i.price+' × '+i.qty+'</span>'
+            +   '<strong style="color:#d9542b;font-size:10.5px">'+CUR_SYM+' '+(i.price*i.qty).toLocaleString()+'</strong>'
+            + '</div>'
             + '</div>';
         }).join('');
         document.querySelectorAll('.posRm').forEach(function(b){
@@ -168,9 +193,9 @@ function posPage(shop, extras = {}) {
       }
       document.querySelectorAll('.posDish').forEach(function(d){
         d.addEventListener('click', function(){
-          var id = d.dataset.id, name = d.dataset.name, price = Number(d.dataset.price)||0;
-          var line = basket.find(function(l){return l.id===id;});
-          if(line){ line.qty++; } else { basket.push({id:id,name:name,price:price,qty:1}); }
+          var did = d.dataset.id, name = d.dataset.name, price = Number(d.dataset.price)||0;
+          var line = basket.find(function(l){return l.id===did;});
+          if(line){ line.qty++; } else { basket.push({id:did,name:name,price:price,qty:1}); }
           render();
         });
       });
@@ -178,13 +203,12 @@ function posPage(shop, extras = {}) {
       document.getElementById('posRing').addEventListener('click', function(){
         if(!basket.length) return;
         var btn = document.getElementById('posRing');
-        btn.disabled = true; btn.textContent = 'Ringing up…';
+        btn.disabled = true; btn.textContent = 'Ringing…';
         fetch('/app/owner/${id}/pos/ring', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
+          method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify({items: basket})
         })
-        .then(function(r){ if(r.ok) location.reload(); else { btn.disabled=false; btn.textContent='Ring up · '+CUR_SYM+' '+basket.reduce(function(n,i){return n+i.qty*i.price;},0).toLocaleString(); }})
+        .then(function(r){ if(r.ok) location.reload(); else { btn.disabled=false; btn.textContent='Ring up'; }})
         .catch(function(){ btn.disabled=false; });
       });
     </script>`);
