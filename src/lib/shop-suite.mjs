@@ -587,7 +587,7 @@ function purchasingPage(shop, extras = {}) {
               ${line > 0 ? `<strong style="font-size:12.5px;color:#d9542b">${escP(cur.symbol)} ${line.toLocaleString()}</strong>` : ""}
             </div>`;
           }).join("")}
-          ${selTotal > 0 ? `<div class="row" style="justify-content:space-between;margin-top:10px;padding:9px 11px;background:#191512;color:#fff;border-radius:10px"><strong style="font-size:11.5px;opacity:.8;letter-spacing:.04em">TOTAL FROM ${escP(selectedSupplier.name.toUpperCase())}</strong><strong style="font-size:14px;color:#ffb08f">${escP(cur.symbol)} ${selTotal.toLocaleString()}</strong></div>` : ""}`
+          ${selTotal > 0 ? `<div class="row" style="justify-content:space-between;margin-top:10px;padding:9px 11px;background:#191512;color:#fff;border-radius:10px"><strong style="font-size:11.5px;opacity:.8;letter-spacing:.04em">TOTAL</strong><strong style="font-size:14px;color:#ffb08f">${escP(cur.symbol)} ${selTotal.toLocaleString()}</strong></div>` : ""}`
       }
     </div>` : "";
   return page(shop, "purchasing", "Buying &amp; bills", "මිලදී ගැනීම් සහ බිල්", `
