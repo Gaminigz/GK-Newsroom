@@ -119,7 +119,7 @@ function posPage(shop, extras = {}) {
         <span class="sub" style="font-size:10.5px;color:#d9542b;font-weight:700">${escT(cur.symbol)} ${(Number(d.price) || 0).toLocaleString()}</span>
       </div>
     </button>`;
-  return page(shop, "pos", "POS", "වට්ටෝරුව", `
+  return page(shop, "pos", "POS", "විකුණුම් කවුන්ටරය", `
     <div class="sub" style="font-size:11.5px;margin-top:6px;line-height:1.4">Pick a category → tap a dish to add. Bill on the right.<br><span class="si">වර්ගය · කෑම තෝරන්න.</span></div>
     <div style="display:flex;gap:6px;margin-top:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px" id="posChips">${chips}</div>
     ${dishes.length ? `
