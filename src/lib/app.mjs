@@ -1479,33 +1479,107 @@ async function ownerDash(id, toast = "") {
 
 /* -------------------------------------------------- table QR page */
 
-async function qrPage(shop) {
-  const url = `${PUBLIC_BASE}/app/shop/${String(shop._id)}`;
-  const dataUri = await QRCode.toDataURL(url, { margin: 1, width: 520, color: { dark: "#1a1a1a", light: "#ffffff" } });
+async function qrPage(shop, extras = {}) {
+  const id = String(shop._id);
+  const tableCount = Math.max(1, Math.min(50, Number(extras.tables) || 0));
+  const baseUrl = `${PUBLIC_BASE}/app/shop/${id}`;
   const contacts = [
     shop.phone ? `📞 ${esc(shop.phone)}` : "",
     shop.whatsapp ? `💬 ${esc(shop.whatsapp)}` : "",
     shop.contactEmail ? `✉️ ${esc(shop.contactEmail)}` : "",
   ].filter(Boolean).join("  ·  ");
+  const safeName = esc(shop.name).replace(/[^a-zA-Z0-9]+/g, "-");
+  // Build QR data URIs — one per table (or the single storefront QR when 0).
+  const qrs = [];
+  if (tableCount === 0) {
+    qrs.push({ label: "Storefront", url: baseUrl });
+  } else {
+    for (let i = 1; i <= tableCount; i++) qrs.push({ label: `Table ${i}`, url: `${baseUrl}?t=${i}` });
+  }
+  for (const q of qrs) {
+    q.dataUri = await QRCode.toDataURL(q.url, { margin: 1, width: 520, color: { dark: "#1a1a1a", light: "#ffffff" } });
+  }
+  const qrCard = (q) => `
+    <div class="qrCard" style="background:#fff;border:1px solid #ece3da;border-radius:16px;padding:18px 14px;text-align:center">
+      <div style="font-weight:800;font-size:16px"><span style="color:${ORANGE}">3</span>una <span style="color:${ORANGE}">5</span>aha <span style="font-weight:800">තුන පහ</span></div>
+      <div style="font-size:17px;font-weight:800;margin:6px 0 1px">${esc(shop.name)}</div>
+      <div class="sub" style="font-size:11.5px">${esc(shop.city ?? "")}${shop.country ? ", " + esc(shop.country) : ""}</div>
+      <div style="display:inline-block;background:#191512;color:#fff;font-size:11px;font-weight:800;padding:3px 10px;border-radius:99px;margin:10px 0 4px;letter-spacing:.04em">${esc(q.label.toUpperCase())}</div>
+      <img src="${q.dataUri}" alt="${esc(q.label)} QR" style="width:82%;max-width:260px;margin:6px auto 8px;display:block">
+      <div style="font-weight:700;font-size:12.5px">📱 Scan for our menu</div>
+      ${contacts ? `<div class="sub" style="font-size:11px;margin-top:6px">${contacts}</div>` : ""}
+      <div class="sub" style="font-size:10px;margin-top:6px;color:#a99d94">the spice marketplace · ggmt.sg</div>
+      <a class="btn" download="${safeName}-${esc(q.label).replace(/\s+/g,"-")}-QR.png" href="${q.dataUri}" style="margin-top:10px;padding:9px;font-size:12px">⬇ Download PNG</a>
+    </div>`;
   return shell({
     title: "Table QR — " + shop.name,
     noBack: true,
     body: `
-    <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/owner/${String(shop._id)}">‹</a><h1 style="font-size:21px">Table QR</h1></div>
-    <p class="sub" style="margin:8px 0 14px">Print this or make it a sticker for your table or shopfront. Customers scan it to open your live menu — no app install needed.</p>
-    <div id="card" style="background:#fff;border:1px solid #ece3da;border-radius:20px;padding:26px 22px;text-align:center">
-      <div style="font-weight:800;font-size:20px"><span style="color:${ORANGE}">3</span>una <span style="color:${ORANGE}">5</span>aha <span style="font-weight:800">තුන පහ</span></div>
-      <div style="font-size:22px;font-weight:800;margin:10px 0 2px">${esc(shop.name)}</div>
-      <div class="sub" style="font-size:13px">${esc(shop.city ?? "")}${shop.country ? ", " + esc(shop.country) : ""}</div>
-      <img src="${dataUri}" alt="Menu QR" style="width:78%;max-width:320px;margin:16px auto 8px;display:block">
-      <div style="font-weight:700;font-size:14px">📱 Scan for our menu</div>
-      ${contacts ? `<div class="sub" style="font-size:12.5px;margin-top:10px">${contacts}</div>` : ""}
-      <div class="sub" style="font-size:11px;margin-top:10px;color:#a99d94">the spice marketplace · ggmt.sg</div>
+    <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/owner/${id}">‹</a><h1 style="font-size:21px">Table QR</h1></div>
+    <p class="sub" style="margin:8px 0 12px">Enter how many tables, then generate a QR per table. Print · laminate · stick each on its table so customers scan and see the menu — no app install.</p>
+    <form method="GET" style="display:grid;grid-template-columns:1fr 90px auto;gap:6px;align-items:center;margin-bottom:14px">
+      <label style="margin:0;font-size:11.5px">HOW MANY TABLES?</label>
+      <input type="number" name="tables" min="1" max="50" value="${tableCount || 1}" style="height:40px;font-size:15px;text-align:center;font-weight:700">
+      <button class="btn" style="width:auto;padding:11px 18px;font-size:13px">Generate</button>
+    </form>
+    ${tableCount > 0 ? `<div class="row" style="gap:8px;margin-bottom:10px">
+      <a class="btn" href="/app/owner/${id}/qr/print?tables=${tableCount}" target="_blank" style="flex:1;padding:11px;font-size:13px">🖨 Print all · ${qrs.length} QR${qrs.length === 1 ? "" : "s"}</a>
+    </div>` : ""}
+    <div style="display:grid;grid-template-columns:1fr;gap:14px">
+      ${qrs.map(qrCard).join("")}
     </div>
-    <a class="btn" id="dl" download="${esc(shop.name).replace(/[^a-zA-Z0-9]+/g, "-")}-QR.png" href="${dataUri}" style="margin-top:16px">⬇ Download QR image</a>
-    <a class="btn ghost" href="#" style="margin-top:10px" onclick="return window.nativeShare ? nativeShare('Table QR — ${esc(shop.name)}', 'https://web-production-2b43c.up.railway.app/app/shop/${String(shop._id)}') : true">↗ Share table link</a>
-    <div class="sub" style="text-align:center;font-size:12px;margin-top:8px">You can print it, laminate it, or turn it into a sticker.</div>`,
+    <div class="sub" style="text-align:center;font-size:11px;margin-top:12px">Print output packs 2 QRs on each A4 sheet (each half is A5). Use your browser's <strong>Print → Save as PDF</strong>.</div>`,
   });
+}
+
+async function qrPrintPage(shop, tableCount) {
+  const id = String(shop._id);
+  const n = Math.max(1, Math.min(50, Number(tableCount) || 1));
+  const baseUrl = `${PUBLIC_BASE}/app/shop/${id}`;
+  const contacts = [
+    shop.phone ? `📞 ${esc(shop.phone)}` : "",
+    shop.whatsapp ? `💬 ${esc(shop.whatsapp)}` : "",
+    shop.contactEmail ? `✉️ ${esc(shop.contactEmail)}` : "",
+  ].filter(Boolean).join("  ·  ");
+  const qrs = [];
+  for (let i = 1; i <= n; i++) qrs.push({ label: `Table ${i}`, url: `${baseUrl}?t=${i}` });
+  for (const q of qrs) {
+    q.dataUri = await QRCode.toDataURL(q.url, { margin: 1, width: 720, color: { dark: "#1a1a1a", light: "#ffffff" } });
+  }
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><title>Table QR print — ${esc(shop.name)}</title>
+<style>
+  @page { size: A4 portrait; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .card { width: 210mm; height: 148.5mm; padding: 14mm 20mm; text-align: center; page-break-inside: avoid; position: relative; }
+  .card:nth-child(2n) { border-bottom: 1px dashed #bbb; }
+  .cut { position: absolute; left: 0; right: 0; bottom: -0.5px; text-align: center; font-size: 8pt; color: #aaa; letter-spacing: .1em; }
+  .brand { font-weight: 800; font-size: 22pt; }
+  .brand .accent { color: #d9542b; }
+  .shop { font-size: 26pt; font-weight: 800; margin: 6mm 0 1mm; }
+  .city { color: #6b6560; font-size: 11pt; }
+  .tag { display: inline-block; background: #191512; color: #fff; padding: 2mm 6mm; border-radius: 99px; font-size: 12pt; font-weight: 800; margin: 4mm 0 3mm; letter-spacing: .06em; }
+  .qr { width: 62mm; height: 62mm; display: block; margin: 2mm auto 3mm; }
+  .scan { font-weight: 700; font-size: 13pt; }
+  .contacts { color: #6b6560; font-size: 10pt; margin-top: 4mm; }
+  .foot { color: #a99d94; font-size: 8pt; margin-top: 3mm; }
+  @media screen { body { background: #eee; padding: 20px; } .card { background:#fff; margin: 0 auto 20px; box-shadow: 0 3px 12px #0002; } }
+</style>
+</head><body>
+${qrs.map((q, i) => `<div class="card">
+  <div class="brand"><span class="accent">3</span>una <span class="accent">5</span>aha තුන පහ</div>
+  <div class="shop">${esc(shop.name)}</div>
+  <div class="city">${esc(shop.city ?? "")}${shop.country ? ", " + esc(shop.country) : ""}</div>
+  <div class="tag">${esc(q.label.toUpperCase())}</div>
+  <img class="qr" src="${q.dataUri}" alt="QR">
+  <div class="scan">📱 Scan for our menu</div>
+  ${contacts ? `<div class="contacts">${contacts}</div>` : ""}
+  <div class="foot">the spice marketplace · ggmt.sg</div>
+  ${(i + 1) % 2 === 0 ? "" : `<div class="cut">— — — — — CUT / FOLD — — — — —</div>`}
+</div>`).join("")}
+<script>window.addEventListener('load', function(){ setTimeout(function(){ window.print(); }, 400); });</script>
+</body></html>`;
 }
 
 /* ---------------------------------------------- dish edit (full) */
@@ -2971,10 +3045,21 @@ export async function handleApp(req, res, url) {
     return;
   }
 
+  // Print-optimized page — A4 with 2 QR cards per page + auto-print on load.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/qr\/print$/);
+  if (m) {
+    const shop = await shopById(m[1]);
+    if (!shop) { res.writeHead(404).end("not found"); return; }
+    const tables = Number(url.searchParams.get("tables")) || 1;
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(await qrPrintPage(shop, tables));
+    return;
+  }
+
   m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/qr$/);
   if (m) {
     const shop = await shopById(m[1]);
-    if (shop) { html(res, await qrPage(shop)); return; }
+    if (shop) { html(res, await qrPage(shop, { tables: url.searchParams.get("tables") })); return; }
   }
 
   m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/add-dish$/);
