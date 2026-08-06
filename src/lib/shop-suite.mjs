@@ -777,10 +777,10 @@ function billHistoryPage(shop, extras = {}) {
         ? `<div class="sub" style="font-size:11.5px;margin-top:6px;line-height:1.35">No bills uploaded yet${year ? " for this period" : ""}. Tap 🧾 on the supplier card in <strong>Buying &amp; bills</strong> to add one.</div>`
         : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px">
           ${selectedBills.map((b) => `
-            <a href="${escH(b.image || "")}" target="_blank" style="display:block;text-decoration:none;color:inherit">
+            <button type="button" class="billThumb" data-src="${escH(b.image || "")}" data-date="${fmtDate(b.uploadedAt)}" style="display:block;text-align:left;padding:0;background:none;border:0;cursor:pointer;color:inherit">
               <div style="aspect-ratio:1;background:#fff url('${escH(b.image || "")}') center/cover;border:1px solid ${accent}55;border-radius:8px"></div>
               <div class="sub" style="font-size:10px;margin-top:3px;text-align:center">${fmtDate(b.uploadedAt)}</div>
-            </a>`).join("")}
+            </button>`).join("")}
           </div>
           ${supBillTotal > 0 ? `<div class="row" style="justify-content:space-between;margin-top:8px;padding-top:6px;border-top:1px solid ${accent}55;font-size:12px"><strong>TOTAL SPEND</strong><strong style="color:#d9542b">${escH(cur.symbol)} ${supBillTotal.toLocaleString()}</strong></div>` : ""}
         </div>`
@@ -815,6 +815,11 @@ function billHistoryPage(shop, extras = {}) {
         .supScroll::-webkit-scrollbar-thumb { background: #d9542b80; border-radius: 3px; }
         .supScroll::-webkit-scrollbar-track { background: transparent; }
       </style>` : `<div class="sub card" style="margin-top:12px;padding:11px 13px;font-size:12.5px">No suppliers yet. Add some in <strong>Buying &amp; bills</strong> first.</div>`}
+    <div id="billModal" style="display:none;position:fixed;inset:0;background:#191512e6;z-index:200;align-items:center;justify-content:center;padding:20px;flex-direction:column">
+      <div style="position:absolute;top:14px;right:16px;font-size:22px;color:#fff;cursor:pointer" id="billModalClose">✕</div>
+      <img id="billModalImg" src="" alt="Bill" style="max-width:100%;max-height:80vh;object-fit:contain;border-radius:8px;background:#fff">
+      <div id="billModalDate" style="color:#fff;font-size:13px;margin-top:12px;letter-spacing:.04em"></div>
+    </div>
     <script>
       document.querySelectorAll('.supCard').forEach(function(c){
         c.addEventListener('click', function(e){
@@ -822,6 +827,26 @@ function billHistoryPage(shop, extras = {}) {
           var href = c.getAttribute('data-href'); if(href) location.href = href;
         });
       });
+      // Tap a bill thumbnail → open the full image in a modal overlay.
+      (function(){
+        var modal = document.getElementById('billModal');
+        var img = document.getElementById('billModalImg');
+        var dateEl = document.getElementById('billModalDate');
+        var closeBtn = document.getElementById('billModalClose');
+        if(!modal) return;
+        function open(src, date){
+          img.src = src;
+          dateEl.textContent = 'Bill of ' + date;
+          modal.style.display = 'flex';
+        }
+        function close(){ modal.style.display = 'none'; img.src = ''; }
+        document.querySelectorAll('.billThumb').forEach(function(b){
+          b.addEventListener('click', function(){ open(b.dataset.src, b.dataset.date); });
+        });
+        closeBtn.addEventListener('click', close);
+        modal.addEventListener('click', function(e){ if(e.target === modal) close(); });
+        document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+      })();
     </script>`);
 }
 
