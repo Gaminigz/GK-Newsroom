@@ -614,13 +614,18 @@ function purchasingPage(shop, extras = {}) {
     </form>
     ${suppliers.length
       ? `<div style="display:grid;grid-template-columns:42% 58%;gap:8px;margin-top:10px;align-items:start">
-          <div style="max-height:460px;overflow-y:auto;padding:2px 4px 2px 0;-webkit-overflow-scrolling:touch">
+          <div class="supScroll" style="max-height:460px;overflow-y:scroll;padding:2px 8px 2px 0;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;scrollbar-width:thin;scrollbar-color:#d9542b80 transparent">
             ${suppliers.map((s) => supplierCard(s)).join("")}
           </div>
-          <div style="min-width:0">
+          <div style="min-width:0;position:sticky;top:0">
             ${selectedSupplier ? selectedItemsBlock : `<div class="sub card" style="margin:0;padding:14px 12px;text-align:center;font-size:11.5px;background:#fdf7ee;border-color:#efe0c8;color:#946200">Tap a supplier on the left to see the items they'll deliver <span class="si" style="display:block;margin-top:4px">වම් පස සැපයුම්කරුවෙකු තෝරන්න</span></div>`}
           </div>
-        </div>`
+        </div>
+        <style>
+          .supScroll::-webkit-scrollbar { width: 6px; -webkit-appearance: none; }
+          .supScroll::-webkit-scrollbar-thumb { background: #d9542b80; border-radius: 3px; }
+          .supScroll::-webkit-scrollbar-track { background: transparent; }
+        </style>`
       : `<div class="sub card" style="margin-top:10px;padding:11px 13px;font-size:12.5px">No suppliers yet — tap <strong style="color:${ORANGE}">+</strong> above to add one.</div>`
     }
     <script>
