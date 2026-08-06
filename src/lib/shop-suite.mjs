@@ -844,20 +844,39 @@ function billHistoryPage(shop, extras = {}) {
           img.src = src;
           dateEl.textContent = 'Bill of ' + date;
           modal.style.display = 'flex';
+          // Reset delete button to default state whenever a new bill opens.
+          if(typeof disarm === 'function') disarm();
+          delBtn.disabled = false;
         }
-        function close(){ modal.style.display = 'none'; img.src = ''; currentId = null; }
+        function close(){ modal.style.display = 'none'; img.src = ''; currentId = null; if(typeof disarm === 'function') disarm(); delBtn.disabled = false; }
         document.querySelectorAll('.billThumb').forEach(function(b){
           b.addEventListener('click', function(){ open(b.dataset.id, b.dataset.src, b.dataset.date); });
         });
         closeBtn.addEventListener('click', close);
         modal.addEventListener('click', function(e){ if(e.target === modal) close(); });
         document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+        // Two-tap confirm: first tap flips label to 'Tap again to confirm'
+        // for 2.5 s, second tap within the window fires the delete. This
+        // avoids native confirm() which WKWebView silently swallows unless
+        // the app implements WKUIDelegate.
+        var armed = false, armTimer = null;
+        var delLabel = '🗑 Delete bill';
+        function disarm(){ armed = false; delBtn.textContent = delLabel; delBtn.style.background = '#b3261e'; if(armTimer){ clearTimeout(armTimer); armTimer = null; } }
         delBtn.addEventListener('click', function(){
           if(!currentId) return;
-          if(!confirm('Delete this bill? This cannot be undone.')) return;
+          if(!armed){
+            armed = true;
+            delBtn.textContent = 'Tap again to confirm';
+            delBtn.style.background = '#7a0f0f';
+            armTimer = setTimeout(disarm, 2500);
+            return;
+          }
+          disarm();
+          delBtn.textContent = 'Deleting…';
+          delBtn.disabled = true;
           fetch('/app/owner/${id}/bills/'+currentId+'/remove', {method:'POST'})
-            .then(function(r){ if(r.ok) location.reload(); else alert('Delete failed'); })
-            .catch(function(){ alert('Delete failed'); });
+            .then(function(r){ if(r.ok) location.reload(); else { delBtn.disabled=false; delBtn.textContent=delLabel; } })
+            .catch(function(){ delBtn.disabled=false; delBtn.textContent=delLabel; });
         });
       })();
     </script>`);
