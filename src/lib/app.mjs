@@ -2432,6 +2432,19 @@ export async function handleApp(req, res, url) {
     return;
   }
 
+  // Market prices — curated typical retail from Cargills / Keells / Manning.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/market-prices$/);
+  if (m) {
+    const shop = await shopById(m[1]);
+    if (!shop) { res.writeHead(404).end("not found"); return; }
+    const [{ marketPricesPage }, { MARKET_PRICES }] = await Promise.all([
+      import("./shop-suite.mjs"),
+      import("../data/market-prices.mjs"),
+    ]);
+    html(res, marketPricesPage(shop, { prices: MARKET_PRICES }));
+    return;
+  }
+
   // Owner hub — 13 round buttons, one per shop function.
   m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/suite\/([a-z]+)$/);
   if (m) {

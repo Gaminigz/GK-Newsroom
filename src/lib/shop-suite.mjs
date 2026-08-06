@@ -722,7 +722,50 @@ function planPage(shop, extras = {}) {
 
   return page(shop, "plan", "Purchasing", "මිලදී ගැනීම්", `
     <div class="sub" style="font-size:12.5px;margin-top:8px">Items you flagged with 🛒 in Kitchen Stock — your shopping list, priced at what you paid last time.<br><span class="si">කුස්සි ගබඩාවේ 🛒 කරන ලද ද්‍රව්‍ය මෙතැන පෙන්වයි.</span></div>
+    <a href="/app/owner/${id}/market-prices" class="btn ghost" style="margin-top:10px;padding:9px 13px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;width:auto;text-decoration:none;border:1.5px solid ${ORANGE};color:${ORANGE};font-weight:700">📊 Market prices <span class="si" style="font-weight:400;font-size:11px">· වෙළඳ මිල</span></a>
     ${list}`);
+}
+
+export function marketPricesPage(shop, extras = {}) {
+  const id = String(shop._id);
+  const items = extras.prices || [];
+  const escM = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const cats = ["All", "Vegi", "Meat", "Dry", "Spices"];
+  const countIn = (c) => c === "All" ? items.length : items.filter((i) => i.category === c).length;
+  const chips = cats.map((c, i) => `<button type="button" class="chip${i === 0 ? " on" : ""}" data-cat="${escM(c)}" onclick="mpTab('${escM(c)}',this)">${escM(c)} · ${countIn(c)}</button>`).join("");
+  const row = (it) => `
+    <div class="mpRow" data-cat="${escM(it.category)}" style="display:grid;grid-template-columns:1fr auto;gap:8px;padding:8px 4px;border-bottom:1px solid #ece3da;font-size:12.5px;align-items:baseline">
+      <div style="min-width:0"><strong>${escM(it.name)}</strong>  <span class="sub" style="font-size:11px">per ${escM(it.unit)}</span></div>
+      <strong style="color:#d9542b;flex:0 0 auto;font-variant-numeric:tabular-nums">Rs ${(it.lkr || 0).toLocaleString()}</strong>
+    </div>`;
+  return page(shop, "market", "Market Prices", "වෙළඳ මිල", `
+    <div class="sub" style="font-size:12px;margin-top:8px;line-height:1.5">Typical retail from <strong>Cargills FoodCity</strong>, <strong>Keells Super</strong>, and <strong>New Manning Market</strong>. Use as a benchmark for what you should be paying suppliers.<br><span class="si" style="font-size:12.4px">කාගිල්ස්, කීල්ස් සහ මැනිං වෙළඳපොළ සාමාන්‍ය මිල.</span></div>
+    <div class="chips" style="display:flex;gap:8px;margin-top:12px;overflow-x:auto;-webkit-overflow-scrolling:touch">${chips}</div>
+    <input type="search" id="mpSearch" placeholder="Search — carrot, chicken, cardamom…" style="margin-top:10px;font-size:14px" oninput="mpFilter()">
+    <div id="mpList" style="margin-top:8px">
+      ${items.map(row).join("")}
+    </div>
+    <div class="sub" style="font-size:10.5px;margin-top:14px;text-align:center;color:#8a827b">
+      Prices refreshed weekly. Real market varies by day &amp; season.<br>
+      <span style="color:${ORANGE};font-weight:700">🤖 AI refresh · coming soon</span>
+    </div>
+    <script>
+      var currentCat = 'All';
+      function mpTab(cat, btn){
+        currentCat = cat;
+        document.querySelectorAll('.chips .chip').forEach(function(c){ c.classList.remove('on'); });
+        btn.classList.add('on');
+        mpFilter();
+      }
+      function mpFilter(){
+        var q = (document.getElementById('mpSearch').value || '').trim().toLowerCase();
+        document.querySelectorAll('.mpRow').forEach(function(r){
+          var catOk = currentCat==='All' || r.dataset.cat===currentCat;
+          var qOk = !q || (r.textContent.toLowerCase().indexOf(q) >= 0);
+          r.style.display = (catOk && qOk) ? '' : 'none';
+        });
+      }
+    </script>`);
 }
 
 function booksPage(shop) {
