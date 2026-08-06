@@ -22,6 +22,7 @@ export const SUITE_TILES = [
   { key: "stock", label: "Kitchen stock", emoji: "📦" },
   { key: "plan", label: "Purchasing", emoji: "🧾" },
   { key: "purchasing", label: "Buying & bills", emoji: "🛒" },
+  { key: "history", label: "Bill History", emoji: "🗂️" },
   { key: "salaries", label: "Staff salaries entries", emoji: "💬" },
   { key: "staff", label: "Staff Pay", emoji: "👥" },
   { key: "utilities", label: "Utilities Pay", emoji: "💡" },
@@ -697,6 +698,133 @@ function purchasingPage(shop, extras = {}) {
     </script>`);
 }
 
+function billHistoryPage(shop, extras = {}) {
+  const id = String(shop._id);
+  const suppliers = extras.suppliers || [];
+  const billsBySupplier = extras.billsBySupplier || {};
+  const selectedSupplierId = extras.selectedSupplierId || "";
+  const selectedBills = extras.selectedBills || [];
+  const year = extras.year || "";
+  const month = extras.month || "";
+  const cur = extras.currency || { code: "LKR", symbol: "Rs" };
+  const escH = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const initials = (n) => String(n || "").replace(/[^A-Za-z ]/g, "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "··";
+  // Same golden-angle hue assignment as Buying & bills so a supplier
+  // keeps its color across the two pages.
+  const supplierHues = new Map();
+  suppliers.forEach((s, i) => supplierHues.set(String(s._id), Math.round((i * 137.5 + 20) % 360)));
+  const supHue = (s) => supplierHues.get(String(s._id)) ?? 0;
+  const supAccent = (s) => `hsl(${supHue(s)} 65% 52%)`;
+  const supTint = (s) => `hsl(${supHue(s)} 70% 96%)`;
+
+  const selectedSupplier = selectedSupplierId ? suppliers.find((s) => String(s._id) === selectedSupplierId) : null;
+  const supBillTotal = selectedBills.reduce((n, b) => n + (Number(b.total) || 0), 0);
+  const fmtDate = (d) => {
+    const dt = new Date(d);
+    return `${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")}/${dt.getFullYear()}`;
+  };
+
+  const supplierCard = (s) => {
+    const sid = String(s._id);
+    const on = selectedSupplierId === sid;
+    const count = billsBySupplier[sid] || 0;
+    // Preserve current year/month filter when clicking a supplier.
+    const qs = new URLSearchParams();
+    if (!on) qs.set("sup", sid);
+    if (year) qs.set("y", year);
+    if (month) qs.set("m", month);
+    qs.set("native", "1");
+    const href = "?" + qs.toString();
+    const accent = supAccent(s);
+    return `
+    <div class="card supCard" data-href="${href}" role="button" tabindex="0" style="cursor:pointer;margin:0 0 6px;padding:10px 11px 10px 13px;min-width:0;border-left:4px solid ${accent};${on ? "background:#191512;border-color:#191512;border-left-color:" + accent + ";color:#fff" : "background:" + supTint(s)}">
+      <div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px">
+        <span style="display:inline-flex;width:28px;height:28px;border-radius:8px;background:${on ? "#2e2a26" : "#f0e7de"};align-items:center;justify-content:center;font-size:10.5px;font-weight:800;color:${on ? "#fff" : "#1a1a1a"};flex:0 0 auto">${escH(initials(s.name))}</span>
+        ${count > 0 ? `<span style="font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:99px;background:${on ? "#ffb08f" : accent};color:${on ? "#191512" : "#fff"}">🧾 ${count}</span>` : `<span class="sub" style="font-size:10px;${on ? "opacity:.55" : ""}">no bills</span>`}
+      </div>
+      <strong style="display:block;font-size:12.5px;margin-top:6px;line-height:1.25">${escH(s.name)}</strong>
+      ${(s.categories || []).length ? `<span style="font-size:10.5px;${on ? "opacity:.7" : "color:#6b6560"}">${(s.categories || []).map((c) => escH(c).toLowerCase()).join(" · ")}</span>` : ""}
+    </div>`;
+  };
+
+  const years = [];
+  const thisYear = 2026;
+  for (let y = thisYear; y >= thisYear - 4; y--) years.push(y);
+  const months = [
+    ["01", "Jan"], ["02", "Feb"], ["03", "Mar"], ["04", "Apr"],
+    ["05", "May"], ["06", "Jun"], ["07", "Jul"], ["08", "Aug"],
+    ["09", "Sep"], ["10", "Oct"], ["11", "Nov"], ["12", "Dec"],
+  ];
+
+  const filterQs = (yy, mm) => {
+    const q = new URLSearchParams();
+    if (selectedSupplierId) q.set("sup", selectedSupplierId);
+    if (yy) q.set("y", yy);
+    if (mm) q.set("m", mm);
+    q.set("native", "1");
+    return "?" + q.toString();
+  };
+
+  const rightPanel = selectedSupplier ? (() => {
+    const accent = supAccent(selectedSupplier);
+    return `
+    <div style="margin:0;padding:8px 10px;border:1px solid ${accent};border-radius:12px;background:${supTint(selectedSupplier)}">
+      <div class="row" style="justify-content:space-between;align-items:baseline;gap:6px">
+        <span class="sub" style="font-weight:700;font-size:10.5px;letter-spacing:.04em;color:${accent}">${selectedBills.length} BILL${selectedBills.length === 1 ? "" : "S"}${year ? ` · ${year}${month ? "/" + month : ""}` : ""}</span>
+        <a href="${filterQs(year, month).replace(/sup=[a-f0-9]+&?/, "").replace(/\?&/, "?")}" style="font-size:15px;color:#b3261e;text-decoration:none;line-height:1;flex:0 0 auto" title="close">✕</a>
+      </div>
+      ${selectedBills.length === 0
+        ? `<div class="sub" style="font-size:11.5px;margin-top:6px;line-height:1.35">No bills uploaded yet${year ? " for this period" : ""}. Tap 🧾 on the supplier card in <strong>Buying &amp; bills</strong> to add one.</div>`
+        : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px">
+          ${selectedBills.map((b) => `
+            <a href="${escH(b.image || "")}" target="_blank" style="display:block;text-decoration:none;color:inherit">
+              <div style="aspect-ratio:1;background:#fff url('${escH(b.image || "")}') center/cover;border:1px solid ${accent}55;border-radius:8px"></div>
+              <div class="sub" style="font-size:10px;margin-top:3px;text-align:center">${fmtDate(b.uploadedAt)}</div>
+            </a>`).join("")}
+          </div>
+          ${supBillTotal > 0 ? `<div class="row" style="justify-content:space-between;margin-top:8px;padding-top:6px;border-top:1px solid ${accent}55;font-size:12px"><strong>TOTAL SPEND</strong><strong style="color:#d9542b">${escH(cur.symbol)} ${supBillTotal.toLocaleString()}</strong></div>` : ""}
+        </div>`
+      }
+    </div>`;
+  })() : "";
+
+  return page(shop, "history", "Bill History", "බිල් ඉතිහාසය", `
+    <div class="sub" style="font-size:12px;margin-top:8px;line-height:1.5">Every 🧾 you snapped in <strong>Buying &amp; bills</strong> shows up here so you can see the history of any supplier at a glance — filter by month or year for a quick spend view.</div>
+    <div class="row" style="gap:8px;align-items:center;margin-top:12px">
+      <strong style="flex:1;min-width:0;font-size:14px">Suppliers <span class="si">සැපයුම්කරුවන්</span></strong>
+      <select onchange="location.href=this.value" style="width:auto;height:32px;padding:0 6px;border-radius:8px;border:1px solid #e3d6c2;background:#fff;font-size:12px">
+        <option value="${filterQs("", month)}"${year === "" ? " selected" : ""}>All years</option>
+        ${years.map((y) => `<option value="${filterQs(String(y), month)}"${String(year) === String(y) ? " selected" : ""}>${y}</option>`).join("")}
+      </select>
+      <select onchange="location.href=this.value" style="width:auto;height:32px;padding:0 6px;border-radius:8px;border:1px solid #e3d6c2;background:#fff;font-size:12px">
+        <option value="${filterQs(year, "")}"${month === "" ? " selected" : ""}>All months</option>
+        ${months.map(([mv, ml]) => `<option value="${filterQs(year, mv)}"${month === mv ? " selected" : ""}>${ml}</option>`).join("")}
+      </select>
+    </div>
+    ${suppliers.length ? `
+      <div style="display:grid;grid-template-columns:42% 58%;gap:8px;margin-top:10px;align-items:start">
+        <div class="supScroll" style="max-height:460px;overflow-y:scroll;padding:2px 8px 2px 0;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;scrollbar-width:thin;scrollbar-color:#d9542b80 transparent">
+          ${suppliers.map(supplierCard).join("")}
+        </div>
+        <div style="min-width:0;position:sticky;top:0">
+          ${selectedSupplier ? rightPanel : `<div class="sub" style="margin:2px 6px;padding:0;text-align:center;font-size:11px;line-height:1.4;color:#946200">Tap a supplier on the left to see their bills <span class="si" style="display:block;margin-top:3px">වම් පස</span></div>`}
+        </div>
+      </div>
+      <style>
+        .supScroll::-webkit-scrollbar { width: 6px; -webkit-appearance: none; }
+        .supScroll::-webkit-scrollbar-thumb { background: #d9542b80; border-radius: 3px; }
+        .supScroll::-webkit-scrollbar-track { background: transparent; }
+      </style>` : `<div class="sub card" style="margin-top:12px;padding:11px 13px;font-size:12.5px">No suppliers yet. Add some in <strong>Buying &amp; bills</strong> first.</div>`}
+    <script>
+      document.querySelectorAll('.supCard').forEach(function(c){
+        c.addEventListener('click', function(e){
+          if(e.target.closest('a,form,button,label,input')) return;
+          var href = c.getAttribute('data-href'); if(href) location.href = href;
+        });
+      });
+    </script>`);
+}
+
 function planPage(shop, extras = {}) {
   const id = String(shop._id);
   const cur = extras.currency || { code: "LKR", symbol: "Rs" };
@@ -951,10 +1079,10 @@ function healthPage(shop) {
     ${pl("Rice & 3-Curry Lunch Set (set meal)", "96 sold · profit made $128 / LKR 41,300", "38% margin", true)}
     ${pl("Jackfruit cutlets", "18 sold · lost $7.44 / LKR 2,400 after waste", "9% margin", false)}`);
 }
-
 const PAGES = {
   dashboard: dashboardPage, menu: menuPage, costs: costsPage, stock: stockPage,
   purchasing: purchasingPage, plan: planPage, books: booksPage,
+  history: billHistoryPage,
   salaries: salariesPage, staff: staffPage, utilities: utilitiesPage, health: healthPage,
 };
 

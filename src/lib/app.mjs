@@ -2486,6 +2486,40 @@ export async function handleApp(req, res, url) {
       extras.stock = await (await col("kitchen_stock"))
         .find({ shopId: m[1] }).sort({ category: 1, name: 1 }).toArray();
     }
+    // Bill History: supplier directory + bill counts (optionally filtered
+    // by year/month) + the selected supplier's bill photos.
+    if (shop && m[2] === "history") {
+      extras.suppliers = await (await col("suppliers"))
+        .find({ shopId: m[1] }).sort({ createdAt: 1 }).toArray();
+      const year = url.searchParams.get("y") || "";
+      const month = url.searchParams.get("m") || "";
+      extras.year = year;
+      extras.month = month;
+      extras.currency = currencyOf(shop);
+      // Bill filter: same period the user picked in the header.
+      const periodFilter = {};
+      if (year) {
+        const y = Number(year);
+        const mi = month ? Number(month) - 1 : 0;
+        const start = new Date(y, mi, 1);
+        const end = month ? new Date(y, mi + 1, 1) : new Date(y + 1, 0, 1);
+        periodFilter.uploadedAt = { $gte: start, $lt: end };
+      }
+      // Per-supplier bill counts within the picked period.
+      const rows = await (await col("supplier_bills")).aggregate([
+        { $match: { shopId: m[1], ...periodFilter } },
+        { $group: { _id: "$supplierId", n: { $sum: 1 } } },
+      ]).toArray();
+      extras.billsBySupplier = Object.fromEntries(rows.map((r) => [String(r._id), r.n]));
+      const supId = url.searchParams.get("sup");
+      if (supId && /^[a-f0-9]{24}$/i.test(supId)) {
+        extras.selectedSupplierId = supId;
+        extras.selectedBills = await (await col("supplier_bills"))
+          .find({ shopId: m[1], supplierId: supId, ...periodFilter })
+          .sort({ uploadedAt: -1 })
+          .toArray();
+      }
+    }
     // Buying & bills: surface items running low from the shop's own stock
     // + the shop's supplier directory.
     if (shop && m[2] === "purchasing") {
