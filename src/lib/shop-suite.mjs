@@ -526,6 +526,17 @@ function purchasingPage(shop, extras = {}) {
   const cur = extras.currency || { code: "LKR", symbol: "Rs" };
   const escP = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const initials = (n) => String(n || "").replace(/[^A-Za-z ]/g, "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "··";
+  // Deterministic hue per supplier so the same supplier gets the same
+  // color on repeat visits. Same color links the supplier card on the
+  // left to its items panel on the right.
+  const supHue = (s) => {
+    const str = String(s._id || s.name || "");
+    let h = 0;
+    for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
+    return Math.abs(h) % 360;
+  };
+  const supAccent = (s) => `hsl(${supHue(s)} 60% 55%)`;
+  const supTint = (s) => `hsl(${supHue(s)} 60% 96%)`;
   // Each low-stock item becomes a form-button that queues itself into
   // Purchasing (same /stock/:id/buy toggle used from Kitchen Stock).
   const lowPill = (s) => `
@@ -549,8 +560,9 @@ function purchasingPage(shop, extras = {}) {
     const on = selectedSupplierId === sid;
     const count = (itemsBySupplier[sid] || []).length;
     const href = on ? "?native=1" : `?sup=${sid}&native=1`;
+    const accent = supAccent(s);
     return `
-    <div class="card supCard" data-href="${href}" role="button" tabindex="0" style="cursor:pointer;margin:0;padding:10px 11px;min-width:0;${on ? "background:#191512;border-color:#191512;color:#fff" : ""}">
+    <div class="card supCard" data-href="${href}" role="button" tabindex="0" style="cursor:pointer;margin:0;padding:10px 11px 10px 13px;min-width:0;border-left:4px solid ${accent};${on ? "background:#191512;border-color:#191512;border-left-color:" + accent + ";color:#fff" : "background:" + supTint(s)}">
       <div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px">
         <span style="display:inline-flex;width:28px;height:28px;border-radius:8px;background:${on ? "#2e2a26" : "#f0e7de"};align-items:center;justify-content:center;font-size:10.5px;font-weight:800;color:${on ? "#fff" : "#1a1a1a"};flex:0 0 auto">${escP(initials(s.name))}</span>
         <div class="row" style="gap:6px;flex:0 0 auto;align-items:center">
@@ -569,27 +581,30 @@ function purchasingPage(shop, extras = {}) {
   const selectedSupplier = selectedSupplierId ? suppliers.find((s) => String(s._id) === selectedSupplierId) : null;
   const selItems = selectedSupplier ? (itemsBySupplier[selectedSupplierId] || []) : [];
   const selTotal = selItems.reduce((n, it) => n + (Number(it.buyQty) || 0) * (Number(it.price) || 0), 0);
-  const selectedItemsBlock = selectedSupplier ? `
-    <div style="margin:0;padding:2px 6px 0">
+  const selectedItemsBlock = selectedSupplier ? (() => {
+    const accent = supAccent(selectedSupplier);
+    return `
+    <div style="margin:0;padding:8px 10px;border:1px solid ${accent};border-radius:12px;background:${supTint(selectedSupplier)}">
       <div class="row" style="justify-content:space-between;align-items:baseline;gap:6px">
-        <strong style="font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escP(selectedSupplier.name)}<span class="sub" style="font-weight:500;font-size:10.5px"> · ${selItems.length}</span></strong>
+        <span class="sub" style="font-weight:700;font-size:10.5px;letter-spacing:.04em;color:${accent}">${selItems.length} ITEM${selItems.length === 1 ? "" : "S"}</span>
         <a href="?native=1" style="font-size:15px;color:#b3261e;text-decoration:none;line-height:1;flex:0 0 auto" title="close">✕</a>
       </div>
       ${selItems.length === 0
-        ? `<div class="sub" style="font-size:11.5px;margin-top:6px;line-height:1.35">Pick <strong>${escP(selectedSupplier.name)}</strong> as the supplier on any 🛒 item in <strong>Purchasing</strong>.</div>`
-        : `<div style="margin-top:6px">${selItems.map((it) => {
+        ? `<div class="sub" style="font-size:11.5px;margin-top:6px;line-height:1.35">Pick this supplier on any 🛒 item in <strong>Purchasing</strong>.</div>`
+        : `<div style="margin-top:4px">${selItems.map((it) => {
             const bq = Number(it.buyQty) || 0;
             const price = Number(it.price) || 0;
             const line = bq * price;
-            return `<div class="row" style="gap:6px;padding:3px 0;font-size:11.5px;line-height:1.25">
+            return `<div class="row" style="gap:6px;padding:2px 0;font-size:11.5px;line-height:1.25">
               <span style="flex:1;min-width:0"><strong>${escP(it.name)}</strong> <span class="sub">${bq}${escP(it.unit || "")}${price > 0 ? ` @${price}` : ""}</span></span>
               ${line > 0 ? `<strong style="color:#d9542b;flex:0 0 auto">${line.toLocaleString()}</strong>` : ""}
             </div>`;
           }).join("")}
-          ${selTotal > 0 ? `<div class="row" style="justify-content:space-between;margin-top:6px;padding:6px 0 0;border-top:1px solid #ece3da;font-size:12px"><strong style="letter-spacing:.04em">TOTAL</strong><strong style="color:#d9542b">${escP(cur.symbol)} ${selTotal.toLocaleString()}</strong></div>` : ""}
+          ${selTotal > 0 ? `<div class="row" style="justify-content:space-between;margin-top:5px;padding-top:5px;border-top:1px solid ${accent}55;font-size:12px"><strong style="letter-spacing:.04em">TOTAL</strong><strong style="color:#d9542b">${escP(cur.symbol)} ${selTotal.toLocaleString()}</strong></div>` : ""}
         </div>`
       }
-    </div>` : "";
+    </div>`;
+  })() : "";
   return page(shop, "purchasing", "Buying &amp; bills", "මිලදී ගැනීම් සහ බිල්", `
     ${runningLowBlock}
     <div class="row" style="gap:10px;align-items:center;margin-top:14px">
