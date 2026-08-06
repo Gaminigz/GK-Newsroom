@@ -526,17 +526,17 @@ function purchasingPage(shop, extras = {}) {
   const cur = extras.currency || { code: "LKR", symbol: "Rs" };
   const escP = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const initials = (n) => String(n || "").replace(/[^A-Za-z ]/g, "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "··";
-  // Deterministic hue per supplier so the same supplier gets the same
-  // color on repeat visits. Same color links the supplier card on the
-  // left to its items panel on the right.
-  const supHue = (s) => {
-    const str = String(s._id || s.name || "");
-    let h = 0;
-    for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
-    return Math.abs(h) % 360;
-  };
-  const supAccent = (s) => `hsl(${supHue(s)} 60% 55%)`;
-  const supTint = (s) => `hsl(${supHue(s)} 60% 96%)`;
+  // Deterministic hue per supplier — assigned by position in the sorted
+  // list using the golden angle (137.5°) so adjacent suppliers get
+  // maximally distinct colors. Same color links the supplier card on
+  // the left to its items panel on the right.
+  const supplierHues = new Map();
+  suppliers.forEach((s, i) => {
+    supplierHues.set(String(s._id), Math.round((i * 137.5 + 20) % 360));
+  });
+  const supHue = (s) => supplierHues.get(String(s._id)) ?? 0;
+  const supAccent = (s) => `hsl(${supHue(s)} 65% 52%)`;
+  const supTint = (s) => `hsl(${supHue(s)} 70% 96%)`;
   // Each low-stock item becomes a form-button that queues itself into
   // Purchasing (same /stock/:id/buy toggle used from Kitchen Stock).
   const lowPill = (s) => `
