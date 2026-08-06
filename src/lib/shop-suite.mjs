@@ -570,24 +570,24 @@ function purchasingPage(shop, extras = {}) {
   const selItems = selectedSupplier ? (itemsBySupplier[selectedSupplierId] || []) : [];
   const selTotal = selItems.reduce((n, it) => n + (Number(it.buyQty) || 0) * (Number(it.price) || 0), 0);
   const selectedItemsBlock = selectedSupplier ? `
-    <div class="card" style="margin:0;padding:12px 13px;border-color:#191512">
-      <div class="row" style="justify-content:space-between;align-items:baseline">
-        <strong style="font-size:13.5px">${escP(selectedSupplier.name)} <span class="sub" style="font-weight:500;font-size:11.5px">· ${selItems.length} item${selItems.length === 1 ? "" : "s"}</span></strong>
-        <a href="?native=1" style="font-size:11px;color:#b3261e;text-decoration:none">close ✕</a>
+    <div style="margin:0;padding:2px 6px 0">
+      <div class="row" style="justify-content:space-between;align-items:baseline;gap:6px">
+        <strong style="font-size:12.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escP(selectedSupplier.name)}<span class="sub" style="font-weight:500;font-size:10.5px"> · ${selItems.length}</span></strong>
+        <a href="?native=1" style="font-size:15px;color:#b3261e;text-decoration:none;line-height:1;flex:0 0 auto" title="close">✕</a>
       </div>
       ${selItems.length === 0
-        ? `<div class="sub" style="font-size:12px;margin-top:8px">No items yet — go to <strong>Purchasing</strong> and pick <strong>${escP(selectedSupplier.name)}</strong> as the supplier on any 🛒 item.</div>`
-        : `${selItems.map((it) => {
+        ? `<div class="sub" style="font-size:11.5px;margin-top:6px;line-height:1.35">Pick <strong>${escP(selectedSupplier.name)}</strong> as the supplier on any 🛒 item in <strong>Purchasing</strong>.</div>`
+        : `<div style="margin-top:6px">${selItems.map((it) => {
             const bq = Number(it.buyQty) || 0;
             const price = Number(it.price) || 0;
             const line = bq * price;
-            return `<div class="row" style="margin-top:8px;padding-top:8px;border-top:1px dashed #ece3da;gap:8px">
-              <div style="flex:1;min-width:0"><strong style="font-size:12.5px">${escP(it.name)}</strong>
-              <div class="sub" style="font-size:11px">buy ${bq} ${escP(it.unit || "")}${price > 0 ? ` · ${escP(cur.symbol)} ${price}/${escP(it.unit || "")}` : ""}</div></div>
-              ${line > 0 ? `<strong style="font-size:12.5px;color:#d9542b">${escP(cur.symbol)} ${line.toLocaleString()}</strong>` : ""}
+            return `<div class="row" style="gap:6px;padding:3px 0;font-size:11.5px;line-height:1.25">
+              <span style="flex:1;min-width:0"><strong>${escP(it.name)}</strong> <span class="sub">${bq}${escP(it.unit || "")}${price > 0 ? ` @${price}` : ""}</span></span>
+              ${line > 0 ? `<strong style="color:#d9542b;flex:0 0 auto">${line.toLocaleString()}</strong>` : ""}
             </div>`;
           }).join("")}
-          ${selTotal > 0 ? `<div class="row" style="justify-content:space-between;margin-top:10px;padding:9px 11px;background:#191512;color:#fff;border-radius:10px"><strong style="font-size:11.5px;opacity:.8;letter-spacing:.04em">TOTAL</strong><strong style="font-size:14px;color:#ffb08f">${escP(cur.symbol)} ${selTotal.toLocaleString()}</strong></div>` : ""}`
+          ${selTotal > 0 ? `<div class="row" style="justify-content:space-between;margin-top:6px;padding:6px 0 0;border-top:1px solid #ece3da;font-size:12px"><strong style="letter-spacing:.04em">TOTAL</strong><strong style="color:#d9542b">${escP(cur.symbol)} ${selTotal.toLocaleString()}</strong></div>` : ""}
+        </div>`
       }
     </div>` : "";
   return page(shop, "purchasing", "Buying &amp; bills", "මිලදී ගැනීම් සහ බිල්", `
@@ -618,7 +618,7 @@ function purchasingPage(shop, extras = {}) {
             ${suppliers.map((s) => supplierCard(s)).join("")}
           </div>
           <div style="min-width:0;position:sticky;top:0">
-            ${selectedSupplier ? selectedItemsBlock : `<div class="sub card" style="margin:0;padding:14px 12px;text-align:center;font-size:11.5px;background:#fdf7ee;border-color:#efe0c8;color:#946200">Tap a supplier on the left to see the items they'll deliver <span class="si" style="display:block;margin-top:4px">වම් පස සැපයුම්කරුවෙකු තෝරන්න</span></div>`}
+            ${selectedSupplier ? selectedItemsBlock : `<div class="sub" style="margin:2px 6px;padding:0;text-align:center;font-size:11px;line-height:1.4;color:#946200">Tap a supplier on the left to see the items they'll deliver <span class="si" style="display:block;margin-top:3px">වම් පස</span></div>`}
           </div>
         </div>
         <style>
