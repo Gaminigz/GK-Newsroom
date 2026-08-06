@@ -540,17 +540,17 @@ function purchasingPage(shop, extras = {}) {
     <div class="card" style="margin-top:12px;padding:11px 13px;background:#e8f6ec;border-color:#bfe5c8">
       <span style="font-size:11.5px;font-weight:700;color:#1d7a34">✓ Store is well stocked — nothing is running low right now.</span>
     </div>`;
-  // Whole card is a clickable link that toggles ?sup=<id> so the items
-  // panel below reveals what that supplier is going to supply. Selected
-  // supplier renders 'active' (dark). Remove ✕ and map 📍 stopPropagation
-  // so they can be tapped without collapsing/re-opening the panel.
+  // Whole card is a clickable <div> (not <a>, because it contains a
+  // nested map <a> and a remove <form> — nested anchors are invalid HTML
+  // and cause the browser to auto-close the outer <a>, breaking layout).
+  // Tapping toggles ?sup=<id> to reveal the items panel underneath.
   const supplierCard = (s) => {
     const sid = String(s._id);
     const on = selectedSupplierId === sid;
     const count = (itemsBySupplier[sid] || []).length;
     const href = on ? "?native=1" : `?sup=${sid}&native=1`;
     return `
-    <a href="${href}" class="card" style="display:block;text-decoration:none;color:inherit;margin:0;padding:10px 11px;min-width:0;${on ? "background:#191512;border-color:#191512;color:#fff" : ""}">
+    <div class="card supCard" data-href="${href}" role="button" tabindex="0" style="cursor:pointer;margin:0;padding:10px 11px;min-width:0;${on ? "background:#191512;border-color:#191512;color:#fff" : ""}">
       <div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px">
         <span style="display:inline-flex;width:28px;height:28px;border-radius:8px;background:${on ? "#2e2a26" : "#f0e7de"};align-items:center;justify-content:center;font-size:10.5px;font-weight:800;color:${on ? "#fff" : "#1a1a1a"};flex:0 0 auto">${escP(initials(s.name))}</span>
         <div class="row" style="gap:6px;flex:0 0 auto;align-items:center">
@@ -563,7 +563,7 @@ function purchasingPage(shop, extras = {}) {
       </div>
       <strong style="display:block;font-size:12.5px;margin-top:6px;line-height:1.25">${escP(s.name)}</strong>
       ${(s.categories || []).length ? `<span style="font-size:10.5px;${on ? "opacity:.7" : "color:#6b6560"}">${(s.categories || []).map((c) => escP(c).toLowerCase()).join(" · ")}</span>` : ""}
-    </a>`;
+    </div>`;
   };
 
   const selectedSupplier = selectedSupplierId ? suppliers.find((s) => String(s._id) === selectedSupplierId) : null;
@@ -629,6 +629,14 @@ function purchasingPage(shop, extras = {}) {
         function open(){ form.style.display=''; openBtn.style.transform='rotate(45deg)'; var n=form.querySelector('input[name=name]'); if(n) n.focus(); }
         function close(){ form.style.display='none'; openBtn.style.transform=''; }
         openBtn.addEventListener('click', function(){ form.style.display==='none' ? open() : close(); });
+        // Make supplier cards behave as toggle-links (they can't be actual <a>
+        // because they wrap a nested map link and a remove form).
+        document.querySelectorAll('.supCard').forEach(function(c){
+          c.addEventListener('click', function(e){
+            if(e.target.closest('a,form,button')) return;
+            var href = c.getAttribute('data-href'); if(href) location.href = href;
+          });
+        });
         openBtn.style.transition = 'transform .15s';
         if(cancel) cancel.addEventListener('click', close);
       })();
