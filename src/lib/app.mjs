@@ -1527,9 +1527,9 @@ async function qrPage(shop, extras = {}) {
         <strong style="font-size:13px;color:${accentFor(sel)}">TABLE ${sel}</strong>
         <a href="/app/owner/${id}/qr" style="font-size:14px;color:#b3261e;text-decoration:none;line-height:1" title="close">✕</a>
       </div>
-      <img src="${selQr}" alt="Table ${sel} QR" style="width:100%;max-width:220px;margin:8px auto 6px;display:block;background:#fff;border-radius:8px">
+      <img id="qrImg" src="${selQr}" alt="Table ${sel} QR" style="width:100%;max-width:220px;margin:8px auto 6px;display:block;background:#fff;border-radius:8px">
       <div class="sub" style="font-size:10.5px;text-align:center;margin-top:2px">📱 Scan for our menu</div>
-      <a class="btn" download="${safeName}-Table-${sel}-QR.png" href="${selQr}" style="margin-top:8px;padding:8px;font-size:11.5px">⬇ Download PNG</a>
+      <button type="button" class="btn" onclick="downloadJpg(${sel})" style="margin-top:8px;padding:8px;font-size:11.5px;width:100%">⬇ Download JPG</button>
       <button type="button" class="btn ghost" onclick="shareQr(${sel})" style="margin-top:5px;padding:8px;font-size:11.5px;width:100%;color:#191512;border:1px solid #ece3da">↗ Share link</button>
     </div>` : `
     <div class="sub" style="margin:2px 4px;font-size:11px;text-align:center;line-height:1.4;color:#946200;padding:10px 4px">
@@ -1544,10 +1544,10 @@ async function qrPage(shop, extras = {}) {
     <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/owner/${id}">‹</a><h1 style="font-size:21px">Table QR</h1></div>
     <p class="sub" style="margin:8px 0 12px;font-size:12px;line-height:1.4">Add tables on the left. Tap one to see its QR — download, share, or print. Cap ${MAX_TABLES} tables. <span class="si">වම් පස මේස එකතු කරන්න.</span></p>
 
-    <div class="row" style="gap:10px;align-items:center;margin-top:6px">
-      <strong style="font-size:14px;flex:1;min-width:0">Tables <span class="si">මේස</span> · ${tables.length}/${MAX_TABLES}</strong>
-      ${tables.length < MAX_TABLES ? `<form method="POST" action="/app/owner/${id}/tables/add" style="margin:0"><button type="submit" title="Add table" style="width:28px;height:28px;border-radius:99px;background:${ORANGE};color:#fff;border:0;font-size:17px;font-weight:800;line-height:1;cursor:pointer;box-shadow:0 2px 6px #d9542b40;padding:0">+</button></form>` : `<span class="sub" style="font-size:10.5px">max reached</span>`}
-      ${tables.length > 0 ? `<a class="btn" href="/app/owner/${id}/qr/print?tables=${Math.max(...tables)}" target="_blank" style="width:auto;padding:6px 10px;font-size:11px">🖨 Print all</a>` : ""}
+    <div class="row" style="gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
+      <strong style="font-size:14px">Tables <span class="si">මේස</span> · ${tables.length}/${MAX_TABLES}</strong>
+      ${tables.length < MAX_TABLES ? `<form method="POST" action="/app/owner/${id}/tables/add" style="margin:0"><button type="submit" title="Add table" style="width:26px;height:26px;border-radius:99px;background:${ORANGE};color:#fff;border:0;font-size:16px;font-weight:800;line-height:1;cursor:pointer;box-shadow:0 2px 6px #d9542b40;padding:0">+</button></form>` : `<span class="sub" style="font-size:10.5px">max reached</span>`}
+      ${tables.length > 0 ? `<a class="btn" href="/app/owner/${id}/qr/print?tables=${Math.max(...tables)}" target="_blank" style="width:auto;padding:5px 10px;font-size:11px">🖨 Print all</a>` : ""}
     </div>
 
     ${tables.length ? `
@@ -1569,6 +1569,11 @@ async function qrPage(shop, extras = {}) {
     <div class="sub" style="text-align:center;font-size:10.5px;margin-top:14px">Print output = 2 QRs per A4 (each half is A5). Browser <strong>Print → Save as PDF</strong>.</div>
 
     <script>
+      var SHOP_NAME = ${JSON.stringify(shop.name)};
+      var SHOP_CITY = ${JSON.stringify([shop.city, shop.country].filter(Boolean).join(", "))};
+      var CONTACTS = ${JSON.stringify(contacts.replace(/&nbsp;/g, " "))};
+      var SAFE_NAME = ${JSON.stringify(safeName)};
+      var QR_SRC = ${JSON.stringify(selQr || "")};
       document.querySelectorAll('.tCard').forEach(function(c){
         c.addEventListener('click', function(e){
           if(e.target.closest('a,form,button')) return;
@@ -1578,12 +1583,114 @@ async function qrPage(shop, extras = {}) {
       function shareQr(n){
         var url = '${baseUrl}?t=' + n;
         if(navigator.share){
-          navigator.share({title:'${esc(shop.name)} — Table ' + n, text:'Scan for our menu — Table ' + n, url:url}).catch(function(){});
+          navigator.share({title:SHOP_NAME + ' — Table ' + n, text:'Scan for our menu — Table ' + n, url:url}).catch(function(){});
         } else if(window.nativeShare){
-          window.nativeShare('${esc(shop.name)} — Table ' + n, url);
+          window.nativeShare(SHOP_NAME + ' — Table ' + n, url);
         } else {
           navigator.clipboard.writeText(url).then(function(){ alert('Link copied — paste into WhatsApp / any chat.'); });
         }
+      }
+      // Compose a branded card on a hidden canvas and download as JPG.
+      // Same visual language as the print card: brand · shop · TABLE · QR
+      // · scan hint · contacts · footer, all on a white A5-portrait canvas.
+      function downloadJpg(n){
+        if(!QR_SRC) return;
+        var canvas = document.createElement('canvas');
+        var W = 826, H = 1170; // A5 portrait @ ~140 DPI
+        canvas.width = W; canvas.height = H;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+        // brand line — '3una 5aha තුන පහ'
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 44px -apple-system, Helvetica, sans-serif';
+        function drawBrand(y){
+          var parts = [
+            {t:'3', c:'#d9542b'},{t:'una ', c:'#1a1a1a'},
+            {t:'5', c:'#d9542b'},{t:'aha ', c:'#1a1a1a'},
+            {t:'තුන පහ', c:'#1a1a1a'},
+          ];
+          var full = parts.map(function(p){return p.t;}).join('');
+          var totalW = ctx.measureText(full).width;
+          var x = (W - totalW) / 2;
+          parts.forEach(function(p){
+            ctx.fillStyle = p.c;
+            ctx.textAlign = 'left';
+            ctx.fillText(p.t, x, y);
+            x += ctx.measureText(p.t).width;
+          });
+          ctx.textAlign = 'center';
+        }
+        drawBrand(90);
+        // Shop name
+        ctx.fillStyle = '#1a1a1a';
+        ctx.font = 'bold 56px -apple-system, Helvetica, sans-serif';
+        ctx.fillText(SHOP_NAME, W/2, 175);
+        // City
+        if(SHOP_CITY){
+          ctx.fillStyle = '#6b6560';
+          ctx.font = '28px -apple-system, Helvetica, sans-serif';
+          ctx.fillText(SHOP_CITY, W/2, 220);
+        }
+        // TABLE N pill
+        var pillTxt = 'TABLE ' + n;
+        ctx.font = 'bold 30px -apple-system, Helvetica, sans-serif';
+        var pillW = ctx.measureText(pillTxt).width + 60;
+        var pillH = 46, pillY = 260;
+        ctx.fillStyle = '#191512';
+        var pillX = (W - pillW) / 2;
+        var r = pillH/2;
+        ctx.beginPath();
+        ctx.moveTo(pillX + r, pillY);
+        ctx.arcTo(pillX + pillW, pillY, pillX + pillW, pillY + pillH, r);
+        ctx.arcTo(pillX + pillW, pillY + pillH, pillX, pillY + pillH, r);
+        ctx.arcTo(pillX, pillY + pillH, pillX, pillY, r);
+        ctx.arcTo(pillX, pillY, pillX + pillW, pillY, r);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(pillTxt, W/2, pillY + pillH/2 + 2);
+        ctx.textBaseline = 'alphabetic';
+        // QR image (drawImage from the loaded QR)
+        var img = new Image();
+        img.onload = function(){
+          var qSize = 560;
+          ctx.drawImage(img, (W - qSize)/2, 340, qSize, qSize);
+          // Scan hint
+          ctx.fillStyle = '#1a1a1a';
+          ctx.font = 'bold 34px -apple-system, Helvetica, sans-serif';
+          ctx.fillText('📱 Scan for our menu', W/2, 960);
+          // Contacts
+          if(CONTACTS){
+            ctx.fillStyle = '#6b6560';
+            ctx.font = '24px -apple-system, Helvetica, sans-serif';
+            var lines = wrap(ctx, CONTACTS, W - 80);
+            var y = 1010;
+            lines.forEach(function(l){ ctx.fillText(l, W/2, y); y += 32; });
+          }
+          // Footer
+          ctx.fillStyle = '#a99d94';
+          ctx.font = '20px -apple-system, Helvetica, sans-serif';
+          ctx.fillText('the spice marketplace · ggmt.sg', W/2, 1120);
+          // Trigger download
+          var link = document.createElement('a');
+          link.download = SAFE_NAME + '-Table-' + n + '.jpg';
+          link.href = canvas.toDataURL('image/jpeg', 0.92);
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+        };
+        img.src = QR_SRC;
+      }
+      function wrap(ctx, text, maxW){
+        var words = text.split(' '), lines = [], line = '';
+        for(var i=0; i<words.length; i++){
+          var test = line ? line + ' ' + words[i] : words[i];
+          if(ctx.measureText(test).width > maxW && line){ lines.push(line); line = words[i]; }
+          else line = test;
+        }
+        if(line) lines.push(line);
+        return lines;
       }
     </script>`,
   });
