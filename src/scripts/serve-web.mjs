@@ -1099,7 +1099,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (path === "/app" || path.startsWith("/app/")) {
+    if (path === "/app" || path.startsWith("/app/") || path.startsWith("/m/")) {
       await handleApp(req, res, url);
       return;
     }
