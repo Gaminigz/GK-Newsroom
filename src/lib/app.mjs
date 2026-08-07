@@ -226,6 +226,24 @@ async function shopById(id) {
   return _id ? (await col("shop_owners")).findOne({ _id }) : null;
 }
 
+/** Kebab-case slug from a shop name, safe for URLs. */
+function slugify(s) {
+  return String(s || "").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "shop";
+}
+
+/** Ensure a shop has a stored slug (deterministic, unique). Persists on first use. */
+async function ensureShopSlug(shop) {
+  if (shop.slug) return shop.slug;
+  const shops = await col("shop_owners");
+  const base = slugify(shop.name);
+  let slug = base;
+  let n = 1;
+  while (await shops.findOne({ slug, _id: { $ne: shop._id } })) { n++; slug = `${base}-${n}`; }
+  await shops.updateOne({ _id: shop._id }, { $set: { slug } });
+  return slug;
+}
+
 /** Resolve a shop's coordinates: Google/Apple Maps link first, city geocode fallback. */
 async function resolveCoords(mapsUrl, city, country) {
   try {
@@ -1486,7 +1504,10 @@ async function ownerDash(id, toast = "") {
 
 async function qrPage(shop, extras = {}) {
   const id = String(shop._id);
-  const baseUrl = `${PUBLIC_BASE}/app/shop/${id}`;
+  const slug = await ensureShopSlug(shop);
+  // Short URL used in the QR itself — half the characters of the full
+  // /app/shop/<24-char-hex> path, denser QR, easier to scan.
+  const baseUrl = `${PUBLIC_BASE}/m/${slug}`;
   // Table list lives on the shop doc as `tables: [1,2,3,...]`. Empty means
   // 'no tables added yet' — start with a suggestion.
   const tables = Array.isArray(shop.tables) ? [...shop.tables].sort((a, b) => a - b) : [];
@@ -1507,7 +1528,7 @@ async function qrPage(shop, extras = {}) {
   // Only generate the QR for the selected table (save bandwidth).
   let selQr = "";
   if (selValid) {
-    selQr = await QRCode.toDataURL(`${baseUrl}?t=${sel}`, { margin: 1, width: 640, color: { dark: "#1a1a1a", light: "#ffffff" } });
+    selQr = await QRCode.toDataURL(`${baseUrl}/${sel}`, { margin: 1, width: 640, color: { dark: "#1a1a1a", light: "#ffffff" } });
   }
 
   const tableCard = (n) => {
@@ -1596,7 +1617,7 @@ async function qrPage(shop, extras = {}) {
         });
       });
       function shareQr(n){
-        var url = '${baseUrl}?t=' + n;
+        var url = '${baseUrl}/' + n;
         if(navigator.share){
           navigator.share({title:SHOP_NAME + ' — Table ' + n, text:'Scan for our menu — Table ' + n, url:url}).catch(function(){});
         } else if(window.nativeShare){
@@ -1722,10 +1743,10 @@ async function qrPage(shop, extras = {}) {
                 return navigator.share({title:SHOP_NAME + ' — Table ' + n, files:[file]});
               }
               // Fallback: share the URL only.
-              if(navigator.share){ return navigator.share({title:SHOP_NAME + ' — Table ' + n, url:'${baseUrl}?t='+n}); }
+              if(navigator.share){ return navigator.share({title:SHOP_NAME + ' — Table ' + n, url:'${baseUrl}/'+n}); }
               throw new Error('no share');
             }).catch(function(){
-              navigator.clipboard.writeText('${baseUrl}?t=' + n).then(function(){ alert('Link copied — paste into WhatsApp / any chat.'); });
+              navigator.clipboard.writeText('${baseUrl}/' + n).then(function(){ alert('Link copied — paste into WhatsApp / any chat.'); });
             });
           };
         }).catch(function(e){ dl.textContent = 'Failed'; });
@@ -1749,14 +1770,15 @@ async function qrPage(shop, extras = {}) {
 async function qrPrintPage(shop, tableCount) {
   const id = String(shop._id);
   const n = Math.max(1, Math.min(50, Number(tableCount) || 1));
-  const baseUrl = `${PUBLIC_BASE}/app/shop/${id}`;
+  const slug = await ensureShopSlug(shop);
+  const baseUrl = `${PUBLIC_BASE}/m/${slug}`;
   const contacts = [
     shop.phone ? `📞 ${esc(shop.phone)}` : "",
     shop.whatsapp ? `💬 ${esc(shop.whatsapp)}` : "",
     shop.contactEmail ? `✉️ ${esc(shop.contactEmail)}` : "",
   ].filter(Boolean).join("  ·  ");
   const qrs = [];
-  for (let i = 1; i <= n; i++) qrs.push({ label: `Table ${i}`, url: `${baseUrl}?t=${i}` });
+  for (let i = 1; i <= n; i++) qrs.push({ label: `Table ${i}`, url: `${baseUrl}/${i}` });
   for (const q of qrs) {
     q.dataUri = await QRCode.toDataURL(q.url, { margin: 1, width: 720, color: { dark: "#1a1a1a", light: "#ffffff" } });
   }
@@ -2584,6 +2606,18 @@ export async function handleApp(req, res, url) {
     const tableN = rawT && /^\d{1,2}$/.test(rawT) ? Math.max(1, Math.min(25, Number(rawT))) : 0;
     const page = await shopPage(m[1], { tableN });
     if (page) { html(res, page); return; }
+  }
+
+  // Short QR-friendly URL: /m/<slug>  or  /m/<slug>/<table>
+  // Resolves the slug → shop._id and 303-redirects to the full route.
+  m = path.match(/^\/m\/([a-z0-9-]{2,40})(?:\/(\d{1,2}))?$/);
+  if (m) {
+    const shop = await (await col("shop_owners")).findOne({ slug: m[1] });
+    if (shop) {
+      const t = m[2] ? `?t=${Number(m[2])}` : "";
+      redirect(res, `/app/shop/${String(shop._id)}${t}`);
+      return;
+    }
   }
 
   if (path === "/app/order" && req.method === "POST") {
