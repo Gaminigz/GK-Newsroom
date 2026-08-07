@@ -1481,54 +1481,111 @@ async function ownerDash(id, toast = "") {
 
 async function qrPage(shop, extras = {}) {
   const id = String(shop._id);
-  const tableCount = Math.max(1, Math.min(50, Number(extras.tables) || 0));
   const baseUrl = `${PUBLIC_BASE}/app/shop/${id}`;
+  // Table list lives on the shop doc as `tables: [1,2,3,...]`. Empty means
+  // 'no tables added yet' — start with a suggestion.
+  const tables = Array.isArray(shop.tables) ? [...shop.tables].sort((a, b) => a - b) : [];
+  const MAX_TABLES = 25;
+  const sel = Number(extras.sel) || 0;
+  const selValid = sel > 0 && tables.includes(sel);
   const contacts = [
     shop.phone ? `📞 ${esc(shop.phone)}` : "",
     shop.whatsapp ? `💬 ${esc(shop.whatsapp)}` : "",
     shop.contactEmail ? `✉️ ${esc(shop.contactEmail)}` : "",
   ].filter(Boolean).join("  ·  ");
   const safeName = esc(shop.name).replace(/[^a-zA-Z0-9]+/g, "-");
-  // Build QR data URIs — one per table (or the single storefront QR when 0).
-  const qrs = [];
-  if (tableCount === 0) {
-    qrs.push({ label: "Storefront", url: baseUrl });
-  } else {
-    for (let i = 1; i <= tableCount; i++) qrs.push({ label: `Table ${i}`, url: `${baseUrl}?t=${i}` });
+  // Golden-angle hue per table so each one gets a distinct color (like suppliers).
+  const hueFor = (n) => Math.round(((n - 1) * 137.5 + 20) % 360);
+  const accentFor = (n) => `hsl(${hueFor(n)} 65% 52%)`;
+  const tintFor = (n) => `hsl(${hueFor(n)} 70% 96%)`;
+
+  // Only generate the QR for the selected table (save bandwidth).
+  let selQr = "";
+  if (selValid) {
+    selQr = await QRCode.toDataURL(`${baseUrl}?t=${sel}`, { margin: 1, width: 640, color: { dark: "#1a1a1a", light: "#ffffff" } });
   }
-  for (const q of qrs) {
-    q.dataUri = await QRCode.toDataURL(q.url, { margin: 1, width: 520, color: { dark: "#1a1a1a", light: "#ffffff" } });
-  }
-  const qrCard = (q) => `
-    <div class="qrCard" style="background:#fff;border:1px solid #ece3da;border-radius:16px;padding:18px 14px;text-align:center">
-      <div style="font-weight:800;font-size:16px"><span style="color:${ORANGE}">3</span>una <span style="color:${ORANGE}">5</span>aha <span style="font-weight:800">තුන පහ</span></div>
-      <div style="font-size:17px;font-weight:800;margin:6px 0 1px">${esc(shop.name)}</div>
-      <div class="sub" style="font-size:11.5px">${esc(shop.city ?? "")}${shop.country ? ", " + esc(shop.country) : ""}</div>
-      <div style="display:inline-block;background:#191512;color:#fff;font-size:11px;font-weight:800;padding:3px 10px;border-radius:99px;margin:10px 0 4px;letter-spacing:.04em">${esc(q.label.toUpperCase())}</div>
-      <img src="${q.dataUri}" alt="${esc(q.label)} QR" style="width:82%;max-width:260px;margin:6px auto 8px;display:block">
-      <div style="font-weight:700;font-size:12.5px">📱 Scan for our menu</div>
-      ${contacts ? `<div class="sub" style="font-size:11px;margin-top:6px">${contacts}</div>` : ""}
-      <div class="sub" style="font-size:10px;margin-top:6px;color:#a99d94">the spice marketplace · ggmt.sg</div>
-      <a class="btn" download="${safeName}-${esc(q.label).replace(/\s+/g,"-")}-QR.png" href="${q.dataUri}" style="margin-top:10px;padding:9px;font-size:12px">⬇ Download PNG</a>
+
+  const tableCard = (n) => {
+    const on = sel === n;
+    const accent = accentFor(n);
+    const href = on ? `/app/owner/${id}/qr` : `/app/owner/${id}/qr?sel=${n}`;
+    return `
+    <div class="tCard" data-href="${href}" role="button" tabindex="0" style="cursor:pointer;margin:0 0 6px;padding:9px 10px 9px 12px;min-width:0;border-left:4px solid ${accent};border:1px solid ${on ? "#191512" : "#ece3da"};border-left:4px solid ${accent};border-radius:12px;${on ? "background:#191512;color:#fff" : "background:" + tintFor(n)}">
+      <div class="row" style="justify-content:space-between;align-items:center;gap:6px">
+        <strong style="font-size:13px;flex:1;min-width:0">Table ${n}</strong>
+        <form method="POST" action="/app/owner/${id}/tables/${n}/remove" onclick="event.stopPropagation()" onsubmit="event.stopPropagation();return confirm('Remove Table ${n}?')" style="margin:0">
+          <button class="btn ghost" style="width:auto;padding:2px 6px;font-size:10px;color:${on ? "#ffb08f" : "#b3261e"};background:transparent;border:0" title="Remove">✕</button>
+        </form>
+      </div>
     </div>`;
+  };
+
+  // The right-panel QR viewer with share + download.
+  const qrPanel = selValid ? `
+    <div style="margin:0;padding:10px 12px;border:1px solid ${accentFor(sel)};border-radius:12px;background:${tintFor(sel)}">
+      <div class="row" style="justify-content:space-between;align-items:baseline">
+        <strong style="font-size:13px;color:${accentFor(sel)}">TABLE ${sel}</strong>
+        <a href="/app/owner/${id}/qr" style="font-size:14px;color:#b3261e;text-decoration:none;line-height:1" title="close">✕</a>
+      </div>
+      <img src="${selQr}" alt="Table ${sel} QR" style="width:100%;max-width:220px;margin:8px auto 6px;display:block;background:#fff;border-radius:8px">
+      <div class="sub" style="font-size:10.5px;text-align:center;margin-top:2px">📱 Scan for our menu</div>
+      <a class="btn" download="${safeName}-Table-${sel}-QR.png" href="${selQr}" style="margin-top:8px;padding:8px;font-size:11.5px">⬇ Download PNG</a>
+      <button type="button" class="btn ghost" onclick="shareQr(${sel})" style="margin-top:5px;padding:8px;font-size:11.5px;width:100%;color:#191512;border:1px solid #ece3da">↗ Share link</button>
+    </div>` : `
+    <div class="sub" style="margin:2px 4px;font-size:11px;text-align:center;line-height:1.4;color:#946200;padding:10px 4px">
+      Tap a table on the left to see the QR<br>
+      <span class="si">වම් පස මේසයක් තෝරන්න</span>
+    </div>`;
+
   return shell({
     title: "Table QR — " + shop.name,
     noBack: true,
     body: `
     <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/owner/${id}">‹</a><h1 style="font-size:21px">Table QR</h1></div>
-    <p class="sub" style="margin:8px 0 12px">Enter how many tables, then generate a QR per table. Print · laminate · stick each on its table so customers scan and see the menu — no app install.</p>
-    <form method="GET" style="display:grid;grid-template-columns:1fr 90px auto;gap:6px;align-items:center;margin-bottom:14px">
-      <label style="margin:0;font-size:11.5px">HOW MANY TABLES?</label>
-      <input type="number" name="tables" min="1" max="50" value="${tableCount || 1}" style="height:40px;font-size:15px;text-align:center;font-weight:700">
-      <button class="btn" style="width:auto;padding:11px 18px;font-size:13px">Generate</button>
-    </form>
-    ${tableCount > 0 ? `<div class="row" style="gap:8px;margin-bottom:10px">
-      <a class="btn" href="/app/owner/${id}/qr/print?tables=${tableCount}" target="_blank" style="flex:1;padding:11px;font-size:13px">🖨 Print all · ${qrs.length} QR${qrs.length === 1 ? "" : "s"}</a>
-    </div>` : ""}
-    <div style="display:grid;grid-template-columns:1fr;gap:14px">
-      ${qrs.map(qrCard).join("")}
+    <p class="sub" style="margin:8px 0 12px;font-size:12px;line-height:1.4">Add tables on the left. Tap one to see its QR — download, share, or print. Cap ${MAX_TABLES} tables. <span class="si">වම් පස මේස එකතු කරන්න.</span></p>
+
+    <div class="row" style="gap:10px;align-items:center;margin-top:6px">
+      <strong style="font-size:14px;flex:1;min-width:0">Tables <span class="si">මේස</span> · ${tables.length}/${MAX_TABLES}</strong>
+      ${tables.length < MAX_TABLES ? `<form method="POST" action="/app/owner/${id}/tables/add" style="margin:0"><button type="submit" title="Add table" style="width:28px;height:28px;border-radius:99px;background:${ORANGE};color:#fff;border:0;font-size:17px;font-weight:800;line-height:1;cursor:pointer;box-shadow:0 2px 6px #d9542b40;padding:0">+</button></form>` : `<span class="sub" style="font-size:10.5px">max reached</span>`}
+      ${tables.length > 0 ? `<a class="btn" href="/app/owner/${id}/qr/print?tables=${Math.max(...tables)}" target="_blank" style="width:auto;padding:6px 10px;font-size:11px">🖨 Print all</a>` : ""}
     </div>
-    <div class="sub" style="text-align:center;font-size:11px;margin-top:12px">Print output packs 2 QRs on each A4 sheet (each half is A5). Use your browser's <strong>Print → Save as PDF</strong>.</div>`,
+
+    ${tables.length ? `
+    <div style="display:grid;grid-template-columns:42% 58%;gap:8px;margin-top:10px;align-items:start">
+      <div class="tScroll" style="max-height:460px;overflow-y:scroll;padding:2px 8px 2px 0;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#d9542b80 transparent">
+        ${tables.map(tableCard).join("")}
+      </div>
+      <div style="min-width:0;position:sticky;top:0">${qrPanel}</div>
+    </div>
+    <style>
+      .tScroll::-webkit-scrollbar { width: 6px; -webkit-appearance: none; }
+      .tScroll::-webkit-scrollbar-thumb { background: #d9542b80; border-radius: 3px; }
+      .tScroll::-webkit-scrollbar-track { background: transparent; }
+    </style>` : `<div class="sub card" style="margin-top:12px;padding:14px;text-align:center;font-size:12.5px">
+      <div style="font-size:26px">🪑</div>
+      <div style="margin-top:6px">No tables yet — tap <strong style="color:${ORANGE}">+</strong> above to add your first table.</div>
+    </div>`}
+
+    <div class="sub" style="text-align:center;font-size:10.5px;margin-top:14px">Print output = 2 QRs per A4 (each half is A5). Browser <strong>Print → Save as PDF</strong>.</div>
+
+    <script>
+      document.querySelectorAll('.tCard').forEach(function(c){
+        c.addEventListener('click', function(e){
+          if(e.target.closest('a,form,button')) return;
+          var href = c.getAttribute('data-href'); if(href) location.href = href;
+        });
+      });
+      function shareQr(n){
+        var url = '${baseUrl}?t=' + n;
+        if(navigator.share){
+          navigator.share({title:'${esc(shop.name)} — Table ' + n, text:'Scan for our menu — Table ' + n, url:url}).catch(function(){});
+        } else if(window.nativeShare){
+          window.nativeShare('${esc(shop.name)} — Table ' + n, url);
+        } else {
+          navigator.clipboard.writeText(url).then(function(){ alert('Link copied — paste into WhatsApp / any chat.'); });
+        }
+      }
+    </script>`,
   });
 }
 
@@ -3059,7 +3116,41 @@ export async function handleApp(req, res, url) {
   m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/qr$/);
   if (m) {
     const shop = await shopById(m[1]);
-    if (shop) { html(res, await qrPage(shop, { tables: url.searchParams.get("tables") })); return; }
+    if (shop) { html(res, await qrPage(shop, { sel: url.searchParams.get("sel") })); return; }
+  }
+
+  // Tables: add the next available slot (up to 25).
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/tables\/add$/);
+  if (m && req.method === "POST") {
+    const shop = await shopById(m[1]);
+    if (shop) {
+      const cur = Array.isArray(shop.tables) ? shop.tables : [];
+      if (cur.length < 25) {
+        const used = new Set(cur.map(Number));
+        let next = 1;
+        while (used.has(next) && next <= 25) next++;
+        if (next <= 25) {
+          await (await col("shop_owners")).updateOne({ _id: shop._id }, { $set: { tables: [...cur, next].sort((a, b) => a - b) } });
+          redirect(res, `/app/owner/${m[1]}/qr?sel=${next}`);
+          return;
+        }
+      }
+    }
+    redirect(res, `/app/owner/${m[1]}/qr`);
+    return;
+  }
+
+  // Tables: remove a single table number.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/tables\/(\d{1,2})\/remove$/);
+  if (m && req.method === "POST") {
+    const n = Number(m[2]);
+    const shop = await shopById(m[1]);
+    if (shop) {
+      const cur = Array.isArray(shop.tables) ? shop.tables : [];
+      await (await col("shop_owners")).updateOne({ _id: shop._id }, { $set: { tables: cur.filter((x) => Number(x) !== n) } });
+    }
+    redirect(res, `/app/owner/${m[1]}/qr`);
+    return;
   }
 
   m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/add-dish$/);
