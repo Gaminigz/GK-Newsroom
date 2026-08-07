@@ -132,6 +132,61 @@ function promoTagChips(formId, current = "") {
 /** Indicative rate for the US$ display; dishes are priced in LKR. */
 const LKR_PER_USD = 300;
 
+// FX rates vs 1 LKR (approximate 2026 rates — refresh via API later).
+// All prices in Mongo are stored as LKR base; every display converts.
+const LKR_TO = {
+  LKR: 1,
+  USD: 1 / 300,
+  KHR: 4100 / 300,   // Cambodian riel
+  SGD: 1.35 / 300,
+  GBP: 0.79 / 300,
+  AUD: 1.53 / 300,
+  AED: 3.67 / 300,
+  INR: 83 / 300,
+  EUR: 0.92 / 300,
+};
+const CUR_SYM = {
+  LKR: "LKR",  USD: "US$", KHR: "៛",  SGD: "S$",
+  GBP: "£",    AUD: "A$",  AED: "AED", INR: "₹",  EUR: "€",
+};
+// Country (name OR ISO code) → { primary, secondary }.
+// Primary = local; Secondary = what the app's users most want to compare against
+// (Sri Lankan diaspora market → LKR everywhere; in Sri Lanka → USD for tourists).
+const COUNTRY_CUR = {
+  "Sri Lanka":      { primary: "LKR", secondary: "USD" },
+  "LK":             { primary: "LKR", secondary: "USD" },
+  "Cambodia":       { primary: "USD", secondary: "LKR" },
+  "KH":             { primary: "USD", secondary: "LKR" },
+  "Singapore":      { primary: "SGD", secondary: "LKR" },
+  "SG":             { primary: "SGD", secondary: "LKR" },
+  "United Kingdom": { primary: "GBP", secondary: "LKR" },
+  "GB":             { primary: "GBP", secondary: "LKR" },
+  "UK":             { primary: "GBP", secondary: "LKR" },
+  "Australia":      { primary: "AUD", secondary: "LKR" },
+  "AU":             { primary: "AUD", secondary: "LKR" },
+  "UAE":            { primary: "AED", secondary: "LKR" },
+  "AE":             { primary: "AED", secondary: "LKR" },
+  "India":          { primary: "INR", secondary: "LKR" },
+  "IN":             { primary: "INR", secondary: "LKR" },
+};
+function fx(lkrAmt, code) {
+  const r = LKR_TO[code] || LKR_TO.USD;
+  const v = Number(lkrAmt || 0) * r;
+  if (v >= 1000) return Math.round(v).toLocaleString("en-US");
+  if (v >= 10)   return v.toFixed(1).replace(/\.0$/, "");
+  return v.toFixed(2);
+}
+function pairFor(country) {
+  return COUNTRY_CUR[country] || { primary: "USD", secondary: "LKR" };
+}
+/** Price for a specific shop — shows local first, secondary alongside. */
+function shopPrice(shop, lkrAmt) {
+  const { primary, secondary } = pairFor(shop && shop.country);
+  const p = `${CUR_SYM[primary]}${primary === "KHR" ? "" : ""}${fx(lkrAmt, primary)}`;
+  const s = `${CUR_SYM[secondary]} ${fx(lkrAmt, secondary)}`;
+  return `${p} · ${s}`;
+}
+
 /** Travellers see US$ first, locals still get the exact LKR price. */
 function lkr(n) {
   const v = Number(n ?? 0);
@@ -1069,7 +1124,7 @@ async function shopPage(id, extras = {}) {
       <div style="flex:1;padding:10px 0;min-width:0">
         <strong style="font-size:14.5px">${esc(d.name)}</strong>${d.nameSi ? ` <span class="si">${esc(d.nameSi)}</span>` : ""}
         <div class="sub" style="font-size:12.5px">Available ${esc(d.window ?? "all day")}</div>
-        <strong style="font-size:13.5px">${lkr(d.price)}</strong>
+        <strong style="font-size:13.5px">${shopPrice(shop, d.price)}</strong>
       </div>
       <button class="btn" style="width:38px;padding:8px 0;border-radius:11px;margin-right:12px;flex:0 0 auto" onclick='add(${JSON.stringify(String(d._id))},${JSON.stringify(d.name)},${Number(d.price) || 0})'>+</button>
     </div>`,
@@ -1097,7 +1152,7 @@ async function shopPage(id, extras = {}) {
         <div style="flex:1">
           <strong>${esc(special.name)}</strong>
           <div class="sub" style="font-size:12.5px">${esc(special.nameSi ?? "")}</div>
-          <strong style="color:${ORANGE}">${lkr(special.price)}</strong> <span class="sub">· ${esc(special.window ?? "today")}</span>
+          <strong style="color:${ORANGE}">${shopPrice(shop, special.price)}</strong> <span class="sub">· ${esc(special.window ?? "today")}</span>
         </div>
         <button class="btn" style="width:38px;padding:8px 0;border-radius:11px" onclick='add(${JSON.stringify(String(special._id))},${JSON.stringify(special.name)},${Number(special.price) || 0})'>+</button>
       </div>
@@ -1499,7 +1554,7 @@ async function ownerDash(id, toast = "") {
           <span class="pill" style="position:absolute;top:7px;right:7px;background:#fff;border:1px solid #ece3da">✏️ Edit</span>
           ${d.special ? `<span class="pill deal" style="position:absolute;top:7px;left:7px">Special</span>` : ""}
           <div style="padding:8px 10px"><strong style="font-size:13px;line-height:1.3;display:block">${esc(d.name)}</strong>
-          <div class="sub" style="font-size:12px">${lkr(d.price)}${d.discount && d.discount !== "none" ? ` · <span style=\"color:${ORANGE}\">${esc(d.discount)}</span>` : ""}${d.category ? ` · <span style="color:#946200">${esc(d.category)}</span>` : ""}</div></div></a>`;
+          <div class="sub" style="font-size:12px">${shopPrice(shop, d.price)}${d.discount && d.discount !== "none" ? ` · <span style=\"color:${ORANGE}\">${esc(d.discount)}</span>` : ""}${d.category ? ` · <span style="color:#946200">${esc(d.category)}</span>` : ""}</div></div></a>`;
       }).join("")}
     </div>
     <script>
