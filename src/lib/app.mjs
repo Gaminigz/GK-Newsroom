@@ -1478,20 +1478,42 @@ async function ownerDash(id, toast = "") {
     </div>
     ${shop.status === "pending" ? `<div class="card" style="background:#fdf3d7;border-color:#efdba8"><strong style="color:#946200">⏳ Pending review</strong><div class="sub" style="font-size:12.5px">The 3una 5aha team is reviewing your shop. You can build your menu now — buyers see you once approved.</div></div>` : ""}
     ${shop.status === "suspended" ? `<div class="card" style="background:#fdecea;border-color:#efc4bf"><strong style="color:#b3261e">⛔ Suspended</strong><div class="sub" style="font-size:12.5px">Your shop is hidden from buyers. Contact support via /app/support.</div></div>` : ""}
-    <strong style="display:block;margin:2px 0 10px">My dishes <span class="sub" style="font-weight:400">— tap a tile to edit, buyers see these</span></strong>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div class="row" style="justify-content:space-between;align-items:baseline;margin:2px 0 8px">
+      <strong>My dishes <span class="sub" style="font-weight:400">— tap a tile to edit, buyers see these</span></strong>
+    </div>
+    ${(() => {
+      const CATS = ["Starters", "Bites", "Vegi meals", "Chicken", "Beef", "Mutton", "Pork", "Sea food", "Drinks", "Desserts"];
+      const inCat = (c) => c === "All" ? dishes.length : dishes.filter((d) => (d.category || "") === c).length;
+      return `<div id="dishChips" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px">
+        <button type="button" class="dChip on" data-cat="All" onclick="dishTab('All',this)" style="border:1px solid #e0d6cc;background:#191512;color:#fff;border-radius:99px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer">All · ${dishes.length}</button>
+        ${CATS.map((c) => `<button type="button" class="dChip" data-cat="${esc(c)}" onclick="dishTab('${esc(c)}',this)" style="border:1px solid #e0d6cc;background:#fff;border-radius:99px;padding:5px 11px;font-size:11px;font-weight:600;color:#4a443f;cursor:pointer">${esc(c)} · ${inCat(c)}</button>`).join("")}
+      </div>`;
+    })()}
+    <div id="dishGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       ${Array.from({ length: Math.max(12, dishes.length + 2) }, (_, i) => {
         const d = dishes[i];
-        if (!d) return `<a href="/app/owner/${String(shop._id)}/add-dish" class="card" style="margin:0;padding:0;overflow:hidden;border-style:dashed;border-width:2px;text-align:center">
+        if (!d) return `<a href="/app/owner/${String(shop._id)}/add-dish" class="dTile" data-cat="__add__" style="margin:0;padding:0;overflow:hidden;border-style:dashed;border-width:2px;text-align:center;border-radius:16px;background:#fff;border:2px dashed #ece3da">
           <div style="aspect-ratio:4/3;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#8a827b;font-size:12.5px;padding:8px"><span style="font-size:26px">＋</span>Add your dish<br><span style="font-size:11px">photo · price · time</span></div></a>`;
-        return `<a href="/app/owner/${String(shop._id)}/dish/${String(d._id)}" class="card" style="margin:0;padding:0;overflow:hidden;position:relative">
+        return `<a href="/app/owner/${String(shop._id)}/dish/${String(d._id)}" class="dTile card" data-cat="${esc(d.category || "")}" style="margin:0;padding:0;overflow:hidden;position:relative">
           <div style="aspect-ratio:4/3;background:#f0e7de ${d.photo ? `url(${d.photo}) center/cover` : ""};display:flex;align-items:center;justify-content:center;font-size:30px">${d.photo ? "" : "🍛"}</div>
           <span class="pill" style="position:absolute;top:7px;right:7px;background:#fff;border:1px solid #ece3da">✏️ Edit</span>
           ${d.special ? `<span class="pill deal" style="position:absolute;top:7px;left:7px">Special</span>` : ""}
           <div style="padding:8px 10px"><strong style="font-size:13px;line-height:1.3;display:block">${esc(d.name)}</strong>
-          <div class="sub" style="font-size:12px">${lkr(d.price)}${d.discount && d.discount !== "none" ? ` · <span style=\"color:${ORANGE}\">${esc(d.discount)}</span>` : ""} · <span style="color:#1d9d4b;font-weight:700">♥ ${Number(d.likes) || 0}</span></div></div></a>`;
+          <div class="sub" style="font-size:12px">${lkr(d.price)}${d.discount && d.discount !== "none" ? ` · <span style=\"color:${ORANGE}\">${esc(d.discount)}</span>` : ""}${d.category ? ` · <span style="color:#946200">${esc(d.category)}</span>` : ""}</div></div></a>`;
       }).join("")}
     </div>
+    <script>
+      function dishTab(cat, btn){
+        document.querySelectorAll('#dishChips .dChip').forEach(function(c){
+          c.classList.remove('on'); c.style.background='#fff'; c.style.color='#4a443f';
+        });
+        btn.classList.add('on'); btn.style.background='#191512'; btn.style.color='#fff';
+        document.querySelectorAll('.dTile').forEach(function(t){
+          var c = t.dataset.cat;
+          if(c === '__add__' || cat === 'All' || c === cat) t.style.display=''; else t.style.display='none';
+        });
+      }
+    </script>
     ${orders.length ? `<div class="row" style="justify-content:space-between;margin-top:16px"><strong>Incoming orders</strong>
       <span class="sub" style="font-size:12px">today ${todays.length} · ${lkr(revenue)} · ${chats} chats</span></div>
     <div style="margin-top:10px">${orderRows}</div>` : ""}

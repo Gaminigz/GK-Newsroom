@@ -98,8 +98,8 @@ const statusPill = (txt, kind) => {
 
 /* --------------------------------------------------------- the screens */
 
-const POS_CATEGORIES = [
-  "Starters", "Vegi meals", "Chicken", "Beef", "Mutton", "Pork", "Sea food", "Drinks", "Desserts",
+export const POS_CATEGORIES = [
+  "Starters", "Bites", "Vegi meals", "Chicken", "Beef", "Mutton", "Pork", "Sea food", "Drinks", "Desserts",
 ];
 
 function posPage(shop, extras = {}) {
