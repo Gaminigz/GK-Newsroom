@@ -1534,8 +1534,18 @@ async function qrPage(shop, extras = {}) {
       </div>
       <img id="qrImg" src="${selQr}" alt="Table ${sel} QR" style="width:100%;max-width:220px;margin:8px auto 6px;display:block;background:#fff;border-radius:8px">
       <div class="sub" style="font-size:10.5px;text-align:center;margin-top:2px">📱 Scan for our menu</div>
-      <button type="button" class="btn" onclick="downloadJpg(${sel})" style="margin-top:8px;padding:8px;font-size:11.5px;width:100%">⬇ Download JPG</button>
+      <button type="button" class="btn" onclick="previewJpg(${sel})" style="margin-top:8px;padding:8px;font-size:11.5px;width:100%">🔍 Preview &amp; Download</button>
       <button type="button" class="btn ghost" onclick="shareQr(${sel})" style="margin-top:5px;padding:8px;font-size:11.5px;width:100%;color:#191512;border:1px solid #ece3da">↗ Share link</button>
+    </div>
+    <!-- Preview modal — full branded card with actions -->
+    <div id="qrPrev" style="display:none;position:fixed;inset:0;background:#191512e6;z-index:200;align-items:center;justify-content:center;padding:20px 16px calc(env(safe-area-inset-bottom, 0px) + 110px);flex-direction:column">
+      <div style="position:absolute;top:14px;right:16px;font-size:22px;color:#fff;cursor:pointer;line-height:1;padding:6px" onclick="closePrev()">✕</div>
+      <div style="color:#fff;font-size:12px;letter-spacing:.05em;margin-bottom:8px" id="qrPrevTitle">TABLE PREVIEW</div>
+      <img id="qrPrevImg" src="" alt="Preview" style="max-width:100%;max-height:64vh;object-fit:contain;border-radius:10px;background:#fff;box-shadow:0 6px 24px #0006">
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;justify-content:center">
+        <button type="button" id="qrPrevDl" class="btn" style="padding:10px 18px;font-size:13px">⬇ Download JPG</button>
+        <button type="button" id="qrPrevShare" class="btn ghost" style="padding:10px 18px;font-size:13px;background:#fff;color:#191512;border:0">↗ Share</button>
+      </div>
     </div>` : `
     <div class="sub" style="margin:2px 4px;font-size:11px;text-align:center;line-height:1.4;color:#946200;padding:10px 4px">
       Tap a table on the left to see the QR<br>
@@ -1595,11 +1605,11 @@ async function qrPage(shop, extras = {}) {
           navigator.clipboard.writeText(url).then(function(){ alert('Link copied — paste into WhatsApp / any chat.'); });
         }
       }
-      // Compose a branded card on a hidden canvas and download as JPG.
-      // Same visual language as the print card: brand · shop · TABLE · QR
-      // · scan hint · contacts · footer, all on a white A5-portrait canvas.
-      function downloadJpg(n){
-        if(!QR_SRC) return;
+      // Compose a branded card on a hidden canvas — returns a Promise
+      // that resolves with the JPG data URI.
+      function renderJpg(n){
+        return new Promise(function(resolve, reject){
+          if(!QR_SRC){ reject(new Error('no QR')); return; }
         var canvas = document.createElement('canvas');
         var W = 826, H = 1170; // A5 portrait @ ~140 DPI
         canvas.width = W; canvas.height = H;
@@ -1677,16 +1687,51 @@ async function qrPage(shop, extras = {}) {
           ctx.fillStyle = '#a99d94';
           ctx.font = '20px -apple-system, Helvetica, sans-serif';
           ctx.fillText('the spice marketplace · ggmt.sg', W/2, 1120);
-          // Trigger download
-          var link = document.createElement('a');
-          link.download = SAFE_NAME + '-Table-' + n + '.jpg';
-          link.href = canvas.toDataURL('image/jpeg', 0.92);
-          document.body.appendChild(link);
-          link.click();
-          link.remove();
+          resolve(canvas.toDataURL('image/jpeg', 0.92));
         };
+        img.onerror = function(){ reject(new Error('QR load failed')); };
         img.src = QR_SRC;
+        });
       }
+      // Preview flow — render the card, show it in the modal, hook the
+      // Download/Share buttons to the final data URI.
+      function previewJpg(n){
+        var modal = document.getElementById('qrPrev');
+        var img = document.getElementById('qrPrevImg');
+        var title = document.getElementById('qrPrevTitle');
+        var dl = document.getElementById('qrPrevDl');
+        var sh = document.getElementById('qrPrevShare');
+        title.textContent = 'TABLE ' + n + ' · preview';
+        img.src = '';
+        dl.disabled = true; dl.textContent = 'Rendering…';
+        modal.style.display = 'flex';
+        renderJpg(n).then(function(dataUri){
+          img.src = dataUri;
+          dl.disabled = false; dl.textContent = '⬇ Download JPG';
+          dl.onclick = function(){
+            var link = document.createElement('a');
+            link.download = SAFE_NAME + '-Table-' + n + '.jpg';
+            link.href = dataUri;
+            document.body.appendChild(link); link.click(); link.remove();
+          };
+          sh.onclick = function(){
+            // Try Web Share API with the JPG file first (works on iOS 15+).
+            fetch(dataUri).then(function(r){return r.blob();}).then(function(blob){
+              var file = new File([blob], SAFE_NAME + '-Table-' + n + '.jpg', {type:'image/jpeg'});
+              if(navigator.canShare && navigator.canShare({files:[file]})){
+                return navigator.share({title:SHOP_NAME + ' — Table ' + n, files:[file]});
+              }
+              // Fallback: share the URL only.
+              if(navigator.share){ return navigator.share({title:SHOP_NAME + ' — Table ' + n, url:'${baseUrl}?t='+n}); }
+              throw new Error('no share');
+            }).catch(function(){
+              navigator.clipboard.writeText('${baseUrl}?t=' + n).then(function(){ alert('Link copied — paste into WhatsApp / any chat.'); });
+            });
+          };
+        }).catch(function(e){ dl.textContent = 'Failed'; });
+      }
+      function closePrev(){ document.getElementById('qrPrev').style.display = 'none'; }
+      (function(){ var m = document.getElementById('qrPrev'); if(m){ m.addEventListener('click', function(e){ if(e.target === m) closePrev(); }); } })();
       function wrap(ctx, text, maxW){
         var words = text.split(' '), lines = [], line = '';
         for(var i=0; i<words.length; i++){
