@@ -182,9 +182,9 @@ function pairFor(country) {
 /** Price for a specific shop — shows local first, secondary alongside. */
 function shopPrice(shop, lkrAmt) {
   const { primary, secondary } = pairFor(shop && shop.country);
-  const p = `${CUR_SYM[primary]}${primary === "KHR" ? "" : ""}${fx(lkrAmt, primary)}`;
-  const s = `${CUR_SYM[secondary]} ${fx(lkrAmt, secondary)}`;
-  return `${p} · ${s}`;
+  const glue = (code) => (["LKR", "AED"].includes(code) ? " " : "");
+  const one = (code) => `${CUR_SYM[code]}${glue(code)}${fx(lkrAmt, code)}`;
+  return `${one(primary)} · ${one(secondary)}`;
 }
 
 /** Travellers see US$ first, locals still get the exact LKR price. */
