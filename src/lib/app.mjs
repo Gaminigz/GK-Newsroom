@@ -1034,11 +1034,12 @@ async function homePage(req, url) {
 
 /* ------------------------------------------------------ 3.5 shop page */
 
-async function shopPage(id) {
+async function shopPage(id, extras = {}) {
   const shop = await shopById(id);
   if (!shop) return null;
   const dishes = await dishesFor(shop._id);
   const special = dishes.find((d) => d.special);
+  const tableN = Number(extras.tableN) || 0;
 
   const dishRows = dishes
     .filter((d) => !d.special)
@@ -1064,6 +1065,10 @@ async function shopPage(id) {
     nav: buyerNav("home"),
     body: `
     ${shopThumb(shop, "width:calc(100% + 48px);height:150px;font-size:34px;margin:calc(-1 * (env(safe-area-inset-top, 0px) + 30px)) -24px 0;border-radius:0 0 22px 22px", "🍛")}
+    ${tableN ? `<div class="row" style="margin-top:12px;padding:10px 14px;background:#191512;color:#fff;border-radius:14px;justify-content:space-between;align-items:center">
+      <div><span style="font-size:11px;opacity:.75;letter-spacing:.06em">DINE-IN · ${esc(shop.name.toUpperCase())}</span><br><strong style="font-size:18px">🍽 Table ${tableN}</strong></div>
+      <span class="sub" style="font-size:11px;color:#ffb08f;text-align:right;line-height:1.3">Pick items · tap<br>SEND TO KITCHEN</span>
+    </div>` : ""}
     <h1 style="margin-top:12px">${esc(shop.name)} <span class="si">කෑම</span></h1>
     <div class="sub">★ 4.8 · ${esc(shop.city)}, ${esc(shop.country)} · ${shop.open === false ? "closed now" : "open now"}</div>
     ${special ? `
@@ -1100,14 +1105,14 @@ async function shopPage(id) {
 
     <div id="sheet" style="display:none;position:fixed;inset:0;background:rgba(20,15,10,.45);z-index:9" onclick="if(event.target===this)this.style.display='none'">
       <form method="POST" action="/app/order" style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;background:#faf7f4;border-radius:22px 22px 0 0;padding:20px 26px calc(env(safe-area-inset-bottom, 0px) + 28px)">
-        <strong style="font-size:17px">Confirm pickup order</strong>
+        <strong style="font-size:17px">${tableN ? `Send Table ${tableN} order to kitchen` : "Confirm pickup order"}</strong>
         <div id="sheetItems" style="margin:10px 0 2px"></div>
         <input type="hidden" name="shopId" value="${String(shop._id)}">
         <input type="hidden" name="items" id="itemsField">
-        <label>YOUR NAME</label><input type="text" name="buyer" required placeholder="Nimal P.">
+        ${tableN ? `<input type="hidden" name="tableN" value="${tableN}">` : `<label>YOUR NAME</label><input type="text" name="buyer" required placeholder="Nimal P.">
         <label>PHONE</label><input type="tel" name="phone" required placeholder="+61 412 555 210">
-        <label>PICKUP TIME</label><input type="text" name="pickupAt" placeholder="7:00 PM" value="7:00 PM">
-        <button class="btn" style="margin-top:18px">Place order · <span id="sheetTotal"></span></button>
+        <label>PICKUP TIME</label><input type="text" name="pickupAt" placeholder="7:00 PM" value="7:00 PM">`}
+        <button class="btn" style="margin-top:${tableN ? 12 : 18}px">${tableN ? `🍽 SEND TO KITCHEN · <span id="sheetTotal"></span>` : `Place order · <span id="sheetTotal"></span>`}</button>
       </form>
     </div>
 <div id="pv" onclick="this.style.display='none'" style="display:none;position:fixed;inset:0;background:rgba(15,10,5,.92);z-index:60;align-items:center;justify-content:center;cursor:zoom-out">
@@ -2530,7 +2535,9 @@ export async function handleApp(req, res, url) {
 
   let m = path.match(/^\/app\/shop\/([a-f0-9]{24})$/);
   if (m) {
-    const page = await shopPage(m[1]);
+    const rawT = url.searchParams.get("t");
+    const tableN = rawT && /^\d{1,2}$/.test(rawT) ? Math.max(1, Math.min(25, Number(rawT))) : 0;
+    const page = await shopPage(m[1], { tableN });
     if (page) { html(res, page); return; }
   }
 
@@ -2542,6 +2549,8 @@ export async function handleApp(req, res, url) {
       .filter((i) => i && i.name && Number(i.qty) > 0)
       .map((i) => ({ name: String(i.name).slice(0, 80), qty: Math.min(Number(i.qty), 50), price: Number(i.price) || 0 }));
     if (!items.length) { redirect(res, "/app/home"); return; }
+    const rawT = String(form.get("tableN") || "").trim();
+    const tableN = /^\d{1,2}$/.test(rawT) ? Math.max(1, Math.min(25, Number(rawT))) : 0;
     const phone = String(form.get("phone") || "").slice(0, 24);
     // Global running order number — atomic counter, superadmin-visible only.
     const counter = await (await col("counters")).findOneAndUpdate(
@@ -2553,19 +2562,23 @@ export async function handleApp(req, res, url) {
       shopId: String(form.get("shopId") || ""),
       items,
       total: items.reduce((a, i) => a + i.qty * i.price, 0),
-      buyer: String(form.get("buyer") || "").slice(0, 60),
-      phone,
-      pickupAt: String(form.get("pickupAt") || "").slice(0, 24),
+      buyer: tableN ? `Table ${tableN}` : String(form.get("buyer") || "").slice(0, 60),
+      phone: tableN ? "" : phone,
+      pickupAt: tableN ? `dine-in · Table ${tableN}` : String(form.get("pickupAt") || "").slice(0, 24),
+      type: tableN ? "table" : "pickup",
+      ...(tableN ? { tableN } : {}),
       status: "pending",
       messages: [],
       createdAt: new Date(),
     };
     const r = await (await col("app_orders")).insertOne(doc);
-    res.setHeader("Set-Cookie", `app_phone=${encodeURIComponent(phone)}; Path=/app; Max-Age=31536000; SameSite=Lax`);
+    if (!tableN) {
+      res.setHeader("Set-Cookie", `app_phone=${encodeURIComponent(phone)}; Path=/app; Max-Age=31536000; SameSite=Lax`);
+    }
     redirect(res, `/app/order/${r.insertedId}`);
     // Native push to the shop owner's devices — fire-and-forget.
     notifyShop(doc.shopId, {
-      title: "New order 🍛",
+      title: tableN ? `🍽 Table ${tableN} order` : "New order 🍛",
       body: `${items.reduce((a, i) => a + i.qty, 0)} item(s) · ${lkr(doc.total)}${doc.buyer ? ` — ${doc.buyer}` : ""}`,
       url: `/app/owner/${doc.shopId}/dishes`,
     }).catch(() => {});
