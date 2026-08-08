@@ -968,8 +968,8 @@ async function homePage(req, url) {
       shownShops.map(async (s) => {
         const dishes = await dishesFor(s._id);
         const deal = dishes.find((d) => d.discount && d.discount !== "none");
-        return `<a class="card row" href="/app/shop/${String(s._id)}" style="padding:5px;gap:10px">
-        ${shopThumb(s, "width:86px;height:86px")}
+        return `<a class="card row" href="/app/shop/${String(s._id)}" style="padding:2px 8px 2px 2px;gap:10px">
+        ${shopThumb(s, "width:110px;height:110px")}
         <div style="flex:1">
           <strong>${esc(s.name)}</strong> ${deal ? `<span class="pill deal">${esc(deal.discount)}</span>` : ""}
           <div class="sub" style="font-size:12.5px">★ 4.${(String(s._id).charCodeAt(10) % 5) + 4} · ${esc(s.city)} · ${dishes.length || s.listings || 0} dishes</div>
