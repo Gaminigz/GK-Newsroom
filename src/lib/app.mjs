@@ -204,7 +204,7 @@ function dishThumb(d, extra = "", emoji = "🍛") {
 /** Shop logo thumb — uploaded logo when present, emoji tile otherwise. */
 function shopThumb(shop, extra = "", emoji = "🍲") {
   return shop?.logo
-    ? `<div class="thumb" style="${extra};background-image:url(${shop.logo});background-size:cover;background-position:center"></div>`
+    ? `<div class="thumb" style="${extra};background-image:url(${shop.logo});background-size:cover;background-position:center;border-radius:99px"></div>`
     : `<div class="thumb" style="${extra}">${emoji}</div>`;
 }
 
