@@ -204,7 +204,7 @@ function dishThumb(d, extra = "", emoji = "🍛") {
 /** Shop logo thumb — uploaded logo when present, emoji tile otherwise. */
 function shopThumb(shop, extra = "", emoji = "🍲") {
   return shop?.logo
-    ? `<div class="thumb" style="${extra};background-image:url(${shop.logo});background-size:cover;background-position:center;background-repeat:no-repeat;border-radius:14px"></div>`
+    ? `<div class="thumb" style="${extra};background-image:url(${shop.logo});background-size:cover;background-position:center;background-repeat:no-repeat"></div>`
     : `<div class="thumb" style="${extra}">${emoji}</div>`;
 }
 
@@ -968,8 +968,8 @@ async function homePage(req, url) {
       shownShops.map(async (s) => {
         const dishes = await dishesFor(s._id);
         const deal = dishes.find((d) => d.discount && d.discount !== "none");
-        return `<a class="card row" href="/app/shop/${String(s._id)}" style="padding:2px 8px 2px 2px;gap:10px">
-        ${shopThumb(s, "width:110px;height:110px")}
+        return `<a class="card row" href="/app/shop/${String(s._id)}" style="padding:0;gap:10px;padding-right:10px;overflow:hidden">
+        ${shopThumb(s, "width:130px;height:130px;border-radius:0")}
         <div style="flex:1">
           <strong>${esc(s.name)}</strong> ${deal ? `<span class="pill deal">${esc(deal.discount)}</span>` : ""}
           <div class="sub" style="font-size:12.5px">★ 4.${(String(s._id).charCodeAt(10) % 5) + 4} · ${esc(s.city)} · ${dishes.length || s.listings || 0} dishes</div>
