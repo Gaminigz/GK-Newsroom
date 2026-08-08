@@ -2725,6 +2725,9 @@ export async function handleApp(req, res, url) {
     const c2 = cookies(req);
     const nativeHeader = (req.headers["x-app-source"] || "").toLowerCase() === "app";
     const source = tableN ? "table" : ((c2.native === "1" || nativeHeader) ? "app" : "ecom");
+    // Pre-booking timestamp — ISO8601 from native app, optional. Falls back to now.
+    const wantAtRaw = String(form.get("wantAt") || "").slice(0, 40);
+    const wantAtDate = wantAtRaw && !isNaN(Date.parse(wantAtRaw)) ? new Date(wantAtRaw) : new Date();
     const doc = {
       orderNo,
       shopId: String(form.get("shopId") || ""),
@@ -2733,6 +2736,7 @@ export async function handleApp(req, res, url) {
       buyer: tableN ? `Table ${tableN}` : String(form.get("buyer") || "").slice(0, 60),
       phone: tableN ? "" : phone,
       pickupAt: tableN ? `dine-in · Table ${tableN}` : String(form.get("pickupAt") || "").slice(0, 24),
+      wantAt: wantAtDate,
       type: tableN ? "table" : "pickup",
       source,
       ...(tableN ? { tableN } : {}),

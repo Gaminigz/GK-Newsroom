@@ -147,11 +147,20 @@ function posPage(shop, extras = {}) {
         <span style="color:#c9bfb7;flex:0 0 auto;font-size:9.5px">${escT(shortPrice(lineLkr))}</span>
       </div>`;
     }).join("");
+    const wantStr = o.wantAt ? (() => {
+      const d = new Date(o.wantAt);
+      if (isNaN(d)) return "";
+      const now = new Date();
+      const sameDay = d.toDateString() === now.toDateString();
+      const t = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+      return sameDay ? `today · ${t}` : `${d.toLocaleDateString("en-US",{month:"short",day:"numeric"})} · ${t}`;
+    })() : "";
     return `<div style="margin-top:8px" data-order-id="${oid}">
       <div style="margin-bottom:3px;display:flex;justify-content:space-between;align-items:center;gap:6px">
         ${sourceChip(o)}
         <strong style="font-size:12.5px;color:#d9542b;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">#${padNo(o.orderNo)}</strong>
       </div>
+      ${wantStr ? `<div style="margin:-1px 0 3px 0;font-size:9.5px;color:#946200;font-weight:600">⏰ want ${escT(wantStr)}</div>` : ""}
       <div class="card" style="margin:0;padding:6px 9px;background:#191512;border-color:#191512;color:#fff">
         <div style="display:flex;justify-content:baseline;justify-content:space-between;align-items:baseline;gap:8px"><strong style="font-size:22px;line-height:1;color:#ffb08f">${totalPortions}</strong><strong style="color:#ffb08f;font-size:12.5px">${escT(shortPrice(Number(o.total) || 0))}</strong></div>
         <div style="margin-top:2px">${lines || '<div class="sub" style="color:#c9bfb7">no items</div>'}</div>
