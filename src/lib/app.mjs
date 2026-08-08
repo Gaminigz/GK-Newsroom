@@ -203,9 +203,13 @@ function dishThumb(d, extra = "", emoji = "🍛") {
 
 /** Shop logo thumb — uploaded logo when present, emoji tile otherwise. */
 function shopThumb(shop, extra = "", emoji = "🍲") {
-  return shop?.logo
-    ? `<div style="width:52px;height:52px;border-radius:12px;background:#f0e7de;flex:0 0 auto;${extra};background-image:url(${shop.logo});background-size:cover;background-position:center;background-repeat:no-repeat"></div>`
-    : `<div class="thumb" style="${extra}">${emoji}</div>`;
+  if (shop?.logo) {
+    // When `extra` sets size, use it alone — avoids WKWebView's inconsistent
+    // handling of duplicate properties like width:52px;...;width:130px.
+    const sizing = extra || "width:52px;height:52px;border-radius:12px";
+    return `<div style="${sizing};background:#f0e7de;flex:0 0 auto;background-image:url(${shop.logo});background-size:cover;background-position:center;background-repeat:no-repeat"></div>`;
+  }
+  return `<div class="thumb" style="${extra}">${emoji}</div>`;
 }
 
 async function oid(id) {
