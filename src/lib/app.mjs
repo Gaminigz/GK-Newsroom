@@ -2261,6 +2261,7 @@ export async function handleApp(req, res, url) {
     const toDish = (d) => ({
       id: String(d._id), name: d.name, nameSi: d.nameSi ?? "", price: Number(d.price) || 0,
       photo: d.photo ?? "", window: d.window ?? "all day", discount: d.discount && d.discount !== "none" ? d.discount : "",
+      category: d.category ?? "",
     });
     res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
     res.end(JSON.stringify({
