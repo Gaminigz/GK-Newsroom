@@ -14,15 +14,17 @@ const ORANGE = "#d9542b";
 
 /** One tile per function. `href(id)` = real page; suite previews use key.
  *  Table QR is not in the grid — it sits top-right under the Logout pill. */
+// `real:` = tile is wired to real Mongo collections (green glow, no padlock).
+// Absence of `real:` = static preview screen — still opens, just hardcoded HTML.
 export const SUITE_TILES = [
   { key: "dishes", label: "Setup Daily Menu", emoji: "🍛", real: (id) => `/app/owner/${id}/dishes` },
-  { key: "pos", label: "POS", emoji: "💳" },
-  { key: "menu", label: "Plan Menu", emoji: "🍱" },
+  { key: "pos", label: "POS", emoji: "💳", real: (id) => `/app/owner/${id}/suite/pos` },
+  { key: "menu", label: "Plan Menu", emoji: "🍱", real: (id) => `/app/owner/${id}/suite/menu` },
   { key: "costs", label: "Cost sheet", emoji: "🧮" },
-  { key: "stock", label: "Kitchen stock", emoji: "📦" },
-  { key: "plan", label: "Purchasing", emoji: "🧾" },
-  { key: "purchasing", label: "Buying & bills", emoji: "🛒" },
-  { key: "history", label: "Bill History", emoji: "🗂️" },
+  { key: "stock", label: "Kitchen stock", emoji: "📦", real: (id) => `/app/owner/${id}/suite/stock` },
+  { key: "plan", label: "Purchasing", emoji: "🧾", real: (id) => `/app/owner/${id}/suite/plan` },
+  { key: "purchasing", label: "Buying & bills", emoji: "🛒", real: (id) => `/app/owner/${id}/suite/purchasing` },
+  { key: "history", label: "Bill History", emoji: "🗂️", real: (id) => `/app/owner/${id}/suite/history` },
   { key: "salaries", label: "Staff salaries entries", emoji: "💬" },
   { key: "staff", label: "Staff Pay", emoji: "👥" },
   { key: "utilities", label: "Utilities Pay", emoji: "💡" },

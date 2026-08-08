@@ -598,6 +598,7 @@ struct ShopsMapView: View {
         span: MKCoordinateSpan(latitudeDelta: 0.12, longitudeDelta: 0.12))
     @State private var pins: [ShopPin] = []
     @State private var selected: ShopPin?
+    @State private var locationManager = CLLocationManager()
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -639,7 +640,7 @@ struct ShopsMapView: View {
                 return ShopPin(id: s.id, name: s.name, coord: CLLocationCoordinate2D(latitude: lat, longitude: lng))
             }
             if let first = pins.first { region.center = first.coord }
-            CLLocationManager().requestWhenInUseAuthorization()
+            locationManager.requestWhenInUseAuthorization()
         }
     }
 }

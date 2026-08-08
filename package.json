@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.8.0",
+    "googleapis": "^144.0.0",
     "mongodb": "^7.3.0",
     "qrcode": "^1.5.4",
     "rss-parser": "^3.13.0",

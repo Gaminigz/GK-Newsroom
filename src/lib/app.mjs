@@ -32,6 +32,7 @@ import { getDb } from "./mongo.ts";
 import { newCode, sendVerificationEmail, sendPasswordResetEmail } from "./mail.mjs";
 import { loadPresetDishes, generateRecipe, priceIngredient } from "./ai-dish.mjs";
 import { LANKA_INGREDIENTS, STOCK_UNITS, INGREDIENT_INDEX } from "../data/lanka-ingredients.mjs";
+import { uploadDishPhoto, deleteDishPhoto } from "./drive.mjs";
 import { CURRENCIES, CURRENCY_CODES, currencyOf, fmtMoney } from "../data/currencies.mjs";
 
 const ORANGE = "#d9542b";
@@ -3345,10 +3346,16 @@ export async function handleApp(req, res, url) {
       const name = String(form.get("name") || "").trim().slice(0, 80);
       const photo = String(form.get("photo") || "");
       const photoOk = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(photo) && photo.length < 500_000;
+      let photoValue = null;
+      if (photoOk) {
+        const driveUrl = await uploadDishPhoto(photo, { shopId: m[1], dishName: name || d.name });
+        photoValue = driveUrl || photo; // fall back to base64 if Drive is off
+        if (driveUrl && typeof d.photo === "string") { await deleteDishPhoto(d.photo); }
+      }
       await (await col("app_dishes")).updateOne({ _id }, { $set: {
         ...(name ? { name } : {}),
         nameSi: String(form.get("nameSi") || "").slice(0, 80),
-        ...(photoOk ? { photo } : {}),
+        ...(photoValue ? { photo: photoValue } : {}),
         price: Math.max(0, Number(form.get("price")) || 0),
         portions: Math.max(1, Number(form.get("portions")) || 20),
         window: String(form.get("window") || "All day").slice(0, 20),
@@ -3368,8 +3375,10 @@ export async function handleApp(req, res, url) {
   if (m && req.method === "POST") {
     const _id = await oid(m[2]);
     if (_id) {
+      const doomed = await (await col("app_dishes")).findOne({ _id, shopId: m[1] }, { projection: { photo: 1 } });
       const r = await (await col("app_dishes")).deleteOne({ _id, shopId: m[1] });
       if (r.deletedCount) {
+        if (doomed && typeof doomed.photo === "string") { await deleteDishPhoto(doomed.photo); }
         const shopOid = await oid(m[1]);
         if (shopOid) await (await col("shop_owners")).updateOne({ _id: shopOid }, { $inc: { listings: -1 } });
       }
@@ -3441,12 +3450,17 @@ export async function handleApp(req, res, url) {
     const name = String(form.get("name") || "").trim().slice(0, 80);
     const photo = String(form.get("photo") || "");
     const photoOk = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(photo) && photo.length < 500_000;
+    let photoValue = null;
+    if (photoOk) {
+      const driveUrl = await uploadDishPhoto(photo, { shopId: m[1], dishName: name });
+      photoValue = driveUrl || photo;
+    }
     if (name) {
       await (await col("app_dishes")).insertOne({
         shopId: m[1],
         name,
         nameSi: String(form.get("nameSi") || "").slice(0, 80),
-        ...(photoOk ? { photo } : {}),
+        ...(photoValue ? { photo: photoValue } : {}),
         price: Math.max(0, Number(form.get("price")) || 0),
         portions: Math.max(1, Number(form.get("portions")) || 20),
         window: String(form.get("window") || "All day").slice(0, 20),
