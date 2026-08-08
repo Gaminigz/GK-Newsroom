@@ -153,7 +153,7 @@ function posPage(shop, extras = {}) {
         <strong style="font-size:12.5px;color:#d9542b;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">#${padNo(o.orderNo)}</strong>
       </div>
       <div class="card" style="margin:0;padding:6px 9px;background:#191512;border-color:#191512;color:#fff">
-        <div style="display:flex;justify-content:space-between;font-size:9.5px;color:#c9bfb7"><span>${totalPortions} portion${totalPortions === 1 ? "" : "s"}</span><strong style="color:#ffb08f;font-size:10.5px">${escT(shortPrice(Number(o.total) || 0))}</strong></div>
+        <div style="display:flex;justify-content:baseline;justify-content:space-between;align-items:baseline;gap:8px"><strong style="font-size:22px;line-height:1;color:#ffb08f">${totalPortions}</strong><strong style="color:#ffb08f;font-size:12.5px">${escT(shortPrice(Number(o.total) || 0))}</strong></div>
         <div style="margin-top:2px">${lines || '<div class="sub" style="color:#c9bfb7">no items</div>'}</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr auto;gap:4px;margin-top:5px">
