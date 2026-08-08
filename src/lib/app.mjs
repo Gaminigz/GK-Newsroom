@@ -2111,7 +2111,7 @@ function addDishPage(shop) {
 
 /* ---------------------------------------------------------------- route */
 
-export { shell, esc, lkr };
+export { shell, esc, lkr, shopPrice, fx, pairFor, CUR_SYM, LKR_TO };
 
 export async function handleApp(req, res, url) {
   const path = url.pathname;
@@ -2883,9 +2883,17 @@ export async function handleApp(req, res, url) {
       extras.onHoldCount = await (await col("app_orders"))
         .countDocuments({ shopId: m[1], status: "on_hold" });
       const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
-      const kitchenBound = await (await col("app_orders"))
-        .find({ shopId: m[1], createdAt: { $gte: startOfDay }, status: { $in: ["pending", "preparing", "done"] } })
-        .project({ total: 1 }).toArray();
+      const todays = await (await col("app_orders"))
+        .find({ shopId: m[1], createdAt: { $gte: startOfDay } })
+        .project({ total: 1, status: 1 }).toArray();
+      const count = (s) => todays.filter((o) => s.includes(o.status)).length;
+      extras.statusCounts = {
+        waiting: count(["pending_review"]),
+        kitchen: count(["pending", "preparing"]),
+        ready: count(["done"]),
+        delivered: count(["delivered"]),
+      };
+      const kitchenBound = todays.filter((o) => ["pending", "preparing", "done", "delivered"].includes(o.status));
       extras.todaysSales = {
         count: kitchenBound.length,
         total: kitchenBound.reduce((n, b) => n + (Number(b.total) || 0), 0),

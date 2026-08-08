@@ -8,7 +8,7 @@
  * module only adds the hub + previews under /app/owner/:id/suite/:key.
  */
 
-import { shell, esc } from "./app.mjs";
+import { shell, esc, shopPrice, pairFor, CUR_SYM, LKR_TO } from "./app.mjs";
 import { ingredientSlug } from "./drive.mjs";
 
 const ORANGE = "#d9542b";
@@ -111,6 +111,7 @@ function posPage(shop, extras = {}) {
   const todaysSales = extras.todaysSales || { count: 0, total: 0 };
   const pendingOrders = extras.pendingOrders || [];
   const onHoldCount = extras.onHoldCount || 0;
+  const sc = extras.statusCounts || { waiting: 0, kitchen: 0, ready: 0, delivered: 0 };
   const cur = extras.currency || { code: "LKR", symbol: "Rs" };
   const escT = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const SOURCE_CHIP = {
@@ -125,11 +126,14 @@ function posPage(shop, extras = {}) {
   };
   const orderCard = (o) => {
     const oid = String(o._id);
-    const lines = (o.items || []).map((i) => `
+    const lines = (o.items || []).map((i) => {
+      const lineLkr = Math.round((Number(i.price) || 0) * (Number(i.qty) || 0));
+      return `
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;padding:3px 0;border-bottom:1px dashed #ece3da;font-size:11px">
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escT(i.name)} <span class="sub">×${Number(i.qty) || 0}</span></span>
-        <strong style="color:#d9542b;flex:0 0 auto">${escT(cur.symbol)} ${Math.round((Number(i.price) || 0) * (Number(i.qty) || 0)).toLocaleString()}</strong>
-      </div>`).join("");
+        <strong style="color:#ffb08f;flex:0 0 auto;font-size:10.5px">${escT(shopPrice(shop, lineLkr))}</strong>
+      </div>`;
+    }).join("");
     return `<div style="margin-top:10px" data-order-id="${oid}">
       <div style="margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;gap:6px">
         ${sourceChip(o)}
@@ -138,7 +142,7 @@ function posPage(shop, extras = {}) {
       <div class="card" style="margin:0;padding:9px 11px;background:#191512;border-color:#191512;color:#fff">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px">
           <div style="font-size:9.5px;opacity:.72;letter-spacing:.06em">${(o.items || []).reduce((n, i) => n + (Number(i.qty) || 0), 0)} item(s)</div>
-          <strong style="font-size:15px;color:#ffb08f">${escT(cur.symbol)} ${(Number(o.total) || 0).toLocaleString()}</strong>
+          <strong style="font-size:13px;color:#ffb08f;text-align:right">${escT(shopPrice(shop, Number(o.total) || 0))}</strong>
         </div>
         <div style="margin-top:6px;color:#e7e2dc">${lines || '<div class="sub" style="color:#c9bfb7">no items</div>'}</div>
       </div>
@@ -159,7 +163,7 @@ function posPage(shop, extras = {}) {
       </div>
       <div style="padding:5px 7px 6px">
         <strong style="display:block;font-size:11px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escT(d.name)}</strong>
-        <span class="sub" style="font-size:10.5px;color:#d9542b;font-weight:700">${escT(cur.symbol)} ${(Number(d.price) || 0).toLocaleString()}</span>
+        <span class="sub" style="font-size:10px;color:#d9542b;font-weight:700">${escT(shopPrice(shop, Number(d.price) || 0))}</span>
       </div>
     </div>`;
   return page(shop, "pos", "POS", "විකුණුම් කවුන්ටරය", `
@@ -171,13 +175,18 @@ function posPage(shop, extras = {}) {
           ${dishes.map(dishCard).join("")}
         </div>
         <div style="position:sticky;top:0;min-width:0">
-          <div id="posTotalBar" style="padding:9px 11px;background:#191512;border-radius:12px;color:#fff">
-            <div style="font-size:9.5px;opacity:.75;letter-spacing:.06em">CURRENT BILL</div>
-            <strong style="font-size:16px;color:#ffb08f;display:block;margin-top:2px"><span id="posSymbol">${escT(cur.symbol)}</span> <span id="posTotal">0</span></strong>
-            <div style="font-size:10px;opacity:.7"><span id="posCount">0</span> item(s)</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;margin-bottom:6px">
+            <div style="padding:4px 6px;background:#fdf3d7;border:1px solid #efdba8;border-radius:6px;text-align:center"><div style="font-size:8.5px;color:#946200;font-weight:700;letter-spacing:.04em">WAITING</div><strong style="font-size:13px;color:#946200">${sc.waiting}</strong></div>
+            <div style="padding:4px 6px;background:#fdf0ec;border:1px solid #e8a087;border-radius:6px;text-align:center"><div style="font-size:8.5px;color:#8b3a1f;font-weight:700;letter-spacing:.04em">KITCHEN</div><strong style="font-size:13px;color:#8b3a1f">${sc.kitchen}</strong></div>
+            <div style="padding:4px 6px;background:#e8f6ec;border:1px solid #8fce9e;border-radius:6px;text-align:center"><div style="font-size:8.5px;color:#1d7a34;font-weight:700;letter-spacing:.04em">READY</div><strong style="font-size:13px;color:#1d7a34">${sc.ready}</strong></div>
+            <div style="padding:4px 6px;background:#e8eefb;border:1px solid #a9baea;border-radius:6px;text-align:center"><div style="font-size:8.5px;color:#26418a;font-weight:700;letter-spacing:.04em">DELIVERED</div><strong style="font-size:13px;color:#26418a">${sc.delivered}</strong></div>
           </div>
-          <div id="posBasket" style="margin-top:6px;max-height:280px;overflow-y:auto;font-size:10.5px;padding-right:2px;overscroll-behavior:contain">
-            <div class="sub" style="font-size:10.5px;padding:2px 0">Empty — tap a dish.</div>
+          <div id="posTotalBar" style="padding:6px 10px;background:#191512;border-radius:10px;color:#fff;display:flex;justify-content:space-between;align-items:baseline;gap:6px">
+            <span style="font-size:9px;opacity:.72;letter-spacing:.05em">COUNTER · <span id="posCount">0</span></span>
+            <strong style="font-size:12px;color:#ffb08f;text-align:right;line-height:1.1"><span id="posTotalDisplay">${escT(shopPrice(shop, 0))}</span></strong>
+          </div>
+          <div id="posBasket" style="margin-top:4px;max-height:240px;overflow-y:auto;font-size:10.5px;padding-right:2px;overscroll-behavior:contain">
+            <div class="sub" style="font-size:10px;padding:2px 0;text-align:center;color:#c9bfb7">tap a dish to start</div>
           </div>
           <div id="posRingWrap" style="display:none;margin-top:8px">
             <button type="button" id="posRing" class="btn" style="width:100%;padding:11px 4px;font-size:11.5px;font-weight:700">Send to Kitchen</button>
@@ -200,7 +209,7 @@ function posPage(shop, extras = {}) {
     <div style="margin-top:16px;padding-top:10px;border-top:1px solid #ece3da">
       <div class="row" style="justify-content:space-between">
         <strong style="font-size:12.5px">Today's sales <span class="si">අද</span></strong>
-        <span class="sub" style="font-size:11.5px">${todaysSales.count} order${todaysSales.count === 1 ? "" : "s"} · ${escT(cur.symbol)} ${todaysSales.total.toLocaleString()}</span>
+        <span class="sub" style="font-size:11.5px">${todaysSales.count} order${todaysSales.count === 1 ? "" : "s"} · ${escT(shopPrice(shop, todaysSales.total))}</span>
       </div>
     </div>
 
@@ -210,6 +219,19 @@ function posPage(shop, extras = {}) {
     </style>
     <script>
       var CUR_SYM = '${escT(cur.symbol)}';
+      var PAIR = ${JSON.stringify(pairFor(shop && shop.country))};
+      var SYMS = ${JSON.stringify(CUR_SYM)};
+      var RATES = ${JSON.stringify(LKR_TO)};
+      function fmt(lkr, code) {
+        var v = (Number(lkr) || 0) * (RATES[code] || RATES.USD);
+        if (v >= 1000) return Math.round(v).toLocaleString('en-US');
+        if (v >= 10)   return v.toFixed(1).replace(/\.0$/,'');
+        return v.toFixed(2);
+      }
+      function shopFmt(lkr) {
+        var glue = function(c){ return (c==='LKR'||c==='AED') ? ' ' : ''; };
+        return SYMS[PAIR.primary]+glue(PAIR.primary)+fmt(lkr,PAIR.primary)+' · '+SYMS[PAIR.secondary]+glue(PAIR.secondary)+fmt(lkr,PAIR.secondary);
+      }
       var basket = [];
       var curCat = 'All';
       function posTab(cat, btn){
@@ -224,8 +246,8 @@ function posPage(shop, extras = {}) {
         var box = document.getElementById('posBasket');
         var count = basket.reduce(function(n,i){return n+i.qty;},0);
         var total = basket.reduce(function(n,i){return n+i.qty*i.price;},0);
-        document.getElementById('posCount').textContent = count;
-        document.getElementById('posTotal').textContent = total.toLocaleString();
+        document.getElementById('posCount').textContent = count + ' item' + (count===1?'':'s');
+        document.getElementById('posTotalDisplay').textContent = shopFmt(total);
         document.getElementById('posRingWrap').style.display = count ? 'block' : 'none';
         // Sync per-dish qty badges + minus buttons on the cards.
         var byId = {}; basket.forEach(function(l){ byId[l.id] = l.qty; });
@@ -248,9 +270,9 @@ function posPage(shop, extras = {}) {
             +   '<button type="button" data-idx="'+idx+'" class="posDec" title="Reduce" style="width:22px;height:22px;background:#fdecea;border:1px solid #f1c1bb;border-radius:6px;color:#b3261e;font-size:14px;font-weight:800;line-height:1;padding:0;cursor:pointer">−</button>'
             +   '<strong style="width:20px;text-align:center;font-size:11.5px">'+i.qty+'</strong>'
             +   '<button type="button" data-idx="'+idx+'" class="posInc" title="Add" style="width:22px;height:22px;background:#e3f4e6;border:1px solid #bfe5c8;border-radius:6px;color:#1d7a34;font-size:14px;font-weight:800;line-height:1;padding:0;cursor:pointer">+</button>'
-            +   '<span style="flex:1;text-align:right;color:#6b6560;font-size:9.5px">'+i.price+' ea</span>'
+            +   '<span style="flex:1;text-align:right;color:#6b6560;font-size:9px">'+shopFmt(i.price)+' ea</span>'
             + '</div>'
-            + '<div style="text-align:right;margin-top:2px"><strong style="color:#d9542b;font-size:11px">'+CUR_SYM+' '+(i.price*i.qty).toLocaleString()+'</strong></div>'
+            + '<div style="text-align:right;margin-top:2px"><strong style="color:#d9542b;font-size:10px">'+shopFmt(i.price*i.qty)+'</strong></div>'
             + '</div>';
         }).join('');
         document.querySelectorAll('.posRm').forEach(function(b){
