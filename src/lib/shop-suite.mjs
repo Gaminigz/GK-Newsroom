@@ -126,31 +126,35 @@ function posPage(shop, extras = {}) {
     return `<span style="display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.05em;padding:2px 7px;border-radius:99px;background:${s.bg};border:1px solid ${s.border};color:${s.fg}">${s.label(o)}</span>`;
   };
   const padNo = (n) => String(n || 0).padStart(5, "0");
+  const _pair = pairFor(shop && shop.country);
+  const _sufP = _pair.primary === "LKR" ? "LK" : (CUR_SYM[_pair.primary] || "$");
+  const _sufS = _pair.secondary === "LKR" ? "LK" : (CUR_SYM[_pair.secondary] || "$");
+  const _fmt = (lkrAmt, code) => {
+    const v = Number(lkrAmt || 0) * (LKR_TO[code] || LKR_TO.USD);
+    if (v >= 1000) return Math.round(v).toLocaleString("en-US");
+    if (v >= 10)   return v.toFixed(1).replace(/\.0$/, "");
+    return v.toFixed(2);
+  };
+  const _apply = (n, sym, isSuffix) => isSuffix ? `${n}${sym}` : `${sym}${n}`;
+  const shortPrice = (lkrAmt) => `${_apply(_fmt(lkrAmt, _pair.primary), _sufP, _pair.primary === "LKR")}-${_apply(_fmt(lkrAmt, _pair.secondary), _sufS, _pair.secondary === "LKR")}`;
   const orderCard = (o) => {
     const oid = String(o._id);
     const totalPortions = (o.items || []).reduce((n, i) => n + (Number(i.qty) || 0), 0);
     const lines = (o.items || []).map((i) => {
       const lineLkr = Math.round((Number(i.price) || 0) * (Number(i.qty) || 0));
-      return `
-      <div style="padding:4px 0;border-bottom:1px dashed #3a332f">
-        <div style="display:flex;justify-content:space-between;gap:6px;font-size:11px;color:#fff">
-          <span style="flex:1;min-width:0;line-height:1.25">${escT(i.name)}</span>
-          <strong style="color:#ffb08f;flex:0 0 auto">×${Number(i.qty) || 0}</strong>
-        </div>
-        <div style="font-size:9.5px;color:#c9bfb7;margin-top:1px">${escT(shopPrice(shop, lineLkr))}</div>
+      return `<div style="display:flex;justify-content:space-between;gap:6px;padding:3px 0;border-bottom:1px dashed #3a332f;font-size:11px;color:#fff;line-height:1.2">
+        <span style="flex:1;min-width:0">${escT(i.name)} <span style="color:#ffb08f">×${Number(i.qty) || 0}</span></span>
+        <span style="color:#c9bfb7;flex:0 0 auto;font-size:9.5px">${escT(shortPrice(lineLkr))}</span>
       </div>`;
     }).join("");
-    return `<div style="margin-top:10px" data-order-id="${oid}">
-      <div style="margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;gap:6px">
+    return `<div style="margin-top:8px" data-order-id="${oid}">
+      <div style="margin-bottom:3px;display:flex;justify-content:space-between;align-items:center;gap:6px">
         ${sourceChip(o)}
-        <strong style="font-size:13px;color:#d9542b;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.03em">#${padNo(o.orderNo)}</strong>
+        <strong style="font-size:12.5px;color:#d9542b;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">#${padNo(o.orderNo)}</strong>
       </div>
-      <div class="card" style="margin:0;padding:8px 10px;background:#191512;border-color:#191512;color:#fff">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:9.5px;color:#c9bfb7;letter-spacing:.04em">
-          <span>${totalPortions} portion${totalPortions === 1 ? "" : "s"}</span>
-          <strong style="color:#ffb08f;font-size:11px">${escT(shopPrice(shop, Number(o.total) || 0))}</strong>
-        </div>
-        <div style="margin-top:4px">${lines || '<div class="sub" style="color:#c9bfb7">no items</div>'}</div>
+      <div class="card" style="margin:0;padding:6px 9px;background:#191512;border-color:#191512;color:#fff">
+        <div style="display:flex;justify-content:space-between;font-size:9.5px;color:#c9bfb7"><span>${totalPortions} portion${totalPortions === 1 ? "" : "s"}</span><strong style="color:#ffb08f;font-size:10.5px">${escT(shortPrice(Number(o.total) || 0))}</strong></div>
+        <div style="margin-top:2px">${lines || '<div class="sub" style="color:#c9bfb7">no items</div>'}</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr auto;gap:4px;margin-top:5px">
         <button type="button" class="posSendBtn btn" data-oid="${oid}" style="padding:8px 4px;font-size:11.5px;font-weight:700">Send to Kitchen</button>
