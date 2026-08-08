@@ -375,8 +375,9 @@ function kitchenPage(shop, extras = {}) {
     ecom:    { label: () => "🛒 ECOM",    bg: "#e8f6ec", border: "#8fce9e", fg: "#1d7a34" },
     counter: { label: () => "🧾 COUNTER", bg: "#f0e7de", border: "#c9bfb7", fg: "#4a443f" },
   };
+  const DEFAULT_PREP_MIN = 20;
   const STATUS = {
-    pending:   { label: "New",       badge: "#946200", bg: "#fdf3d7", border: "#efdba8", next: "preparing", nextLabel: "Start Preparing" },
+    pending:   { label: "New",       badge: "#946200", bg: "#fdf3d7", border: "#efdba8", next: "preparing", nextLabel: `Start Preparing · ${DEFAULT_PREP_MIN}m` },
     preparing: { label: "Preparing", badge: "#8b3a1f", bg: "#fdf0ec", border: "#e8a087", next: "done",      nextLabel: "Mark Ready" },
     done:      { label: "Ready",     badge: "#1d7a34", bg: "#e8f6ec", border: "#8fce9e", next: "delivered", nextLabel: "Mark Delivered" },
   };
@@ -388,12 +389,25 @@ function kitchenPage(shop, extras = {}) {
     const st = STATUS[o.status];
     const totalPortions = (o.items || []).reduce((n, i) => n + (Number(i.qty) || 0), 0);
     const lines = (o.items || []).map((i) => `<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px dashed #3a332f;color:#e7e2dc"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escK(i.name)}</span><strong style="color:#ffb08f;flex:0 0 auto">×${Number(i.qty) || 0}</strong></div>`).join("");
+    // Cook timer: counts down from preparingAt + prepMinutes. Rendered live by
+    // the script below; `data-due` is the epoch ms the dish should be ready.
+    const prepMin = Number(o.prepMinutes) || DEFAULT_PREP_MIN;
+    const dueMs = o.status === "preparing" && o.preparingAt
+      ? new Date(o.preparingAt).getTime() + prepMin * 60_000
+      : 0;
+    const timerRow = dueMs
+      ? `<div class="kTimer" data-due="${dueMs}" style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;margin-bottom:5px;padding:4px 7px;border-radius:7px;background:#2a2320">
+           <span style="font-size:9px;color:#c9bfb7;letter-spacing:.05em">COOK TIMER</span>
+           <strong class="kTimerVal" style="font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#ffb08f">--:--</strong>
+         </div>`
+      : "";
     return `<div class="kOrder" data-order-id="${String(o._id)}" style="margin-top:9px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:3px">
         <span style="display:inline-block;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:99px;background:${src.bg};border:1px solid ${src.border};color:${src.fg}">${src.label(o)}</span>
         <strong style="font-size:13px;color:${st.badge};font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.03em">#${padNo(o.orderNo)}</strong>
       </div>
       <div class="card" style="margin:0;padding:9px 11px;background:#191512;border-color:#191512;color:#fff">
+        ${timerRow}
         <div style="font-size:9.5px;color:#c9bfb7;letter-spacing:.05em;margin-bottom:4px">${totalPortions} portion${totalPortions === 1 ? "" : "s"}</div>
         ${lines}
         <button type="button" class="kAdvance btn" data-oid="${String(o._id)}" data-to="${st.next}" style="width:100%;padding:8px 4px;font-size:11.5px;font-weight:700;margin-top:8px">${st.nextLabel}</button>
@@ -410,20 +424,48 @@ function kitchenPage(shop, extras = {}) {
       ${items.length ? items.map(card).join("") : `<div class="sub" style="font-size:10.5px;padding:14px 0;text-align:center;color:#c9bfb7">—</div>`}
     </div>`;
   return page(shop, "kitchen", "In Kitchen", "කුස්සියේ", `
-    <div class="sub" style="font-size:11.5px;margin-top:6px">Every order the counter clerk sent to the kitchen. Tap the next-action button as it moves down the line.</div>
+    <div class="sub" style="font-size:11.5px;margin-top:6px">Clerk sends it here → <strong>Start Preparing</strong> runs a ${DEFAULT_PREP_MIN}-minute cook timer → <strong>Ready</strong> when it rings.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:14px">
       ${col("New", "just arrived", bucket.pending, "අලුත්")}
-      ${col("Preparing", "on the stove", bucket.preparing, "පිසෙයි")}
+      ${col("Preparing", `${DEFAULT_PREP_MIN} min on the stove`, bucket.preparing, "පිසෙයි")}
       ${col("Ready", "pack / plate up", bucket.done, "සූදානම්")}
     </div>
+    <style>
+      @keyframes kPulse { 0%,100%{opacity:1} 50%{opacity:.45} }
+      .kTimer.kDue { background:#1d7a34!important; animation:kPulse 1.1s ease-in-out infinite; }
+      .kTimer.kDue .kTimerVal { color:#fff!important; }
+    </style>
     <script>
+      var PREP_MIN = ${DEFAULT_PREP_MIN};
+      // Live cook-timer tick — counts down to the due time stamped on each card.
+      function tickTimers(){
+        document.querySelectorAll('.kTimer').forEach(function(t){
+          var due = Number(t.dataset.due) || 0;
+          if(!due) return;
+          var left = Math.round((due - Date.now())/1000);
+          var val = t.querySelector('.kTimerVal');
+          if(left <= 0){
+            t.classList.add('kDue');
+            val.textContent = 'READY';
+          } else {
+            t.classList.remove('kDue');
+            var m = Math.floor(left/60), s = left % 60;
+            val.textContent = m + ':' + (s < 10 ? '0' : '') + s;
+          }
+        });
+      }
+      tickTimers();
+      setInterval(tickTimers, 1000);
+
       document.querySelectorAll('.kAdvance').forEach(function(b){
         b.addEventListener('click', function(){
           var oid = b.dataset.oid, to = b.dataset.to, card = b.closest('.kOrder');
           card.style.opacity = '.5'; b.disabled = true;
+          var body = {to: to};
+          if(to === 'preparing') body.prepMinutes = PREP_MIN;
           fetch('/app/owner/${id}/kitchen/order/'+oid+'/advance', {
             method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({to: to}),
+            body: JSON.stringify(body),
           }).then(function(r){ if(r.ok) location.reload(); else { card.style.opacity=''; b.disabled=false; } })
           .catch(function(){ card.style.opacity=''; b.disabled=false; });
         });

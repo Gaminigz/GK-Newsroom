@@ -3142,9 +3142,14 @@ export async function handleApp(req, res, url) {
     const to = String(body.to || "");
     const valid = { preparing: ["pending"], done: ["preparing"], delivered: ["done"] };
     if (_id && valid[to]) {
+      // Starting preparation also starts the cook timer — default 20 minutes,
+      // overridable per order by posting {to:"preparing", prepMinutes:N}.
+      const extra = to === "preparing"
+        ? { prepMinutes: Math.max(1, Math.min(240, Number(body.prepMinutes) || 20)) }
+        : {};
       await (await col("app_orders")).updateOne(
         { _id, shopId: m[1], status: { $in: valid[to] } },
-        { $set: { status: to, [`${to}At`]: new Date() } },
+        { $set: { status: to, [`${to}At`]: new Date(), ...extra } },
       );
     }
     res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
