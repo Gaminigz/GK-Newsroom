@@ -20,6 +20,7 @@ const ORANGE = "#d9542b";
 export const SUITE_TILES = [
   { key: "dishes", label: "Setup Daily Menu", emoji: "🍛", real: (id) => `/app/owner/${id}/dishes` },
   { key: "pos", label: "POS", emoji: "💳", real: (id) => `/app/owner/${id}/suite/pos` },
+  { key: "kitchen", label: "In Kitchen", emoji: "👨‍🍳", real: (id) => `/app/owner/${id}/suite/kitchen` },
   { key: "menu", label: "Plan Menu", emoji: "🍱", real: (id) => `/app/owner/${id}/suite/menu` },
   { key: "costs", label: "Cost sheet", emoji: "🧮" },
   { key: "stock", label: "Kitchen stock", emoji: "📦", real: (id) => `/app/owner/${id}/suite/stock` },
@@ -343,6 +344,74 @@ function posPage(shop, extras = {}) {
       });
       // Auto-refresh every 15s to pull in newly scanned QR / app / ecom orders.
       setInterval(function(){ if(!basket.length && !document.hidden) location.reload(); }, 15000);
+    </script>`);
+}
+
+function kitchenPage(shop, extras = {}) {
+  const id = String(shop._id);
+  const orders = extras.kitchenOrders || [];
+  const escK = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const SRC = {
+    table:   { label: (o) => `🍽 T${o.tableN || "?"}`, bg: "#fdf0ec", border: "#e8a087", fg: "#8b3a1f" },
+    app:     { label: () => "📱 APP",     bg: "#e8eefb", border: "#a9baea", fg: "#26418a" },
+    ecom:    { label: () => "🛒 ECOM",    bg: "#e8f6ec", border: "#8fce9e", fg: "#1d7a34" },
+    counter: { label: () => "🧾 COUNTER", bg: "#f0e7de", border: "#c9bfb7", fg: "#4a443f" },
+  };
+  const STATUS = {
+    pending:   { label: "New",       badge: "#946200", bg: "#fdf3d7", border: "#efdba8", next: "preparing", nextLabel: "Start Preparing" },
+    preparing: { label: "Preparing", badge: "#8b3a1f", bg: "#fdf0ec", border: "#e8a087", next: "done",      nextLabel: "Mark Ready" },
+    done:      { label: "Ready",     badge: "#1d7a34", bg: "#e8f6ec", border: "#8fce9e", next: "delivered", nextLabel: "Mark Delivered" },
+  };
+  const bucket = { pending: [], preparing: [], done: [] };
+  orders.forEach((o) => { if (bucket[o.status]) bucket[o.status].push(o); });
+  const card = (o) => {
+    const src = SRC[o.source] || SRC.ecom;
+    const st = STATUS[o.status];
+    const lines = (o.items || []).map((i) => `<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;border-bottom:1px dashed #ece3da"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escK(i.name)} <span class="sub">×${Number(i.qty) || 0}</span></span></div>`).join("");
+    return `<div class="kOrder" data-order-id="${String(o._id)}" style="margin-top:9px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:3px">
+        <span style="display:inline-block;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:99px;background:${src.bg};border:1px solid ${src.border};color:${src.fg}">${src.label(o)}</span>
+        <span style="font-size:9.5px;color:${st.badge};font-weight:700">#${o.orderNo || ""} · ${st.label}</span>
+      </div>
+      <div class="card" style="margin:0;padding:9px 11px;background:${st.bg};border-color:${st.border}">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:${st.badge};margin-bottom:4px">
+          <span>${(o.items || []).reduce((n, i) => n + (Number(i.qty) || 0), 0)} item(s)</span>
+          <strong>${escK(shopPrice(shop, Number(o.total) || 0))}</strong>
+        </div>
+        ${lines}
+        <button type="button" class="kAdvance btn" data-oid="${String(o._id)}" data-to="${st.next}" style="width:100%;padding:8px 4px;font-size:11.5px;font-weight:700;margin-top:6px">${st.nextLabel}</button>
+      </div>
+    </div>`;
+  };
+  const col = (title, hint, items, si) => `
+    <div style="flex:1;min-width:0">
+      <div class="row" style="justify-content:space-between;align-items:baseline">
+        <strong style="font-size:12px;letter-spacing:.03em">${title} <span class="si">${si}</span></strong>
+        <span class="sub" style="font-size:10.5px">${items.length}</span>
+      </div>
+      <div class="sub" style="font-size:10px;margin-top:1px">${hint}</div>
+      ${items.length ? items.map(card).join("") : `<div class="sub" style="font-size:10.5px;padding:14px 0;text-align:center;color:#c9bfb7">—</div>`}
+    </div>`;
+  return page(shop, "kitchen", "In Kitchen", "කුස්සියේ", `
+    <div class="sub" style="font-size:11.5px;margin-top:6px">Every order the counter clerk sent to the kitchen. Tap the next-action button as it moves down the line.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:14px">
+      ${col("New", "just arrived", bucket.pending, "අලුත්")}
+      ${col("Preparing", "on the stove", bucket.preparing, "පිසෙයි")}
+      ${col("Ready", "pack / plate up", bucket.done, "සූදානම්")}
+    </div>
+    <script>
+      document.querySelectorAll('.kAdvance').forEach(function(b){
+        b.addEventListener('click', function(){
+          var oid = b.dataset.oid, to = b.dataset.to, card = b.closest('.kOrder');
+          card.style.opacity = '.5'; b.disabled = true;
+          fetch('/app/owner/${id}/kitchen/order/'+oid+'/advance', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({to: to}),
+          }).then(function(r){ if(r.ok) location.reload(); else { card.style.opacity=''; b.disabled=false; } })
+          .catch(function(){ card.style.opacity=''; b.disabled=false; });
+        });
+      });
+      setInterval(function(){ if(!document.hidden) location.reload(); }, 15000);
     </script>`);
 }
 
@@ -1395,7 +1464,7 @@ function healthPage(shop) {
 const PAGES = {
   dashboard: dashboardPage, menu: menuPage, costs: costsPage, stock: stockPage,
   purchasing: purchasingPage, plan: planPage, books: booksPage,
-  history: billHistoryPage, pos: posPage,
+  history: billHistoryPage, pos: posPage, kitchen: kitchenPage,
   salaries: salariesPage, staff: staffPage, utilities: utilitiesPage, health: healthPage,
 };
 

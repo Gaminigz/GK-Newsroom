@@ -2874,6 +2874,11 @@ export async function handleApp(req, res, url) {
       extras.presetDishes = await loadPresetDishes(await col("lanka_dishes"));
     }
     // POS needs the shop's dishes (with price + photo) + today's sales totals.
+    if (shop && m[2] === "kitchen") {
+      extras.kitchenOrders = await (await col("app_orders"))
+        .find({ shopId: m[1], status: { $in: ["pending", "preparing", "done"] } })
+        .sort({ status: 1, createdAt: 1 }).toArray();
+    }
     if (shop && m[2] === "pos") {
       extras.currency = currencyOf(shop);
       extras.dishes = await (await col("app_dishes"))
@@ -3112,6 +3117,24 @@ export async function handleApp(req, res, url) {
       messages: [], createdAt: new Date(),
     });
     res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true, total, orderId: String(insert.insertedId) }));
+    return;
+  }
+
+  // Kitchen: advance an order along the pipeline (pending→preparing→done→delivered).
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/kitchen\/order\/([a-f0-9]{24})\/advance$/);
+  if (m && req.method === "POST") {
+    const _id = await oid(m[2]);
+    let body = {};
+    try { body = JSON.parse((await readBody(req, 200)) || "{}"); } catch { /* empty */ }
+    const to = String(body.to || "");
+    const valid = { preparing: ["pending"], done: ["preparing"], delivered: ["done"] };
+    if (_id && valid[to]) {
+      await (await col("app_orders")).updateOne(
+        { _id, shopId: m[1], status: { $in: valid[to] } },
+        { $set: { status: to, [`${to}At`]: new Date() } },
+      );
+    }
+    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
     return;
   }
 
