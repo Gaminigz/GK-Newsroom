@@ -128,12 +128,16 @@ function posPage(shop, extras = {}) {
   const padNo = (n) => String(n || 0).padStart(5, "0");
   const orderCard = (o) => {
     const oid = String(o._id);
+    const totalPortions = (o.items || []).reduce((n, i) => n + (Number(i.qty) || 0), 0);
     const lines = (o.items || []).map((i) => {
       const lineLkr = Math.round((Number(i.price) || 0) * (Number(i.qty) || 0));
       return `
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;padding:3px 0;border-bottom:1px dashed #ece3da;font-size:11px">
-        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escT(i.name)} <span class="sub">×${Number(i.qty) || 0}</span></span>
-        <strong style="color:#ffb08f;flex:0 0 auto;font-size:10.5px">${escT(shopPrice(shop, lineLkr))}</strong>
+      <div style="padding:4px 0;border-bottom:1px dashed #3a332f">
+        <div style="display:flex;justify-content:space-between;gap:6px;font-size:11px;color:#fff">
+          <span style="flex:1;min-width:0;line-height:1.25">${escT(i.name)}</span>
+          <strong style="color:#ffb08f;flex:0 0 auto">×${Number(i.qty) || 0}</strong>
+        </div>
+        <div style="font-size:9.5px;color:#c9bfb7;margin-top:1px">${escT(shopPrice(shop, lineLkr))}</div>
       </div>`;
     }).join("");
     return `<div style="margin-top:10px" data-order-id="${oid}">
@@ -141,12 +145,12 @@ function posPage(shop, extras = {}) {
         ${sourceChip(o)}
         <strong style="font-size:13px;color:#d9542b;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.03em">#${padNo(o.orderNo)}</strong>
       </div>
-      <div class="card" style="margin:0;padding:9px 11px;background:#191512;border-color:#191512;color:#fff">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px">
-          <div style="font-size:9.5px;opacity:.72;letter-spacing:.06em">${(o.items || []).reduce((n, i) => n + (Number(i.qty) || 0), 0)} item(s)</div>
-          <strong style="font-size:13px;color:#ffb08f;text-align:right">${escT(shopPrice(shop, Number(o.total) || 0))}</strong>
+      <div class="card" style="margin:0;padding:8px 10px;background:#191512;border-color:#191512;color:#fff">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:9.5px;color:#c9bfb7;letter-spacing:.04em">
+          <span>${totalPortions} portion${totalPortions === 1 ? "" : "s"}</span>
+          <strong style="color:#ffb08f;font-size:11px">${escT(shopPrice(shop, Number(o.total) || 0))}</strong>
         </div>
-        <div style="margin-top:6px;color:#e7e2dc">${lines || '<div class="sub" style="color:#c9bfb7">no items</div>'}</div>
+        <div style="margin-top:4px">${lines || '<div class="sub" style="color:#c9bfb7">no items</div>'}</div>
       </div>
       <div style="display:grid;grid-template-columns:1fr auto;gap:4px;margin-top:5px">
         <button type="button" class="posSendBtn btn" data-oid="${oid}" style="padding:8px 4px;font-size:11.5px;font-weight:700">Send to Kitchen</button>
