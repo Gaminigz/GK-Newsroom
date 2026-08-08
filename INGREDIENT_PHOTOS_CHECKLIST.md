@@ -5,15 +5,15 @@ top-down works well). File must be named exactly as shown (lowercase,
 `.jpg`) — the app matches by this filename.
 
 ## Vegetables & Fresh (30)
-- [ ] big-onion.jpg — Big Onion
-- [ ] red-onion-shallot.jpg — Red Onion (Shallot)
-- [ ] tomato.jpg — Tomato
-- [ ] potato.jpg — Potato
-- [ ] carrot.jpg — Carrot
-- [ ] green-beans.jpg — Green Beans
-- [ ] cabbage.jpg — Cabbage
-- [ ] leeks.jpg — Leeks
-- [ ] brinjal-eggplant.jpg — Brinjal (Eggplant)
+- [ ] big-onion.jpg — Big Onion — **NEEDS CONFIRM:** a single large red-skinned onion is sitting unplaced in the drop folder — is that Big Onion or Red Onion (Shallot)?
+- [ ] red-onion-shallot.jpg — Red Onion (Shallot) — see note above
+- [x] tomato.jpg — Tomato
+- [x] potato.jpg — Potato
+- [x] carrot.jpg — Carrot
+- [x] green-beans.jpg — Green Beans *(cooked/seasoned shot, not raw — fine for now)*
+- [x] cabbage.jpg — Cabbage
+- [x] leeks.jpg — Leeks
+- [x] brinjal-eggplant.jpg — Brinjal (Eggplant)
 - [ ] okra-bandakka.jpg — Okra (Bandakka)
 - [ ] pumpkin.jpg — Pumpkin
 - [ ] snake-gourd.jpg — Snake Gourd
@@ -21,35 +21,35 @@ top-down works well). File must be named exactly as shown (lowercase,
 - [ ] drumstick.jpg — Drumstick
 - [ ] radish.jpg — Radish
 - [ ] beetroot.jpg — Beetroot
-- [ ] ash-plantain.jpg — Ash Plantain
-- [ ] capsicum.jpg — Capsicum
-- [ ] green-chili.jpg — Green Chili
-- [ ] curry-leaves.jpg — Curry Leaves
-- [ ] pandan-rampe.jpg — Pandan (Rampe)
-- [ ] ginger.jpg — Ginger
-- [ ] garlic.jpg — Garlic
-- [ ] lime.jpg — Lime
-- [ ] coconut.jpg — Coconut
-- [ ] mushroom.jpg — Mushroom
-- [ ] gotukola.jpg — Gotukola
-- [ ] mukunuwenna.jpg — Mukunuwenna
-- [ ] kangkung.jpg — Kangkung
-- [ ] jackfruit-polos.jpg — Jackfruit (Polos)
+- [x] ash-plantain.jpg — Ash Plantain
+- [ ] capsicum.jpg — Capsicum — **REJECTED a drop:** had text overlaid on the image ("Red vs green capsicum...")
+- [x] green-chili.jpg — Green Chili
+- [x] curry-leaves.jpg — Curry Leaves
+- [x] pandan-rampe.jpg — Pandan (Rampe)
+- [x] ginger.jpg — Ginger
+- [x] garlic.jpg — Garlic
+- [ ] lime.jpg — Lime — **REJECTED a drop:** had a stock-site watermark
+- [ ] coconut.jpg — Coconut — a "milk splashing from a coconut" shot was dropped but doesn't cleanly show either plain coconut or canned milk; held, need a plain coconut photo
+- [x] mushroom.jpg — Mushroom
+- [x] gotukola.jpg — Gotukola
+- [x] mukunuwenna.jpg — Mukunuwenna
+- [x] kangkung.jpg — Kangkung
+- [x] jackfruit-polos.jpg — Jackfruit (Polos)
 
 ## Meat & Seafood (15)
-- [ ] chicken-curry-cut.jpg — Chicken (curry cut)
-- [ ] beef.jpg — Beef
-- [ ] pork.jpg — Pork
-- [ ] mutton.jpg — Mutton
-- [ ] fish-thora.jpg — Fish (Thora)
-- [ ] fish-kelawalla.jpg — Fish (Kelawalla)
+- [x] chicken-curry-cut.jpg — Chicken (curry cut)
+- [x] beef.jpg — Beef
+- [x] pork.jpg — Pork
+- [x] mutton.jpg — Mutton
+- [x] fish-thora.jpg — Fish (Thora)
+- [x] fish-kelawalla.jpg — Fish (Kelawalla)
 - [ ] fish-paraw.jpg — Fish (Paraw)
-- [ ] prawns.jpg — Prawns
-- [ ] cuttlefish-squid.jpg — Cuttlefish / Squid
-- [ ] crab.jpg — Crab
-- [ ] dry-fish.jpg — Dry Fish
-- [ ] sprats-halmessa.jpg — Sprats (Halmessa)
-- [ ] egg.jpg — Egg
+- [x] prawns.jpg — Prawns
+- [ ] cuttlefish-squid.jpg — Cuttlefish / Squid — **REJECTED a drop:** had an "Ola Squid" company logo baked in
+- [x] crab.jpg — Crab
+- [x] dry-fish.jpg — Dry Fish
+- [x] sprats-halmessa.jpg — Sprats (Halmessa)
+- [x] egg.jpg — Egg
 - [ ] sausages.jpg — Sausages
 - [ ] chicken-liver.jpg — Chicken Liver
 
