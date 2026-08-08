@@ -32,7 +32,7 @@ import { getDb } from "./mongo.ts";
 import { newCode, sendVerificationEmail, sendPasswordResetEmail } from "./mail.mjs";
 import { loadPresetDishes, generateRecipe, priceIngredient } from "./ai-dish.mjs";
 import { LANKA_INGREDIENTS, STOCK_UNITS, INGREDIENT_INDEX } from "../data/lanka-ingredients.mjs";
-import { uploadDishPhoto, deleteDishPhoto } from "./drive.mjs";
+import { uploadDishPhoto, deleteDishPhoto, getIngredientPhotoMap } from "./drive.mjs";
 import { CURRENCIES, CURRENCY_CODES, currencyOf, fmtMoney } from "../data/currencies.mjs";
 
 const ORANGE = "#d9542b";
@@ -2906,6 +2906,7 @@ export async function handleApp(req, res, url) {
       extras.currency = currencyOf(shop);
       extras.stock = await (await col("kitchen_stock"))
         .find({ shopId: m[1] }).sort({ category: 1, name: 1 }).toArray();
+      extras.ingredientPhotos = await getIngredientPhotoMap();
     }
     // Bill History: supplier directory + bill counts (optionally filtered
     // by year/month) + the selected supplier's bill photos.

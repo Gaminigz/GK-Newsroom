@@ -9,6 +9,7 @@
  */
 
 import { shell, esc } from "./app.mjs";
+import { ingredientSlug } from "./drive.mjs";
 
 const ORANGE = "#d9542b";
 
@@ -514,6 +515,13 @@ function stockPage(shop, extras = {}) {
     const dt = new Date(d);
     return `${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")}/${dt.getFullYear()}`;
   };
+  const photoMap = extras.ingredientPhotos instanceof Map ? extras.ingredientPhotos : new Map();
+  const thumb = (name) => {
+    const url = photoMap.get(ingredientSlug(name));
+    return url
+      ? `<span style="width:36px;height:36px;border-radius:10px;background:#f0e7de url('${esc(url)}') center/cover;flex:0 0 auto"></span>`
+      : `<span style="width:36px;height:36px;border-radius:10px;background:#f0e7de;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11.5px;flex:0 0 auto">${esc(initials(name))}</span>`;
+  };
   const stockRow = (s) => {
     const price = Number(s.price) || 0;
     const lineTotal = price > 0 ? Math.round(price * (Number(s.qty) || 0)) : 0;
@@ -521,7 +529,7 @@ function stockPage(shop, extras = {}) {
     return `
     <div class="card stockrow" data-cat="${esc(s.category)}" style="margin-top:9px;padding:11px 13px">
       <div class="row">
-        <span style="width:36px;height:36px;border-radius:10px;background:#f0e7de;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11.5px;flex:0 0 auto">${esc(initials(s.name))}</span>
+        ${thumb(s.name)}
         <div style="flex:1;min-width:0"><strong style="font-size:13.5px">${esc(s.name)} <span class="sub" style="font-weight:600">${esc(String(s.qty))} ${esc(s.unit)}</span></strong>
         <div class="sub" style="font-size:11.5px">${esc(s.category)}${s.si ? ` · ${esc(s.si)}` : ""}${s.addedAt ? ` · ${fmtDate(s.addedAt)}` : ""}</div>
         ${price > 0 ? `<div class="sub" style="font-size:11.5px;color:#946200;margin-top:2px">${esc(cur.symbol)} ${price}/${esc(s.unit)} × ${esc(String(s.qty))} = <strong style="color:#d9542b">${esc(cur.symbol)} ${lineTotal.toLocaleString()}</strong></div>` : ""}</div>

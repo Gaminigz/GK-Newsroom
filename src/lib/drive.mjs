@@ -78,6 +78,56 @@ export async function uploadDishPhoto(dataUri, { shopId, dishName }) {
   }
 }
 
+/** Canonical filename slug for an ingredient — must match what the newsroom
+ *  session uploads. "Red Onion (Shallot)" → "red-onion-shallot". */
+export function ingredientSlug(name) {
+  return String(name || "").toLowerCase()
+    .normalize("NFKD").replace(/[̀-ͯ]/g, "")
+    .replace(/[()]/g, "")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+// Ingredient-photo cache: refreshed at most once per 5 min, or on-demand.
+let ingredientPhotoMap = null; // Map<slug, lh3Url>
+let ingredientPhotoLoadedAt = 0;
+let ingredientPhotoLoading = null;
+
+async function loadIngredientPhotoMap() {
+  const drive = initDrive();
+  const folderId = process.env.GOOGLE_DRIVE_APP_PHOTOS_FOLDER_ID;
+  if (!drive || !folderId) return new Map();
+  const out = new Map();
+  let pageToken;
+  do {
+    const r = await drive.files.list({
+      q: `"${folderId}" in parents and trashed=false and mimeType contains "image/"`,
+      fields: "nextPageToken, files(id, name)",
+      pageSize: 1000, pageToken,
+    });
+    for (const f of r.data.files || []) {
+      const slug = ingredientSlug(f.name.replace(/\.[a-z]+$/i, ""));
+      if (slug) out.set(slug, `https://lh3.googleusercontent.com/d/${f.id}`);
+    }
+    pageToken = r.data.nextPageToken;
+  } while (pageToken);
+  return out;
+}
+
+/** Get a map of canonical-name → photo URL for shared ingredient photos.
+ *  Cached in-process for 5 min; forceRefresh=true bypasses the cache. */
+export async function getIngredientPhotoMap({ forceRefresh = false } = {}) {
+  const now = Date.now();
+  if (!forceRefresh && ingredientPhotoMap && now - ingredientPhotoLoadedAt < 5 * 60 * 1000) {
+    return ingredientPhotoMap;
+  }
+  if (ingredientPhotoLoading) return ingredientPhotoLoading;
+  ingredientPhotoLoading = loadIngredientPhotoMap()
+    .then((m) => { ingredientPhotoMap = m; ingredientPhotoLoadedAt = Date.now(); return m; })
+    .catch((e) => { console.warn("[drive] ingredient photo list failed:", e.message); return ingredientPhotoMap || new Map(); })
+    .finally(() => { ingredientPhotoLoading = null; });
+  return ingredientPhotoLoading;
+}
+
 /** Best-effort delete of a Drive-hosted photo when a dish is removed or its
  *  photo replaced. Silent no-op if the URL isn't ours or Drive is off. */
 export async function deleteDishPhoto(photoUrl) {
