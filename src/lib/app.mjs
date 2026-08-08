@@ -2723,7 +2723,8 @@ export async function handleApp(req, res, url) {
     );
     const orderNo = counter?.seq ?? counter?.value?.seq ?? 1;
     const c2 = cookies(req);
-    const source = tableN ? "table" : (c2.native === "1" ? "app" : "ecom");
+    const nativeHeader = (req.headers["x-app-source"] || "").toLowerCase() === "app";
+    const source = tableN ? "table" : ((c2.native === "1" || nativeHeader) ? "app" : "ecom");
     const doc = {
       orderNo,
       shopId: String(form.get("shopId") || ""),
