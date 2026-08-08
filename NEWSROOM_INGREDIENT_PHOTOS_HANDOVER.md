@@ -2,6 +2,20 @@
 
 **Written 2026-08-08. For a fresh session working on the newsroom / image-gen side of this repo.**
 
+> **UPDATE 2026-08-08 (later, from the news session):** plan changed —
+> owner (Gamini) is sourcing the actual photos himself rather than having
+> them AI-generated (avoids repeating the earlier mismatched-photo issue
+> from the Lanka dish catalogue). The AI-gen pipeline below is **not being
+> run**. The real ingredient list — computed from the live
+> `ingredientSlug()` function against `LANKA_INGREDIENTS`, 83 items not the
+> ~150 estimated below — is in
+> [`INGREDIENT_PHOTOS_CHECKLIST.md`](INGREDIENT_PHOTOS_CHECKLIST.md).
+> Once photos are handed over, the news session will rename to the
+> correct slug and upload via the same Drive service-account pattern
+> described here (target folder, filename convention, public-read step
+> all still apply — just skip the Gemini generation step and use the
+> owner's own photos as source instead).
+
 ## What this is
 
 The 3una 5aha app's Kitchen Stock screen currently renders ingredient rows
