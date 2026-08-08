@@ -2714,6 +2714,8 @@ export async function handleApp(req, res, url) {
       { _id: "orderNo" }, { $inc: { seq: 1 } }, { upsert: true, returnDocument: "after" },
     );
     const orderNo = counter?.seq ?? counter?.value?.seq ?? 1;
+    const c2 = cookies(req);
+    const source = tableN ? "table" : (c2.native === "1" ? "app" : "ecom");
     const doc = {
       orderNo,
       shopId: String(form.get("shopId") || ""),
@@ -2723,8 +2725,9 @@ export async function handleApp(req, res, url) {
       phone: tableN ? "" : phone,
       pickupAt: tableN ? `dine-in · Table ${tableN}` : String(form.get("pickupAt") || "").slice(0, 24),
       type: tableN ? "table" : "pickup",
+      source,
       ...(tableN ? { tableN } : {}),
-      status: "pending",
+      status: "pending_review",
       messages: [],
       createdAt: new Date(),
     };
@@ -2875,12 +2878,17 @@ export async function handleApp(req, res, url) {
       extras.currency = currencyOf(shop);
       extras.dishes = await (await col("app_dishes"))
         .find({ shopId: m[1], type: { $ne: "set" } }).sort({ createdAt: -1 }).toArray();
+      extras.pendingOrders = await (await col("app_orders"))
+        .find({ shopId: m[1], status: "pending_review" }).sort({ createdAt: -1 }).limit(20).toArray();
+      extras.onHoldCount = await (await col("app_orders"))
+        .countDocuments({ shopId: m[1], status: "on_hold" });
       const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
-      const bills = await (await col("pos_sales"))
-        .find({ shopId: m[1], createdAt: { $gte: startOfDay } }).toArray();
+      const kitchenBound = await (await col("app_orders"))
+        .find({ shopId: m[1], createdAt: { $gte: startOfDay }, status: { $in: ["pending", "preparing", "done"] } })
+        .project({ total: 1 }).toArray();
       extras.todaysSales = {
-        count: bills.length,
-        total: bills.reduce((n, b) => n + (Number(b.total) || 0), 0),
+        count: kitchenBound.length,
+        total: kitchenBound.reduce((n, b) => n + (Number(b.total) || 0), 0),
       };
     }
     // Purchase Planner also needs the dish catalogue for its dish picker.
@@ -3083,10 +3091,34 @@ export async function handleApp(req, res, url) {
       .map((i) => ({ name: String(i.name).slice(0, 80), price: Number(i.price) || 0, qty: Math.min(999, Math.round(Number(i.qty))) }));
     if (!cleaned.length) { res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: false, error: "empty basket" })); return; }
     const total = cleaned.reduce((n, i) => n + i.price * i.qty, 0);
-    await (await col("pos_sales")).insertOne({
-      shopId: m[1], items: cleaned, total, createdAt: new Date(),
+    // Counter clerk built + is submitting this cart — treat as already reviewed:
+    // straight to `pending` (kitchen queue), no pending_review pit-stop.
+    const cx = await (await col("counters")).findOneAndUpdate(
+      { _id: "orderNo" }, { $inc: { seq: 1 } }, { upsert: true, returnDocument: "after" },
+    );
+    const orderNo = cx?.seq ?? cx?.value?.seq ?? 1;
+    const insert = await (await col("app_orders")).insertOne({
+      orderNo, shopId: m[1], items: cleaned, total,
+      buyer: "Counter", phone: "", pickupAt: "counter",
+      type: "counter", source: "counter", status: "pending",
+      messages: [], createdAt: new Date(),
     });
-    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true, total }));
+    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true, total, orderId: String(insert.insertedId) }));
+    return;
+  }
+
+  // POS: shop clerk reviews an incoming order and sends it to the kitchen.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/pos\/order\/([a-f0-9]{24})\/(send-to-kitchen|hold)$/);
+  if (m && req.method === "POST") {
+    const _id = await oid(m[2]);
+    if (_id) {
+      const nextStatus = m[3] === "send-to-kitchen" ? "pending" : "on_hold";
+      await (await col("app_orders")).updateOne(
+        { _id, shopId: m[1], status: { $in: ["pending_review", "on_hold"] } },
+        { $set: { status: nextStatus, reviewedAt: new Date() } },
+      );
+    }
+    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
     return;
   }
 

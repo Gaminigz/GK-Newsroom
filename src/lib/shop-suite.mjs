@@ -109,8 +109,45 @@ function posPage(shop, extras = {}) {
   const id = String(shop._id);
   const dishes = extras.dishes || [];
   const todaysSales = extras.todaysSales || { count: 0, total: 0 };
+  const pendingOrders = extras.pendingOrders || [];
+  const onHoldCount = extras.onHoldCount || 0;
   const cur = extras.currency || { code: "LKR", symbol: "Rs" };
   const escT = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const SOURCE_CHIP = {
+    table:   { label: (o) => `🍽 TABLE ${o.tableN || "?"}`, bg: "#fdf0ec", border: "#e8a087", fg: "#8b3a1f" },
+    app:     { label: () => "📱 APP",     bg: "#e8eefb", border: "#a9baea", fg: "#26418a" },
+    ecom:    { label: () => "🛒 ECOM",    bg: "#e8f6ec", border: "#8fce9e", fg: "#1d7a34" },
+    counter: { label: () => "🧾 COUNTER", bg: "#f0e7de", border: "#c9bfb7", fg: "#4a443f" },
+  };
+  const sourceChip = (o) => {
+    const s = SOURCE_CHIP[o.source] || SOURCE_CHIP.ecom;
+    return `<span style="display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.05em;padding:2px 7px;border-radius:99px;background:${s.bg};border:1px solid ${s.border};color:${s.fg}">${s.label(o)}</span>`;
+  };
+  const orderCard = (o) => {
+    const oid = String(o._id);
+    const lines = (o.items || []).map((i) => `
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;padding:3px 0;border-bottom:1px dashed #ece3da;font-size:11px">
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escT(i.name)} <span class="sub">×${Number(i.qty) || 0}</span></span>
+        <strong style="color:#d9542b;flex:0 0 auto">${escT(cur.symbol)} ${Math.round((Number(i.price) || 0) * (Number(i.qty) || 0)).toLocaleString()}</strong>
+      </div>`).join("");
+    return `<div style="margin-top:10px" data-order-id="${oid}">
+      <div style="margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;gap:6px">
+        ${sourceChip(o)}
+        <span class="sub" style="font-size:9.5px">#${o.orderNo || ""}</span>
+      </div>
+      <div class="card" style="margin:0;padding:9px 11px;background:#191512;border-color:#191512;color:#fff">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px">
+          <div style="font-size:9.5px;opacity:.72;letter-spacing:.06em">${(o.items || []).reduce((n, i) => n + (Number(i.qty) || 0), 0)} item(s)</div>
+          <strong style="font-size:15px;color:#ffb08f">${escT(cur.symbol)} ${(Number(o.total) || 0).toLocaleString()}</strong>
+        </div>
+        <div style="margin-top:6px;color:#e7e2dc">${lines || '<div class="sub" style="color:#c9bfb7">no items</div>'}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:4px;margin-top:5px">
+        <button type="button" class="posSendBtn btn" data-oid="${oid}" style="padding:8px 4px;font-size:11.5px;font-weight:700">Send to Kitchen</button>
+        <button type="button" class="posHoldBtn btn ghost" data-oid="${oid}" style="padding:8px 8px;font-size:10.5px;color:#946200;border-color:#efdba8">On Hold</button>
+      </div>
+    </div>`;
+  };
   const countIn = (c) => c === "All" ? dishes.length : dishes.filter((d) => (d.category || "") === c).length;
   const cats = ["All", ...POS_CATEGORIES];
   const chips = cats.map((c, i) => `<button type="button" class="posChip${i === 0 ? " on" : ""}" data-cat="${escT(c)}" onclick="posTab('${escT(c)}',this)" style="flex:0 0 auto;border:1px solid #e0d6cc;background:#fff;border-radius:99px;padding:5px 10px;font-size:11px;font-weight:600;color:#4a443f;white-space:nowrap;cursor:pointer">${escT(c)}<span class="sub" style="font-weight:500"> · ${countIn(c)}</span></button>`).join("");
@@ -143,9 +180,19 @@ function posPage(shop, extras = {}) {
             <div class="sub" style="font-size:10.5px;padding:2px 0">Empty — tap a dish.</div>
           </div>
           <div id="posRingWrap" style="display:none;margin-top:8px">
-            <button type="button" id="posRing" class="btn" style="width:100%;padding:11px 4px;font-size:12px">Ring up</button>
-            <button type="button" id="posClear" class="btn ghost" style="width:100%;padding:6px 4px;font-size:10.5px;color:#b3261e;margin-top:4px">Clear</button>
+            <button type="button" id="posRing" class="btn" style="width:100%;padding:11px 4px;font-size:11.5px;font-weight:700">Send to Kitchen</button>
+            <button type="button" id="posClear" class="btn ghost" style="width:100%;padding:6px 4px;font-size:10.5px;color:#946200;border-color:#efdba8;margin-top:4px">On Hold</button>
           </div>
+          ${pendingOrders.length ? `
+          <div style="margin-top:14px;padding-top:8px;border-top:1px dashed #ece3da">
+            <div class="row" style="justify-content:space-between;align-items:center">
+              <strong style="font-size:11px;letter-spacing:.05em">PENDING · ${pendingOrders.length}</strong>
+              ${onHoldCount ? `<span class="sub" style="font-size:9.5px;color:#946200">on hold: ${onHoldCount}</span>` : ""}
+            </div>
+            <div id="posPending" style="margin-top:2px;max-height:520px;overflow-y:auto;padding-right:2px;overscroll-behavior:contain">
+              ${pendingOrders.map(orderCard).join("")}
+            </div>
+          </div>` : (onHoldCount ? `<div class="sub" style="margin-top:12px;font-size:10.5px;text-align:center;color:#946200">on hold: ${onHoldCount}</div>` : "")}
         </div>
       </div>
     ` : `<div class="sub card" style="margin-top:12px;padding:11px 13px;font-size:12.5px">No dishes yet — add some in <strong>Setup Daily Menu</strong> first, then come back.</div>`}
@@ -153,7 +200,7 @@ function posPage(shop, extras = {}) {
     <div style="margin-top:16px;padding-top:10px;border-top:1px solid #ece3da">
       <div class="row" style="justify-content:space-between">
         <strong style="font-size:12.5px">Today's sales <span class="si">අද</span></strong>
-        <span class="sub" style="font-size:11.5px">${todaysSales.count} bill${todaysSales.count === 1 ? "" : "s"} · ${escT(cur.symbol)} ${todaysSales.total.toLocaleString()}</span>
+        <span class="sub" style="font-size:11.5px">${todaysSales.count} order${todaysSales.count === 1 ? "" : "s"} · ${escT(cur.symbol)} ${todaysSales.total.toLocaleString()}</span>
       </div>
     </div>
 
@@ -247,14 +294,29 @@ function posPage(shop, extras = {}) {
       document.getElementById('posRing').addEventListener('click', function(){
         if(!basket.length) return;
         var btn = document.getElementById('posRing');
-        btn.disabled = true; btn.textContent = 'Ringing…';
+        btn.disabled = true; btn.textContent = 'Sending…';
         fetch('/app/owner/${id}/pos/ring', {
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify({items: basket})
         })
-        .then(function(r){ if(r.ok) location.reload(); else { btn.disabled=false; btn.textContent='Ring up'; }})
+        .then(function(r){ if(r.ok) location.reload(); else { btn.disabled=false; btn.textContent='Send to Kitchen'; }})
         .catch(function(){ btn.disabled=false; });
       });
+      // Pending-order review actions: Send to Kitchen / On Hold per card.
+      function reviewOrder(oid, action, card){
+        card.style.opacity = '.5';
+        fetch('/app/owner/${id}/pos/order/'+oid+'/'+action, {method:'POST'})
+          .then(function(r){ if(r.ok) card.remove(); else card.style.opacity=''; })
+          .catch(function(){ card.style.opacity=''; });
+      }
+      document.querySelectorAll('.posSendBtn').forEach(function(b){
+        b.addEventListener('click', function(){ reviewOrder(b.dataset.oid, 'send-to-kitchen', b.closest('[data-order-id]')); });
+      });
+      document.querySelectorAll('.posHoldBtn').forEach(function(b){
+        b.addEventListener('click', function(){ reviewOrder(b.dataset.oid, 'hold', b.closest('[data-order-id]')); });
+      });
+      // Auto-refresh every 15s to pull in newly scanned QR / app / ecom orders.
+      setInterval(function(){ if(!basket.length && !document.hidden) location.reload(); }, 15000);
     </script>`);
 }
 
