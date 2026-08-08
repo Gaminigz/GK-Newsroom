@@ -2241,6 +2241,9 @@ export async function handleApp(req, res, url) {
         deal: deal ? deal.discount : "",
         lat: Number.isFinite(s.lat) ? s.lat : null,
         lng: Number.isFinite(s.lng) ? s.lng : null,
+        frontPhoto: s.frontPhoto ?? "",
+        photo2: s.photo2 ?? "",
+        photo3: s.photo3 ?? "",
       };
     }));
 
