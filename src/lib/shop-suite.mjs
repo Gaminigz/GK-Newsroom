@@ -125,6 +125,7 @@ function posPage(shop, extras = {}) {
     const s = SOURCE_CHIP[o.source] || SOURCE_CHIP.ecom;
     return `<span style="display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.05em;padding:2px 7px;border-radius:99px;background:${s.bg};border:1px solid ${s.border};color:${s.fg}">${s.label(o)}</span>`;
   };
+  const padNo = (n) => String(n || 0).padStart(5, "0");
   const orderCard = (o) => {
     const oid = String(o._id);
     const lines = (o.items || []).map((i) => {
@@ -138,7 +139,7 @@ function posPage(shop, extras = {}) {
     return `<div style="margin-top:10px" data-order-id="${oid}">
       <div style="margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;gap:6px">
         ${sourceChip(o)}
-        <span class="sub" style="font-size:9.5px">#${o.orderNo || ""}</span>
+        <strong style="font-size:13px;color:#d9542b;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.03em">#${padNo(o.orderNo)}</strong>
       </div>
       <div class="card" style="margin:0;padding:9px 11px;background:#191512;border-color:#191512;color:#fff">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px">
@@ -364,22 +365,21 @@ function kitchenPage(shop, extras = {}) {
   };
   const bucket = { pending: [], preparing: [], done: [] };
   orders.forEach((o) => { if (bucket[o.status]) bucket[o.status].push(o); });
+  const padNo = (n) => String(n || 0).padStart(5, "0");
   const card = (o) => {
     const src = SRC[o.source] || SRC.ecom;
     const st = STATUS[o.status];
-    const lines = (o.items || []).map((i) => `<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;border-bottom:1px dashed #ece3da"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escK(i.name)} <span class="sub">×${Number(i.qty) || 0}</span></span></div>`).join("");
+    const totalPortions = (o.items || []).reduce((n, i) => n + (Number(i.qty) || 0), 0);
+    const lines = (o.items || []).map((i) => `<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px dashed #3a332f;color:#e7e2dc"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escK(i.name)}</span><strong style="color:#ffb08f;flex:0 0 auto">×${Number(i.qty) || 0}</strong></div>`).join("");
     return `<div class="kOrder" data-order-id="${String(o._id)}" style="margin-top:9px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:3px">
         <span style="display:inline-block;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:99px;background:${src.bg};border:1px solid ${src.border};color:${src.fg}">${src.label(o)}</span>
-        <span style="font-size:9.5px;color:${st.badge};font-weight:700">#${o.orderNo || ""} · ${st.label}</span>
+        <strong style="font-size:13px;color:${st.badge};font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.03em">#${padNo(o.orderNo)}</strong>
       </div>
-      <div class="card" style="margin:0;padding:9px 11px;background:${st.bg};border-color:${st.border}">
-        <div style="display:flex;justify-content:space-between;font-size:10px;color:${st.badge};margin-bottom:4px">
-          <span>${(o.items || []).reduce((n, i) => n + (Number(i.qty) || 0), 0)} item(s)</span>
-          <strong>${escK(shopPrice(shop, Number(o.total) || 0))}</strong>
-        </div>
+      <div class="card" style="margin:0;padding:9px 11px;background:#191512;border-color:#191512;color:#fff">
+        <div style="font-size:9.5px;color:#c9bfb7;letter-spacing:.05em;margin-bottom:4px">${totalPortions} portion${totalPortions === 1 ? "" : "s"}</div>
         ${lines}
-        <button type="button" class="kAdvance btn" data-oid="${String(o._id)}" data-to="${st.next}" style="width:100%;padding:8px 4px;font-size:11.5px;font-weight:700;margin-top:6px">${st.nextLabel}</button>
+        <button type="button" class="kAdvance btn" data-oid="${String(o._id)}" data-to="${st.next}" style="width:100%;padding:8px 4px;font-size:11.5px;font-weight:700;margin-top:8px">${st.nextLabel}</button>
       </div>
     </div>`;
   };
