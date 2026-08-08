@@ -155,17 +155,21 @@ function posPage(shop, extras = {}) {
   const countIn = (c) => c === "All" ? dishes.length : dishes.filter((d) => (d.category || "") === c).length;
   const cats = ["All", ...POS_CATEGORIES];
   const chips = cats.map((c, i) => `<button type="button" class="posChip${i === 0 ? " on" : ""}" data-cat="${escT(c)}" onclick="posTab('${escT(c)}',this)" style="flex:0 0 auto;border:1px solid #e0d6cc;background:#fff;border-radius:99px;padding:5px 10px;font-size:11px;font-weight:600;color:#4a443f;white-space:nowrap;cursor:pointer">${escT(c)}<span class="sub" style="font-weight:500"> · ${countIn(c)}</span></button>`).join("");
-  const dishCard = (d) => `
-    <div class="posDish" data-cat="${escT(d.category || "")}" data-id="${String(d._id)}" data-name="${escT(d.name)}" data-price="${Number(d.price) || 0}" role="button" tabindex="0" style="display:flex;flex-direction:column;align-items:stretch;padding:0;background:#fff;border:1px solid #ece3da;border-radius:10px;overflow:hidden;cursor:pointer;text-align:left;min-width:0">
-      <div style="aspect-ratio:1.15;background:${d.photo ? `url('${escT(d.photo)}') center/cover` : "#f0e7de"};position:relative">
-        <button type="button" class="posDishMinus" data-id="${String(d._id)}" title="Remove one" style="display:none;position:absolute;top:5px;left:5px;background:#b3261e;color:#fff;font-size:15px;font-weight:800;width:24px;height:24px;border-radius:99px;border:0;padding:0;cursor:pointer;line-height:1;box-shadow:0 1px 4px #0004">−</button>
-        <span class="posDishQty" data-id="${String(d._id)}" style="display:none;position:absolute;top:5px;right:5px;background:#191512;color:#fff;font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:99px;box-shadow:0 1px 4px #0004">×0</span>
+  const dishDisplayName = (name) => String(name || "").replace(/^Ceylon\s+/i, "").trim() || String(name || "");
+  const dishCard = (d) => {
+    const shown = dishDisplayName(d.name);
+    return `
+    <div class="posDish" data-cat="${escT(d.category || "")}" data-id="${String(d._id)}" data-name="${escT(d.name)}" data-price="${Number(d.price) || 0}" role="button" tabindex="0" style="display:flex;flex-direction:column;align-items:stretch;padding:0;background:#fff;border:1px solid #ece3da;border-radius:8px;overflow:hidden;cursor:pointer;text-align:left;min-width:0">
+      <div style="aspect-ratio:1.3;background:${d.photo ? `url('${escT(d.photo)}') center/cover` : "#f0e7de"};position:relative">
+        <button type="button" class="posDishMinus" data-id="${String(d._id)}" title="Remove one" style="display:none;position:absolute;top:4px;left:4px;background:#b3261e;color:#fff;font-size:13px;font-weight:800;width:20px;height:20px;border-radius:99px;border:0;padding:0;cursor:pointer;line-height:1;box-shadow:0 1px 3px #0004">−</button>
+        <span class="posDishQty" data-id="${String(d._id)}" style="display:none;position:absolute;top:4px;right:4px;background:#191512;color:#fff;font-size:9px;font-weight:800;padding:1px 6px;border-radius:99px;box-shadow:0 1px 3px #0004">×0</span>
       </div>
-      <div style="padding:5px 7px 6px">
-        <strong style="display:block;font-size:11px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escT(d.name)}</strong>
-        <span class="sub" style="font-size:10px;color:#d9542b;font-weight:700">${escT(shopPrice(shop, Number(d.price) || 0))}</span>
+      <div style="padding:4px 6px 5px">
+        <strong style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:9.5px;line-height:1.15;min-height:22px">${escT(shown)}</strong>
+        <span class="sub" style="display:block;font-size:8.5px;color:#d9542b;font-weight:700;margin-top:2px">${escT(shopPrice(shop, Number(d.price) || 0))}</span>
       </div>
     </div>`;
+  };
   return page(shop, "pos", "POS", "විකුණුම් කවුන්ටරය", `
     <div class="sub" style="font-size:11.5px;margin-top:6px;line-height:1.4">Pick a category → tap a dish to add. Bill on the right.<br><span class="si">වර්ගය · කෑම තෝරන්න.</span></div>
     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:10px" id="posChips">${chips}</div>
@@ -175,11 +179,11 @@ function posPage(shop, extras = {}) {
           ${dishes.map(dishCard).join("")}
         </div>
         <div style="position:sticky;top:0;min-width:0">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;margin-bottom:6px">
-            <div style="padding:4px 6px;background:#fdf3d7;border:1px solid #efdba8;border-radius:6px;text-align:center"><div style="font-size:8.5px;color:#946200;font-weight:700;letter-spacing:.04em">WAITING</div><strong style="font-size:13px;color:#946200">${sc.waiting}</strong></div>
-            <div style="padding:4px 6px;background:#fdf0ec;border:1px solid #e8a087;border-radius:6px;text-align:center"><div style="font-size:8.5px;color:#8b3a1f;font-weight:700;letter-spacing:.04em">KITCHEN</div><strong style="font-size:13px;color:#8b3a1f">${sc.kitchen}</strong></div>
-            <div style="padding:4px 6px;background:#e8f6ec;border:1px solid #8fce9e;border-radius:6px;text-align:center"><div style="font-size:8.5px;color:#1d7a34;font-weight:700;letter-spacing:.04em">READY</div><strong style="font-size:13px;color:#1d7a34">${sc.ready}</strong></div>
-            <div style="padding:4px 6px;background:#e8eefb;border:1px solid #a9baea;border-radius:6px;text-align:center"><div style="font-size:8.5px;color:#26418a;font-weight:700;letter-spacing:.04em">DELIVERED</div><strong style="font-size:13px;color:#26418a">${sc.delivered}</strong></div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:2px;margin-bottom:4px;font-size:9.5px;text-align:center;color:#4a443f">
+            <div>Waiting <strong>${sc.waiting}</strong></div>
+            <div>Kitchen <strong>${sc.kitchen}</strong></div>
+            <div>Ready <strong>${sc.ready}</strong></div>
+            <div>Deliv. <strong>${sc.delivered}</strong></div>
           </div>
           <div id="posTotalBar" style="padding:6px 10px;background:#191512;border-radius:10px;color:#fff;display:flex;justify-content:space-between;align-items:baseline;gap:6px">
             <span style="font-size:9px;opacity:.72;letter-spacing:.05em">COUNTER · <span id="posCount">0</span></span>
