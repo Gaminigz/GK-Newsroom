@@ -228,6 +228,15 @@ function mealsFor(windowStr) {
   return hit.length ? hit : [...MEALS];
 }
 
+/** Which meal is being served right now — breakfast to 11, lunch to 16,
+ *  dinner after. Decides which day plan the buyer is offered. */
+function mealNow(d = new Date()) {
+  const h = d.getHours();
+  if (h < 11) return "Breakfast";
+  if (h < 16) return "Lunch";
+  return "Dinner";
+}
+
 /** Travellers see US$ first, locals still get the exact LKR price. */
 function lkr(n) {
   const v = Number(n ?? 0);
@@ -2346,6 +2355,24 @@ export async function handleApp(req, res, url) {
       category: d.category ?? "",
       meals: mealsFor(d.window),
     });
+    // Today's package, if the shop planned one for the meal that's on now.
+    // The buyer picks inside each group; the main they choose sets the price.
+    const today = new Date().toISOString().slice(0, 10);
+    const nowMeal = mealNow();
+    const priced = new Set(dishes.map((d) => String(d._id)));
+    const rawPlan = await (await col("day_plans"))
+      .findOne({ shopId: String(shop._id), date: today, meal: nowMeal });
+    const plan = rawPlan ? {
+      date: rawPlan.date, meal: rawPlan.meal,
+      groups: (rawPlan.groups || []).map((g) => ({
+        key: g.key, label: g.label, labelSi: g.labelSi || "",
+        pick: Number(g.pick) || 1,
+        // Drop anything the owner hasn't priced — it isn't sellable.
+        choices: (g.choices || [])
+          .filter((c) => priced.has(String(c.dishId)) && Number(c.price) > 0)
+          .map((c) => ({ dishId: c.dishId, name: c.name, nameSi: c.nameSi || "", price: Number(c.price) || 0 })),
+      })).filter((g) => g.choices.length),
+    } : null;
     res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
     res.end(JSON.stringify({
       shop: {
@@ -2354,6 +2381,7 @@ export async function handleApp(req, res, url) {
       },
       special: special ? { ...toDish(special), tag: special.promoTag || "Today special" } : null,
       dishes: dishes.filter((d) => !d.special).map(toDish),
+      plan: plan && plan.groups.length ? plan : null,
     }));
     return;
   }
