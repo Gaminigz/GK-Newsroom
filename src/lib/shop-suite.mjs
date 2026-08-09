@@ -693,7 +693,10 @@ function menuPage(shop, extras = {}) {
             <div class="sub" style="font-size:10px;margin-top:8px;line-height:1.35">Tick dishes on the right, or pull a new one in below.</div>
             <div style="border-top:1px solid #ece3da;margin-top:8px;padding-top:8px">
               <label style="margin:0;font-size:9.5px">NEW FROM LIST <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
-              <select id="dishItem" style="margin:0;font-size:11px;padding:5px">${feedOptions}</select>
+              <!-- Opens a full-screen searchable picker; the native popup was
+                   capped by this column's width. -->
+              <input type="hidden" id="dishItem" value="">
+              <button type="button" id="dishItemBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:7px 9px;font-size:11px;line-height:1.25;cursor:pointer;color:#8a827b">Choose a dish…</button>
               <label style="margin-top:6px;font-size:9.5px">PRICE $</label>
               <input type="number" id="dishPrice" step="0.01" min="0" placeholder="1.50" style="margin:0;font-size:11.5px;padding:5px;text-align:center;font-weight:700">
               <button type="button" id="addFromFeedBtn" class="btn" style="margin-top:6px;padding:7px 4px;font-size:11.5px;width:100%">+</button>
@@ -718,6 +721,19 @@ function menuPage(shop, extras = {}) {
 
         <button class="btn" style="margin-top:16px">Save ${esc(planMeal)} plan · ${esc(planDate)}</button>
       </form>
+
+      <!-- Full-screen dish picker for NEW FROM LIST. -->
+      <div id="feedSheet" style="display:none;position:fixed;inset:0;z-index:900;background:#faf7f4">
+        <div style="display:flex;flex-direction:column;height:100%">
+          <div style="flex:0 0 auto;padding:calc(env(safe-area-inset-top, 0px) + 12px) 14px 10px;border-bottom:1px solid #ece3da;background:#fff">
+            <div class="row" style="gap:8px">
+              <input type="text" id="feedSearch" placeholder="Search ${feedDishes.length} Sri Lankan dishes…" style="margin:0;flex:1;min-width:0;font-size:14px;padding:10px 12px">
+              <button type="button" id="feedClose" style="flex:0 0 auto;border:0;background:#191512;color:#fff;border-radius:99px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer">Close</button>
+            </div>
+          </div>
+          <div id="feedSheetList" style="flex:1;min-height:0;overflow-y:auto;padding:0 14px calc(env(safe-area-inset-bottom, 0px) + 20px);-webkit-overflow-scrolling:touch"></div>
+        </div>
+      </div>
       ` : `<div class="card" style="margin-top:12px;padding:12px 14px;background:#fdf0ec;border-color:#f3cfc2;font-size:12.5px;color:#946200">Add some dishes first — they become the options inside each set.</div>`}
     </div>
 
@@ -1012,6 +1028,10 @@ function menuPage(shop, extras = {}) {
           plan[si].dishes.push({id: j.id, name: name, nameSi: j.nameSi || '', price: lkr});
         }
         document.getElementById('dishPrice').value = '';
+        document.getElementById('dishItem').value = '';
+        var pickBtn = document.getElementById('dishItemBtn');
+        pickBtn.textContent = 'Choose a dish…';
+        pickBtn.style.color = '#8a827b';
         msg.textContent = name + ' → ' + plan[si].name;
         renderPlan();
         if (addMode === 'dish') renderCatalogue();
@@ -1019,6 +1039,56 @@ function menuPage(shop, extras = {}) {
       .catch(function(e){ msg.textContent = e.message; });
     }
     document.getElementById('addFromFeedBtn').addEventListener('click', addDish);
+
+    /* Full-screen picker for the shared Sri Lankan list — the native <select>
+       popup could only be as wide as the sidebar it sat in. */
+    var feedQuery = '';
+    function renderFeedSheet(){
+      var q = feedQuery.trim().toLowerCase();
+      var list = FEED_DISHES.filter(function(d){
+        if (!q) return true;
+        return d.name.toLowerCase().indexOf(q) >= 0 || (d.nameSi || '').toLowerCase().indexOf(q) >= 0;
+      }).sort(function(a, b){ return a.name.localeCompare(b.name); });
+      var host = document.getElementById('feedSheetList');
+      if (!list.length) { host.innerHTML = '<div class="sub" style="padding:26px 0;text-align:center;font-size:13px">nothing matches</div>'; return; }
+      var cat = '';
+      host.innerHTML = list.map(function(d){
+        var head = '';
+        if (!q && d.cat !== cat) { cat = d.cat; head = '<div class="sub" style="font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;padding:14px 0 4px;font-weight:700">' + esc(cat || 'Other') + '</div>'; }
+        return head + '<button type="button" class="feedRow" data-name="' + esc(d.name) + '" style="display:block;width:100%;text-align:left;border:0;border-bottom:1px solid #ece3da;background:none;padding:11px 2px;cursor:pointer">'
+          + '<span style="display:block;font-size:14px;font-weight:600;line-height:1.25">' + esc(d.name) + '</span>'
+          + (d.nameSi ? '<span class="si" style="display:block;font-size:12px;line-height:1.3;margin-top:1px">' + esc(d.nameSi) + '</span>' : '')
+          + '</button>';
+      }).join('');
+      host.querySelectorAll('.feedRow').forEach(function(b){
+        b.addEventListener('click', function(){ chooseFeedDish(b.dataset.name); });
+      });
+    }
+    function chooseFeedDish(name){
+      document.getElementById('dishItem').value = name;
+      var btn = document.getElementById('dishItemBtn');
+      btn.textContent = name;
+      btn.style.color = '#1a1a1a';
+      closeFeedSheet();
+      document.getElementById('dishPrice').focus();
+    }
+    function openFeedSheet(){
+      feedQuery = '';
+      document.getElementById('feedSearch').value = '';
+      document.getElementById('feedSheet').style.display = '';
+      document.body.style.overflow = 'hidden';
+      renderFeedSheet();
+    }
+    function closeFeedSheet(){
+      document.getElementById('feedSheet').style.display = 'none';
+      document.body.style.overflow = '';
+    }
+    document.getElementById('dishItemBtn').addEventListener('click', openFeedSheet);
+    document.getElementById('feedClose').addEventListener('click', closeFeedSheet);
+    document.getElementById('feedSearch').addEventListener('input', function(){
+      feedQuery = this.value;
+      renderFeedSheet();
+    });
 
     function serialisePlan(){
       document.getElementById('planJson').value = JSON.stringify(plan);
