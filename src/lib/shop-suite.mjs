@@ -538,12 +538,6 @@ function menuPage(shop, extras = {}) {
     (acc[d.category || "Other"] = acc[d.category || "Other"] || []).push(d);
     return acc;
   }, {});
-  // Native <select> — iOS renders it as a full-height grouped picker, which
-  // reads far better than anything we can draw in the sidebar.
-  const feedOptions = Object.keys(feedByCat).sort().map((cat) =>
-    `<optgroup label="${esc(cat)}">${feedByCat[cat]
-      .map((d) => `<option value="${esc(d.name)}">${esc(d.name)}${d.nameSi ? ` · ${esc(d.nameSi)}` : ""}</option>`)
-      .join("")}</optgroup>`).join("");
 
   const dishRow = (d) => {
     const price = Number(d.price) || 0;
@@ -693,13 +687,11 @@ function menuPage(shop, extras = {}) {
             <div class="sub" style="font-size:10px;margin-top:8px;line-height:1.35">Tick dishes on the right, or pull a new one in below.</div>
             <div style="border-top:1px solid #ece3da;margin-top:8px;padding-top:8px">
               <label style="margin:0;font-size:9.5px">NEW FROM LIST <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
-              <!-- The popup anchors to the select's box, so the box is pushed
-                   left with a negative margin and the text pushed back with
-                   padding — the field looks unmoved, the popup opens further
-                   left. The wrapper clips the overhang. -->
-              <div style="overflow:hidden;border-radius:10px">
-                <select id="dishItem" style="margin:0 0 0 -78px;width:182px;max-width:none;font-size:11px;padding:5px 5px 5px 83px">${feedOptions}</select>
-              </div>
+              <!-- Native select popup is hard-capped at 248pt by iOS, so this
+                   is our own panel: 267pt (800 physical px at 3x), searchable,
+                   grouped like the native one. -->
+              <input type="hidden" id="dishItem" value="">
+              <button type="button" id="dishItemBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Choose a dish…</button>
               <label style="margin-top:6px;font-size:9.5px">PRICE $</label>
               <input type="number" id="dishPrice" step="0.01" min="0" placeholder="1.50" style="margin:0;font-size:11.5px;padding:5px;text-align:center;font-weight:700">
               <button type="button" id="addFromFeedBtn" class="btn" style="margin-top:6px;padding:7px 4px;font-size:11.5px;width:100%">+</button>
@@ -724,6 +716,15 @@ function menuPage(shop, extras = {}) {
 
         <button class="btn" style="margin-top:16px">Save ${esc(planMeal)} plan · ${esc(planDate)}</button>
       </form>
+
+      <!-- Dish panel — 267pt wide (800 physical px at 3x), above the iOS cap. -->
+      <div id="feedBackdrop" style="display:none;position:fixed;inset:0;z-index:880;background:rgba(0,0,0,.18)"></div>
+      <div id="feedPanel" style="display:none;position:fixed;z-index:890;top:14%;left:50%;transform:translateX(-50%);width:267px;max-height:70vh;background:#fff;border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,.28);overflow:hidden">
+        <div style="padding:9px 10px;border-bottom:1px solid #ece3da">
+          <input type="text" id="feedSearch" placeholder="Search ${feedDishes.length} dishes…" style="margin:0;font-size:12.5px;padding:8px 10px">
+        </div>
+        <div id="feedPanelList" style="max-height:calc(70vh - 56px);overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 10px 10px"></div>
+      </div>
       ` : `<div class="card" style="margin-top:12px;padding:12px 14px;background:#fdf0ec;border-color:#f3cfc2;font-size:12.5px;color:#946200">Add some dishes first — they become the options inside each set.</div>`}
     </div>
 
@@ -1018,6 +1019,11 @@ function menuPage(shop, extras = {}) {
           plan[si].dishes.push({id: j.id, name: name, nameSi: j.nameSi || '', price: lkr});
         }
         document.getElementById('dishPrice').value = '';
+        // Reset the picker so the next add starts clean.
+        document.getElementById('dishItem').value = '';
+        var trigger = document.getElementById('dishItemBtn');
+        trigger.textContent = 'Choose a dish…';
+        trigger.style.color = '#8a827b';
         msg.textContent = name + ' → ' + plan[si].name;
         renderPlan();
         if (addMode === 'dish') renderCatalogue();
@@ -1025,6 +1031,58 @@ function menuPage(shop, extras = {}) {
       .catch(function(e){ msg.textContent = e.message; });
     }
     document.getElementById('addFromFeedBtn').addEventListener('click', addDish);
+
+    /* Custom dish panel — the native select popup is capped at 248pt by iOS,
+       so this one is drawn at 267pt (800 physical px on a 3x screen). */
+    var feedQuery = '';
+    function renderFeedPanel(){
+      var q = feedQuery.trim().toLowerCase();
+      var chosen = document.getElementById('dishItem').value;
+      var list = FEED_DISHES.filter(function(d){
+        if (!q) return true;
+        return d.name.toLowerCase().indexOf(q) >= 0 || (d.nameSi || '').toLowerCase().indexOf(q) >= 0;
+      });
+      if (q) list = list.slice().sort(function(a, b){ return a.name.localeCompare(b.name); });
+      var host = document.getElementById('feedPanelList');
+      if (!list.length) { host.innerHTML = '<div class="sub" style="padding:22px 0;text-align:center;font-size:12px">nothing matches</div>'; return; }
+      var cat = '';
+      host.innerHTML = list.map(function(d){
+        var head = '';
+        if (!q && d.cat !== cat) { cat = d.cat; head = '<div class="sub" style="font-size:10px;letter-spacing:.04em;padding:12px 0 3px;font-weight:700">' + esc(cat || 'Other') + '</div>'; }
+        var on = d.name === chosen;
+        return head + '<button type="button" class="feedRow" data-name="' + esc(d.name) + '" style="display:flex;gap:7px;align-items:flex-start;width:100%;text-align:left;border:0;border-bottom:1px solid #f2ece6;background:none;padding:9px 2px;cursor:pointer">'
+          + '<span style="flex:0 0 14px;color:#d9542b;font-weight:800;font-size:12px">' + (on ? '✓' : '') + '</span>'
+          + '<span style="flex:1;min-width:0">'
+          +   '<span style="display:block;font-size:13px;font-weight:600;line-height:1.25">' + esc(d.name) + '</span>'
+          +   (d.nameSi ? '<span class="si" style="display:block;font-size:11px;line-height:1.3">' + esc(d.nameSi) + '</span>' : '')
+          + '</span></button>';
+      }).join('');
+      host.querySelectorAll('.feedRow').forEach(function(b){
+        b.addEventListener('click', function(){
+          document.getElementById('dishItem').value = b.dataset.name;
+          var t = document.getElementById('dishItemBtn');
+          t.textContent = b.dataset.name; t.style.color = '#1a1a1a';
+          closeFeedPanel();
+          document.getElementById('dishPrice').focus();
+        });
+      });
+    }
+    function openFeedPanel(){
+      feedQuery = '';
+      document.getElementById('feedSearch').value = '';
+      document.getElementById('feedBackdrop').style.display = '';
+      document.getElementById('feedPanel').style.display = '';
+      renderFeedPanel();
+    }
+    function closeFeedPanel(){
+      document.getElementById('feedBackdrop').style.display = 'none';
+      document.getElementById('feedPanel').style.display = 'none';
+    }
+    document.getElementById('dishItemBtn').addEventListener('click', openFeedPanel);
+    document.getElementById('feedBackdrop').addEventListener('click', closeFeedPanel);
+    document.getElementById('feedSearch').addEventListener('input', function(){
+      feedQuery = this.value; renderFeedPanel();
+    });
 
     function serialisePlan(){
       document.getElementById('planJson').value = JSON.stringify(plan);
