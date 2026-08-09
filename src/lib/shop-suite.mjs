@@ -557,11 +557,12 @@ function menuPage(shop, extras = {}) {
   return page(shop, "menu", "Plan Menu", "මෙනු සැකසුම", `
     ${msg ? `<div class="card" style="margin-top:10px;padding:10px 13px;background:#e8f6ec;border-color:#bfe5c8;font-size:12.5px;color:#1d7a34">${esc(msg)}</div>` : ""}
 
-    <div class="seg" style="margin-top:12px">
-      <label><input type="radio" name="mtab" value="single" checked onchange="showTab('single')"><span class="opt" style="font-size:12px;padding:6px 12px">Single dish · 35Ai</span></label>
-      <label><input type="radio" name="mtab" value="set" onchange="showTab('set')"><span class="opt" style="font-size:12px;padding:6px 12px">Set menu</span></label>
-      <label><input type="radio" name="mtab" disabled><span class="opt" style="font-size:12px;padding:6px 12px;opacity:.4">Combo (soon)</span></label>
-      <label><input type="radio" name="mtab" disabled><span class="opt" style="font-size:12px;padding:6px 12px;opacity:.4">Events (soon)</span></label>
+    <!-- Same compact chip styling the filter rows below use. -->
+    <div id="menuTabs" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:12px">
+      <button type="button" class="mTab on" data-tab="single" onclick="showTab('single',this)" style="border:1px solid #e0d6cc;background:#191512;color:#fff;border-radius:99px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer">Single dish · 35Ai</button>
+      <button type="button" class="mTab" data-tab="set" onclick="showTab('set',this)" style="border:1px solid #e0d6cc;background:#fff;color:#4a443f;border-radius:99px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer">Set menu</button>
+      <button type="button" disabled style="border:1px solid #ece3da;background:#fff;color:#c9bfb7;border-radius:99px;padding:5px 11px;font-size:11px;font-weight:600;cursor:default">Combo (soon)</button>
+      <button type="button" disabled style="border:1px solid #ece3da;background:#fff;color:#c9bfb7;border-radius:99px;padding:5px 11px;font-size:11px;font-weight:600;cursor:default">Events (soon)</button>
     </div>
 
     <!-- SINGLE DISH TAB (AI-assisted) -->
@@ -707,9 +708,13 @@ function menuPage(shop, extras = {}) {
     </div>
 
     <script>
-    function showTab(which) {
+    function showTab(which, btn) {
       document.getElementById('tab-single').style.display = which === 'single' ? '' : 'none';
       document.getElementById('tab-set').style.display = which === 'set' ? '' : 'none';
+      document.querySelectorAll('#menuTabs .mTab').forEach(function(t){
+        t.classList.remove('on'); t.style.background='#fff'; t.style.color='#4a443f';
+      });
+      if (btn) { btn.classList.add('on'); btn.style.background='#191512'; btn.style.color='#fff'; }
     }
     function toggleHelp() {
       const h = document.getElementById('aiHelp');
