@@ -188,6 +188,41 @@ function shopPrice(shop, lkrAmt) {
   return `${one(primary)} · ${one(secondary)}`;
 }
 
+/* --------------------------------------------------- meal-time tabs */
+
+/** The three service windows every dish list can be filtered by. */
+const MEALS = ["Breakfast", "Lunch", "Dinner"];
+
+/** Which meals a dish's serving `window` covers.
+ *  "all day" (or blank) counts for all three; explicit keywords win; otherwise
+ *  a clock range like "6 – 10 AM" / "11 AM – 3 PM" / "5 - 9 PM" is parsed and
+ *  matched against breakfast 5–11, lunch 11–16, dinner 16–23. */
+function mealsFor(windowStr) {
+  const w = String(windowStr || "").toLowerCase().trim();
+  if (!w || w.includes("all day") || w.includes("anytime")) return [...MEALS];
+  const hit = [];
+  if (w.includes("breakfast") || w.includes("morning")) hit.push("Breakfast");
+  if (w.includes("lunch") || w.includes("noon")) hit.push("Lunch");
+  if (w.includes("dinner") || w.includes("evening") || w.includes("night")) hit.push("Dinner");
+  if (hit.length) return hit;
+  // Parse "<h>[am|pm] <dash> <h>[am|pm]" — a trailing meridiem applies to both.
+  const m = w.match(/(\d{1,2})(?:[:.]\d{2})?\s*(am|pm)?\s*[–—\-to]+\s*(\d{1,2})(?:[:.]\d{2})?\s*(am|pm)?/i);
+  if (!m) return [...MEALS];
+  const to24 = (h, mer, fallback) => {
+    let n = Number(h) % 12;
+    const ap = (mer || fallback || "").toLowerCase();
+    if (ap === "pm") n += 12;
+    return n;
+  };
+  const end = to24(m[3], m[4], m[2]);
+  const start = to24(m[1], m[2], m[4]);
+  const overlaps = (a, b) => start < b && end > a;
+  if (overlaps(5, 11)) hit.push("Breakfast");
+  if (overlaps(11, 16)) hit.push("Lunch");
+  if (overlaps(16, 23)) hit.push("Dinner");
+  return hit.length ? hit : [...MEALS];
+}
+
 /** Travellers see US$ first, locals still get the exact LKR price. */
 function lkr(n) {
   const v = Number(n ?? 0);
@@ -1544,7 +1579,14 @@ async function ownerDash(id, toast = "") {
     ${(() => {
       const CATS = ["Starters", "Bites", "Vegi meals", "Chicken", "Beef", "Mutton", "Pork", "Sea food", "Drinks", "Desserts"];
       const inCat = (c) => c === "All" ? dishes.length : dishes.filter((d) => (d.category || "") === c).length;
-      return `<div id="dishChips" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px">
+      const inMeal = (mm) => mm === "All day" ? dishes.length : dishes.filter((d) => mealsFor(d.window).includes(mm)).length;
+      // Meal row sits above the category row and is 5% larger so the service
+      // window reads as the primary filter.
+      const mealBtn = (label, on) => `<button type="button" class="mChip${on ? " on" : ""}" data-meal="${esc(label)}" onclick="mealTab('${esc(label)}',this)" style="border:1px solid #e0d6cc;background:${on ? "#191512" : "#fff"};color:${on ? "#fff" : "#4a443f"};border-radius:99px;padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer">${esc(label)} · ${inMeal(label)}</button>`;
+      return `<div id="mealChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:7px">
+        ${mealBtn("All day", true)}${MEALS.map((mm) => mealBtn(mm, false)).join("")}
+      </div>
+      <div id="dishChips" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px">
         <button type="button" class="dChip on" data-cat="All" onclick="dishTab('All',this)" style="border:1px solid #e0d6cc;background:#191512;color:#fff;border-radius:99px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer">All · ${dishes.length}</button>
         ${CATS.map((c) => `<button type="button" class="dChip" data-cat="${esc(c)}" onclick="dishTab('${esc(c)}',this)" style="border:1px solid #e0d6cc;background:#fff;border-radius:99px;padding:5px 11px;font-size:11px;font-weight:600;color:#4a443f;cursor:pointer">${esc(c)} · ${inCat(c)}</button>`).join("")}
       </div>`;
@@ -1554,7 +1596,7 @@ async function ownerDash(id, toast = "") {
         const d = dishes[i];
         if (!d) return `<a href="/app/owner/${String(shop._id)}/add-dish" class="dTile" data-cat="__add__" style="margin:0;padding:0;overflow:hidden;border-style:dashed;border-width:2px;text-align:center;border-radius:16px;background:#fff;border:2px dashed #ece3da">
           <div style="aspect-ratio:4/3;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#8a827b;font-size:12.5px;padding:8px"><span style="font-size:26px">＋</span>Add your dish<br><span style="font-size:11px">photo · price · time</span></div></a>`;
-        return `<a href="/app/owner/${String(shop._id)}/dish/${String(d._id)}" class="dTile card" data-cat="${esc(d.category || "")}" style="margin:0;padding:0;overflow:hidden;position:relative">
+        return `<a href="/app/owner/${String(shop._id)}/dish/${String(d._id)}" class="dTile card" data-cat="${esc(d.category || "")}" data-meals="${esc(mealsFor(d.window).join("|"))}" style="margin:0;padding:0;overflow:hidden;position:relative">
           <div style="aspect-ratio:4/3;background:#f0e7de ${d.photo ? `url(${d.photo}) center/cover` : ""};display:flex;align-items:center;justify-content:center;font-size:30px">${d.photo ? "" : "🍛"}</div>
           <span class="pill" style="position:absolute;top:7px;right:7px;background:#fff;border:1px solid #ece3da">✏️ Edit</span>
           ${d.special ? `<span class="pill deal" style="position:absolute;top:7px;left:7px">Special</span>` : ""}
@@ -1563,15 +1605,34 @@ async function ownerDash(id, toast = "") {
       }).join("")}
     </div>
     <script>
+      // Two independent filters — meal window (Breakfast/Lunch/Dinner) and
+      // category — combined with AND on every tile.
+      var curMeal = 'All day', curCat = 'All';
+      function applyDishFilters(){
+        document.querySelectorAll('.dTile').forEach(function(t){
+          var c = t.dataset.cat;
+          if(c === '__add__'){ t.style.display=''; return; }
+          var meals = (t.dataset.meals || '').split('|');
+          var okMeal = curMeal === 'All day' || meals.indexOf(curMeal) >= 0;
+          var okCat  = curCat === 'All' || c === curCat;
+          t.style.display = (okMeal && okCat) ? '' : 'none';
+        });
+      }
+      function mealTab(meal, btn){
+        curMeal = meal;
+        document.querySelectorAll('#mealChips .mChip').forEach(function(c){
+          c.classList.remove('on'); c.style.background='#fff'; c.style.color='#4a443f';
+        });
+        btn.classList.add('on'); btn.style.background='#191512'; btn.style.color='#fff';
+        applyDishFilters();
+      }
       function dishTab(cat, btn){
+        curCat = cat;
         document.querySelectorAll('#dishChips .dChip').forEach(function(c){
           c.classList.remove('on'); c.style.background='#fff'; c.style.color='#4a443f';
         });
         btn.classList.add('on'); btn.style.background='#191512'; btn.style.color='#fff';
-        document.querySelectorAll('.dTile').forEach(function(t){
-          var c = t.dataset.cat;
-          if(c === '__add__' || cat === 'All' || c === cat) t.style.display=''; else t.style.display='none';
-        });
+        applyDishFilters();
       }
     </script>
     ${orders.length ? `<div class="row" style="justify-content:space-between;margin-top:16px"><strong>Incoming orders</strong>
@@ -2115,7 +2176,7 @@ function addDishPage(shop) {
 
 /* ---------------------------------------------------------------- route */
 
-export { shell, esc, lkr, shopPrice, fx, pairFor, CUR_SYM, LKR_TO };
+export { shell, esc, lkr, shopPrice, fx, pairFor, CUR_SYM, LKR_TO, MEALS, mealsFor };
 
 export async function handleApp(req, res, url) {
   const path = url.pathname;
@@ -2262,6 +2323,7 @@ export async function handleApp(req, res, url) {
       id: String(d._id), name: d.name, nameSi: d.nameSi ?? "", price: Number(d.price) || 0,
       photo: d.photo ?? "", window: d.window ?? "all day", discount: d.discount && d.discount !== "none" ? d.discount : "",
       category: d.category ?? "",
+      meals: mealsFor(d.window),
     });
     res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
     res.end(JSON.stringify({

@@ -8,7 +8,7 @@
  * module only adds the hub + previews under /app/owner/:id/suite/:key.
  */
 
-import { shell, esc, shopPrice, pairFor, CUR_SYM, LKR_TO } from "./app.mjs";
+import { shell, esc, shopPrice, pairFor, CUR_SYM, LKR_TO, MEALS, mealsFor } from "./app.mjs";
 import { ingredientSlug } from "./drive.mjs";
 
 const ORANGE = "#d9542b";
@@ -174,11 +174,15 @@ function posPage(shop, extras = {}) {
   const countIn = (c) => c === "All" ? dishes.length : dishes.filter((d) => (d.category || "") === c).length;
   const cats = ["All", ...POS_CATEGORIES];
   const chips = cats.map((c, i) => `<button type="button" class="posChip${i === 0 ? " on" : ""}" data-cat="${escT(c)}" onclick="posTab('${escT(c)}',this)" style="flex:0 0 auto;border:1px solid #e0d6cc;background:#fff;border-radius:99px;padding:5px 10px;font-size:11px;font-weight:600;color:#4a443f;white-space:nowrap;cursor:pointer">${escT(c)}<span class="sub" style="font-weight:500"> · ${countIn(c)}</span></button>`).join("");
+  // Meal row above the categories — 5% larger, since the service window is the
+  // coarser filter the clerk reaches for first.
+  const countMeal = (mm) => mm === "All day" ? dishes.length : dishes.filter((d) => mealsFor(d.window).includes(mm)).length;
+  const mealChips = ["All day", ...MEALS].map((mm, i) => `<button type="button" class="posMeal${i === 0 ? " on" : ""}" data-meal="${escT(mm)}" onclick="posMealTab('${escT(mm)}',this)" style="flex:0 0 auto;border:1px solid #e0d6cc;background:${i === 0 ? "#191512" : "#fff"};color:${i === 0 ? "#fff" : "#4a443f"};border-radius:99px;padding:6px 12px;font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer">${escT(mm)}<span style="font-weight:500;opacity:.75"> · ${countMeal(mm)}</span></button>`).join("");
   const dishDisplayName = (name) => String(name || "").replace(/^Ceylon\s+/i, "").trim() || String(name || "");
   const dishCard = (d) => {
     const shown = dishDisplayName(d.name);
     return `
-    <div class="posDish" data-cat="${escT(d.category || "")}" data-id="${String(d._id)}" data-name="${escT(d.name)}" data-price="${Number(d.price) || 0}" role="button" tabindex="0" style="display:flex;flex-direction:column;align-items:stretch;padding:0;background:#fff;border:1px solid #ece3da;border-radius:8px;overflow:hidden;cursor:pointer;text-align:left;min-width:0">
+    <div class="posDish" data-cat="${escT(d.category || "")}" data-meals="${escT(mealsFor(d.window).join("|"))}" data-id="${String(d._id)}" data-name="${escT(d.name)}" data-price="${Number(d.price) || 0}" role="button" tabindex="0" style="display:flex;flex-direction:column;align-items:stretch;padding:0;background:#fff;border:1px solid #ece3da;border-radius:8px;overflow:hidden;cursor:pointer;text-align:left;min-width:0">
       <div style="aspect-ratio:1.3;background:${d.photo ? `url('${escT(d.photo)}') center/cover` : "#f0e7de"};position:relative">
         <button type="button" class="posDishMinus" data-id="${String(d._id)}" title="Remove one" style="display:none;position:absolute;top:4px;left:4px;background:#b3261e;color:#fff;font-size:13px;font-weight:800;width:20px;height:20px;border-radius:99px;border:0;padding:0;cursor:pointer;line-height:1;box-shadow:0 1px 3px #0004">−</button>
         <span class="posDishQty" data-id="${String(d._id)}" style="display:none;position:absolute;top:4px;right:4px;background:#191512;color:#fff;font-size:9px;font-weight:800;padding:1px 6px;border-radius:99px;box-shadow:0 1px 3px #0004">×0</span>
@@ -190,8 +194,9 @@ function posPage(shop, extras = {}) {
     </div>`;
   };
   return page(shop, "pos", "POS", "විකුණුම් කවුන්ටරය", `
-    <div class="sub" style="font-size:11.5px;margin-top:6px;line-height:1.4">Pick a category → tap a dish to add. Bill on the right.<br><span class="si">වර්ගය · කෑම තෝරන්න.</span></div>
-    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:10px" id="posChips">${chips}</div>
+    <div class="sub" style="font-size:11.5px;margin-top:6px;line-height:1.4">Pick a meal → category → tap a dish to add. Bill on the right.<br><span class="si">වේල · වර්ගය · කෑම තෝරන්න.</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px" id="posMeals">${mealChips}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px" id="posChips">${chips}</div>
     ${dishes.length ? `
       <div style="display:grid;grid-template-columns:1fr 158px;gap:8px;margin-top:10px;align-items:start">
         <div id="posGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:520px;overflow-y:auto;padding-right:2px;overscroll-behavior:contain">
@@ -256,14 +261,29 @@ function posPage(shop, extras = {}) {
         return SYMS[PAIR.primary]+glue(PAIR.primary)+fmt(lkr,PAIR.primary)+' · '+SYMS[PAIR.secondary]+glue(PAIR.secondary)+fmt(lkr,PAIR.secondary);
       }
       var basket = [];
-      var curCat = 'All';
+      var curCat = 'All', curMeal = 'All day';
+      // Meal window and category filter independently, combined with AND.
+      function applyPosFilters(){
+        document.querySelectorAll('.posDish').forEach(function(d){
+          var meals = (d.dataset.meals || '').split('|');
+          var okMeal = curMeal === 'All day' || meals.indexOf(curMeal) >= 0;
+          var okCat  = curCat === 'All' || d.dataset.cat === curCat;
+          d.style.display = (okMeal && okCat) ? '' : 'none';
+        });
+      }
+      function posMealTab(meal, btn){
+        curMeal = meal;
+        document.querySelectorAll('#posMeals .posMeal').forEach(function(c){
+          c.classList.remove('on'); c.style.background='#fff'; c.style.color='#4a443f';
+        });
+        btn.classList.add('on'); btn.style.background='#191512'; btn.style.color='#fff';
+        applyPosFilters();
+      }
       function posTab(cat, btn){
         curCat = cat;
         document.querySelectorAll('#posChips .posChip').forEach(function(c){ c.classList.remove('on'); });
         btn.classList.add('on');
-        document.querySelectorAll('.posDish').forEach(function(d){
-          d.style.display = (cat==='All' || d.dataset.cat===cat) ? '' : 'none';
-        });
+        applyPosFilters();
       }
       function render(){
         var box = document.getElementById('posBasket');
