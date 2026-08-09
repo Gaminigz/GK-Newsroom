@@ -531,20 +531,8 @@ function menuPage(shop, extras = {}) {
   const planDate = extras.planDate || new Date().toISOString().slice(0, 10);
   const planMeal = extras.planMeal || "Lunch";
   const dayPlan = extras.dayPlan || null;
-  const planGroup = (key) => (dayPlan?.groups || []).find((g) => g.key === key) || {};
-  const packs = dayPlan?.packs || [];
-  const PLAN_GROUPS = [
-    { key: "rice", label: "Rice", pick: 1, hint: "rice types on offer" },
-    { key: "main", label: "Main dishes", pick: 1, hint: "meat — its price is the package price" },
-    { key: "side", label: "Side dishes", pick: 4, hint: "how many the buyer picks" },
-  ];
-  const PACK_HINTS = [
-    "👑 King Pack — Chicken + Pork",
-    "👑 King Pack — Chicken/Pork + Shrimp/Beef",
-    "👑 King Pack — Beef and Shrimp",
-  ];
   // Newsroom catalogue, grouped by its own category vocabulary, for the
-  // "Add set" dropdown on the left column.
+  // dish dropdown on the left column.
   const feedDishes = extras.feedDishes || [];
   const feedByCat = feedDishes.reduce((acc, d) => {
     (acc[d.category || "Other"] = acc[d.category || "Other"] || []).push(d);
@@ -677,104 +665,46 @@ function menuPage(shop, extras = {}) {
     <!-- SET MENU -->
     <div id="tab-set" style="order:1">
       ${singles.length ? `
-      <form method="POST" action="/app/owner/${id}/menu/plan">
+      <form method="POST" action="/app/owner/${id}/menu/plan" onsubmit="return serialisePlan()">
         <input type="hidden" name="date" value="${esc(planDate)}">
         <input type="hidden" name="meal" value="${esc(planMeal)}">
+        <input type="hidden" name="planJson" id="planJson">
 
-        <div class="row" style="justify-content:space-between;align-items:baseline;margin-top:16px">
-          <strong style="font-size:14px">Normal package</strong>
-          <span class="sub" style="font-size:11px">buyer pays the main they pick</span>
-        </div>
+        <div style="display:grid;grid-template-columns:150px 1fr;gap:8px;align-items:start;margin-top:14px">
 
-        <!-- Left column: build a set from the newsroom catalogue. Right column:
-             the group cards. Picking here creates the dish if the shop doesn't
-             have it yet, so the list stays shared across shops. -->
-        <div style="display:grid;grid-template-columns:150px 1fr;gap:8px;align-items:start;margin-top:10px">
+        <!-- Left: name a set, or drop a dish into one. -->
         <div class="card" style="margin:0;padding:10px;position:sticky;top:6px">
-          <!-- Add either a dish into a group, or a whole priced package tier. -->
           <div style="display:flex;gap:3px">
-            <button type="button" id="modeItem" onclick="setAddMode('item')" style="flex:1 1 0;border:1px solid #e0d6cc;background:#191512;color:#fff;border-radius:99px;padding:5px 4px;font-size:10.5px;font-weight:700;cursor:pointer">Item</button>
-            <button type="button" id="modePack" onclick="setAddMode('pack')" style="flex:1 1 0;border:1px solid #e0d6cc;background:#fff;color:#4a443f;border-radius:99px;padding:5px 4px;font-size:10.5px;font-weight:700;cursor:pointer">Package</button>
+            <button type="button" id="modeSet" onclick="setAddMode('set')" style="flex:1 1 0;border:1px solid #e0d6cc;background:#191512;color:#fff;border-radius:99px;padding:5px 4px;font-size:10.5px;font-weight:700;cursor:pointer">Set</button>
+            <button type="button" id="modeDish" onclick="setAddMode('dish')" style="flex:1 1 0;border:1px solid #e0d6cc;background:#fff;color:#4a443f;border-radius:99px;padding:5px 4px;font-size:10.5px;font-weight:700;cursor:pointer">Dish</button>
           </div>
 
-          <div id="addItemPane">
-            <label style="margin-top:8px;font-size:9.5px">GROUP</label>
-            <select id="addSetGroup" style="margin:0;font-size:11.5px;padding:6px">
-              ${PLAN_GROUPS.map((g) => `<option value="${g.key}">${esc(g.label)}</option>`).join("")}
-            </select>
-            <label style="margin-top:7px;font-size:9.5px">ITEM <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
-            <select id="addSetItem" style="margin:0;font-size:11.5px;padding:6px">${feedOptions}</select>
-            <label style="margin-top:7px;font-size:9.5px">PRICE $</label>
-            <input type="number" id="addSetPrice" step="0.01" min="0" placeholder="1.50" style="margin:0;font-size:11.5px;padding:6px;text-align:center;font-weight:700">
-            <button type="button" onclick="addSetItem()" class="btn" style="margin-top:8px;padding:8px 4px;font-size:11.5px;width:100%">+ Add</button>
+          <div id="paneSet">
+            <label style="margin-top:8px;font-size:9.5px">NAME</label>
+            <input type="text" id="newSetName" placeholder="Rice" maxlength="40" style="margin:0;font-size:11.5px;padding:6px">
+            <button type="button" onclick="addSet()" class="btn" style="margin-top:8px;padding:8px 4px;font-size:12px;width:100%">+</button>
           </div>
 
-          <div id="addPackPane" style="display:none">
-            <label style="margin-top:8px;font-size:9.5px">PACKAGE NAME</label>
-            <input type="text" id="addPackName" placeholder="👑 King Pack — Chicken + Pork" maxlength="80" style="margin:0;font-size:11.5px;padding:6px">
-            <label style="margin-top:7px;font-size:9.5px">SINHALA</label>
-            <input type="text" id="addPackNameSi" placeholder="සියලුම Side dishes සමග" maxlength="120" style="margin:0;font-size:11.5px;padding:6px">
+          <div id="paneDish" style="display:none">
+            <label style="margin-top:8px;font-size:9.5px">SET</label>
+            <select id="dishSet" style="margin:0;font-size:11.5px;padding:6px"></select>
+            <label style="margin-top:7px;font-size:9.5px">DISH <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
+            <select id="dishItem" style="margin:0;font-size:11.5px;padding:6px">${feedOptions}</select>
             <label style="margin-top:7px;font-size:9.5px">PRICE $</label>
-            <input type="number" id="addPackPrice" step="0.01" min="0" placeholder="9.50" style="margin:0;font-size:11.5px;padding:6px;text-align:center;font-weight:700">
-            <button type="button" onclick="addPackage()" class="btn" style="margin-top:8px;padding:8px 4px;font-size:11.5px;width:100%">+ Add</button>
+            <input type="number" id="dishPrice" step="0.01" min="0" placeholder="1.50" style="margin:0;font-size:11.5px;padding:6px;text-align:center;font-weight:700">
+            <button type="button" onclick="addDish()" class="btn" style="margin-top:8px;padding:8px 4px;font-size:12px;width:100%">+</button>
           </div>
 
           <div id="addSetMsg" class="sub" style="font-size:10px;margin-top:6px;line-height:1.3"></div>
         </div>
 
-        <div>
-        ${PLAN_GROUPS.map((g) => {
-          const saved = planGroup(g.key);
-          const chosen = new Set((saved.choices || []).map((c) => c.dishId));
-          return `
-        <div class="card" style="margin-top:10px;padding:11px 12px">
-          <input type="hidden" name="${g.key}label" value="${esc(saved.label || g.label)}">
-          <div class="row" style="justify-content:space-between;align-items:center">
-            <strong style="font-size:13px">${esc(saved.label || g.label)}</strong>
-            <span class="row" style="gap:6px;flex:0 0 auto">
-              <span class="sub" style="font-size:10px">pick</span>
-              <input type="number" name="${g.key}pick" value="${Number(saved.pick) || g.pick}" min="1" max="40" style="margin:0;width:46px;padding:4px 2px;text-align:center;font-weight:700;font-size:12px">
-              <span class="gCount sub" data-g="${g.key}" style="font-size:10.5px;color:${ORANGE};font-weight:700">${chosen.size} ticked</span>
-            </span>
-          </div>
-          <div style="max-height:200px;overflow-y:auto;margin-top:5px;padding-right:2px;overscroll-behavior:contain">
-            ${singles.map((d) => `
-            <label class="setPick" data-cat="${esc(d.category || "")}" data-meals="${esc(mealsFor(d.window).join("|"))}" style="display:flex;align-items:center;gap:8px;padding:5px 2px;border-bottom:1px solid #f2ece6;cursor:pointer">
-              <input type="checkbox" name="${g.key}dish" value="${String(d._id)}" data-g="${g.key}" onchange="setRecount()"${chosen.has(String(d._id)) ? " checked" : ""} style="width:17px;height:17px;accent-color:${ORANGE};flex:0 0 auto">
-              <span style="flex:1;min-width:0;font-size:12px;line-height:1.25">${esc(d.name)}${d.nameSi ? ` <span class="si" style="font-size:11px">${esc(d.nameSi)}</span>` : ""}</span>
-              <span class="sub" style="font-size:11px;font-weight:700;flex:0 0 auto">${esc(shopPrice(shop, Number(d.price) || 0))}</span>
-            </label>`).join("")}
-          </div>
-        </div>`;
-        }).join("")}
+        <!-- Right: the sets the owner has created, built by JS from the plan array. -->
+        <div id="setList"></div>
         </div>
-        </div>
-
-        <div class="row" style="justify-content:space-between;align-items:baseline;margin-top:18px">
-          <strong style="font-size:14px">👑 King Pack</strong>
-          <span class="sub" style="font-size:11px">bigger portions · all sides</span>
-        </div>
-        ${[0, 1, 2].map((i) => {
-          const p = packs[i] || {};
-          return `
-        <div class="card" style="margin-top:8px;padding:10px 12px">
-          <div style="display:grid;grid-template-columns:1fr 84px;gap:6px;align-items:end">
-            <div>
-              <label style="margin:0">TIER NAME</label>
-              <input type="text" name="pack${i}name" value="${esc(p.name || "")}" placeholder="${esc(PACK_HINTS[i])}" maxlength="80" style="margin:0">
-            </div>
-            <div>
-              <label style="margin:0">PRICE $</label>
-              <input type="number" name="pack${i}price" step="0.01" min="0" value="${p.price ? (Number(p.price) / 300).toFixed(2) : ""}" style="margin:0;text-align:center;font-weight:700">
-            </div>
-          </div>
-          <input type="text" name="pack${i}nameSi" value="${esc(p.nameSi || "")}" placeholder="සිංහල විස්තරය" maxlength="120" style="margin-top:6px;font-size:12px">
-        </div>`;
-        }).join("")}
 
         <button class="btn" style="margin-top:16px">Save ${esc(planMeal)} plan · ${esc(planDate)}</button>
       </form>
-      ` : `<div class="card" style="margin-top:12px;padding:12px 14px;background:#fdf0ec;border-color:#f3cfc2;font-size:12.5px;color:#946200">Add some dishes first — they become the options inside each group.</div>`}
+      ` : `<div class="card" style="margin-top:12px;padding:12px 14px;background:#fdf0ec;border-color:#f3cfc2;font-size:12.5px;color:#946200">Add some dishes first — they become the options inside each set.</div>`}
     </div>
 
     </div><!-- /both builders -->
@@ -793,102 +723,112 @@ function menuPage(shop, extras = {}) {
       if (pc) pc.textContent = picked + ' picked';
       if (st) st.textContent = '$' + total.toFixed(2);
     }
-    /* ---- set-meal builder: meal + category filters and per-group counts ---- */
-    var setMeal = 'All day', setCat = 'All';
-    function setApplyFilters(){
-      document.querySelectorAll('.setPick').forEach(function(row){
-        var meals = (row.dataset.meals || '').split('|');
-        var okMeal = setMeal === 'All day' || meals.indexOf(setMeal) >= 0;
-        var okCat  = setCat === 'All' || row.dataset.cat === setCat;
-        // Keep a ticked dish visible even when filtered out, so the owner can
-        // always see (and untick) everything they've put in a group.
-        var ticked = row.querySelector('input[type=checkbox]').checked;
-        row.style.display = (ticked || (okMeal && okCat)) ? '' : 'none';
-      });
+    /* ---- dynamic set builder ----------------------------------------
+       plan = [{name, pick, dishes:[{id,name,nameSi,price}]}]. The left panel
+       mutates it; the right column is re-rendered from it; it is serialised
+       into a hidden field on submit. */
+    var plan = ${JSON.stringify((dayPlan?.groups || []).map((g) => ({
+      name: g.label || "",
+      pick: Number(g.pick) || 1,
+      dishes: (g.choices || []).map((c) => ({ id: c.dishId, name: c.name, nameSi: c.nameSi || "", price: Number(c.price) || 0 })),
+    })))};
+    var SHOP_ID = '${id}';
+    var PLAN_MEAL = '${esc(planMeal)}';
+
+    function money(lkr){
+      var usd = (Number(lkr) || 0) / 300;
+      return 'US$' + usd.toFixed(2) + ' · LKR ' + (Number(lkr) || 0).toLocaleString();
     }
-    function setMealTab(meal, btn){
-      setMeal = meal;
-      document.querySelectorAll('#setMeals .setMeal').forEach(function(c){
-        c.classList.remove('on'); c.style.background='#fff'; c.style.color='#4a443f';
-      });
-      btn.classList.add('on'); btn.style.background='#191512'; btn.style.color='#fff';
-      setApplyFilters();
+    function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+    function renderPlan(){
+      var host = document.getElementById('setList');
+      if (!plan.length) {
+        host.innerHTML = '<div class="sub" style="padding:18px 10px;text-align:center;font-size:11.5px;color:#c9bfb7">Name a set on the left and tap +</div>';
+      } else {
+        host.innerHTML = plan.map(function(s, si){
+          var rows = s.dishes.length ? s.dishes.map(function(d, di){
+            return '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #f2ece6">'
+              + '<span style="flex:1;min-width:0;font-size:12px;line-height:1.25">' + esc(d.name)
+              + (d.nameSi ? ' <span class="si" style="font-size:10.5px">' + esc(d.nameSi) + '</span>' : '') + '</span>'
+              + '<span class="sub" style="font-size:10.5px;font-weight:700;flex:0 0 auto">' + money(d.price) + '</span>'
+              + '<button type="button" onclick="delDish(' + si + ',' + di + ')" style="flex:0 0 auto;border:0;background:none;color:#b3261e;font-size:14px;padding:0 2px;cursor:pointer">✕</button>'
+              + '</div>';
+          }).join('') : '<div class="sub" style="font-size:10.5px;padding:8px 0;color:#c9bfb7">no dishes yet</div>';
+          return '<div class="card" style="margin:0 0 10px 0;padding:11px 12px">'
+            + '<div class="row" style="justify-content:space-between;align-items:center">'
+            +   '<strong style="font-size:13px">' + esc(s.name) + '</strong>'
+            +   '<span class="row" style="gap:6px;flex:0 0 auto">'
+            +     '<span class="sub" style="font-size:10px">pick</span>'
+            +     '<input type="number" min="1" max="40" value="' + s.pick + '" onchange="plan[' + si + '].pick=Math.max(1,Number(this.value)||1)" style="margin:0;width:44px;padding:4px 2px;text-align:center;font-weight:700;font-size:12px">'
+            +     '<button type="button" onclick="delSet(' + si + ')" style="border:0;background:none;color:#b3261e;font-size:14px;padding:0 2px;cursor:pointer">✕</button>'
+            +   '</span>'
+            + '</div>'
+            + '<div style="margin-top:6px">' + rows + '</div>'
+            + '</div>';
+        }).join('');
+      }
+      var sel = document.getElementById('dishSet');
+      var keep = sel.value;
+      sel.innerHTML = plan.map(function(s, si){ return '<option value="' + si + '">' + esc(s.name) + '</option>'; }).join('');
+      if (keep && plan[keep]) sel.value = keep;
     }
-    function setCatTab(cat, btn){
-      setCat = cat;
-      document.querySelectorAll('#setCats .setCat').forEach(function(c){
-        c.classList.remove('on'); c.style.background='#fff'; c.style.color='#4a443f';
-      });
-      btn.classList.add('on'); btn.style.background='#191512'; btn.style.color='#fff';
-      setApplyFilters();
-    }
-    // Left panel switches between adding a dish and adding a package tier.
+
     function setAddMode(mode){
-      var isItem = mode === 'item';
-      document.getElementById('addItemPane').style.display = isItem ? '' : 'none';
-      document.getElementById('addPackPane').style.display = isItem ? 'none' : '';
-      var mi = document.getElementById('modeItem'), mp = document.getElementById('modePack');
-      mi.style.background = isItem ? '#191512' : '#fff'; mi.style.color = isItem ? '#fff' : '#4a443f';
-      mp.style.background = isItem ? '#fff' : '#191512'; mp.style.color = isItem ? '#4a443f' : '#fff';
+      var isSet = mode === 'set';
+      document.getElementById('paneSet').style.display  = isSet ? '' : 'none';
+      document.getElementById('paneDish').style.display = isSet ? 'none' : '';
+      var a = document.getElementById('modeSet'), b = document.getElementById('modeDish');
+      a.style.background = isSet ? '#191512' : '#fff'; a.style.color = isSet ? '#fff' : '#4a443f';
+      b.style.background = isSet ? '#fff' : '#191512'; b.style.color = isSet ? '#4a443f' : '#fff';
       document.getElementById('addSetMsg').textContent = '';
     }
-    // Fill the first empty package row rather than posting — the tier is saved
-    // with the rest of the plan when the owner hits Save.
-    function addPackage(){
-      var name = document.getElementById('addPackName').value.trim();
-      var si   = document.getElementById('addPackNameSi').value.trim();
-      var price= Number(document.getElementById('addPackPrice').value) || 0;
-      var msg  = document.getElementById('addSetMsg');
-      if (!name)    { msg.textContent = 'Name the package.'; return; }
-      if (price<=0) { msg.textContent = 'Set a price.'; return; }
-      for (var i = 0; i < 6; i++) {
-        var n = document.querySelector('input[name="pack'+i+'name"]');
-        if (n && !n.value.trim()) {
-          n.value = name;
-          var s = document.querySelector('input[name="pack'+i+'nameSi"]'); if (s) s.value = si;
-          var p = document.querySelector('input[name="pack'+i+'price"]'); if (p) p.value = price.toFixed(2);
-          msg.textContent = 'Added — Save to keep it.';
-          document.getElementById('addPackName').value = '';
-          document.getElementById('addPackNameSi').value = '';
-          document.getElementById('addPackPrice').value = '';
-          n.scrollIntoView({behavior:'smooth', block:'center'});
-          return;
-        }
-      }
-      msg.textContent = 'All package slots are full.';
-    }
-    // "Add set": create the dish in this shop from the shared catalogue, then
-    // tick it straight into the chosen group without losing the rest of the form.
-    function addSetItem(){
-      var g = document.getElementById('addSetGroup').value;
-      var name = document.getElementById('addSetItem').value;
-      var dollars = Number(document.getElementById('addSetPrice').value) || 0;
+
+    function addSet(){
+      var el = document.getElementById('newSetName');
+      var name = el.value.trim();
       var msg = document.getElementById('addSetMsg');
-      if (!name) { msg.textContent = 'Pick an item.'; return; }
-      if (dollars <= 0) { msg.textContent = 'Set a price first.'; return; }
+      if (!name) { msg.textContent = 'Type a name.'; return; }
+      plan.push({name: name, pick: 1, dishes: []});
+      el.value = '';
+      msg.textContent = 'Added "' + name + '".';
+      renderPlan();
+    }
+    function delSet(i){ plan.splice(i, 1); renderPlan(); }
+    function delDish(si, di){ plan[si].dishes.splice(di, 1); renderPlan(); }
+
+    function addDish(){
+      var msg = document.getElementById('addSetMsg');
+      if (!plan.length) { msg.textContent = 'Make a set first.'; return; }
+      var si = Number(document.getElementById('dishSet').value);
+      var name = document.getElementById('dishItem').value;
+      var dollars = Number(document.getElementById('dishPrice').value) || 0;
+      if (!name)     { msg.textContent = 'Pick a dish.'; return; }
+      if (dollars<=0){ msg.textContent = 'Set a price.'; return; }
       msg.textContent = 'Adding…';
-      fetch('/app/owner/${id}/menu/add-from-feed', {
+      fetch('/app/owner/' + SHOP_ID + '/menu/add-from-feed', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({name: name, price: Math.round(dollars * 300), meal: '${esc(planMeal)}'}),
+        body: JSON.stringify({name: name, price: Math.round(dollars * 300), meal: PLAN_MEAL}),
       })
       .then(function(r){ return r.json(); })
       .then(function(j){
         if (!j.ok) { msg.textContent = j.error || 'Failed'; return; }
-        var box = document.querySelector('input[name="'+g+'dish"][value="'+j.id+'"]');
-        if (box) { box.checked = true; setRecount(); msg.textContent = (j.existed ? 'Already there — ticked.' : 'Added + ticked.'); }
-        else { msg.textContent = 'Added — reload to see it.'; setTimeout(function(){ location.reload(); }, 700); }
+        if (plan[si].dishes.some(function(d){ return d.id === j.id; })) { msg.textContent = 'Already in that set.'; return; }
+        plan[si].dishes.push({id: j.id, name: j.name, nameSi: j.nameSi || '', price: Math.round(dollars * 300)});
+        document.getElementById('dishPrice').value = '';
+        msg.textContent = 'Added to ' + plan[si].name + '.';
+        renderPlan();
       })
       .catch(function(e){ msg.textContent = e.message; });
     }
-    function setRecount(){
-      document.querySelectorAll('.gCount').forEach(function(el){
-        var g = el.dataset.g;   // 'rice' | 'main' | 'side'
-        var n = document.querySelectorAll('input[name="'+g+'dish"]:checked').length;
-        el.textContent = n + ' ticked';
-      });
-      setApplyFilters();
+
+    function serialisePlan(){
+      document.getElementById('planJson').value = JSON.stringify(plan);
+      return true;
     }
-    async function fetchRecipe() {
+    renderPlan();
+
       const dish = document.getElementById('aiDishName').value.trim();
       if (!dish) { document.getElementById('aiStatus').textContent = 'Type a dish name first.'; return; }
       const s = document.getElementById('aiStatus');

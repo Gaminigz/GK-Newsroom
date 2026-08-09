@@ -3159,38 +3159,32 @@ export async function handleApp(req, res, url) {
       redirect(res, `/app/owner/${m[1]}/suite/menu?msg=${encodeURIComponent("Pick a valid date.")}`);
       return;
     }
+    // The builder posts the whole plan as JSON — sets are named freely by the
+    // owner, so there are no fixed field names to read.
+    let raw = [];
+    try { raw = JSON.parse(String(form.get("planJson") || "[]")); } catch { raw = []; }
+    if (!Array.isArray(raw)) raw = [];
     const dishesCol = await col("app_dishes");
-    const groupFor = async (key, fallbackLabel) => {
-      const ids = form.getAll(`${key}dish`).map(String).slice(0, 40);
+    const groups = [];
+    for (const g of raw.slice(0, 12)) {
+      const label = String(g?.name || "").trim().slice(0, 40);
+      if (!label) continue;
+      const ids = Array.isArray(g.dishes) ? g.dishes.map((d) => String(d?.id || "")).filter(Boolean).slice(0, 40) : [];
       const oids = (await Promise.all(ids.map(oid))).filter(Boolean);
       const picked = oids.length ? await dishesCol.find({ _id: { $in: oids }, shopId: m[1] }).toArray() : [];
-      return {
-        key,
-        label: String(form.get(`${key}label`) || fallbackLabel).trim().slice(0, 40) || fallbackLabel,
-        pick: Math.max(1, Math.min(40, Number(form.get(`${key}pick`)) || 1)),
+      groups.push({
+        key: label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || `set-${groups.length}`,
+        label,
+        pick: Math.max(1, Math.min(40, Number(g?.pick) || 1)),
         choices: picked.map((d) => ({
           dishId: String(d._id), name: d.name, nameSi: d.nameSi || "",
           price: Number(d.price) || 0, category: d.category || "",
         })),
-      };
-    };
-    const groups = [
-      await groupFor("rice", "Rice"),
-      await groupFor("main", "Main dishes"),
-      await groupFor("side", "Side dishes"),
-    ];
-    // King Pack tiers — name + price pairs, blank rows ignored.
-    const packs = [];
-    for (let i = 0; i < 6; i++) {
-      const name = String(form.get(`pack${i}name`) || "").trim().slice(0, 80);
-      const price = Math.max(0, Number(form.get(`pack${i}price`)) || 0);
-      if (name && price > 0) {
-        packs.push({ name, nameSi: String(form.get(`pack${i}nameSi`) || "").trim().slice(0, 120), price, allSides: true });
-      }
+      });
     }
     await (await col("day_plans")).updateOne(
       { shopId: m[1], date, meal },
-      { $set: { shopId: m[1], date, meal, groups, packs, updatedAt: new Date() },
+      { $set: { shopId: m[1], date, meal, groups, updatedAt: new Date() },
         $setOnInsert: { createdAt: new Date() } },
       { upsert: true },
     );
