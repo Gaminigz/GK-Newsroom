@@ -60,6 +60,10 @@ struct ShopSummary: Codable, Identifiable {
     let deal: String
     let lat: Double?
     let lng: Double?
+    // Optional hero-slider photos — logo → frontPhoto → photo2 fade cycle.
+    let frontPhoto: String?
+    let photo2: String?
+    let photo3: String?
 }
 
 struct ShopDetailResponse: Codable {
@@ -87,6 +91,7 @@ struct Dish: Codable, Identifiable {
     let window: String
     let discount: String
     let tag: String?
+    let category: String?
 }
 
 struct OrdersResponse: Codable { let orders: [OrderSummary] }
@@ -117,18 +122,27 @@ enum Net {
     static func getQuery<T: Codable>(_ path: String, query: [String: String], as type: T.Type) async throws -> T {
         var comps = URLComponents(url: API.base.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         comps.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
+        // A literal "+" in a query value decodes server-side as a space, which
+        // would turn "+94 77…" into " 94 77…". Escape it before sending.
+        comps.percentEncodedQuery = (comps.percentEncodedQuery ?? "").replacingOccurrences(of: "+", with: "%2B")
         let (data, _) = try await URLSession.shared.data(from: comps.url!)
         return try JSONDecoder().decode(T.self, from: data)
     }
 
     /// POST application/x-www-form-urlencoded. Returns the final HTTP status.
+    /// Every native POST carries `X-App-Source: app` so the server can tag orders
+    /// with source="app" (as opposed to source="ecom" for plain web buyers).
     @discardableResult
     static func postForm(_ path: String, fields: [String: String]) async throws -> Int {
         var req = URLRequest(url: API.base.appendingPathComponent(path))
         req.httpMethod = "POST"
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        req.setValue("app", forHTTPHeaderField: "X-App-Source")
         var comps = URLComponents(); comps.queryItems = fields.map { URLQueryItem(name: $0.key, value: $0.value) }
-        req.httpBody = (comps.percentEncodedQuery ?? "").data(using: .utf8)
+        // In x-www-form-urlencoded a literal "+" decodes as a space, so a phone
+        // like "+94 77…" would arrive as " 94 77…". Escape it explicitly.
+        let encoded = (comps.percentEncodedQuery ?? "").replacingOccurrences(of: "+", with: "%2B")
+        req.httpBody = encoded.data(using: .utf8)
         let (_, resp) = try await URLSession.shared.data(for: req)
         return (resp as? HTTPURLResponse)?.statusCode ?? 0
     }
@@ -313,11 +327,28 @@ struct FlashCard: View {
 
 struct ShopRow: View {
     let shop: ShopSummary
+    @State private var slideIndex = 0
+    private var slides: [String] {
+        [shop.logo, shop.frontPhoto ?? "", shop.photo2 ?? "", shop.photo3 ?? ""].filter { !$0.isEmpty }
+    }
     var body: some View {
-        HStack(spacing: 12) {
-            DataImage(uri: shop.logo)
-                .frame(width: 52, height: 52)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+        HStack(spacing: 10) {
+            ZStack {
+                ForEach(Array(slides.enumerated()), id: \.offset) { idx, uri in
+                    DataImage(uri: uri)
+                        .frame(width: 92, height: 92)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .opacity(idx == slideIndex ? 1 : 0)
+                        .animation(.easeInOut(duration: 1.2), value: slideIndex)
+                }
+            }
+            .frame(width: 92, height: 92)
+            .onAppear {
+                guard slides.count > 1 else { return }
+                Timer.scheduledTimer(withTimeInterval: 3.5, repeats: true) { _ in
+                    slideIndex = (slideIndex + 1) % slides.count
+                }
+            }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(shop.name).font(.subheadline.weight(.bold)).lineLimit(1)
@@ -352,34 +383,98 @@ struct ShopView: View {
     @State private var basket: [BasketLine] = []
     @State private var showOrderSheet = false
     @State private var orderPlaced = false
+    @State private var selectedCategory: String = "All"
+    // Pre-booking: when the buyer wants the food ready. Defaults to now.
+    @State private var wantAt: Date = Date()
+
+    // Same POS ordering, plus "All" as the first chip.
+    static let posCategories = ["All", "Starters", "Bites", "Vegi meals", "Chicken", "Beef", "Mutton", "Pork", "Sea food", "Drinks", "Desserts"]
 
     var total: Int { basket.reduce(0) { $0 + $1.price * $1.qty } }
+
+    func categoryCount(_ cat: String, in dishes: [Dish]) -> Int {
+        cat == "All" ? dishes.count : dishes.filter { ($0.category ?? "") == cat }.count
+    }
+
+    func filtered(_ dishes: [Dish]) -> [Dish] {
+        selectedCategory == "All" ? dishes : dishes.filter { ($0.category ?? "") == selectedCategory }
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
             List {
                 if let d = detail {
+                    // Hero image — edge-to-edge, extends under the nav bar (safe area).
                     Section {
-                        VStack(alignment: .leading, spacing: 6) {
-                            DataImage(uri: d.shop.frontPhoto.isEmpty ? d.shop.logo : d.shop.frontPhoto)
-                                .frame(height: 150).frame(maxWidth: .infinity).clipped()
-                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                        DataImage(uri: d.shop.frontPhoto.isEmpty ? d.shop.logo : d.shop.frontPhoto)
+                            .frame(height: 260).frame(maxWidth: .infinity).clipped()
+                            .listRowInsets(EdgeInsets())
+                            .listRowSeparator(.hidden)
+                            .padding(.top, -100)
+                    }
+                    Section {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text(d.shop.name).font(.title3.weight(.bold))
                             Text("★ 4.8 · \(d.shop.city), \(d.shop.country) · \(d.shop.open ? "open now" : "closed now")")
                                 .font(.caption).foregroundColor(.secondary)
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 5)], alignment: .leading, spacing: 5) {
+                                ForEach(Self.posCategories, id: \.self) { cat in
+                                    let count = categoryCount(cat, in: d.dishes)
+                                    Button { selectedCategory = cat } label: {
+                                        HStack(spacing: 3) {
+                                            Text(cat).font(.system(size: 12, weight: .semibold))
+                                            Text("· \(count)").font(.system(size: 11)).opacity(0.7)
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.horizontal, 8).padding(.vertical, 6)
+                                        .background(selectedCategory == cat ? Color.brandDark : Color(UIColor.secondarySystemGroupedBackground))
+                                        .foregroundColor(selectedCategory == cat ? .white : .primary)
+                                        .clipShape(Capsule())
+                                        .overlay(Capsule().stroke(Color.gray.opacity(0.25), lineWidth: 1))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.top, 2)
                         }
-                        .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                        .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
                         .listRowSeparator(.hidden)
                     }
-                    if let sp = d.special {
-                        Section("Today's special · අද විශේෂ") {
-                            DishRow(dish: sp, tag: sp.tag ?? "Today special") { add(sp) }
-                        }
-                    }
-                    Section("Popular dishes") {
-                        if d.dishes.isEmpty { Text("No dishes published yet.").foregroundColor(.secondary) }
-                        ForEach(d.dishes) { dish in
-                            DishRow(dish: dish, tag: nil) { add(dish) }
+                    Section {
+                        // Merge special into the main list (special first, tagged) so
+                        // there's a single filterable list — no separate "Today's special" section.
+                        let full: [(Dish, String?)] = {
+                            var arr: [(Dish, String?)] = []
+                            if let sp = d.special, selectedCategory == "All" || (sp.category ?? "") == selectedCategory {
+                                arr.append((sp, sp.tag ?? "Today special"))
+                            }
+                            arr.append(contentsOf: filtered(d.dishes).map { ($0, nil) })
+                            return arr
+                        }()
+                        if full.isEmpty {
+                            Text("No dishes in this category.").foregroundColor(.secondary)
+                        } else {
+                            // Row 1: first two tiles + BILL panel on the right (all same height).
+                            // Rows 2+: 2-col grid using the FULL width — no middle white bar.
+                            VStack(spacing: 8) {
+                                HStack(alignment: .top, spacing: 6) {
+                                    ForEach(Array(full.prefix(2).enumerated()), id: \.offset) { _, pair in
+                                        DishTile(dish: pair.0, tag: pair.1, inBasket: basket.first(where: { $0.id == pair.0.id })?.qty ?? 0) { add(pair.0) }
+                                            .frame(maxWidth: .infinity)
+                                    }
+                                    CartPanel(basket: $basket, total: total, wantAt: $wantAt, onCheckout: { showOrderSheet = true })
+                                        .frame(width: 100)
+                                }
+                                if full.count > 2 {
+                                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 8) {
+                                        ForEach(Array(full.dropFirst(2).enumerated()), id: \.offset) { _, pair in
+                                            DishTile(dish: pair.0, tag: pair.1, inBasket: basket.first(where: { $0.id == pair.0.id })?.qty ?? 0) { add(pair.0) }
+                                        }
+                                    }
+                                }
+                            }
+                            .listRowInsets(EdgeInsets(top: 0, leading: 6, bottom: 4, trailing: 6))
+                            .listRowSeparator(.hidden)
                         }
                     }
                     Section {
@@ -390,7 +485,8 @@ struct ShopView: View {
                     HStack { Spacer(); ProgressView(); Spacer() }.padding(.vertical, 30)
                 }
             }
-            .listStyle(.insetGrouped)
+            .listStyle(.plain)
+            .environment(\.defaultMinListHeaderHeight, 0)
 
             if !basket.isEmpty {
                 Button { showOrderSheet = true } label: {
@@ -406,10 +502,10 @@ struct ShopView: View {
                 }
             }
         }
-        .navigationTitle(detail?.shop.name ?? "")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showOrderSheet) {
-            OrderSheet(shopId: shopId, basket: $basket, placed: $orderPlaced)
+            OrderSheet(shopId: shopId, basket: $basket, placed: $orderPlaced, wantAt: wantAt)
         }
         .alert("Order placed 🎉", isPresented: $orderPlaced) {
             Button("OK") { }
@@ -463,16 +559,167 @@ struct DishRow: View {
     }
 }
 
+struct DishTile: View {
+    let dish: Dish
+    let tag: String?
+    let inBasket: Int
+    let onAdd: () -> Void
+    var body: some View {
+        Button(action: onAdd) {
+            VStack(alignment: .leading, spacing: 3) {
+                ZStack(alignment: .topLeading) {
+                    DataImage(uri: dish.photo)
+                        .frame(height: 130).frame(maxWidth: .infinity)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    if let tag = tag {
+                        Text(tag.uppercased()).font(.system(size: 8, weight: .heavy))
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Color.brandOrange).foregroundColor(.white)
+                            .clipShape(Capsule())
+                            .padding(4)
+                    }
+                    if inBasket > 0 {
+                        Text("×\(inBasket)").font(.system(size: 10, weight: .heavy))
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Color.brandDark).foregroundColor(.white)
+                            .clipShape(Capsule())
+                            .padding(4)
+                            .frame(maxWidth: .infinity, alignment: .topTrailing)
+                    }
+                }
+                Text(dishDisplayName(dish.name))
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(2).multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, minHeight: 34, alignment: .topLeading)
+                Text(API.money(dish.price))
+                    .font(.system(size: 11.5, weight: .bold))
+                    .foregroundColor(.brandOrange)
+            }
+            .padding(7)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .background(Color(UIColor.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+    }
+    private func dishDisplayName(_ n: String) -> String {
+        let s = n.replacingOccurrences(of: "Ceylon ", with: "", options: [.caseInsensitive, .anchored])
+        return s.trimmingCharacters(in: .whitespaces).isEmpty ? n : s
+    }
+}
+
+struct CartPanel: View {
+    @Binding var basket: [BasketLine]
+    let total: Int
+    @Binding var wantAt: Date
+    let onCheckout: () -> Void
+    @State private var showWantPicker = false
+    static let wantShort: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "MMM d · h:mm a"; return f
+    }()
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("BILL").font(.system(size: 8, weight: .heavy)).opacity(0.65)
+            Text(API.money(total))
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundColor(Color(red: 1.0, green: 0.69, blue: 0.56))
+                .minimumScaleFactor(0.7).lineLimit(2)
+            Text("\(basket.reduce(0) { $0 + $1.qty }) item\(basket.reduce(0) { $0 + $1.qty } == 1 ? "" : "s")")
+                .font(.system(size: 8.5)).opacity(0.6)
+            Divider().background(Color.white.opacity(0.15)).padding(.vertical, 2)
+            if basket.isEmpty {
+                Text("tap a dish").font(.system(size: 10)).opacity(0.5).padding(.vertical, 6)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(basket) { line in
+                            VStack(alignment: .leading, spacing: 1) {
+                                HStack(spacing: 3) {
+                                    Text(line.name).font(.system(size: 9.5, weight: .semibold)).lineLimit(1)
+                                    Spacer(minLength: 2)
+                                    Button {
+                                        if let i = basket.firstIndex(where: { $0.id == line.id }) {
+                                            basket[i].qty -= 1
+                                            if basket[i].qty <= 0 { basket.remove(at: i) }
+                                        }
+                                    } label: {
+                                        Image(systemName: "minus.circle.fill")
+                                            .font(.system(size: 13)).foregroundColor(.red.opacity(0.8))
+                                    }.buttonStyle(.plain)
+                                }
+                                HStack {
+                                    Text("×\(line.qty)").font(.system(size: 9)).opacity(0.6)
+                                    Spacer()
+                                    Text(API.money(line.price * line.qty))
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(Color(red: 1.0, green: 0.69, blue: 0.56))
+                                }
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 220)
+            }
+            // When the buyer wants the food ready — defaults to now.
+            // Tap to open a picker sheet; the chosen date+time rides the
+            // order to POS so the clerk sees pre-booking timing on the card.
+            VStack(alignment: .leading, spacing: 2) {
+                Text("WANT AT").font(.system(size: 8, weight: .heavy)).opacity(0.55)
+                Button { showWantPicker = true } label: {
+                    Text(Self.wantShort.string(from: wantAt))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 6).padding(.vertical, 5)
+                        .background(Color.white.opacity(0.10))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }.buttonStyle(.plain)
+            }
+            .padding(.vertical, 4)
+            .sheet(isPresented: $showWantPicker) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Want the food at").font(.headline)
+                    DatePicker("", selection: $wantAt, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+                        .datePickerStyle(.graphical).labelsHidden()
+                    Button("Done") { showWantPicker = false }
+                        .frame(maxWidth: .infinity).padding().background(Color.brandOrange)
+                        .foregroundColor(.white).clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .padding()
+            }
+            // Check out button always visible; disabled when the basket is empty.
+            Button(action: onCheckout) {
+                Text("Check out").font(.system(size: 11, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(basket.isEmpty ? Color.white.opacity(0.15) : Color.brandOrange)
+                    .foregroundColor(basket.isEmpty ? .white.opacity(0.4) : .white)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+            .disabled(basket.isEmpty)
+        }
+        .padding(8)
+        .background(Color.brandDark)
+        .foregroundColor(.white)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
 struct OrderSheet: View {
     let shopId: String
     @Binding var basket: [BasketLine]
     @Binding var placed: Bool
+    let wantAt: Date
     @Environment(\.dismiss) private var dismiss
     @AppStorage("buyerName") private var buyerName = ""
     @AppStorage("buyerPhone") private var buyerPhone = ""
-    @State private var pickupAt = "7:00 PM"
     @State private var sending = false
     @State private var failed = false
+    static let wantFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "MMM d · h:mm a"; return f
+    }()
 
     var total: Int { basket.reduce(0) { $0 + $1.price * $1.qty } }
 
@@ -494,7 +741,11 @@ struct OrderSheet: View {
                 Section("Pickup details") {
                     TextField("Your name", text: $buyerName)
                     TextField("Phone (e.g. +94 77 123 4567)", text: $buyerPhone).keyboardType(.phonePad)
-                    TextField("Pickup time", text: $pickupAt)
+                    HStack {
+                        Text("Want at").foregroundColor(.secondary)
+                        Spacer()
+                        Text(Self.wantFormatter.string(from: wantAt)).font(.subheadline.weight(.semibold))
+                    }
                 }
                 if failed { Text("Couldn't place the order — check your connection and try again.").foregroundColor(.red).font(.footnote) }
                 Button(sending ? "Placing order…" : "Place pickup order · \(API.money(total))") {
@@ -514,10 +765,12 @@ struct OrderSheet: View {
         let items = basket.map { ["name": $0.name, "qty": $0.qty, "price": $0.price] }
         let itemsJSON = (try? JSONSerialization.data(withJSONObject: items)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
         do {
+            let iso = ISO8601DateFormatter().string(from: wantAt)
             let status = try await Net.postForm("/app/order", fields: [
                 "shopId": shopId, "items": itemsJSON,
                 "buyer": buyerName, "phone": buyerPhone.filter { "0123456789+".contains($0) },
-                "pickupAt": pickupAt,
+                "pickupAt": Self.wantFormatter.string(from: wantAt),
+                "wantAt": iso,
             ])
             if (200...399).contains(status) {
                 basket = []
@@ -551,7 +804,7 @@ struct OrdersView: View {
                     HStack {
                         Text(o.shop).font(.subheadline.weight(.bold))
                         Spacer()
-                        Text(o.status.capitalized)
+                        Text(statusLabel(o.status))
                             .font(.system(size: 11, weight: .heavy))
                             .padding(.horizontal, 8).padding(.vertical, 3)
                             .background(badge(o.status).opacity(0.18))
@@ -562,7 +815,15 @@ struct OrdersView: View {
                         Text("\(it.qty)× \(it.name)").font(.caption).foregroundColor(.secondary)
                     }
                     Text("\(API.money(o.total)) · pickup \(o.pickupAt)").font(.caption.weight(.semibold))
-                }.padding(.vertical, 2)
+                }
+                .padding(10)
+                // Border tracks the order's journey: grey placed → orange cooking
+                // → green ready → blue out for delivery.
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(badge(o.status), lineWidth: o.status == "pending_review" || o.status == "pending" ? 1.5 : 2.5)
+                )
+                .listRowSeparator(.hidden)
             }
         }
         .listStyle(.insetGrouped)
@@ -571,8 +832,29 @@ struct OrdersView: View {
         .task { await load() }
     }
 
+    /// Buyer-facing wording for each pipeline stage.
+    func statusLabel(_ s: String) -> String {
+        switch s {
+        case "pending_review": return "Order placed"
+        case "pending":        return "In kitchen"
+        case "preparing":      return "Cooking"
+        case "done":           return "Ready"
+        case "delivered":      return "Delivered"
+        case "on_hold":        return "On hold"
+        default:               return s.capitalized
+        }
+    }
+
+    /// Border + badge colour per stage — white/grey while placed, orange while
+    /// the kitchen cooks, green once ready, blue when out for delivery.
     func badge(_ s: String) -> Color {
-        switch s { case "done": return .green; case "preparing": return .orange; default: return .brandOrange }
+        switch s {
+        case "preparing": return .orange
+        case "done":      return .green
+        case "delivered": return .blue
+        case "on_hold":   return .gray
+        default:          return Color(UIColor.systemGray3)   // placed / in kitchen
+        }
     }
 
     func load() async {
