@@ -211,7 +211,7 @@ struct RootView: View {
                 .navigationViewStyle(.stack)
                 .tabItem { Label("Home", systemImage: "house.fill") }
                 .tag(0)
-            NavigationView { OrdersView() }
+            NavigationView { OrdersView(selectedTab: $selectedTab) }
                 .navigationViewStyle(.stack)
                 .tabItem { Label("Orders", systemImage: "bag.fill") }
                 .tag(1)
@@ -786,6 +786,9 @@ struct OrderSheet: View {
 // MARK: - Orders
 
 struct OrdersView: View {
+    /// Orders is a root tab, so there's no navigation stack to pop — the round
+    /// back button switches the TabView back to Home instead.
+    @Binding var selectedTab: Int
     @AppStorage("buyerPhone") private var buyerPhone = ""
     @State private var orders: [OrderSummary] = []
     @State private var loaded = false
@@ -828,6 +831,19 @@ struct OrdersView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("My orders")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button { selectedTab = 0 } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .frame(width: 34, height: 34)
+                        .background(Color(UIColor.secondarySystemGroupedBackground))
+                        .clipShape(Circle())
+                        .shadow(color: .black.opacity(0.08), radius: 3, y: 1)
+                }
+            }
+        }
         .refreshable { await load() }
         .task { await load() }
     }
