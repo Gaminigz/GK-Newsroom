@@ -559,11 +559,7 @@ function menuPage(shop, extras = {}) {
 
     <!-- Meal + category filters sit directly under the page title; they scope
          the dish pickers inside every option group below. -->
-    <div class="row" style="justify-content:space-between;align-items:baseline;margin-top:12px">
-      <strong style="font-size:14px">Option groups</strong>
-      <span class="sub" style="font-size:11px">tick dishes into each group</span>
-    </div>
-    <div style="display:flex;gap:4px;margin-top:8px" id="setMeals">
+    <div style="display:flex;gap:4px;margin-top:12px" id="setMeals">
       ${["All day", ...MEALS].map((mm, i) => `<button type="button" class="setMeal${i === 0 ? " on" : ""}" data-meal="${esc(mm)}" onclick="setMealTab('${esc(mm)}',this)" style="flex:1 1 0;min-width:0;border:1px solid #e0d6cc;background:${i === 0 ? "#191512" : "#fff"};color:${i === 0 ? "#fff" : "#4a443f"};border-radius:99px;padding:6px 4px;font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer">${esc(mm.replace(/\s+/g, ""))}<span style="font-weight:500;opacity:.7">${mm === "All day" ? singles.length : singles.filter((d) => mealsFor(d.window).includes(mm)).length}</span></button>`).join("")}
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px" id="setCats">
