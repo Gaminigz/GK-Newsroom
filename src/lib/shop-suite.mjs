@@ -632,8 +632,7 @@ function menuPage(shop, extras = {}) {
     <div id="tab-set" style="display:none">
       ${sets.length ? `<div class="row" style="justify-content:space-between;margin-top:16px"><strong style="font-size:13.5px">Your set meals</strong><span class="sub" style="font-size:12px">${sets.length} saved</span></div>${sets.map(savedSet).join("")}` : ""}
 
-      <div class="row" style="justify-content:space-between;margin-top:20px"><strong style="font-size:14px">Create a new set meal</strong></div>
-      <div class="sub" style="font-size:11.5px;margin-top:3px">Build it the way the poster reads — <strong>Rice (pick 1)</strong>, <strong>Main dishes (pick 1)</strong>, <strong>Side dishes (pick 4)</strong>. The buyer chooses inside each group when they order.</div>
+      <div class="row" style="justify-content:space-between;margin-top:16px"><strong style="font-size:14px">Create a new set meal</strong></div>
 
       ${singles.length ? `
       <form method="POST" action="/app/owner/${id}/menu/set">
