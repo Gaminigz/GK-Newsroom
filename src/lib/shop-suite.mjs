@@ -543,6 +543,17 @@ function menuPage(shop, extras = {}) {
     "👑 King Pack — Chicken/Pork + Shrimp/Beef",
     "👑 King Pack — Beef and Shrimp",
   ];
+  // Newsroom catalogue, grouped by its own category vocabulary, for the
+  // "Add set" dropdown on the left column.
+  const feedDishes = extras.feedDishes || [];
+  const feedByCat = feedDishes.reduce((acc, d) => {
+    (acc[d.category || "Other"] = acc[d.category || "Other"] || []).push(d);
+    return acc;
+  }, {});
+  const feedOptions = Object.keys(feedByCat).sort().map((cat) =>
+    `<optgroup label="${esc(cat)}">${feedByCat[cat]
+      .map((d) => `<option value="${esc(d.name)}">${esc(d.name)}${d.nameSi ? ` · ${esc(d.nameSi)}` : ""}</option>`)
+      .join("")}</optgroup>`).join("");
 
   const dishRow = (d) => {
     const price = Number(d.price) || 0;
@@ -675,6 +686,26 @@ function menuPage(shop, extras = {}) {
           <span class="sub" style="font-size:11px">buyer pays the main they pick</span>
         </div>
 
+        <!-- Left column: build a set from the newsroom catalogue. Right column:
+             the group cards. Picking here creates the dish if the shop doesn't
+             have it yet, so the list stays shared across shops. -->
+        <div style="display:grid;grid-template-columns:150px 1fr;gap:8px;align-items:start;margin-top:10px">
+        <div class="card" style="margin:0;padding:10px;position:sticky;top:6px">
+          <strong style="font-size:12px;display:block">Add set</strong>
+          <span class="sub" style="font-size:10px;display:block;margin-top:1px">from the shared list</span>
+          <label style="margin-top:8px;font-size:9.5px">GROUP</label>
+          <select id="addSetGroup" style="margin:0;font-size:11.5px;padding:6px">
+            ${PLAN_GROUPS.map((g) => `<option value="${g.key}">${esc(g.label)}</option>`).join("")}
+          </select>
+          <label style="margin-top:7px;font-size:9.5px">ITEM <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
+          <select id="addSetItem" style="margin:0;font-size:11.5px;padding:6px">${feedOptions}</select>
+          <label style="margin-top:7px;font-size:9.5px">PRICE $</label>
+          <input type="number" id="addSetPrice" step="0.01" min="0" placeholder="1.50" style="margin:0;font-size:11.5px;padding:6px;text-align:center;font-weight:700">
+          <button type="button" onclick="addSetItem()" class="btn" style="margin-top:8px;padding:8px 4px;font-size:11.5px;width:100%">+ Add</button>
+          <div id="addSetMsg" class="sub" style="font-size:10px;margin-top:6px;line-height:1.3"></div>
+        </div>
+
+        <div>
         ${PLAN_GROUPS.map((g) => {
           const saved = planGroup(g.key);
           const chosen = new Set((saved.choices || []).map((c) => c.dishId));
@@ -704,6 +735,8 @@ function menuPage(shop, extras = {}) {
           </div>
         </div>`;
         }).join("")}
+        </div>
+        </div>
 
         <div class="row" style="justify-content:space-between;align-items:baseline;margin-top:18px">
           <strong style="font-size:14px">👑 King Pack</strong>
@@ -776,6 +809,29 @@ function menuPage(shop, extras = {}) {
       });
       btn.classList.add('on'); btn.style.background='#191512'; btn.style.color='#fff';
       setApplyFilters();
+    }
+    // "Add set": create the dish in this shop from the shared catalogue, then
+    // tick it straight into the chosen group without losing the rest of the form.
+    function addSetItem(){
+      var g = document.getElementById('addSetGroup').value;
+      var name = document.getElementById('addSetItem').value;
+      var dollars = Number(document.getElementById('addSetPrice').value) || 0;
+      var msg = document.getElementById('addSetMsg');
+      if (!name) { msg.textContent = 'Pick an item.'; return; }
+      if (dollars <= 0) { msg.textContent = 'Set a price first.'; return; }
+      msg.textContent = 'Adding…';
+      fetch('/app/owner/${id}/menu/add-from-feed', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({name: name, price: Math.round(dollars * 300), meal: '${esc(planMeal)}'}),
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if (!j.ok) { msg.textContent = j.error || 'Failed'; return; }
+        var box = document.querySelector('input[name="'+g+'dish"][value="'+j.id+'"]');
+        if (box) { box.checked = true; setRecount(); msg.textContent = (j.existed ? 'Already there — ticked.' : 'Added + ticked.'); }
+        else { msg.textContent = 'Added — reload to see it.'; setTimeout(function(){ location.reload(); }, 700); }
+      })
+      .catch(function(e){ msg.textContent = e.message; });
     }
     function setRecount(){
       document.querySelectorAll('.gCount').forEach(function(el){

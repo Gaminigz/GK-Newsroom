@@ -2956,6 +2956,11 @@ export async function handleApp(req, res, url) {
       // Pull the current dish catalogue from Mongo — auto-picks up new
       // dishes added via the newsroom without needing a code redeploy.
       extras.presetDishes = await loadPresetDishes(await col("lanka_dishes"));
+      // Newsroom catalogue with categories — feeds the "Add set" dropdown so
+      // the owner picks from the shared dish library, not free text.
+      extras.feedDishes = await (await col("lanka_dishes"))
+        .find({}, { projection: { name: 1, nameSi: 1, category: 1 } })
+        .sort({ category: 1, name: 1 }).toArray();
       // The day plan being edited — one per (shop, date, meal). Defaults to
       // today + Lunch; ?date= and ?meal= switch which plan is loaded.
       const today = new Date().toISOString().slice(0, 10);
@@ -3098,6 +3103,50 @@ export async function handleApp(req, res, url) {
   }
 
   // Create a set-meal (composed of picked dishes) — Phase 1 wiring, no AI yet.
+  // "Add set" — pull a dish from the shared newsroom catalogue into this shop's
+  // own list so it can be ticked into a plan group. Idempotent by name.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/menu\/add-from-feed$/);
+  if (m && req.method === "POST") {
+    let body = {};
+    try { body = JSON.parse((await readBody(req, 2000)) || "{}"); } catch { /* bad json */ }
+    const name = String(body.name || "").trim().slice(0, 80);
+    const price = Math.max(0, Math.round(Number(body.price) || 0));
+    const meal = MEALS.includes(body.meal) ? body.meal : "Lunch";
+    if (!name) {
+      res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: false, error: "name required" }));
+      return;
+    }
+    const feed = await (await col("lanka_dishes")).findOne({ name });
+    // Map the newsroom's category vocabulary onto the shop's POS categories.
+    const FEED_CAT = {
+      "Rice & Staples": "Vegi meals", "Vegetable Curries": "Vegi meals",
+      "Meat & Seafood Curries": "Chicken", "Salads, Sambols & Relishes": "Starters",
+      "Fried, Dry & Bite Dishes": "Bites", "Bread, Buns & Beer Snacks": "Bites",
+      "Mixed, Fusion & Street Food": "Bites",
+    };
+    const dishes = await col("app_dishes");
+    const existing = await dishes.findOne({ shopId: m[1], name });
+    if (existing) {
+      res.writeHead(200, { "Content-Type": "application/json" })
+        .end(JSON.stringify({ ok: true, existed: true, id: String(existing._id), name }));
+      return;
+    }
+    const ins = await dishes.insertOne({
+      shopId: m[1], type: "single", name,
+      nameSi: feed?.nameSi || "",
+      price, portions: 30,
+      category: FEED_CAT[feed?.category] || "Vegi meals",
+      window: meal.toLowerCase(),
+      discount: "none", special: false, promoTag: "Today special",
+      fromFeed: true, createdAt: new Date(),
+    });
+    const shopOid = await oid(m[1]);
+    if (shopOid) await (await col("shop_owners")).updateOne({ _id: shopOid }, { $inc: { listings: 1 } });
+    res.writeHead(200, { "Content-Type": "application/json" })
+      .end(JSON.stringify({ ok: true, existed: false, id: String(ins.insertedId), name }));
+    return;
+  }
+
   // Save the day plan for one (date, meal): which rice / mains / sides are on
   // offer, plus any King Pack tiers. The buyer picks inside each group and pays
   // the price of the main they chose (King Packs carry their own price).
