@@ -432,25 +432,26 @@ struct ShopView: View {
                                 .font(.caption).foregroundColor(.secondary)
                             // Meal window sits above the categories and is 5%
                             // larger — it's the coarser filter buyers pick first.
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 6) {
-                                    ForEach(Self.mealTabs, id: \.self) { meal in
-                                        let count = mealCount(meal, in: d.dishes)
-                                        Button { selectedMeal = meal } label: {
-                                            HStack(spacing: 3) {
-                                                Text(meal).font(.system(size: 12.6, weight: .bold))
-                                                Text("· \(count)").font(.system(size: 11.6)).opacity(0.7)
-                                            }
-                                            .padding(.horizontal, 11).padding(.vertical, 6)
-                                            .background(selectedMeal == meal ? Color.brandDark : Color(UIColor.secondarySystemGroupedBackground))
-                                            .foregroundColor(selectedMeal == meal ? .white : .primary)
-                                            .clipShape(Capsule())
-                                            .overlay(Capsule().stroke(Color.gray.opacity(0.25), lineWidth: 1))
+                            // Labels are de-spaced ("Allday50") so all four fit one line.
+                            HStack(spacing: 4) {
+                                ForEach(Self.mealTabs, id: \.self) { meal in
+                                    let count = mealCount(meal, in: d.dishes)
+                                    Button { selectedMeal = meal } label: {
+                                        HStack(spacing: 1) {
+                                            Text(meal.replacingOccurrences(of: " ", with: ""))
+                                                .font(.system(size: 12.6, weight: .bold))
+                                            Text("\(count)").font(.system(size: 11.6)).opacity(0.7)
                                         }
-                                        .buttonStyle(.plain)
+                                        .lineLimit(1).minimumScaleFactor(0.8)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.horizontal, 4).padding(.vertical, 6)
+                                        .background(selectedMeal == meal ? Color.brandDark : Color(UIColor.secondarySystemGroupedBackground))
+                                        .foregroundColor(selectedMeal == meal ? .white : .primary)
+                                        .clipShape(Capsule())
+                                        .overlay(Capsule().stroke(Color.gray.opacity(0.25), lineWidth: 1))
                                     }
+                                    .buttonStyle(.plain)
                                 }
-                                .padding(.vertical, 1)
                             }
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 5)], alignment: .leading, spacing: 5) {
                                 ForEach(Self.posCategories, id: \.self) { cat in
