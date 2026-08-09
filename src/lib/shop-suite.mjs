@@ -773,17 +773,25 @@ function menuPage(shop, extras = {}) {
         host.innerHTML = '<div class="sub" style="padding:18px 10px;text-align:center;font-size:11.5px;color:#c9bfb7">Name a set on the left and tap +</div>';
       } else {
         host.innerHTML = plan.map(function(s, si){
+          // Same stacked shape as the Dish list — name, Sinhala, then price —
+          // so both modes read identically. Price stays editable here.
           var rows = s.dishes.length ? s.dishes.map(function(d, di){
             var unpriced = !d.price;
-            return '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #f2ece6">'
-              + '<span style="flex:1;min-width:0;font-size:12px;line-height:1.25">' + esc(d.name)
-              + (d.nameSi ? ' <span class="si" style="font-size:10.5px">' + esc(d.nameSi) + '</span>' : '') + '</span>'
-              + '<span class="sub" style="font-size:10px;flex:0 0 auto">$</span>'
-              + '<input type="number" step="0.01" min="0" value="' + (d.price ? (d.price / 300).toFixed(2) : '') + '"'
-              +   ' placeholder="0.00" data-si="' + si + '" data-di="' + di + '" class="dishPriceBox"'
-              +   ' style="margin:0;width:56px;padding:3px 4px;text-align:center;font-weight:700;font-size:11px;'
-              +   (unpriced ? 'border-color:#d9542b;' : '') + '">'
-              + '<button type="button" class="delDishBtn" data-si="' + si + '" data-di="' + di + '" style="flex:0 0 auto;border:0;background:none;color:#b3261e;font-size:14px;padding:0 2px;cursor:pointer">✕</button>'
+            return '<div style="display:flex;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid #f2ece6">'
+              + '<span style="flex:1;min-width:0">'
+              +   '<span style="display:block;font-size:12px;line-height:1.2;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(d.name) + '</span>'
+              +   (d.nameSi ? '<span class="si" style="display:block;font-size:10px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(d.nameSi) + '</span>' : '')
+              +   '<span class="sub" style="display:block;font-size:10px;font-weight:700;color:' + (unpriced ? '#b3261e' : '#d9542b') + '">'
+              +     (unpriced ? 'no price yet' : money(d.price)) + '</span>'
+              + '</span>'
+              + '<span style="flex:0 0 auto;display:flex;align-items:center;gap:3px">'
+              +   '<span class="sub" style="font-size:10px">$</span>'
+              +   '<input type="number" step="0.01" min="0" value="' + (d.price ? (d.price / 300).toFixed(2) : '') + '"'
+              +     ' placeholder="0.00" data-si="' + si + '" data-di="' + di + '" class="dishPriceBox"'
+              +     ' style="margin:0;width:54px;padding:3px 4px;text-align:center;font-weight:700;font-size:11px;'
+              +     (unpriced ? 'border-color:#b3261e;' : '') + '">'
+              +   '<button type="button" class="delDishBtn" data-si="' + si + '" data-di="' + di + '" style="border:0;background:none;color:#b3261e;font-size:14px;padding:0 2px;cursor:pointer">✕</button>'
+              + '</span>'
               + '</div>';
           }).join('') : '<div class="sub" style="font-size:10.5px;padding:8px 0;color:#c9bfb7">no dishes yet</div>';
           return '<div class="card" style="margin:0 0 10px 0;padding:11px 12px">'
