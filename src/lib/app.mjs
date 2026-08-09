@@ -3147,6 +3147,23 @@ export async function handleApp(req, res, url) {
     return;
   }
 
+  // Set a dish's price from the plan builder, so a dish pulled in from the
+  // shared list can be priced without leaving the page.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/menu\/dish-price$/);
+  if (m && req.method === "POST") {
+    let body = {};
+    try { body = JSON.parse((await readBody(req, 500)) || "{}"); } catch { /* bad json */ }
+    const _id = await oid(String(body.id || ""));
+    const price = Math.max(0, Math.round(Number(body.price) || 0));
+    if (_id) {
+      await (await col("app_dishes")).updateOne(
+        { _id, shopId: m[1] }, { $set: { price, updatedAt: new Date() } },
+      );
+    }
+    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
+    return;
+  }
+
   // Save the day plan for one (date, meal): which rice / mains / sides are on
   // offer, plus any King Pack tiers. The buyer picks inside each group and pays
   // the price of the main they chose (King Packs carry their own price).

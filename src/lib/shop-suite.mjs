@@ -538,10 +538,6 @@ function menuPage(shop, extras = {}) {
     (acc[d.category || "Other"] = acc[d.category || "Other"] || []).push(d);
     return acc;
   }, {});
-  const feedOptions = Object.keys(feedByCat).sort().map((cat) =>
-    `<optgroup label="${esc(cat)}">${feedByCat[cat]
-      .map((d) => `<option value="${esc(d.name)}">${esc(d.name)}${d.nameSi ? ` · ${esc(d.nameSi)}` : ""}</option>`)
-      .join("")}</optgroup>`).join("");
 
   const dishRow = (d) => {
     const price = Number(d.price) || 0;
@@ -688,14 +684,7 @@ function menuPage(shop, extras = {}) {
           <div id="paneDish" style="display:none">
             <label style="margin-top:8px;font-size:9.5px">ADD TO SET</label>
             <select id="dishSet" style="margin:0;font-size:11.5px;padding:6px"></select>
-            <div class="sub" style="font-size:10px;margin-top:8px;line-height:1.35">Tap any dish in the list to add it.</div>
-            <div style="border-top:1px solid #ece3da;margin-top:8px;padding-top:8px">
-              <label style="margin:0;font-size:9.5px">NEW FROM LIST <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
-              <select id="dishItem" style="margin:0;font-size:11px;padding:5px">${feedOptions}</select>
-              <label style="margin-top:6px;font-size:9.5px">PRICE $</label>
-              <input type="number" id="dishPrice" step="0.01" min="0" placeholder="1.50" style="margin:0;font-size:11.5px;padding:5px;text-align:center;font-weight:700">
-              <button type="button" onclick="addDish()" class="btn" style="margin-top:6px;padding:7px 4px;font-size:11.5px;width:100%">+</button>
-            </div>
+            <div class="sub" style="font-size:10px;margin-top:8px;line-height:1.35">Tick dishes on the right. Untick to remove.</div>
           </div>
 
           <div id="addSetMsg" class="sub" style="font-size:10px;margin-top:6px;line-height:1.3"></div>
@@ -706,7 +695,10 @@ function menuPage(shop, extras = {}) {
         <div id="dishCatalogue" style="display:none"></div>
         <script id="shopDishData" type="application/json">${JSON.stringify(singles.map((d) => ({
           id: String(d._id), name: d.name, nameSi: d.nameSi || "",
-          price: Number(d.price) || 0, cat: d.category || "", meals: mealsFor(d.window),
+          price: Number(d.price) || 0, cat: d.category || "", meals: mealsFor(d.window), own: true,
+        })))}</script>
+        <script id="feedDishData" type="application/json">${JSON.stringify(feedDishes.map((d) => ({
+          name: d.name, nameSi: d.nameSi || "", cat: d.category || "",
         })))}</script>
         </div>
 
@@ -757,11 +749,16 @@ function menuPage(shop, extras = {}) {
       } else {
         host.innerHTML = plan.map(function(s, si){
           var rows = s.dishes.length ? s.dishes.map(function(d, di){
+            var unpriced = !d.price;
             return '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #f2ece6">'
               + '<span style="flex:1;min-width:0;font-size:12px;line-height:1.25">' + esc(d.name)
               + (d.nameSi ? ' <span class="si" style="font-size:10.5px">' + esc(d.nameSi) + '</span>' : '') + '</span>'
-              + '<span class="sub" style="font-size:10.5px;font-weight:700;flex:0 0 auto">' + money(d.price) + '</span>'
-              + '<button type="button" onclick="delDish(' + si + ',' + di + ')" style="flex:0 0 auto;border:0;background:none;color:#b3261e;font-size:14px;padding:0 2px;cursor:pointer">✕</button>'
+              + '<span class="sub" style="font-size:10px;flex:0 0 auto">$</span>'
+              + '<input type="number" step="0.01" min="0" value="' + (d.price ? (d.price / 300).toFixed(2) : '') + '"'
+              +   ' placeholder="0.00" data-si="' + si + '" data-di="' + di + '" class="dishPriceBox"'
+              +   ' style="margin:0;width:56px;padding:3px 4px;text-align:center;font-weight:700;font-size:11px;'
+              +   (unpriced ? 'border-color:#d9542b;' : '') + '">'
+              + '<button type="button" class="delDishBtn" data-si="' + si + '" data-di="' + di + '" style="flex:0 0 auto;border:0;background:none;color:#b3261e;font-size:14px;padding:0 2px;cursor:pointer">✕</button>'
               + '</div>';
           }).join('') : '<div class="sub" style="font-size:10.5px;padding:8px 0;color:#c9bfb7">no dishes yet</div>';
           return '<div class="card" style="margin:0 0 10px 0;padding:11px 12px">'
@@ -777,15 +774,35 @@ function menuPage(shop, extras = {}) {
             + '</div>';
         }).join('');
       }
+      // Editing a price here also updates the shop's own dish, so the
+      // catalogue and any later plan show the corrected figure.
+      host.querySelectorAll('.dishPriceBox').forEach(function(b){
+        b.addEventListener('change', function(){
+          var s = plan[Number(b.dataset.si)], d = s && s.dishes[Number(b.dataset.di)];
+          if (!d) return;
+          d.price = Math.round((Number(b.value) || 0) * 300);
+          SHOP_DISHES.forEach(function(x){ if (x.id === d.id) x.price = d.price; });
+          fetch('/app/owner/' + SHOP_ID + '/menu/dish-price', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({id: d.id, price: d.price}),
+          }).catch(function(){ /* price still saves with the plan */ });
+        });
+      });
+      host.querySelectorAll('.delDishBtn').forEach(function(b){
+        b.addEventListener('click', function(){ delDish(Number(b.dataset.si), Number(b.dataset.di)); });
+      });
+
       var sel = document.getElementById('dishSet');
       var keep = sel.value;
       sel.innerHTML = plan.map(function(s, si){ return '<option value="' + si + '">' + esc(s.name) + '</option>'; }).join('');
       if (keep && plan[keep]) sel.value = keep;
       sel.onchange = function(){ if (addMode === 'dish') renderCatalogue(); };
     }
+    function renderPlanOnly(){ renderPlan(); }
 
     /* The shop's own dishes — the browsable list shown in Dish mode. */
     var SHOP_DISHES = JSON.parse(document.getElementById('shopDishData').textContent);
+    var FEED_DISHES = JSON.parse(document.getElementById('feedDishData').textContent);
     var addMode = 'set';
     var setMeal = 'All day', setCat = 'All';
 
@@ -822,50 +839,115 @@ function menuPage(shop, extras = {}) {
 
     /* Every dish the shop has, filtered by the meal + category chips up top.
        Tap one to drop it into the set selected on the left. */
+    /* Full-width picker: search, alphabetical, tick to add / untick to remove.
+       Combines the shop's own dishes with the shared Sri Lankan list; feed-only
+       entries are pulled into the shop the first time they're ticked. */
+    var dishSearch = '';
+    function catalogueRows(){
+      var seen = {};
+      var rows = [];
+      SHOP_DISHES.forEach(function(d){
+        seen[d.name.toLowerCase()] = true;
+        rows.push({id: d.id, name: d.name, nameSi: d.nameSi, price: d.price, cat: d.cat, meals: d.meals, own: true});
+      });
+      FEED_DISHES.forEach(function(d){
+        if (seen[d.name.toLowerCase()]) return;
+        rows.push({id: null, name: d.name, nameSi: d.nameSi, price: 0, cat: '', meals: ['Breakfast','Lunch','Dinner'], own: false});
+      });
+      return rows.sort(function(a, b){ return a.name.localeCompare(b.name); });
+    }
+
     function renderCatalogue(){
       var host = document.getElementById('dishCatalogue');
       var si = Number(document.getElementById('dishSet').value);
       var inSet = (plan[si] ? plan[si].dishes : []).map(function(d){ return d.id; });
-      var list = SHOP_DISHES.filter(function(d){
+      var q = dishSearch.trim().toLowerCase();
+      var list = catalogueRows().filter(function(d){
+        // Search wins over the chips — typing looks across everything.
+        if (q) return d.name.toLowerCase().indexOf(q) >= 0 || (d.nameSi || '').toLowerCase().indexOf(q) >= 0;
+        if (!d.own) return false;
         var okMeal = setMeal === 'All day' || d.meals.indexOf(setMeal) >= 0;
         var okCat  = setCat === 'All' || d.cat === setCat;
         return okMeal && okCat;
       });
-      var head = '<div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:6px">'
+      var head = '<div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:5px">'
         + '<strong style="font-size:12.5px">' + (plan[si] ? 'Add to ' + esc(plan[si].name) : 'Available dishes') + '</strong>'
-        + '<span class="sub" style="font-size:10.5px">' + list.length + ' shown</span></div>';
-      if (!list.length) { host.innerHTML = head + '<div class="sub" style="font-size:11px;padding:14px 0;text-align:center;color:#c9bfb7">nothing in this filter</div>'; return; }
-      host.innerHTML = head + '<div class="card" style="margin:0;padding:6px 10px;max-height:440px;overflow-y:auto">'
-        + list.map(function(d){
-            var already = inSet.indexOf(d.id) >= 0;
-            return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f2ece6">'
-              + '<span style="flex:1;min-width:0;font-size:12px;line-height:1.25">' + esc(d.name)
-              + (d.nameSi ? ' <span class="si" style="font-size:10.5px">' + esc(d.nameSi) + '</span>' : '') + '</span>'
-              + '<span class="sub" style="font-size:10.5px;font-weight:700;flex:0 0 auto">' + money(d.price) + '</span>'
-              // data-pick + delegated listener — inline onclick would need
-              // nested quotes, which the server template literal mangles.
-              + '<button type="button" class="pickBtn" data-pick="' + d.id + '"' + (already ? ' disabled' : '')
-              +   ' style="flex:0 0 auto;border:1px solid ' + (already ? '#e0d6cc' : '#d9542b') + ';background:' + (already ? '#f4efe9' : '#d9542b')
-              +   ';color:' + (already ? '#c9bfb7' : '#fff') + ';border-radius:99px;width:26px;height:26px;font-size:14px;font-weight:800;padding:0;cursor:'
-              +   (already ? 'default' : 'pointer') + '">' + (already ? '✓' : '+') + '</button>'
-              + '</div>';
-          }).join('')
-        + '</div>';
-      host.querySelectorAll('.pickBtn').forEach(function(b){
-        b.addEventListener('click', function(){ pickDish(b.dataset.pick); });
+        + '<span class="sub" style="font-size:10.5px">' + list.length + ' shown</span></div>'
+        + '<input type="text" id="dishSearchBox" placeholder="Search all ' + catalogueRows().length + ' dishes…" value="' + esc(dishSearch) + '" style="margin:0 0 6px 0;font-size:12px;padding:7px 10px">';
+      var body = list.length
+        ? '<div class="card" style="margin:0;padding:4px 10px;max-height:430px;overflow-y:auto">'
+          + list.map(function(d){
+              var already = d.id && inSet.indexOf(d.id) >= 0;
+              return '<label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f2ece6;cursor:pointer">'
+                + '<input type="checkbox" class="pickBox" data-name="' + esc(d.name) + '"' + (d.id ? ' data-id="' + d.id + '"' : '')
+                +   (already ? ' checked' : '') + ' style="width:18px;height:18px;accent-color:#d9542b;flex:0 0 auto">'
+                + '<span style="flex:1;min-width:0;font-size:12px;line-height:1.25">' + esc(d.name)
+                +   (d.nameSi ? ' <span class="si" style="font-size:10.5px">' + esc(d.nameSi) + '</span>' : '')
+                +   (d.own ? '' : ' <span class="sub" style="font-size:9.5px">· new</span>') + '</span>'
+                + '<span class="sub" style="font-size:10.5px;font-weight:700;flex:0 0 auto">' + (d.own ? money(d.price) : '—') + '</span>'
+                + '</label>';
+            }).join('')
+          + '</div>'
+        : '<div class="sub" style="font-size:11px;padding:14px 0;text-align:center;color:#c9bfb7">nothing matches</div>';
+      host.innerHTML = head + body;
+
+      var box = document.getElementById('dishSearchBox');
+      box.addEventListener('input', function(){
+        dishSearch = box.value;
+        var pos = box.selectionStart;
+        renderCatalogue();
+        var nb = document.getElementById('dishSearchBox');
+        nb.focus(); nb.setSelectionRange(pos, pos);
+      });
+      host.querySelectorAll('.pickBox').forEach(function(b){
+        b.addEventListener('change', function(){
+          if (b.checked) pickDish(b.dataset.id || null, b.dataset.name);
+          else unpickDish(b.dataset.id || null, b.dataset.name);
+        });
       });
     }
 
-    function pickDish(id){
+    function unpickDish(id, name){
+      var si = Number(document.getElementById('dishSet').value);
+      if (!plan[si]) return;
+      plan[si].dishes = plan[si].dishes.filter(function(d){
+        return id ? d.id !== id : d.name !== name;
+      });
+      document.getElementById('addSetMsg').textContent = name + ' removed.';
+      renderPlanOnly();
+    }
+
+    function pickDish(id, name){
       var si = Number(document.getElementById('dishSet').value);
       var msg = document.getElementById('addSetMsg');
       if (!plan[si]) { msg.textContent = 'Make a set first.'; return; }
-      var d = SHOP_DISHES.filter(function(x){ return x.id === id; })[0];
-      if (!d) return;
-      if (plan[si].dishes.some(function(x){ return x.id === id; })) return;
-      plan[si].dishes.push({id: d.id, name: d.name, nameSi: d.nameSi, price: d.price});
-      msg.textContent = d.name + ' → ' + plan[si].name;
-      renderCatalogue();
+      if (id) {
+        var d = SHOP_DISHES.filter(function(x){ return x.id === id; })[0];
+        if (!d) return;
+        if (plan[si].dishes.some(function(x){ return x.id === id; })) return;
+        plan[si].dishes.push({id: d.id, name: d.name, nameSi: d.nameSi, price: d.price});
+        msg.textContent = d.name + ' → ' + plan[si].name;
+        renderPlanOnly();
+        return;
+      }
+      // Feed-only entry — create it on the shop first, at 0 until priced.
+      msg.textContent = 'Adding ' + name + '…';
+      fetch('/app/owner/' + SHOP_ID + '/menu/add-from-feed', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({name: name, price: 0, meal: PLAN_MEAL}),
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if (!j.ok) { msg.textContent = j.error || 'Failed'; return; }
+        SHOP_DISHES.push({id: j.id, name: name, nameSi: j.nameSi || '', price: 0, cat: '', meals: ['Breakfast','Lunch','Dinner'], own: true});
+        if (!plan[si].dishes.some(function(x){ return x.id === j.id; })) {
+          plan[si].dishes.push({id: j.id, name: name, nameSi: j.nameSi || '', price: 0});
+        }
+        msg.textContent = name + ' added — set its price on the right.';
+        renderPlanOnly();
+        renderCatalogue();
+      })
+      .catch(function(e){ msg.textContent = e.message; });
     }
 
     function addSet(){
@@ -880,31 +962,6 @@ function menuPage(shop, extras = {}) {
     }
     function delSet(i){ plan.splice(i, 1); renderPlan(); }
     function delDish(si, di){ plan[si].dishes.splice(di, 1); renderPlan(); }
-
-    function addDish(){
-      var msg = document.getElementById('addSetMsg');
-      if (!plan.length) { msg.textContent = 'Make a set first.'; return; }
-      var si = Number(document.getElementById('dishSet').value);
-      var name = document.getElementById('dishItem').value;
-      var dollars = Number(document.getElementById('dishPrice').value) || 0;
-      if (!name)     { msg.textContent = 'Pick a dish.'; return; }
-      if (dollars<=0){ msg.textContent = 'Set a price.'; return; }
-      msg.textContent = 'Adding…';
-      fetch('/app/owner/' + SHOP_ID + '/menu/add-from-feed', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({name: name, price: Math.round(dollars * 300), meal: PLAN_MEAL}),
-      })
-      .then(function(r){ return r.json(); })
-      .then(function(j){
-        if (!j.ok) { msg.textContent = j.error || 'Failed'; return; }
-        if (plan[si].dishes.some(function(d){ return d.id === j.id; })) { msg.textContent = 'Already in that set.'; return; }
-        plan[si].dishes.push({id: j.id, name: j.name, nameSi: j.nameSi || '', price: Math.round(dollars * 300)});
-        document.getElementById('dishPrice').value = '';
-        msg.textContent = 'Added to ' + plan[si].name + '.';
-        renderPlan();
-      })
-      .catch(function(e){ msg.textContent = e.message; });
-    }
 
     function serialisePlan(){
       document.getElementById('planJson').value = JSON.stringify(plan);
