@@ -697,7 +697,7 @@ function menuPage(shop, extras = {}) {
                    select is made wide and the wrapper clips it back to the
                    column. Layout is unchanged; only the popup gets wider. -->
               <div style="overflow:hidden;border-radius:10px">
-                <select id="dishItem" style="margin:0;font-size:11px;padding:5px;width:330px;max-width:none">${feedOptions}</select>
+                <select id="dishItem" style="margin:0;font-size:11px;padding:5px;width:370px;max-width:none">${feedOptions}</select>
               </div>
               <label style="margin-top:6px;font-size:9.5px">PRICE $</label>
               <input type="number" id="dishPrice" step="0.01" min="0" placeholder="1.50" style="margin:0;font-size:11.5px;padding:5px;text-align:center;font-weight:700">
