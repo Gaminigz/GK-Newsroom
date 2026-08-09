@@ -691,17 +691,34 @@ function menuPage(shop, extras = {}) {
              have it yet, so the list stays shared across shops. -->
         <div style="display:grid;grid-template-columns:150px 1fr;gap:8px;align-items:start;margin-top:10px">
         <div class="card" style="margin:0;padding:10px;position:sticky;top:6px">
-          <strong style="font-size:12px;display:block">Add set</strong>
-          <span class="sub" style="font-size:10px;display:block;margin-top:1px">from the shared list</span>
-          <label style="margin-top:8px;font-size:9.5px">GROUP</label>
-          <select id="addSetGroup" style="margin:0;font-size:11.5px;padding:6px">
-            ${PLAN_GROUPS.map((g) => `<option value="${g.key}">${esc(g.label)}</option>`).join("")}
-          </select>
-          <label style="margin-top:7px;font-size:9.5px">ITEM <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
-          <select id="addSetItem" style="margin:0;font-size:11.5px;padding:6px">${feedOptions}</select>
-          <label style="margin-top:7px;font-size:9.5px">PRICE $</label>
-          <input type="number" id="addSetPrice" step="0.01" min="0" placeholder="1.50" style="margin:0;font-size:11.5px;padding:6px;text-align:center;font-weight:700">
-          <button type="button" onclick="addSetItem()" class="btn" style="margin-top:8px;padding:8px 4px;font-size:11.5px;width:100%">+ Add</button>
+          <!-- Add either a dish into a group, or a whole priced package tier. -->
+          <div style="display:flex;gap:3px">
+            <button type="button" id="modeItem" onclick="setAddMode('item')" style="flex:1 1 0;border:1px solid #e0d6cc;background:#191512;color:#fff;border-radius:99px;padding:5px 4px;font-size:10.5px;font-weight:700;cursor:pointer">Item</button>
+            <button type="button" id="modePack" onclick="setAddMode('pack')" style="flex:1 1 0;border:1px solid #e0d6cc;background:#fff;color:#4a443f;border-radius:99px;padding:5px 4px;font-size:10.5px;font-weight:700;cursor:pointer">Package</button>
+          </div>
+
+          <div id="addItemPane">
+            <label style="margin-top:8px;font-size:9.5px">GROUP</label>
+            <select id="addSetGroup" style="margin:0;font-size:11.5px;padding:6px">
+              ${PLAN_GROUPS.map((g) => `<option value="${g.key}">${esc(g.label)}</option>`).join("")}
+            </select>
+            <label style="margin-top:7px;font-size:9.5px">ITEM <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
+            <select id="addSetItem" style="margin:0;font-size:11.5px;padding:6px">${feedOptions}</select>
+            <label style="margin-top:7px;font-size:9.5px">PRICE $</label>
+            <input type="number" id="addSetPrice" step="0.01" min="0" placeholder="1.50" style="margin:0;font-size:11.5px;padding:6px;text-align:center;font-weight:700">
+            <button type="button" onclick="addSetItem()" class="btn" style="margin-top:8px;padding:8px 4px;font-size:11.5px;width:100%">+ Add</button>
+          </div>
+
+          <div id="addPackPane" style="display:none">
+            <label style="margin-top:8px;font-size:9.5px">PACKAGE NAME</label>
+            <input type="text" id="addPackName" placeholder="👑 King Pack — Chicken + Pork" maxlength="80" style="margin:0;font-size:11.5px;padding:6px">
+            <label style="margin-top:7px;font-size:9.5px">SINHALA</label>
+            <input type="text" id="addPackNameSi" placeholder="සියලුම Side dishes සමග" maxlength="120" style="margin:0;font-size:11.5px;padding:6px">
+            <label style="margin-top:7px;font-size:9.5px">PRICE $</label>
+            <input type="number" id="addPackPrice" step="0.01" min="0" placeholder="9.50" style="margin:0;font-size:11.5px;padding:6px;text-align:center;font-weight:700">
+            <button type="button" onclick="addPackage()" class="btn" style="margin-top:8px;padding:8px 4px;font-size:11.5px;width:100%">+ Add</button>
+          </div>
+
           <div id="addSetMsg" class="sub" style="font-size:10px;margin-top:6px;line-height:1.3"></div>
         </div>
 
@@ -711,19 +728,14 @@ function menuPage(shop, extras = {}) {
           const chosen = new Set((saved.choices || []).map((c) => c.dishId));
           return `
         <div class="card" style="margin-top:10px;padding:11px 12px">
-          <div style="display:grid;grid-template-columns:1fr 74px;gap:6px;align-items:end">
-            <div>
-              <label style="margin:0">GROUP NAME</label>
-              <input type="text" name="${g.key}label" value="${esc(saved.label || g.label)}" maxlength="40" style="margin:0">
-            </div>
-            <div>
-              <label style="margin:0">PICK</label>
-              <input type="number" name="${g.key}pick" value="${Number(saved.pick) || g.pick}" min="1" max="40" style="margin:0;text-align:center;font-weight:700">
-            </div>
-          </div>
-          <div class="row" style="justify-content:space-between;margin-top:9px">
-            <span class="sub" style="font-size:11px">${esc(g.hint)}</span>
-            <span class="gCount sub" data-g="${g.key}" style="font-size:11px;color:${ORANGE};font-weight:700">${chosen.size} ticked</span>
+          <input type="hidden" name="${g.key}label" value="${esc(saved.label || g.label)}">
+          <div class="row" style="justify-content:space-between;align-items:center">
+            <strong style="font-size:13px">${esc(saved.label || g.label)}</strong>
+            <span class="row" style="gap:6px;flex:0 0 auto">
+              <span class="sub" style="font-size:10px">pick</span>
+              <input type="number" name="${g.key}pick" value="${Number(saved.pick) || g.pick}" min="1" max="40" style="margin:0;width:46px;padding:4px 2px;text-align:center;font-weight:700;font-size:12px">
+              <span class="gCount sub" data-g="${g.key}" style="font-size:10.5px;color:${ORANGE};font-weight:700">${chosen.size} ticked</span>
+            </span>
           </div>
           <div style="max-height:200px;overflow-y:auto;margin-top:5px;padding-right:2px;overscroll-behavior:contain">
             ${singles.map((d) => `
@@ -809,6 +821,41 @@ function menuPage(shop, extras = {}) {
       });
       btn.classList.add('on'); btn.style.background='#191512'; btn.style.color='#fff';
       setApplyFilters();
+    }
+    // Left panel switches between adding a dish and adding a package tier.
+    function setAddMode(mode){
+      var isItem = mode === 'item';
+      document.getElementById('addItemPane').style.display = isItem ? '' : 'none';
+      document.getElementById('addPackPane').style.display = isItem ? 'none' : '';
+      var mi = document.getElementById('modeItem'), mp = document.getElementById('modePack');
+      mi.style.background = isItem ? '#191512' : '#fff'; mi.style.color = isItem ? '#fff' : '#4a443f';
+      mp.style.background = isItem ? '#fff' : '#191512'; mp.style.color = isItem ? '#4a443f' : '#fff';
+      document.getElementById('addSetMsg').textContent = '';
+    }
+    // Fill the first empty package row rather than posting — the tier is saved
+    // with the rest of the plan when the owner hits Save.
+    function addPackage(){
+      var name = document.getElementById('addPackName').value.trim();
+      var si   = document.getElementById('addPackNameSi').value.trim();
+      var price= Number(document.getElementById('addPackPrice').value) || 0;
+      var msg  = document.getElementById('addSetMsg');
+      if (!name)    { msg.textContent = 'Name the package.'; return; }
+      if (price<=0) { msg.textContent = 'Set a price.'; return; }
+      for (var i = 0; i < 6; i++) {
+        var n = document.querySelector('input[name="pack'+i+'name"]');
+        if (n && !n.value.trim()) {
+          n.value = name;
+          var s = document.querySelector('input[name="pack'+i+'nameSi"]'); if (s) s.value = si;
+          var p = document.querySelector('input[name="pack'+i+'price"]'); if (p) p.value = price.toFixed(2);
+          msg.textContent = 'Added — Save to keep it.';
+          document.getElementById('addPackName').value = '';
+          document.getElementById('addPackNameSi').value = '';
+          document.getElementById('addPackPrice').value = '';
+          n.scrollIntoView({behavior:'smooth', block:'center'});
+          return;
+        }
+      }
+      msg.textContent = 'All package slots are full.';
     }
     // "Add set": create the dish in this shop from the shared catalogue, then
     // tick it straight into the chosen group without losing the rest of the form.
