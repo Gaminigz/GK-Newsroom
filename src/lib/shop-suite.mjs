@@ -691,8 +691,9 @@ function menuPage(shop, extras = {}) {
         </div>
 
         <!-- Right: the sets the owner has created, built by JS from the plan array. -->
+        <!-- Picker sits above the sets so both are on screen while ticking. -->
+        <div id="dishCatalogue" style="display:none;margin-bottom:12px"></div>
         <div id="setList"></div>
-        <div id="dishCatalogue" style="display:none"></div>
         <script id="shopDishData" type="application/json">${JSON.stringify(singles.map((d) => ({
           id: String(d._id), name: d.name, nameSi: d.nameSi || "",
           price: Number(d.price) || 0, cat: d.category || "", meals: mealsFor(d.window), own: true,
@@ -828,8 +829,9 @@ function menuPage(shop, extras = {}) {
       var isSet = mode === 'set';
       document.getElementById('paneSet').style.display  = isSet ? '' : 'none';
       document.getElementById('paneDish').style.display = isSet ? 'none' : '';
-      document.getElementById('setList').style.display        = isSet ? '' : 'none';
-      document.getElementById('dishCatalogue').style.display  = isSet ? 'none' : '';
+      // The sets stay on screen while picking — hiding them meant the owner
+      // couldn't see what they'd just ticked, or reach the X to undo it.
+      document.getElementById('dishCatalogue').style.display = isSet ? 'none' : '';
       var a = document.getElementById('modeSet'), b = document.getElementById('modeDish');
       a.style.background = isSet ? '#191512' : '#fff'; a.style.color = isSet ? '#fff' : '#4a443f';
       b.style.background = isSet ? '#fff' : '#191512'; b.style.color = isSet ? '#4a443f' : '#fff';
@@ -870,10 +872,11 @@ function menuPage(shop, extras = {}) {
         var okCat  = setCat === 'All' || d.cat === setCat;
         return okMeal && okCat;
       });
-      var head = '<div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:5px">'
-        + '<strong style="font-size:12.5px">' + (plan[si] ? 'Add to ' + esc(plan[si].name) : 'Available dishes') + '</strong>'
-        + '<span class="sub" style="font-size:10.5px">' + list.length + ' shown</span></div>'
-        + '<input type="text" id="dishSearchBox" placeholder="Search all ' + catalogueRows().length + ' dishes…" value="' + esc(dishSearch) + '" style="margin:0 0 6px 0;font-size:12px;padding:7px 10px">';
+      // Search + Done only — the sets below already show what's been added.
+      var head = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
+        + '<input type="text" id="dishSearchBox" placeholder="Search ' + catalogueRows().length + ' dishes…" value="' + esc(dishSearch) + '" style="margin:0;flex:1;min-width:0;font-size:12px;padding:7px 10px">'
+        + '<button type="button" id="pickDone" style="flex:0 0 auto;border:0;background:#191512;color:#fff;border-radius:99px;padding:7px 14px;font-size:11.5px;font-weight:700;cursor:pointer">Done</button>'
+        + '</div>';
       var body = list.length
         ? '<div class="card" style="margin:0;padding:4px 10px;max-height:430px;overflow-y:auto">'
           + list.map(function(d){
@@ -898,6 +901,10 @@ function menuPage(shop, extras = {}) {
         renderCatalogue();
         var nb = document.getElementById('dishSearchBox');
         nb.focus(); nb.setSelectionRange(pos, pos);
+      });
+      document.getElementById('pickDone').addEventListener('click', function(){
+        dishSearch = '';
+        setAddMode('set');
       });
       host.querySelectorAll('.pickBox').forEach(function(b){
         b.addEventListener('change', function(){
