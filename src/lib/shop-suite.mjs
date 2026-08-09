@@ -829,6 +829,7 @@ function menuPage(shop, extras = {}) {
     }
     renderPlan();
 
+    async function fetchRecipe() {
       const dish = document.getElementById('aiDishName').value.trim();
       if (!dish) { document.getElementById('aiStatus').textContent = 'Type a dish name first.'; return; }
       const s = document.getElementById('aiStatus');
