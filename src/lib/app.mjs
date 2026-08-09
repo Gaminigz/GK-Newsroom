@@ -193,6 +193,11 @@ function shopPrice(shop, lkrAmt) {
 /** The three service windows every dish list can be filtered by. */
 const MEALS = ["Breakfast", "Lunch", "Dinner"];
 
+/** Dish categories — same list and order the POS chips use. */
+const CATEGORY_LIST = [
+  "Starters", "Bites", "Vegi meals", "Chicken", "Beef", "Mutton", "Pork", "Sea food", "Drinks", "Desserts",
+];
+
 /** Which meals a dish's serving `window` covers.
  *  "all day" (or blank) counts for all three; explicit keywords win; otherwise
  *  a clock range like "6 – 10 AM" / "11 AM – 3 PM" / "5 - 9 PM" is parsed and
@@ -2176,7 +2181,7 @@ function addDishPage(shop) {
 
 /* ---------------------------------------------------------------- route */
 
-export { shell, esc, lkr, shopPrice, fx, pairFor, CUR_SYM, LKR_TO, MEALS, mealsFor };
+export { shell, esc, lkr, shopPrice, fx, pairFor, CUR_SYM, LKR_TO, MEALS, mealsFor, CATEGORY_LIST };
 
 export async function handleApp(req, res, url) {
   const path = url.pathname;
@@ -3083,22 +3088,43 @@ export async function handleApp(req, res, url) {
   if (m && req.method === "POST") {
     const form = await readForm(req);
     const name = String(form.get("name") || "").trim().slice(0, 80);
-    const pickedIds = form.getAll("dishId").map(String).slice(0, 20);
     const price = Math.max(0, Number(form.get("price")) || 0);
-    if (name && pickedIds.length && price > 0) {
-      const dishesCol = await col("app_dishes");
-      const oids = (await Promise.all(pickedIds.map(oid))).filter(Boolean);
+    // Option groups: "Rice (pick 1)", "Main dishes (pick 1)", "Side dishes
+    // (pick 4)" — the buyer chooses within each group at order time.
+    const dishesCol = await col("app_dishes");
+    const groups = [];
+    const allIds = new Set();
+    for (let g = 0; g < 6; g++) {
+      const label = String(form.get(`g${g}label`) || "").trim().slice(0, 40);
+      const ids = form.getAll(`g${g}dish`).map(String).slice(0, 30);
+      if (!label || !ids.length) continue;
+      const oids = (await Promise.all(ids.map(oid))).filter(Boolean);
       const picked = await dishesCol.find({ _id: { $in: oids }, shopId: m[1] }).toArray();
-      const components = picked.map((d) => ({ dishId: String(d._id), name: d.name, price: Number(d.price) || 0 }));
+      if (!picked.length) continue;
+      picked.forEach((d) => allIds.add(String(d._id)));
+      groups.push({
+        label,
+        labelSi: String(form.get(`g${g}labelSi`) || "").trim().slice(0, 60),
+        pick: Math.max(1, Math.min(picked.length, Number(form.get(`g${g}pick`)) || 1)),
+        choices: picked.map((d) => ({ dishId: String(d._id), name: d.name, nameSi: d.nameSi || "", price: Number(d.price) || 0 })),
+      });
+    }
+    if (name && groups.length && price > 0) {
+      // Flat component list kept alongside groups so older readers still work.
+      const components = groups.flatMap((g) => g.choices.map((c) => ({ dishId: c.dishId, name: c.name, price: c.price })));
       await dishesCol.insertOne({
         shopId: m[1],
         type: "set",
         name,
-        nameSi: "",
+        nameSi: String(form.get("nameSi") || "").trim().slice(0, 80),
         price,
         portions: Math.max(1, Number(form.get("portions")) || 10),
-        window: "All day",
+        window: String(form.get("window") || "lunch").slice(0, 20),
+        category: CATEGORY_LIST.includes(form.get("category")) ? form.get("category") : "Vegi meals",
         discount: "none",
+        special: form.get("special") === "1",
+        promoTag: "Today special",
+        groups,
         components,
         createdAt: new Date(),
       });
@@ -3107,7 +3133,7 @@ export async function handleApp(req, res, url) {
       redirect(res, `/app/owner/${m[1]}/suite/menu?msg=${encodeURIComponent("Set meal saved")}`);
       return;
     }
-    redirect(res, `/app/owner/${m[1]}/suite/menu?msg=${encodeURIComponent("Pick a name, at least one dish, and a price.")}`);
+    redirect(res, `/app/owner/${m[1]}/suite/menu?msg=${encodeURIComponent("Give it a name, a price, and at least one option group with dishes.")}`);
     return;
   }
 

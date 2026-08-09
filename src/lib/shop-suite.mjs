@@ -8,7 +8,7 @@
  * module only adds the hub + previews under /app/owner/:id/suite/:key.
  */
 
-import { shell, esc, shopPrice, pairFor, CUR_SYM, LKR_TO, MEALS, mealsFor } from "./app.mjs";
+import { shell, esc, shopPrice, pairFor, CUR_SYM, LKR_TO, MEALS, mealsFor, CATEGORY_LIST } from "./app.mjs";
 import { ingredientSlug } from "./drive.mjs";
 
 const ORANGE = "#d9542b";
@@ -538,8 +538,10 @@ function menuPage(shop, extras = {}) {
   const savedSet = (s) => `
     <div class="card row" style="margin-top:10px;padding:11px 13px">
       <div style="flex:1;min-width:0">
-        <strong style="font-size:13.5px">${esc(s.name)}</strong>
-        <div class="sub" style="font-size:11.5px">${(s.components || []).length} components · $${(Number(s.price) || 0).toFixed(2)} · ${s.portions || 10} portions/day</div>
+        <strong style="font-size:13.5px">${esc(s.name)}</strong>${s.nameSi ? ` <span class="si" style="font-size:11px">${esc(s.nameSi)}</span>` : ""}
+        <div class="sub" style="font-size:11.5px">${(s.groups || []).length
+          ? (s.groups || []).map((g) => `${esc(g.label)} · pick ${g.pick} of ${(g.choices || []).length}`).join(" — ")
+          : `${(s.components || []).length} components`} · ${esc(shopPrice(shop, Number(s.price) || 0))} · ${s.portions || 10}/day</div>
       </div>
       <form method="POST" action="/app/owner/${id}/menu/set/${String(s._id)}/remove" onsubmit="return confirm('Remove this set meal?')" style="margin:0">
         <button class="btn ghost" style="width:auto;padding:7px 10px;font-size:11.5px;color:#b3261e">Remove</button>
@@ -615,25 +617,78 @@ function menuPage(shop, extras = {}) {
       ${sets.length ? `<div class="row" style="justify-content:space-between;margin-top:16px"><strong style="font-size:13.5px">Your set meals</strong><span class="sub" style="font-size:12px">${sets.length} saved</span></div>${sets.map(savedSet).join("")}` : ""}
 
       <div class="row" style="justify-content:space-between;margin-top:20px"><strong style="font-size:14px">Create a new set meal</strong></div>
+      <div class="sub" style="font-size:11.5px;margin-top:3px">Build it the way the poster reads — <strong>Rice (pick 1)</strong>, <strong>Main dishes (pick 1)</strong>, <strong>Side dishes (pick 4)</strong>. The buyer chooses inside each group when they order.</div>
 
+      ${singles.length ? `
       <form method="POST" action="/app/owner/${id}/menu/set">
-        <label style="margin-top:10px">SET MEAL NAME</label>
-        <input type="text" name="name" placeholder="e.g. Rice & 3-Curry Lunch Set" maxlength="80">
+        <label style="margin-top:12px">SET MEAL NAME</label>
+        <input type="text" name="name" placeholder="e.g. 👑 King Pack — Chicken + Pork" maxlength="80">
+        <label style="margin-top:8px">SINHALA NAME <span class="si">සිංහල නම</span></label>
+        <input type="text" name="nameSi" placeholder="සියලුම Side dishes 10ම සමග" maxlength="80">
 
-        <div class="row" style="justify-content:space-between;margin-top:14px"><strong style="font-size:13.5px">Pick from your dishes</strong><span id="pickCount" style="color:${ORANGE};font-weight:700;font-size:12.5px">0 picked</span></div>
-        ${singlesHtml}
+        <!-- Filter the dish picker the same way POS does -->
+        <div class="row" style="justify-content:space-between;align-items:baseline;margin-top:16px">
+          <strong style="font-size:13.5px">Option groups</strong>
+          <span class="sub" style="font-size:11px">tick dishes into each group</span>
+        </div>
+        <div style="display:flex;gap:4px;margin-top:8px" id="setMeals">
+          ${["All day", ...MEALS].map((mm, i) => `<button type="button" class="setMeal${i === 0 ? " on" : ""}" data-meal="${esc(mm)}" onclick="setMealTab('${esc(mm)}',this)" style="flex:1 1 0;min-width:0;border:1px solid #e0d6cc;background:${i === 0 ? "#191512" : "#fff"};color:${i === 0 ? "#fff" : "#4a443f"};border-radius:99px;padding:6px 4px;font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer">${esc(mm.replace(/\s+/g, ""))}<span style="font-weight:500;opacity:.7">${mm === "All day" ? singles.length : singles.filter((d) => mealsFor(d.window).includes(mm)).length}</span></button>`).join("")}
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px" id="setCats">
+          ${["All", ...CATEGORY_LIST].map((c, i) => `<button type="button" class="setCat${i === 0 ? " on" : ""}" data-cat="${esc(c)}" onclick="setCatTab('${esc(c)}',this)" style="border:1px solid #e0d6cc;background:${i === 0 ? "#191512" : "#fff"};color:${i === 0 ? "#fff" : "#4a443f"};border-radius:99px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer">${esc(c)} · ${c === "All" ? singles.length : singles.filter((d) => (d.category || "") === c).length}</button>`).join("")}
+        </div>
 
-        ${singles.length ? `
+        ${[
+          { label: "Rice", labelSi: "බත්", pick: 1 },
+          { label: "Main dishes", labelSi: "ප්‍රධාන", pick: 1 },
+          { label: "Side dishes", labelSi: "අතුරු", pick: 4 },
+        ].map((g, gi) => `
+        <div class="card" style="margin-top:12px;padding:11px 12px">
+          <div style="display:grid;grid-template-columns:1fr 74px;gap:6px;align-items:end">
+            <div>
+              <label style="margin:0">GROUP NAME</label>
+              <input type="text" name="g${gi}label" value="${esc(g.label)}" maxlength="40" style="margin:0">
+            </div>
+            <div>
+              <label style="margin:0">PICK</label>
+              <input type="number" name="g${gi}pick" value="${g.pick}" min="1" max="30" style="margin:0;text-align:center;font-weight:700">
+            </div>
+          </div>
+          <input type="hidden" name="g${gi}labelSi" value="${esc(g.labelSi)}">
+          <div class="row" style="justify-content:space-between;margin-top:9px">
+            <span class="sub" style="font-size:11px">Dishes in this group</span>
+            <span class="gCount sub" data-g="${gi}" style="font-size:11px;color:${ORANGE};font-weight:700">0 ticked</span>
+          </div>
+          <div style="max-height:210px;overflow-y:auto;margin-top:5px;padding-right:2px;overscroll-behavior:contain">
+            ${singles.map((d) => `
+            <label class="setPick" data-cat="${esc(d.category || "")}" data-meals="${esc(mealsFor(d.window).join("|"))}" style="display:flex;align-items:center;gap:8px;padding:5px 2px;border-bottom:1px solid #f2ece6;cursor:pointer">
+              <input type="checkbox" name="g${gi}dish" value="${String(d._id)}" data-g="${gi}" data-price="${Number(d.price) || 0}" onchange="setRecount()" style="width:17px;height:17px;accent-color:${ORANGE};flex:0 0 auto">
+              <span style="flex:1;min-width:0;font-size:12px;line-height:1.25">${esc(d.name)}${d.nameSi ? ` <span class="si" style="font-size:11px">${esc(d.nameSi)}</span>` : ""}</span>
+              <span class="sub" style="font-size:11px;font-weight:700;flex:0 0 auto">${esc(shopPrice(shop, Number(d.price) || 0))}</span>
+            </label>`).join("")}
+          </div>
+        </div>`).join("")}
+
         <div class="card" style="margin-top:14px;padding:13px 14px">
-          <div class="row" style="justify-content:space-between;font-size:13px"><span class="sub">Components sub-total</span><strong id="subtotal">$0.00</strong></div>
-          <label style="margin-top:10px">SET MEAL PRICE (USD)</label>
-          <input type="number" name="price" step="0.01" min="0" placeholder="3.72" style="font-size:15px;font-weight:700">
-          <label style="margin-top:10px">DAILY PORTIONS</label>
-          <input type="number" name="portions" min="1" value="10">
+          <label style="margin:0">SET MEAL PRICE (USD)</label>
+          <input type="number" name="price" step="0.01" min="0" placeholder="9.50" style="font-size:15px;font-weight:700">
+          <div class="sub" style="font-size:11px;margin-top:3px">Stored as LKR at the house rate — $9.50 shows as US$9.50 · LKR 2,850.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
+            <div><label style="margin:0">SERVING WINDOW</label>
+              <select name="window" style="margin:0"><option value="lunch">Lunch</option><option value="all day">All day</option><option value="breakfast">Breakfast</option><option value="dinner">Dinner</option></select></div>
+            <div><label style="margin:0">DAILY PORTIONS</label>
+              <input type="number" name="portions" min="1" value="20" style="margin:0"></div>
+          </div>
+          <label style="margin-top:10px">CATEGORY</label>
+          <select name="category">${CATEGORY_LIST.map((c) => `<option value="${esc(c)}"${c === "Vegi meals" ? " selected" : ""}>${esc(c)}</option>`).join("")}</select>
+          <label class="row" style="gap:8px;margin-top:12px;cursor:pointer">
+            <input type="checkbox" name="special" value="1" style="width:17px;height:17px;accent-color:${ORANGE}">
+            <span style="font-size:12.5px">Show as <strong>Today special</strong> on the buyer home</span>
+          </label>
         </div>
         <button class="btn" style="margin-top:14px">Post set meal as one item</button>
-        ` : ""}
       </form>
+      ` : `<div class="card" style="margin-top:12px;padding:12px 14px;background:#fdf0ec;border-color:#f3cfc2;font-size:12.5px;color:#946200">Add some single dishes first — they become the options inside each group.</div>`}
     </div>
 
     <script>
@@ -653,6 +708,43 @@ function menuPage(shop, extras = {}) {
       const st = document.getElementById('subtotal');
       if (pc) pc.textContent = picked + ' picked';
       if (st) st.textContent = '$' + total.toFixed(2);
+    }
+    /* ---- set-meal builder: meal + category filters and per-group counts ---- */
+    var setMeal = 'All day', setCat = 'All';
+    function setApplyFilters(){
+      document.querySelectorAll('.setPick').forEach(function(row){
+        var meals = (row.dataset.meals || '').split('|');
+        var okMeal = setMeal === 'All day' || meals.indexOf(setMeal) >= 0;
+        var okCat  = setCat === 'All' || row.dataset.cat === setCat;
+        // Keep a ticked dish visible even when filtered out, so the owner can
+        // always see (and untick) everything they've put in a group.
+        var ticked = row.querySelector('input[type=checkbox]').checked;
+        row.style.display = (ticked || (okMeal && okCat)) ? '' : 'none';
+      });
+    }
+    function setMealTab(meal, btn){
+      setMeal = meal;
+      document.querySelectorAll('#setMeals .setMeal').forEach(function(c){
+        c.classList.remove('on'); c.style.background='#fff'; c.style.color='#4a443f';
+      });
+      btn.classList.add('on'); btn.style.background='#191512'; btn.style.color='#fff';
+      setApplyFilters();
+    }
+    function setCatTab(cat, btn){
+      setCat = cat;
+      document.querySelectorAll('#setCats .setCat').forEach(function(c){
+        c.classList.remove('on'); c.style.background='#fff'; c.style.color='#4a443f';
+      });
+      btn.classList.add('on'); btn.style.background='#191512'; btn.style.color='#fff';
+      setApplyFilters();
+    }
+    function setRecount(){
+      document.querySelectorAll('.gCount').forEach(function(el){
+        var g = el.dataset.g;
+        var n = document.querySelectorAll('input[name="g'+g+'dish"]:checked').length;
+        el.textContent = n + ' ticked';
+      });
+      setApplyFilters();
     }
     async function fetchRecipe() {
       const dish = document.getElementById('aiDishName').value.trim();
