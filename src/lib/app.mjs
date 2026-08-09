@@ -2956,6 +2956,16 @@ export async function handleApp(req, res, url) {
       // Pull the current dish catalogue from Mongo — auto-picks up new
       // dishes added via the newsroom without needing a code redeploy.
       extras.presetDishes = await loadPresetDishes(await col("lanka_dishes"));
+      // The day plan being edited — one per (shop, date, meal). Defaults to
+      // today + Lunch; ?date= and ?meal= switch which plan is loaded.
+      const today = new Date().toISOString().slice(0, 10);
+      const qDate = String(url.searchParams.get("date") || "").slice(0, 10);
+      extras.planDate = /^\d{4}-\d{2}-\d{2}$/.test(qDate) ? qDate : today;
+      const qMeal = String(url.searchParams.get("meal") || "");
+      extras.planMeal = MEALS.includes(qMeal) ? qMeal : "Lunch";
+      extras.dayPlan = await (await col("day_plans")).findOne({
+        shopId: m[1], date: extras.planDate, meal: extras.planMeal,
+      });
     }
     // POS needs the shop's dishes (with price + photo) + today's sales totals.
     if (shop && m[2] === "kitchen") {
@@ -3088,6 +3098,57 @@ export async function handleApp(req, res, url) {
   }
 
   // Create a set-meal (composed of picked dishes) — Phase 1 wiring, no AI yet.
+  // Save the day plan for one (date, meal): which rice / mains / sides are on
+  // offer, plus any King Pack tiers. The buyer picks inside each group and pays
+  // the price of the main they chose (King Packs carry their own price).
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/menu\/plan$/);
+  if (m && req.method === "POST") {
+    const form = await readForm(req);
+    const date = String(form.get("date") || "").slice(0, 10);
+    const meal = MEALS.includes(form.get("meal")) ? form.get("meal") : "Lunch";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      redirect(res, `/app/owner/${m[1]}/suite/menu?msg=${encodeURIComponent("Pick a valid date.")}`);
+      return;
+    }
+    const dishesCol = await col("app_dishes");
+    const groupFor = async (key, fallbackLabel) => {
+      const ids = form.getAll(`${key}dish`).map(String).slice(0, 40);
+      const oids = (await Promise.all(ids.map(oid))).filter(Boolean);
+      const picked = oids.length ? await dishesCol.find({ _id: { $in: oids }, shopId: m[1] }).toArray() : [];
+      return {
+        key,
+        label: String(form.get(`${key}label`) || fallbackLabel).trim().slice(0, 40) || fallbackLabel,
+        pick: Math.max(1, Math.min(40, Number(form.get(`${key}pick`)) || 1)),
+        choices: picked.map((d) => ({
+          dishId: String(d._id), name: d.name, nameSi: d.nameSi || "",
+          price: Number(d.price) || 0, category: d.category || "",
+        })),
+      };
+    };
+    const groups = [
+      await groupFor("rice", "Rice"),
+      await groupFor("main", "Main dishes"),
+      await groupFor("side", "Side dishes"),
+    ];
+    // King Pack tiers — name + price pairs, blank rows ignored.
+    const packs = [];
+    for (let i = 0; i < 6; i++) {
+      const name = String(form.get(`pack${i}name`) || "").trim().slice(0, 80);
+      const price = Math.max(0, Number(form.get(`pack${i}price`)) || 0);
+      if (name && price > 0) {
+        packs.push({ name, nameSi: String(form.get(`pack${i}nameSi`) || "").trim().slice(0, 120), price, allSides: true });
+      }
+    }
+    await (await col("day_plans")).updateOne(
+      { shopId: m[1], date, meal },
+      { $set: { shopId: m[1], date, meal, groups, packs, updatedAt: new Date() },
+        $setOnInsert: { createdAt: new Date() } },
+      { upsert: true },
+    );
+    redirect(res, `/app/owner/${m[1]}/suite/menu?date=${date}&meal=${encodeURIComponent(meal)}&msg=${encodeURIComponent(`${meal} plan saved for ${date}`)}`);
+    return;
+  }
+
   m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/menu\/set$/);
   if (m && req.method === "POST") {
     const form = await readForm(req);

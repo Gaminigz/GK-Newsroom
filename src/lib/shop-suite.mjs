@@ -526,6 +526,24 @@ function menuPage(shop, extras = {}) {
   const msg = extras.msg || "";
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+  // Day plan: one per (date, meal). Groups carry their own editable pick count
+  // so a shop can run "pick 2" sides one day and "pick 6" the next.
+  const planDate = extras.planDate || new Date().toISOString().slice(0, 10);
+  const planMeal = extras.planMeal || "Lunch";
+  const dayPlan = extras.dayPlan || null;
+  const planGroup = (key) => (dayPlan?.groups || []).find((g) => g.key === key) || {};
+  const packs = dayPlan?.packs || [];
+  const PLAN_GROUPS = [
+    { key: "rice", label: "Rice", pick: 1, hint: "rice types on offer" },
+    { key: "main", label: "Main dishes", pick: 1, hint: "meat — its price is the package price" },
+    { key: "side", label: "Side dishes", pick: 4, hint: "how many the buyer picks" },
+  ];
+  const PACK_HINTS = [
+    "👑 King Pack — Chicken + Pork",
+    "👑 King Pack — Chicken/Pork + Shrimp/Beef",
+    "👑 King Pack — Beef and Shrimp",
+  ];
+
   const dishRow = (d) => {
     const price = Number(d.price) || 0;
     return `<label class="card row" style="margin-top:8px;padding:10px 13px;cursor:pointer">
@@ -557,8 +575,19 @@ function menuPage(shop, extras = {}) {
   return page(shop, "menu", "Plan Menu", "මෙනු සැකසුම", `
     ${msg ? `<div class="card" style="margin-top:10px;padding:10px 13px;background:#e8f6ec;border-color:#bfe5c8;font-size:12.5px;color:#1d7a34">${esc(msg)}</div>` : ""}
 
-    <!-- Meal + category filters sit directly under the page title; they scope
-         the dish pickers inside every option group below. -->
+    <!-- The plan is per date + per meal: 09.08 Lunch is a different plan from
+         09.08 Dinner. Changing either reloads that day's plan. -->
+    <form method="GET" style="margin-top:12px">
+      <div style="display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center">
+        <input type="date" name="date" value="${esc(planDate)}" onchange="this.form.submit()" style="margin:0;font-weight:700;font-size:13px">
+        <span class="sub" style="font-size:11px">${esc(planMeal)} plan${dayPlan ? "" : " · new"}</span>
+      </div>
+      <div style="display:flex;gap:4px;margin-top:6px">
+        ${MEALS.map((mm) => `<button type="submit" name="meal" value="${esc(mm)}" style="flex:1 1 0;border:1px solid #e0d6cc;background:${mm === planMeal ? "#191512" : "#fff"};color:${mm === planMeal ? "#fff" : "#4a443f"};border-radius:99px;padding:7px 4px;font-size:12.5px;font-weight:700;cursor:pointer">${esc(mm)}</button>`).join("")}
+      </div>
+    </form>
+
+    <!-- Filters scope the dish pickers inside every group below. -->
     <div style="display:flex;gap:4px;margin-top:12px" id="setMeals">
       ${["All day", ...MEALS].map((mm, i) => `<button type="button" class="setMeal${i === 0 ? " on" : ""}" data-meal="${esc(mm)}" onclick="setMealTab('${esc(mm)}',this)" style="flex:1 1 0;min-width:0;border:1px solid #e0d6cc;background:${i === 0 ? "#191512" : "#fff"};color:${i === 0 ? "#fff" : "#4a443f"};border-radius:99px;padding:6px 4px;font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer">${esc(mm.replace(/\s+/g, ""))}<span class="cnt" style="font-weight:700;color:${ORANGE}">${mm === "All day" ? singles.length : singles.filter((d) => mealsFor(d.window).includes(mm)).length}</span></button>`).join("")}
     </div>
@@ -636,68 +665,71 @@ function menuPage(shop, extras = {}) {
 
     <!-- SET MENU -->
     <div id="tab-set" style="order:1">
-      ${sets.length ? `<div class="row" style="justify-content:space-between;margin-top:16px"><strong style="font-size:13.5px">Your set meals</strong><span class="sub" style="font-size:12px">${sets.length} saved</span></div>${sets.map(savedSet).join("")}` : ""}
-
-      <div class="row" style="justify-content:space-between;margin-top:16px"><strong style="font-size:14px">Create a new set meal</strong></div>
-
       ${singles.length ? `
-      <form method="POST" action="/app/owner/${id}/menu/set">
-        <label style="margin-top:12px">SET MEAL NAME</label>
-        <input type="text" name="name" placeholder="e.g. 👑 King Pack — Chicken + Pork" maxlength="80">
-        <label style="margin-top:8px">SINHALA NAME <span class="si">සිංහල නම</span></label>
-        <input type="text" name="nameSi" placeholder="සියලුම Side dishes 10ම සමග" maxlength="80">
+      <form method="POST" action="/app/owner/${id}/menu/plan">
+        <input type="hidden" name="date" value="${esc(planDate)}">
+        <input type="hidden" name="meal" value="${esc(planMeal)}">
 
-        ${[
-          { label: "Rice", labelSi: "බත්", pick: 1 },
-          { label: "Main dishes", labelSi: "ප්‍රධාන", pick: 1 },
-          { label: "Side dishes", labelSi: "අතුරු", pick: 4 },
-        ].map((g, gi) => `
-        <div class="card" style="margin-top:12px;padding:11px 12px">
+        <div class="row" style="justify-content:space-between;align-items:baseline;margin-top:16px">
+          <strong style="font-size:14px">Normal package</strong>
+          <span class="sub" style="font-size:11px">buyer pays the main they pick</span>
+        </div>
+
+        ${PLAN_GROUPS.map((g) => {
+          const saved = planGroup(g.key);
+          const chosen = new Set((saved.choices || []).map((c) => c.dishId));
+          return `
+        <div class="card" style="margin-top:10px;padding:11px 12px">
           <div style="display:grid;grid-template-columns:1fr 74px;gap:6px;align-items:end">
             <div>
               <label style="margin:0">GROUP NAME</label>
-              <input type="text" name="g${gi}label" value="${esc(g.label)}" maxlength="40" style="margin:0">
+              <input type="text" name="${g.key}label" value="${esc(saved.label || g.label)}" maxlength="40" style="margin:0">
             </div>
             <div>
               <label style="margin:0">PICK</label>
-              <input type="number" name="g${gi}pick" value="${g.pick}" min="1" max="30" style="margin:0;text-align:center;font-weight:700">
+              <input type="number" name="${g.key}pick" value="${Number(saved.pick) || g.pick}" min="1" max="40" style="margin:0;text-align:center;font-weight:700">
             </div>
           </div>
-          <input type="hidden" name="g${gi}labelSi" value="${esc(g.labelSi)}">
           <div class="row" style="justify-content:space-between;margin-top:9px">
-            <span class="sub" style="font-size:11px">Dishes in this group</span>
-            <span class="gCount sub" data-g="${gi}" style="font-size:11px;color:${ORANGE};font-weight:700">0 ticked</span>
+            <span class="sub" style="font-size:11px">${esc(g.hint)}</span>
+            <span class="gCount sub" data-g="${g.key}" style="font-size:11px;color:${ORANGE};font-weight:700">${chosen.size} ticked</span>
           </div>
-          <div style="max-height:210px;overflow-y:auto;margin-top:5px;padding-right:2px;overscroll-behavior:contain">
+          <div style="max-height:200px;overflow-y:auto;margin-top:5px;padding-right:2px;overscroll-behavior:contain">
             ${singles.map((d) => `
             <label class="setPick" data-cat="${esc(d.category || "")}" data-meals="${esc(mealsFor(d.window).join("|"))}" style="display:flex;align-items:center;gap:8px;padding:5px 2px;border-bottom:1px solid #f2ece6;cursor:pointer">
-              <input type="checkbox" name="g${gi}dish" value="${String(d._id)}" data-g="${gi}" data-price="${Number(d.price) || 0}" onchange="setRecount()" style="width:17px;height:17px;accent-color:${ORANGE};flex:0 0 auto">
+              <input type="checkbox" name="${g.key}dish" value="${String(d._id)}" data-g="${g.key}" onchange="setRecount()"${chosen.has(String(d._id)) ? " checked" : ""} style="width:17px;height:17px;accent-color:${ORANGE};flex:0 0 auto">
               <span style="flex:1;min-width:0;font-size:12px;line-height:1.25">${esc(d.name)}${d.nameSi ? ` <span class="si" style="font-size:11px">${esc(d.nameSi)}</span>` : ""}</span>
               <span class="sub" style="font-size:11px;font-weight:700;flex:0 0 auto">${esc(shopPrice(shop, Number(d.price) || 0))}</span>
             </label>`).join("")}
           </div>
-        </div>`).join("")}
+        </div>`;
+        }).join("")}
 
-        <div class="card" style="margin-top:14px;padding:13px 14px">
-          <label style="margin:0">SET MEAL PRICE (USD)</label>
-          <input type="number" name="price" step="0.01" min="0" placeholder="9.50" style="font-size:15px;font-weight:700">
-          <div class="sub" style="font-size:11px;margin-top:3px">Stored as LKR at the house rate — $9.50 shows as US$9.50 · LKR 2,850.</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
-            <div><label style="margin:0">SERVING WINDOW</label>
-              <select name="window" style="margin:0"><option value="lunch">Lunch</option><option value="all day">All day</option><option value="breakfast">Breakfast</option><option value="dinner">Dinner</option></select></div>
-            <div><label style="margin:0">DAILY PORTIONS</label>
-              <input type="number" name="portions" min="1" value="20" style="margin:0"></div>
-          </div>
-          <label style="margin-top:10px">CATEGORY</label>
-          <select name="category">${CATEGORY_LIST.map((c) => `<option value="${esc(c)}"${c === "Vegi meals" ? " selected" : ""}>${esc(c)}</option>`).join("")}</select>
-          <label class="row" style="gap:8px;margin-top:12px;cursor:pointer">
-            <input type="checkbox" name="special" value="1" style="width:17px;height:17px;accent-color:${ORANGE}">
-            <span style="font-size:12.5px">Show as <strong>Today special</strong> on the buyer home</span>
-          </label>
+        <div class="row" style="justify-content:space-between;align-items:baseline;margin-top:18px">
+          <strong style="font-size:14px">👑 King Pack</strong>
+          <span class="sub" style="font-size:11px">bigger portions · all sides</span>
         </div>
-        <button class="btn" style="margin-top:14px">Post set meal as one item</button>
+        ${[0, 1, 2].map((i) => {
+          const p = packs[i] || {};
+          return `
+        <div class="card" style="margin-top:8px;padding:10px 12px">
+          <div style="display:grid;grid-template-columns:1fr 84px;gap:6px;align-items:end">
+            <div>
+              <label style="margin:0">TIER NAME</label>
+              <input type="text" name="pack${i}name" value="${esc(p.name || "")}" placeholder="${esc(PACK_HINTS[i])}" maxlength="80" style="margin:0">
+            </div>
+            <div>
+              <label style="margin:0">PRICE $</label>
+              <input type="number" name="pack${i}price" step="0.01" min="0" value="${p.price ? (Number(p.price) / 300).toFixed(2) : ""}" style="margin:0;text-align:center;font-weight:700">
+            </div>
+          </div>
+          <input type="text" name="pack${i}nameSi" value="${esc(p.nameSi || "")}" placeholder="සිංහල විස්තරය" maxlength="120" style="margin-top:6px;font-size:12px">
+        </div>`;
+        }).join("")}
+
+        <button class="btn" style="margin-top:16px">Save ${esc(planMeal)} plan · ${esc(planDate)}</button>
       </form>
-      ` : `<div class="card" style="margin-top:12px;padding:12px 14px;background:#fdf0ec;border-color:#f3cfc2;font-size:12.5px;color:#946200">Add some single dishes first — they become the options inside each group.</div>`}
+      ` : `<div class="card" style="margin-top:12px;padding:12px 14px;background:#fdf0ec;border-color:#f3cfc2;font-size:12.5px;color:#946200">Add some dishes first — they become the options inside each group.</div>`}
     </div>
 
     </div><!-- /both builders -->
@@ -747,8 +779,8 @@ function menuPage(shop, extras = {}) {
     }
     function setRecount(){
       document.querySelectorAll('.gCount').forEach(function(el){
-        var g = el.dataset.g;
-        var n = document.querySelectorAll('input[name="g'+g+'dish"]:checked').length;
+        var g = el.dataset.g;   // 'rice' | 'main' | 'side'
+        var n = document.querySelectorAll('input[name="'+g+'dish"]:checked').length;
         el.textContent = n + ' ticked';
       });
       setApplyFilters();
