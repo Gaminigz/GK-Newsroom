@@ -21,11 +21,16 @@ for (const key of ["menu", "pos", "kitchen", "stock"]) {
     dishes: all, kitchenOrders: [], pendingOrders: [], stock: [], ingredientCats: {}, units: [],
     currency: { code: "LKR", symbol: "Rs" }, statusCounts: {}, todaysSales: { count: 0, total: 0 },
   }) || "";
-  const blocks = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
-    .map((m) => m[1]).filter((b) => b.trim() && !b.includes("application/json"));
+  // Only real script blocks — skip JSON payload tags, whose contents parse as
+  // valid JS and would mask nothing while checking nothing.
+  const blocks = [...html.matchAll(/<script(?:\s([^>]*))?>([\s\S]*?)<\/script>/g)]
+    .filter((m) => !/type\s*=\s*["']application\/json["']/.test(m[1] || ""))
+    .map((m) => m[2]).filter((b) => b.trim());
   blocks.forEach((b, i) => {
     const f = `/tmp/_cjs_${key}_${i}.js`;
-    fs.writeFileSync(f, `(async function(){\n${b}\n})();`);
+    // Check the block exactly as the browser sees it. Wrapping it in an async
+    // IIFE changes parsing and hid a real "Unexpected string" error.
+    fs.writeFileSync(f, b);
     try { execSync(`node --check ${f}`, { stdio: "pipe" }); }
     catch (e) { bad++; console.error(`FAIL ${key} block ${i}:\n${e.stderr?.toString().split("\n").slice(0, 4).join("\n")}`); }
   });

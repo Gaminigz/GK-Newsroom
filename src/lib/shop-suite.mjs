@@ -842,13 +842,18 @@ function menuPage(shop, extras = {}) {
               + '<span style="flex:1;min-width:0;font-size:12px;line-height:1.25">' + esc(d.name)
               + (d.nameSi ? ' <span class="si" style="font-size:10.5px">' + esc(d.nameSi) + '</span>' : '') + '</span>'
               + '<span class="sub" style="font-size:10.5px;font-weight:700;flex:0 0 auto">' + money(d.price) + '</span>'
-              + '<button type="button" onclick="pickDish(\'' + d.id + '\')"' + (already ? ' disabled' : '')
+              // data-pick + delegated listener — inline onclick would need
+              // nested quotes, which the server template literal mangles.
+              + '<button type="button" class="pickBtn" data-pick="' + d.id + '"' + (already ? ' disabled' : '')
               +   ' style="flex:0 0 auto;border:1px solid ' + (already ? '#e0d6cc' : '#d9542b') + ';background:' + (already ? '#f4efe9' : '#d9542b')
               +   ';color:' + (already ? '#c9bfb7' : '#fff') + ';border-radius:99px;width:26px;height:26px;font-size:14px;font-weight:800;padding:0;cursor:'
               +   (already ? 'default' : 'pointer') + '">' + (already ? '✓' : '+') + '</button>'
               + '</div>';
           }).join('')
         + '</div>';
+      host.querySelectorAll('.pickBtn').forEach(function(b){
+        b.addEventListener('click', function(){ pickDish(b.dataset.pick); });
+      });
     }
 
     function pickDish(id){
