@@ -365,7 +365,18 @@ async function resolveCoords(mapsUrl, city, country) {
   return null;
 }
 
+/** Dishes a buyer may see. A dish pulled in from the shared list starts at
+ *  price 0 until the owner prices it — those must never reach the storefront,
+ *  or they show as "US$0.00" and are orderable for nothing. Owner-side screens
+ *  use `dishesForOwner` so unpriced dishes stay visible for editing. */
 async function dishesFor(shopId) {
+  return (await col("app_dishes"))
+    .find({ shopId: String(shopId), price: { $gt: 0 } })
+    .sort({ createdAt: -1 }).toArray();
+}
+
+/** Every dish, priced or not — for the owner's own screens. */
+async function dishesForOwner(shopId) {
   return (await col("app_dishes")).find({ shopId: String(shopId) }).sort({ createdAt: -1 }).toArray();
 }
 
@@ -1535,7 +1546,8 @@ async function ownerDash(id, toast = "") {
   const todays = orders.filter((o) => o.createdAt?.toISOString?.().slice(0, 10) === today);
   const revenue = todays.reduce((a, o) => a + (o.total ?? 0), 0);
   const chats = orders.filter((o) => (o.messages ?? []).some((m) => m.from === "buyer")).length;
-  const dishes = await dishesFor(shop._id);
+  // Owner screen — show unpriced dishes too, so they can be found and priced.
+  const dishes = await dishesForOwner(shop._id);
   const special = dishes.find((d) => d.special);
   const open = shop.open !== false;
 
@@ -1606,7 +1618,7 @@ async function ownerDash(id, toast = "") {
           <span class="pill" style="position:absolute;top:7px;right:7px;background:#fff;border:1px solid #ece3da">✏️ Edit</span>
           ${d.special ? `<span class="pill deal" style="position:absolute;top:7px;left:7px">Special</span>` : ""}
           <div style="padding:8px 10px"><strong style="font-size:13px;line-height:1.3;display:block">${esc(d.name)}</strong>
-          <div class="sub" style="font-size:12px">${shopPrice(shop, d.price)}${d.discount && d.discount !== "none" ? ` · <span style=\"color:${ORANGE}\">${esc(d.discount)}</span>` : ""}${d.category ? ` · <span style="color:#946200">${esc(d.category)}</span>` : ""}</div></div></a>`;
+          <div class="sub" style="font-size:12px">${Number(d.price) > 0 ? shopPrice(shop, d.price) : `<strong style="color:#b3261e">No price — hidden from buyers</strong>`}${d.discount && d.discount !== "none" ? ` · <span style=\"color:${ORANGE}\">${esc(d.discount)}</span>` : ""}${d.category ? ` · <span style="color:#946200">${esc(d.category)}</span>` : ""}</div></div></a>`;
       }).join("")}
     </div>
     <script>
