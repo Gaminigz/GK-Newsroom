@@ -686,13 +686,16 @@ function menuPage(shop, extras = {}) {
           </div>
 
           <div id="paneDish" style="display:none">
-            <label style="margin-top:8px;font-size:9.5px">SET</label>
+            <label style="margin-top:8px;font-size:9.5px">ADD TO SET</label>
             <select id="dishSet" style="margin:0;font-size:11.5px;padding:6px"></select>
-            <label style="margin-top:7px;font-size:9.5px">DISH <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
-            <select id="dishItem" style="margin:0;font-size:11.5px;padding:6px">${feedOptions}</select>
-            <label style="margin-top:7px;font-size:9.5px">PRICE $</label>
-            <input type="number" id="dishPrice" step="0.01" min="0" placeholder="1.50" style="margin:0;font-size:11.5px;padding:6px;text-align:center;font-weight:700">
-            <button type="button" onclick="addDish()" class="btn" style="margin-top:8px;padding:8px 4px;font-size:12px;width:100%">+</button>
+            <div class="sub" style="font-size:10px;margin-top:8px;line-height:1.35">Tap any dish in the list to add it.</div>
+            <div style="border-top:1px solid #ece3da;margin-top:8px;padding-top:8px">
+              <label style="margin:0;font-size:9.5px">NEW FROM LIST <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
+              <select id="dishItem" style="margin:0;font-size:11px;padding:5px">${feedOptions}</select>
+              <label style="margin-top:6px;font-size:9.5px">PRICE $</label>
+              <input type="number" id="dishPrice" step="0.01" min="0" placeholder="1.50" style="margin:0;font-size:11.5px;padding:5px;text-align:center;font-weight:700">
+              <button type="button" onclick="addDish()" class="btn" style="margin-top:6px;padding:7px 4px;font-size:11.5px;width:100%">+</button>
+            </div>
           </div>
 
           <div id="addSetMsg" class="sub" style="font-size:10px;margin-top:6px;line-height:1.3"></div>
@@ -700,6 +703,11 @@ function menuPage(shop, extras = {}) {
 
         <!-- Right: the sets the owner has created, built by JS from the plan array. -->
         <div id="setList"></div>
+        <div id="dishCatalogue" style="display:none"></div>
+        <script id="shopDishData" type="application/json">${JSON.stringify(singles.map((d) => ({
+          id: String(d._id), name: d.name, nameSi: d.nameSi || "",
+          price: Number(d.price) || 0, cat: d.category || "", meals: mealsFor(d.window),
+        })))}</script>
         </div>
 
         <button class="btn" style="margin-top:16px">Save ${esc(planMeal)} plan · ${esc(planDate)}</button>
@@ -773,16 +781,86 @@ function menuPage(shop, extras = {}) {
       var keep = sel.value;
       sel.innerHTML = plan.map(function(s, si){ return '<option value="' + si + '">' + esc(s.name) + '</option>'; }).join('');
       if (keep && plan[keep]) sel.value = keep;
+      sel.onchange = function(){ if (addMode === 'dish') renderCatalogue(); };
+    }
+
+    /* The shop's own dishes — the browsable list shown in Dish mode. */
+    var SHOP_DISHES = JSON.parse(document.getElementById('shopDishData').textContent);
+    var addMode = 'set';
+    var setMeal = 'All day', setCat = 'All';
+
+    function setMealTab(meal, btn){
+      setMeal = meal;
+      document.querySelectorAll('#setMeals .setMeal').forEach(function(c){
+        c.classList.remove('on'); c.style.background='#fff'; c.style.color='#4a443f';
+      });
+      btn.classList.add('on'); btn.style.background='#191512'; btn.style.color='#fff';
+      if (addMode === 'dish') renderCatalogue();
+    }
+    function setCatTab(cat, btn){
+      setCat = cat;
+      document.querySelectorAll('#setCats .setCat').forEach(function(c){
+        c.classList.remove('on'); c.style.background='#fff'; c.style.color='#4a443f';
+      });
+      btn.classList.add('on'); btn.style.background='#191512'; btn.style.color='#fff';
+      if (addMode === 'dish') renderCatalogue();
     }
 
     function setAddMode(mode){
+      addMode = mode;
       var isSet = mode === 'set';
       document.getElementById('paneSet').style.display  = isSet ? '' : 'none';
       document.getElementById('paneDish').style.display = isSet ? 'none' : '';
+      document.getElementById('setList').style.display        = isSet ? '' : 'none';
+      document.getElementById('dishCatalogue').style.display  = isSet ? 'none' : '';
       var a = document.getElementById('modeSet'), b = document.getElementById('modeDish');
       a.style.background = isSet ? '#191512' : '#fff'; a.style.color = isSet ? '#fff' : '#4a443f';
       b.style.background = isSet ? '#fff' : '#191512'; b.style.color = isSet ? '#4a443f' : '#fff';
       document.getElementById('addSetMsg').textContent = '';
+      if (!isSet) renderCatalogue();
+    }
+
+    /* Every dish the shop has, filtered by the meal + category chips up top.
+       Tap one to drop it into the set selected on the left. */
+    function renderCatalogue(){
+      var host = document.getElementById('dishCatalogue');
+      var si = Number(document.getElementById('dishSet').value);
+      var inSet = (plan[si] ? plan[si].dishes : []).map(function(d){ return d.id; });
+      var list = SHOP_DISHES.filter(function(d){
+        var okMeal = setMeal === 'All day' || d.meals.indexOf(setMeal) >= 0;
+        var okCat  = setCat === 'All' || d.cat === setCat;
+        return okMeal && okCat;
+      });
+      var head = '<div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:6px">'
+        + '<strong style="font-size:12.5px">' + (plan[si] ? 'Add to ' + esc(plan[si].name) : 'Available dishes') + '</strong>'
+        + '<span class="sub" style="font-size:10.5px">' + list.length + ' shown</span></div>';
+      if (!list.length) { host.innerHTML = head + '<div class="sub" style="font-size:11px;padding:14px 0;text-align:center;color:#c9bfb7">nothing in this filter</div>'; return; }
+      host.innerHTML = head + '<div class="card" style="margin:0;padding:6px 10px;max-height:440px;overflow-y:auto">'
+        + list.map(function(d){
+            var already = inSet.indexOf(d.id) >= 0;
+            return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f2ece6">'
+              + '<span style="flex:1;min-width:0;font-size:12px;line-height:1.25">' + esc(d.name)
+              + (d.nameSi ? ' <span class="si" style="font-size:10.5px">' + esc(d.nameSi) + '</span>' : '') + '</span>'
+              + '<span class="sub" style="font-size:10.5px;font-weight:700;flex:0 0 auto">' + money(d.price) + '</span>'
+              + '<button type="button" onclick="pickDish(\'' + d.id + '\')"' + (already ? ' disabled' : '')
+              +   ' style="flex:0 0 auto;border:1px solid ' + (already ? '#e0d6cc' : '#d9542b') + ';background:' + (already ? '#f4efe9' : '#d9542b')
+              +   ';color:' + (already ? '#c9bfb7' : '#fff') + ';border-radius:99px;width:26px;height:26px;font-size:14px;font-weight:800;padding:0;cursor:'
+              +   (already ? 'default' : 'pointer') + '">' + (already ? '✓' : '+') + '</button>'
+              + '</div>';
+          }).join('')
+        + '</div>';
+    }
+
+    function pickDish(id){
+      var si = Number(document.getElementById('dishSet').value);
+      var msg = document.getElementById('addSetMsg');
+      if (!plan[si]) { msg.textContent = 'Make a set first.'; return; }
+      var d = SHOP_DISHES.filter(function(x){ return x.id === id; })[0];
+      if (!d) return;
+      if (plan[si].dishes.some(function(x){ return x.id === id; })) return;
+      plan[si].dishes.push({id: d.id, name: d.name, nameSi: d.nameSi, price: d.price});
+      msg.textContent = d.name + ' → ' + plan[si].name;
+      renderCatalogue();
     }
 
     function addSet(){
