@@ -2360,8 +2360,12 @@ export async function handleApp(req, res, url) {
     const today = new Date().toISOString().slice(0, 10);
     const nowMeal = mealNow();
     const priced = new Set(dishes.map((d) => String(d._id)));
-    const rawPlan = await (await col("day_plans"))
-      .findOne({ shopId: String(shop._id), date: today, meal: nowMeal });
+    // Prefer the meal on now, but fall back to any plan saved for today —
+    // the server clock is UTC and the shop may be hours off it, so a Lunch
+    // plan shouldn't disappear for the buyer just because UTC says morning.
+    const plansToday = await (await col("day_plans"))
+      .find({ shopId: String(shop._id), date: today }).toArray();
+    const rawPlan = plansToday.find((p) => p.meal === nowMeal) || plansToday[0] || null;
     const plan = rawPlan ? {
       date: rawPlan.date, meal: rawPlan.meal,
       groups: (rawPlan.groups || []).map((g) => ({
