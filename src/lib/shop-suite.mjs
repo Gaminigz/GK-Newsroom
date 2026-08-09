@@ -721,9 +721,13 @@ function menuPage(shop, extras = {}) {
       <div id="feedBackdrop" style="display:none;position:fixed;inset:0;z-index:880;background:rgba(0,0,0,.18)"></div>
       <div id="feedPanel" style="display:none;position:fixed;z-index:890;top:14%;left:50%;transform:translateX(-50%);width:267px;max-height:70vh;background:#fff;border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,.28);overflow:hidden">
         <div style="padding:9px 10px;border-bottom:1px solid #ece3da">
-          <input type="text" id="feedSearch" placeholder="Search ${feedDishes.length} dishes…" style="margin:0;font-size:12.5px;padding:8px 10px">
+          <div class="row" style="gap:7px">
+            <input type="text" id="feedSearch" placeholder="Search ${feedDishes.length} dishes…" style="margin:0;flex:1;min-width:0;font-size:12.5px;padding:8px 10px">
+            <button type="button" id="feedDone" style="flex:0 0 auto;border:0;background:#191512;color:#fff;border-radius:99px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer">Done</button>
+          </div>
+          <div id="feedCount" class="sub" style="font-size:10.5px;margin-top:5px;color:${ORANGE};font-weight:700"></div>
         </div>
-        <div id="feedPanelList" style="max-height:calc(70vh - 56px);overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 10px 10px"></div>
+        <div id="feedPanelList" style="max-height:calc(70vh - 78px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:0 10px 10px"></div>
       </div>
       ` : `<div class="card" style="margin-top:12px;padding:12px 14px;background:#fdf0ec;border-color:#f3cfc2;font-size:12.5px;color:#946200">Add some dishes first — they become the options inside each set.</div>`}
     </div>
@@ -1037,36 +1041,79 @@ function menuPage(shop, extras = {}) {
     var feedQuery = '';
     function renderFeedPanel(){
       var q = feedQuery.trim().toLowerCase();
-      var chosen = document.getElementById('dishItem').value;
+      var si = Number(document.getElementById('dishSet').value);
+      var inSet = (plan[si] ? plan[si].dishes : []).map(function(d){ return d.name; });
       var list = FEED_DISHES.filter(function(d){
         if (!q) return true;
         return d.name.toLowerCase().indexOf(q) >= 0 || (d.nameSi || '').toLowerCase().indexOf(q) >= 0;
       });
       if (q) list = list.slice().sort(function(a, b){ return a.name.localeCompare(b.name); });
+      document.getElementById('feedCount').textContent =
+        (plan[si] ? inSet.length + ' in ' + plan[si].name : 'no set');
       var host = document.getElementById('feedPanelList');
       if (!list.length) { host.innerHTML = '<div class="sub" style="padding:22px 0;text-align:center;font-size:12px">nothing matches</div>'; return; }
       var cat = '';
       host.innerHTML = list.map(function(d){
         var head = '';
         if (!q && d.cat !== cat) { cat = d.cat; head = '<div class="sub" style="font-size:10px;letter-spacing:.04em;padding:12px 0 3px;font-weight:700">' + esc(cat || 'Other') + '</div>'; }
-        var on = d.name === chosen;
-        return head + '<button type="button" class="feedRow" data-name="' + esc(d.name) + '" style="display:flex;gap:7px;align-items:flex-start;width:100%;text-align:left;border:0;border-bottom:1px solid #f2ece6;background:none;padding:9px 2px;cursor:pointer">'
-          + '<span style="flex:0 0 14px;color:#d9542b;font-weight:800;font-size:12px">' + (on ? '✓' : '') + '</span>'
+        var on = inSet.indexOf(d.name) >= 0;
+        // Checkbox on the right; tick as many as you like, the panel stays open.
+        return head + '<label style="display:flex;gap:8px;align-items:center;width:100%;border-bottom:1px solid #f2ece6;padding:9px 2px;cursor:pointer">'
           + '<span style="flex:1;min-width:0">'
           +   '<span style="display:block;font-size:13px;font-weight:600;line-height:1.25">' + esc(d.name) + '</span>'
           +   (d.nameSi ? '<span class="si" style="display:block;font-size:11px;line-height:1.3">' + esc(d.nameSi) + '</span>' : '')
-          + '</span></button>';
+          + '</span>'
+          + '<input type="checkbox" class="feedBox" data-name="' + esc(d.name) + '"' + (on ? ' checked' : '')
+          +   ' style="flex:0 0 auto;width:20px;height:20px;accent-color:#d9542b">'
+          + '</label>';
       }).join('');
-      host.querySelectorAll('.feedRow').forEach(function(b){
-        b.addEventListener('click', function(){
-          document.getElementById('dishItem').value = b.dataset.name;
-          var t = document.getElementById('dishItemBtn');
-          t.textContent = b.dataset.name; t.style.color = '#1a1a1a';
-          closeFeedPanel();
-          document.getElementById('dishPrice').focus();
+      host.querySelectorAll('.feedBox').forEach(function(b){
+        b.addEventListener('change', function(){
+          if (b.checked) feedTick(b.dataset.name, b);
+          else feedUntick(b.dataset.name);
         });
       });
     }
+
+    /* Tick — reuse the shop's dish if it already exists, otherwise pull it in
+       from the shared list at price 0 for pricing in the set below. */
+    function feedTick(name, box){
+      var si = Number(document.getElementById('dishSet').value);
+      var msg = document.getElementById('addSetMsg');
+      if (!plan[si]) { msg.textContent = 'Make a set first.'; if (box) box.checked = false; return; }
+      var own = SHOP_DISHES.filter(function(x){ return x.name === name; })[0];
+      if (own) {
+        if (!plan[si].dishes.some(function(d){ return d.id === own.id; })) {
+          plan[si].dishes.push({id: own.id, name: own.name, nameSi: own.nameSi, price: own.price});
+        }
+        msg.textContent = name + ' → ' + plan[si].name;
+        renderPlan(); renderFeedPanel();
+        return;
+      }
+      fetch('/app/owner/' + SHOP_ID + '/menu/add-from-feed', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({name: name, price: 0, meal: PLAN_MEAL}),
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if (!j.ok) { msg.textContent = j.error || 'Failed'; if (box) box.checked = false; return; }
+        SHOP_DISHES.push({id: j.id, name: name, nameSi: j.nameSi || '', price: 0, cat: '', meals: ['Breakfast','Lunch','Dinner'], own: true});
+        if (!plan[si].dishes.some(function(d){ return d.id === j.id; })) {
+          plan[si].dishes.push({id: j.id, name: name, nameSi: j.nameSi || '', price: 0});
+        }
+        msg.textContent = name + ' added — set its price below.';
+        renderPlan(); renderFeedPanel();
+      })
+      .catch(function(e){ msg.textContent = e.message; if (box) box.checked = false; });
+    }
+    function feedUntick(name){
+      var si = Number(document.getElementById('dishSet').value);
+      if (!plan[si]) return;
+      plan[si].dishes = plan[si].dishes.filter(function(d){ return d.name !== name; });
+      document.getElementById('addSetMsg').textContent = name + ' removed.';
+      renderPlan(); renderFeedPanel();
+    }
+
     function openFeedPanel(){
       feedQuery = '';
       document.getElementById('feedSearch').value = '';
@@ -1080,6 +1127,7 @@ function menuPage(shop, extras = {}) {
     }
     document.getElementById('dishItemBtn').addEventListener('click', openFeedPanel);
     document.getElementById('feedBackdrop').addEventListener('click', closeFeedPanel);
+    document.getElementById('feedDone').addEventListener('click', closeFeedPanel);
     document.getElementById('feedSearch').addEventListener('input', function(){
       feedQuery = this.value; renderFeedPanel();
     });
