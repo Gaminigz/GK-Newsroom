@@ -693,7 +693,13 @@ function menuPage(shop, extras = {}) {
             <div class="sub" style="font-size:10px;margin-top:8px;line-height:1.35">Tick dishes on the right, or pull a new one in below.</div>
             <div style="border-top:1px solid #ece3da;margin-top:8px;padding-top:8px">
               <label style="margin:0;font-size:9.5px">NEW FROM LIST <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
-              <select id="dishItem" style="margin:0;font-size:11px;padding:5px">${feedOptions}</select>
+              <!-- The popup anchors to the select's box, so the box is pushed
+                   left with a negative margin and the text pushed back with
+                   padding — the field looks unmoved, the popup opens further
+                   left. The wrapper clips the overhang. -->
+              <div style="overflow:hidden;border-radius:10px">
+                <select id="dishItem" style="margin:0 0 0 -78px;width:182px;max-width:none;font-size:11px;padding:5px 5px 5px 83px">${feedOptions}</select>
+              </div>
               <label style="margin-top:6px;font-size:9.5px">PRICE $</label>
               <input type="number" id="dishPrice" step="0.01" min="0" placeholder="1.50" style="margin:0;font-size:11.5px;padding:5px;text-align:center;font-weight:700">
               <button type="button" id="addFromFeedBtn" class="btn" style="margin-top:6px;padding:7px 4px;font-size:11.5px;width:100%">+</button>
