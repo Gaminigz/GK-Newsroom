@@ -557,17 +557,26 @@ function menuPage(shop, extras = {}) {
   return page(shop, "menu", "Plan Menu", "මෙනු සැකසුම", `
     ${msg ? `<div class="card" style="margin-top:10px;padding:10px 13px;background:#e8f6ec;border-color:#bfe5c8;font-size:12.5px;color:#1d7a34">${esc(msg)}</div>` : ""}
 
-    <!-- Same compact chip styling the filter rows below use. -->
-    <div id="menuTabs" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:12px">
-      <button type="button" class="mTab on" data-tab="single" onclick="showTab('single',this)" style="border:1px solid #e0d6cc;background:#191512;color:#fff;border-radius:99px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer">Single dish · 35Ai</button>
-      <button type="button" class="mTab" data-tab="set" onclick="showTab('set',this)" style="border:1px solid #e0d6cc;background:#fff;color:#4a443f;border-radius:99px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer">Set menu</button>
-      <button type="button" disabled style="border:1px solid #ece3da;background:#fff;color:#c9bfb7;border-radius:99px;padding:5px 11px;font-size:11px;font-weight:600;cursor:default">Combo (soon)</button>
-      <button type="button" disabled style="border:1px solid #ece3da;background:#fff;color:#c9bfb7;border-radius:99px;padding:5px 11px;font-size:11px;font-weight:600;cursor:default">Events (soon)</button>
+    <!-- Meal + category filters sit directly under the page title; they scope
+         the dish pickers inside every option group below. -->
+    <div class="row" style="justify-content:space-between;align-items:baseline;margin-top:12px">
+      <strong style="font-size:14px">Option groups</strong>
+      <span class="sub" style="font-size:11px">tick dishes into each group</span>
+    </div>
+    <div style="display:flex;gap:4px;margin-top:8px" id="setMeals">
+      ${["All day", ...MEALS].map((mm, i) => `<button type="button" class="setMeal${i === 0 ? " on" : ""}" data-meal="${esc(mm)}" onclick="setMealTab('${esc(mm)}',this)" style="flex:1 1 0;min-width:0;border:1px solid #e0d6cc;background:${i === 0 ? "#191512" : "#fff"};color:${i === 0 ? "#fff" : "#4a443f"};border-radius:99px;padding:6px 4px;font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer">${esc(mm.replace(/\s+/g, ""))}<span style="font-weight:500;opacity:.7">${mm === "All day" ? singles.length : singles.filter((d) => mealsFor(d.window).includes(mm)).length}</span></button>`).join("")}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px" id="setCats">
+      ${["All", ...CATEGORY_LIST].map((c, i) => `<button type="button" class="setCat${i === 0 ? " on" : ""}" data-cat="${esc(c)}" onclick="setCatTab('${esc(c)}',this)" style="border:1px solid #e0d6cc;background:${i === 0 ? "#191512" : "#fff"};color:${i === 0 ? "#fff" : "#4a443f"};border-radius:99px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer">${esc(c)} · ${c === "All" ? singles.length : singles.filter((d) => (d.category || "") === c).length}</button>`).join("")}
     </div>
 
-    <!-- SINGLE DISH TAB (AI-assisted) -->
-    <div id="tab-single">
-      <div class="row" style="justify-content:space-between;margin-top:16px;align-items:center">
+    <!-- Both builders stack; CSS order puts Set menu first so it sits directly
+         under the filter chips that scope its dish pickers. -->
+    <div style="display:flex;flex-direction:column">
+
+    <!-- SINGLE DISH (AI-assisted) -->
+    <div id="tab-single" style="order:2;margin-top:22px;padding-top:16px;border-top:1px solid #ece3da">
+      <div class="row" style="justify-content:space-between;align-items:center">
         <strong style="font-size:14px">Create a single dish with 35Ai recipe</strong>
         <button type="button" onclick="toggleHelp()" title="How this works" style="width:26px;height:26px;border-radius:99px;border:1.5px solid #d9542b;background:#fff;color:#d9542b;font-weight:800;font-size:13px;cursor:pointer;flex:0 0 auto;padding:0">i</button>
       </div>
@@ -629,8 +638,8 @@ function menuPage(shop, extras = {}) {
       </div>
     </div>
 
-    <!-- SET MENU TAB -->
-    <div id="tab-set" style="display:none">
+    <!-- SET MENU -->
+    <div id="tab-set" style="order:1">
       ${sets.length ? `<div class="row" style="justify-content:space-between;margin-top:16px"><strong style="font-size:13.5px">Your set meals</strong><span class="sub" style="font-size:12px">${sets.length} saved</span></div>${sets.map(savedSet).join("")}` : ""}
 
       <div class="row" style="justify-content:space-between;margin-top:16px"><strong style="font-size:14px">Create a new set meal</strong></div>
@@ -641,18 +650,6 @@ function menuPage(shop, extras = {}) {
         <input type="text" name="name" placeholder="e.g. 👑 King Pack — Chicken + Pork" maxlength="80">
         <label style="margin-top:8px">SINHALA NAME <span class="si">සිංහල නම</span></label>
         <input type="text" name="nameSi" placeholder="සියලුම Side dishes 10ම සමග" maxlength="80">
-
-        <!-- Filter the dish picker the same way POS does -->
-        <div class="row" style="justify-content:space-between;align-items:baseline;margin-top:16px">
-          <strong style="font-size:13.5px">Option groups</strong>
-          <span class="sub" style="font-size:11px">tick dishes into each group</span>
-        </div>
-        <div style="display:flex;gap:4px;margin-top:8px" id="setMeals">
-          ${["All day", ...MEALS].map((mm, i) => `<button type="button" class="setMeal${i === 0 ? " on" : ""}" data-meal="${esc(mm)}" onclick="setMealTab('${esc(mm)}',this)" style="flex:1 1 0;min-width:0;border:1px solid #e0d6cc;background:${i === 0 ? "#191512" : "#fff"};color:${i === 0 ? "#fff" : "#4a443f"};border-radius:99px;padding:6px 4px;font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer">${esc(mm.replace(/\s+/g, ""))}<span style="font-weight:500;opacity:.7">${mm === "All day" ? singles.length : singles.filter((d) => mealsFor(d.window).includes(mm)).length}</span></button>`).join("")}
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px" id="setCats">
-          ${["All", ...CATEGORY_LIST].map((c, i) => `<button type="button" class="setCat${i === 0 ? " on" : ""}" data-cat="${esc(c)}" onclick="setCatTab('${esc(c)}',this)" style="border:1px solid #e0d6cc;background:${i === 0 ? "#191512" : "#fff"};color:${i === 0 ? "#fff" : "#4a443f"};border-radius:99px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer">${esc(c)} · ${c === "All" ? singles.length : singles.filter((d) => (d.category || "") === c).length}</button>`).join("")}
-        </div>
 
         ${[
           { label: "Rice", labelSi: "බත්", pick: 1 },
@@ -707,15 +704,9 @@ function menuPage(shop, extras = {}) {
       ` : `<div class="card" style="margin-top:12px;padding:12px 14px;background:#fdf0ec;border-color:#f3cfc2;font-size:12.5px;color:#946200">Add some single dishes first — they become the options inside each group.</div>`}
     </div>
 
+    </div><!-- /both builders -->
+
     <script>
-    function showTab(which, btn) {
-      document.getElementById('tab-single').style.display = which === 'single' ? '' : 'none';
-      document.getElementById('tab-set').style.display = which === 'set' ? '' : 'none';
-      document.querySelectorAll('#menuTabs .mTab').forEach(function(t){
-        t.classList.remove('on'); t.style.background='#fff'; t.style.color='#4a443f';
-      });
-      if (btn) { btn.classList.add('on'); btn.style.background='#191512'; btn.style.color='#fff'; }
-    }
     function toggleHelp() {
       const h = document.getElementById('aiHelp');
       h.style.display = h.style.display === 'none' ? '' : 'none';
