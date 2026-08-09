@@ -672,17 +672,6 @@ function menuPage(shop, extras = {}) {
         <input type="hidden" name="meal" value="${esc(planMeal)}">
         <input type="hidden" name="planJson" id="planJson">
 
-        <!-- Full-width so iOS renders the native picker at full width too;
-             inside the 126px sidebar the popup came out cramped. -->
-        <div id="feedStrip" style="display:none;margin-top:14px">
-          <label style="margin:0;font-size:9.5px">NEW FROM LIST <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
-          <select id="dishItem" style="margin:0;font-size:13px;padding:9px 10px;width:100%">${feedOptions}</select>
-          <div style="display:grid;grid-template-columns:1fr 92px;gap:6px;margin-top:6px">
-            <input type="number" id="dishPrice" step="0.01" min="0" placeholder="price $" style="margin:0;font-size:13px;padding:8px 10px;font-weight:700">
-            <button type="button" id="addFromFeedBtn" class="btn" style="margin:0;padding:9px 4px;font-size:13px">+ Add</button>
-          </div>
-        </div>
-
         <div style="display:grid;grid-template-columns:126px 1fr;gap:6px;align-items:start;margin-top:14px">
 
         <!-- Left: name a set, or drop a dish into one. -->
@@ -701,6 +690,14 @@ function menuPage(shop, extras = {}) {
           <div id="paneDish" style="display:none">
             <label style="margin-top:8px;font-size:9.5px">ADD TO SET</label>
             <select id="dishSet" style="margin:0;font-size:11.5px;padding:6px"></select>
+            <div class="sub" style="font-size:10px;margin-top:8px;line-height:1.35">Tick dishes on the right, or pull a new one in below.</div>
+            <div style="border-top:1px solid #ece3da;margin-top:8px;padding-top:8px">
+              <label style="margin:0;font-size:9.5px">NEW FROM LIST <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
+              <select id="dishItem" style="margin:0;font-size:11px;padding:5px">${feedOptions}</select>
+              <label style="margin-top:6px;font-size:9.5px">PRICE $</label>
+              <input type="number" id="dishPrice" step="0.01" min="0" placeholder="1.50" style="margin:0;font-size:11.5px;padding:5px;text-align:center;font-weight:700">
+              <button type="button" id="addFromFeedBtn" class="btn" style="margin-top:6px;padding:7px 4px;font-size:11.5px;width:100%">+</button>
+            </div>
           </div>
 
           <div id="addSetMsg" class="sub" style="font-size:10px;margin-top:6px;line-height:1.3"></div>
@@ -848,7 +845,6 @@ function menuPage(shop, extras = {}) {
       // The sets stay on screen while picking — hiding them meant the owner
       // couldn't see what they'd just ticked, or reach the X to undo it.
       document.getElementById('dishCatalogue').style.display = isSet ? 'none' : '';
-      document.getElementById('feedStrip').style.display = isSet ? 'none' : '';
       var a = document.getElementById('modeSet'), b = document.getElementById('modeDish');
       a.style.background = isSet ? '#191512' : '#fff'; a.style.color = isSet ? '#fff' : '#4a443f';
       b.style.background = isSet ? '#fff' : '#191512'; b.style.color = isSet ? '#4a443f' : '#fff';
