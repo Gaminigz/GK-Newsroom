@@ -177,7 +177,7 @@ function posPage(shop, extras = {}) {
   // Meal row above the categories — 5% larger, since the service window is the
   // coarser filter the clerk reaches for first.
   const countMeal = (mm) => mm === "All day" ? dishes.length : dishes.filter((d) => mealsFor(d.window).includes(mm)).length;
-  const mealChips = ["All day", ...MEALS].map((mm, i) => `<button type="button" class="posMeal${i === 0 ? " on" : ""}" data-meal="${escT(mm)}" onclick="posMealTab('${escT(mm)}',this)" style="flex:0 0 auto;border:1px solid #e0d6cc;background:${i === 0 ? "#191512" : "#fff"};color:${i === 0 ? "#fff" : "#4a443f"};border-radius:99px;padding:6px 12px;font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer">${escT(mm)}<span style="font-weight:500;opacity:.75"> · ${countMeal(mm)}</span></button>`).join("");
+  const mealChips = ["All day", ...MEALS].map((mm, i) => `<button type="button" class="posMeal${i === 0 ? " on" : ""}" data-meal="${escT(mm)}" onclick="posMealTab('${escT(mm)}',this)" style="flex:1 1 0;min-width:0;border:1px solid #e0d6cc;background:${i === 0 ? "#191512" : "#fff"};color:${i === 0 ? "#fff" : "#4a443f"};border-radius:99px;padding:6px 4px;font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer">${escT(mm.replace(/\s+/g, ""))}<span style="font-weight:500;opacity:.7">${countMeal(mm)}</span></button>`).join("");
   const dishDisplayName = (name) => String(name || "").replace(/^Ceylon\s+/i, "").trim() || String(name || "");
   const dishCard = (d) => {
     const shown = dishDisplayName(d.name);
@@ -195,7 +195,7 @@ function posPage(shop, extras = {}) {
   };
   return page(shop, "pos", "POS", "විකුණුම් කවුන්ටරය", `
     <div class="sub" style="font-size:11.5px;margin-top:6px;line-height:1.4">Pick a meal → category → tap a dish to add. Bill on the right.<br><span class="si">වේල · වර්ගය · කෑම තෝරන්න.</span></div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px" id="posMeals">${mealChips}</div>
+    <div style="display:flex;gap:4px;margin-top:10px" id="posMeals">${mealChips}</div>
     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px" id="posChips">${chips}</div>
     ${dishes.length ? `
       <div style="display:grid;grid-template-columns:1fr 158px;gap:8px;margin-top:10px;align-items:start">

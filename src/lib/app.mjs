@@ -1582,8 +1582,8 @@ async function ownerDash(id, toast = "") {
       const inMeal = (mm) => mm === "All day" ? dishes.length : dishes.filter((d) => mealsFor(d.window).includes(mm)).length;
       // Meal row sits above the category row and is 5% larger so the service
       // window reads as the primary filter.
-      const mealBtn = (label, on) => `<button type="button" class="mChip${on ? " on" : ""}" data-meal="${esc(label)}" onclick="mealTab('${esc(label)}',this)" style="border:1px solid #e0d6cc;background:${on ? "#191512" : "#fff"};color:${on ? "#fff" : "#4a443f"};border-radius:99px;padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer">${esc(label)} · ${inMeal(label)}</button>`;
-      return `<div id="mealChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:7px">
+      const mealBtn = (label, on) => `<button type="button" class="mChip${on ? " on" : ""}" data-meal="${esc(label)}" onclick="mealTab('${esc(label)}',this)" style="flex:1 1 0;min-width:0;border:1px solid #e0d6cc;background:${on ? "#191512" : "#fff"};color:${on ? "#fff" : "#4a443f"};border-radius:99px;padding:6px 4px;font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer">${esc(label.replace(/\s+/g, ""))}<span style="font-weight:500;opacity:.7">${inMeal(label)}</span></button>`;
+      return `<div id="mealChips" style="display:flex;gap:4px;margin-bottom:7px">
         ${mealBtn("All day", true)}${MEALS.map((mm) => mealBtn(mm, false)).join("")}
       </div>
       <div id="dishChips" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px">
