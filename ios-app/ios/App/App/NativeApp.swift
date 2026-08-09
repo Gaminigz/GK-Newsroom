@@ -92,6 +92,8 @@ struct Dish: Codable, Identifiable {
     let discount: String
     let tag: String?
     let category: String?
+    /// Which service windows this dish covers — server-classified from `window`.
+    let meals: [String]?
 }
 
 struct OrdersResponse: Codable { let orders: [OrderSummary] }
@@ -384,20 +386,31 @@ struct ShopView: View {
     @State private var showOrderSheet = false
     @State private var orderPlaced = false
     @State private var selectedCategory: String = "All"
+    @State private var selectedMeal: String = "All day"
     // Pre-booking: when the buyer wants the food ready. Defaults to now.
     @State private var wantAt: Date = Date()
 
     // Same POS ordering, plus "All" as the first chip.
     static let posCategories = ["All", "Starters", "Bites", "Vegi meals", "Chicken", "Beef", "Mutton", "Pork", "Sea food", "Drinks", "Desserts"]
+    static let mealTabs = ["All day", "Breakfast", "Lunch", "Dinner"]
 
     var total: Int { basket.reduce(0) { $0 + $1.price * $1.qty } }
 
+    func matchesMeal(_ d: Dish) -> Bool {
+        selectedMeal == "All day" || (d.meals ?? []).contains(selectedMeal)
+    }
+
+    /// Category counts respect the active meal so the numbers stay truthful.
     func categoryCount(_ cat: String, in dishes: [Dish]) -> Int {
-        cat == "All" ? dishes.count : dishes.filter { ($0.category ?? "") == cat }.count
+        dishes.filter { matchesMeal($0) && (cat == "All" || ($0.category ?? "") == cat) }.count
+    }
+
+    func mealCount(_ meal: String, in dishes: [Dish]) -> Int {
+        meal == "All day" ? dishes.count : dishes.filter { ($0.meals ?? []).contains(meal) }.count
     }
 
     func filtered(_ dishes: [Dish]) -> [Dish] {
-        selectedCategory == "All" ? dishes : dishes.filter { ($0.category ?? "") == selectedCategory }
+        dishes.filter { matchesMeal($0) && (selectedCategory == "All" || ($0.category ?? "") == selectedCategory) }
     }
 
     var body: some View {
@@ -417,6 +430,28 @@ struct ShopView: View {
                             Text(d.shop.name).font(.title3.weight(.bold))
                             Text("★ 4.8 · \(d.shop.city), \(d.shop.country) · \(d.shop.open ? "open now" : "closed now")")
                                 .font(.caption).foregroundColor(.secondary)
+                            // Meal window sits above the categories and is 5%
+                            // larger — it's the coarser filter buyers pick first.
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 6) {
+                                    ForEach(Self.mealTabs, id: \.self) { meal in
+                                        let count = mealCount(meal, in: d.dishes)
+                                        Button { selectedMeal = meal } label: {
+                                            HStack(spacing: 3) {
+                                                Text(meal).font(.system(size: 12.6, weight: .bold))
+                                                Text("· \(count)").font(.system(size: 11.6)).opacity(0.7)
+                                            }
+                                            .padding(.horizontal, 11).padding(.vertical, 6)
+                                            .background(selectedMeal == meal ? Color.brandDark : Color(UIColor.secondarySystemGroupedBackground))
+                                            .foregroundColor(selectedMeal == meal ? .white : .primary)
+                                            .clipShape(Capsule())
+                                            .overlay(Capsule().stroke(Color.gray.opacity(0.25), lineWidth: 1))
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .padding(.vertical, 1)
+                            }
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 5)], alignment: .leading, spacing: 5) {
                                 ForEach(Self.posCategories, id: \.self) { cat in
                                     let count = categoryCount(cat, in: d.dishes)
@@ -445,7 +480,8 @@ struct ShopView: View {
                         // there's a single filterable list — no separate "Today's special" section.
                         let full: [(Dish, String?)] = {
                             var arr: [(Dish, String?)] = []
-                            if let sp = d.special, selectedCategory == "All" || (sp.category ?? "") == selectedCategory {
+                            if let sp = d.special, matchesMeal(sp),
+                               selectedCategory == "All" || (sp.category ?? "") == selectedCategory {
                                 arr.append((sp, sp.tag ?? "Today special"))
                             }
                             arr.append(contentsOf: filtered(d.dishes).map { ($0, nil) })
