@@ -1994,8 +1994,10 @@ function dishEditPage(shop, d) {
         <div style="flex:1"><label>PRICE (${currencyOf(shop).code})</label><input type="number" name="price" required min="0" value="${Number(d.price) || 0}"></div>
         <div style="flex:1"><label>PORTIONS / DAY</label><input type="number" name="portions" value="${Number(d.portions) || 20}" min="1"></div>
       </div>
+      <label>CATEGORY <span class="si">වර්ගය</span></label>
+      <select name="category">${CATEGORY_LIST.map((c) => `<option value="${esc(c)}"${c === (d.category || "Vegi meals") ? " selected" : ""}>${esc(c)}</option>`).join("")}</select>
       <label>AVAILABLE TIME</label>
-      <div class="seg">${seg("window", ["11 AM - 3 PM", "5 - 9 PM", "All day"], d.window ?? "All day")}</div>
+      <div class="seg">${seg("window", ["all day", "breakfast", "lunch", "dinner"], (d.window || "all day").toLowerCase())}</div>
       <label>DISCOUNT</label>
       <div class="seg">${seg("discount", ["none", "-10%", "-20%", "2 for 1"], d.discount ?? "none")}</div>
 
@@ -2144,9 +2146,11 @@ function addDishPage(shop) {
         <div style="flex:1"><label>PRICE (${currencyOf(shop).code})</label><input type="number" name="price" required min="0" placeholder="950"></div>
         <div style="flex:1"><label>PORTIONS / DAY</label><input type="number" name="portions" value="20" min="1"></div>
       </div>
+      <label>CATEGORY <span class="si">වර්ගය</span></label>
+      <select name="category" required>${CATEGORY_LIST.map((c) => `<option value="${esc(c)}"${c === "Vegi meals" ? " selected" : ""}>${esc(c)}</option>`).join("")}</select>
       <label>AVAILABLE TIME</label>
       <div class="seg">
-        ${["11 AM - 3 PM", "5 - 9 PM", "All day"].map((w, i) => `<label><input type="radio" name="window" value="${w}" ${i === 0 ? "checked" : ""}><span class="opt">${w}</span></label>`).join("")}
+        ${["all day", "breakfast", "lunch", "dinner"].map((w, i) => `<label><input type="radio" name="window" value="${w}" ${i === 0 ? "checked" : ""}><span class="opt">${w === "all day" ? "All day" : w[0].toUpperCase() + w.slice(1)}</span></label>`).join("")}
       </div>
       <label>DISCOUNT</label>
       <div class="seg">
@@ -3385,9 +3389,12 @@ export async function handleApp(req, res, url) {
     try { recipe = JSON.parse(String(form.get("recipe") || "null")); } catch {}
     if (name && price > 0) {
       await (await col("app_dishes")).insertOne({
-        shopId: m[1], type: "single", name, nameSi: "",
-        price, portions, window: String(form.get("window") || "All day").slice(0, 20),
-        discount: "none", special: false, promoTag: "Today special",
+        shopId: m[1], type: "single", name,
+        nameSi: String(form.get("nameSi") || "").trim().slice(0, 80),
+        price, portions, window: String(form.get("window") || "all day").slice(0, 20),
+        // Without a category the dish is invisible to every filter chip.
+        category: CATEGORY_LIST.includes(form.get("category")) ? form.get("category") : "Vegi meals",
+        discount: "none", special: form.get("special") === "1", promoTag: "Today special",
         ...(recipe && Array.isArray(recipe.ingredients) ? { recipe } : {}),
         createdAt: new Date(),
       });
@@ -3528,7 +3535,9 @@ export async function handleApp(req, res, url) {
         ...(photoValue ? { photo: photoValue } : {}),
         price: Math.max(0, Number(form.get("price")) || 0),
         portions: Math.max(1, Number(form.get("portions")) || 20),
-        window: String(form.get("window") || "All day").slice(0, 20),
+        window: String(form.get("window") || "all day").slice(0, 20),
+        // Keep the existing category when the form didn't send a valid one.
+        ...(CATEGORY_LIST.includes(form.get("category")) ? { category: form.get("category") } : {}),
         discount: String(form.get("discount") || "none").slice(0, 10),
         special: form.get("special") === "1",
         promoTag: PROMO_TAGS.includes(form.get("promoTag")) ? form.get("promoTag") : "Today special",
@@ -3633,7 +3642,9 @@ export async function handleApp(req, res, url) {
         ...(photoValue ? { photo: photoValue } : {}),
         price: Math.max(0, Number(form.get("price")) || 0),
         portions: Math.max(1, Number(form.get("portions")) || 20),
-        window: String(form.get("window") || "All day").slice(0, 20),
+        window: String(form.get("window") || "all day").slice(0, 20),
+        // Without a category the dish never matches a filter chip.
+        category: CATEGORY_LIST.includes(form.get("category")) ? form.get("category") : "Vegi meals",
         discount: String(form.get("discount") || "none").slice(0, 10),
         special: form.get("special") === "1",
         promoTag: PROMO_TAGS.includes(form.get("promoTag")) ? form.get("promoTag") : "Today special",

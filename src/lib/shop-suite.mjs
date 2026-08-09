@@ -601,12 +601,28 @@ function menuPage(shop, extras = {}) {
         <form method="POST" action="/app/owner/${id}/dishes/ai-save" id="aiSaveForm" style="margin-top:14px">
           <input type="hidden" name="name" id="aiSaveName">
           <input type="hidden" name="recipe" id="aiSaveRecipe">
-          <label>SELLING PRICE PER SERVING (USD)</label>
+          <label>SINHALA NAME <span class="si">සිංහල නම</span></label>
+          <input type="text" name="nameSi" placeholder="කුකුල් මස්" maxlength="80">
+          <label style="margin-top:8px">SELLING PRICE PER SERVING (USD)</label>
           <input type="number" name="price" step="0.01" min="0" required placeholder="e.g. 3.20" style="font-size:15px;font-weight:700">
-          <label style="margin-top:8px">DAILY PORTIONS</label>
-          <input type="number" name="portions" min="1" value="20" required>
-          <label style="margin-top:8px">SERVING WINDOW</label>
-          <input type="text" name="window" value="All day" maxlength="20">
+          <!-- Category is required for the dish to appear under any filter chip. -->
+          <label style="margin-top:8px">CATEGORY <span class="si">වර්ගය</span></label>
+          <select name="category" required>${CATEGORY_LIST.map((c) => `<option value="${esc(c)}"${c === "Vegi meals" ? " selected" : ""}>${esc(c)}</option>`).join("")}</select>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+            <div><label style="margin:0">SERVING WINDOW</label>
+              <select name="window" style="margin:0">
+                <option value="all day">All day</option>
+                <option value="breakfast">Breakfast</option>
+                <option value="lunch" selected>Lunch</option>
+                <option value="dinner">Dinner</option>
+              </select></div>
+            <div><label style="margin:0">DAILY PORTIONS</label>
+              <input type="number" name="portions" min="1" value="20" required style="margin:0"></div>
+          </div>
+          <label class="row" style="gap:8px;margin-top:12px;cursor:pointer">
+            <input type="checkbox" name="special" value="1" style="width:17px;height:17px;accent-color:${ORANGE}">
+            <span style="font-size:12.5px">Show as <strong>Today special</strong> on the buyer home</span>
+          </label>
           <button class="btn" style="margin-top:14px">Save dish with recipe</button>
         </form>
       </div>
