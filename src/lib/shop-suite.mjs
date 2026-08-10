@@ -13,6 +13,9 @@ import { ingredientSlug } from "./drive.mjs";
 
 const ORANGE = "#d9542b";
 
+/** How many set names a shop may add for itself, on top of SET_PRESETS. */
+const CUSTOM_SET_MAX = 3;
+
 /** The set names a shop may use — a CLOSED list, exactly like the dish
  *  catalogue. Nothing here is user-writable: a free-text box would spawn
  *  "Main dish" / "Main dishes" / "main  dishes" as three different sets, and
@@ -48,6 +51,9 @@ export const SUITE_TILES = [
   { key: "dashboard", label: "Dashboard", emoji: "📊" },
   { key: "health", label: "Business health", emoji: "❤️" },
 ];
+
+/** Just the names, for the server-side dedupe on custom set types. */
+export const SET_PRESET_NAMES = SET_PRESETS.map((s) => s.name);
 
 /* ------------------------------------------------------------- the hub */
 
@@ -552,10 +558,13 @@ function menuPage(shop, extras = {}) {
     (acc[d.category || "Other"] = acc[d.category || "Other"] || []).push(d);
     return acc;
   }, {});
-  // Fixed list — see SET_PRESETS. Deliberately not merged with whatever
-  // labels earlier plans happen to carry: those were free text once, and
+  // The fixed list, plus up to three names this shop made for itself. Old
+  // plan labels are still NOT merged in — those were free text once, and
   // re-offering them would put the typo back in circulation.
-  const setChoices = SET_PRESETS;
+  const customSets = (shop.customSetTypes || [])
+    .map((n) => String(n).trim()).filter(Boolean).slice(0, CUSTOM_SET_MAX);
+  const setChoices = [...SET_PRESETS, ...customSets.map((name) => ({ name, nameSi: "", custom: true }))];
+  const freeSlots = Math.max(0, CUSTOM_SET_MAX - customSets.length);
 
   return page(shop, "menu", "Plan Menu", "මෙනු සැකසුම", `
     ${msg ? `<div class="card" style="margin-top:10px;padding:10px 13px;background:#e8f6ec;border-color:#bfe5c8;font-size:12.5px;color:#1d7a34">${esc(msg)}</div>` : ""}
@@ -748,6 +757,7 @@ function menuPage(shop, extras = {}) {
       dishes: (g.choices || []).map((c) => ({ id: c.dishId, name: c.name, nameSi: c.nameSi || "", price: Number(c.price) || 0 })),
     })))};
     var SHOP_ID = '${id}';
+    var FREE_SLOTS = ${freeSlots};
     var PLAN_MEAL = '${esc(planMeal)}';
 
     function money(lkr){
@@ -1040,7 +1050,7 @@ function menuPage(shop, extras = {}) {
         if (!q && d.cat !== cat) { cat = d.cat; head = '<div class="sub" style="font-size:10px;letter-spacing:.04em;padding:12px 0 3px;font-weight:700">' + esc(cat || 'Other') + '</div>'; }
         var on = inSet.indexOf(d.name) >= 0;
         // Checkbox on the right; tick as many as you like, the panel stays open.
-        return head + '<label style="display:flex;gap:8px;align-items:center;width:100%;border-bottom:1px solid #f2ece6;padding:9px 2px;cursor:pointer">'
+        return head + '<label style="display:flex;gap:8px;align-items:center;width:100%;border-bottom:1px solid #f2ece6;padding:6px 2px;cursor:pointer">'
           + '<span style="flex:1;min-width:0">'
           +   '<span style="display:block;font-size:13px;font-weight:600;line-height:1.25">' + esc(d.name) + '</span>'
           +   (d.nameSi ? '<span class="si" style="display:block;font-size:11px;line-height:1.3">' + esc(d.nameSi) + '</span>' : '')
@@ -1080,21 +1090,75 @@ function menuPage(shop, extras = {}) {
       }
       host.innerHTML = list.map(function(s){
         var on = have.indexOf(s.name.toLowerCase()) >= 0;
-        return '<label style="display:flex;gap:8px;align-items:center;width:100%;border-bottom:1px solid #f2ece6;padding:9px 2px;cursor:pointer">'
+        return '<label style="display:flex;gap:8px;align-items:center;width:100%;border-bottom:1px solid #f2ece6;padding:5px 2px;cursor:pointer">'
           + '<span style="flex:1;min-width:0">'
-          +   '<span style="display:block;font-size:13px;font-weight:600;line-height:1.25">' + esc(s.name) + '</span>'
-          +   (s.nameSi ? '<span class="si" style="display:block;font-size:11px;line-height:1.3">' + esc(s.nameSi) + '</span>' : '')
+          +   '<span style="display:block;font-size:13px;font-weight:600;line-height:1.2">' + esc(s.name) + '</span>'
+          +   (s.nameSi ? '<span class="si" style="display:block;font-size:10.5px;line-height:1.2">' + esc(s.nameSi) + '</span>' : '')
           + '</span>'
           + '<input type="checkbox" class="setBox" data-name="' + esc(s.name) + '"' + (on ? ' checked' : '')
           +   ' style="flex:0 0 auto;width:20px;height:20px;accent-color:#d9542b">'
           + '</label>';
-      }).join('');
+      }).join('') + slotsHtml();
       host.querySelectorAll('.setBox').forEach(function(b){
         b.addEventListener('change', function(){
           if (b.checked) setTick(b.dataset.name);
           else setUntick(b.dataset.name, b);
         });
       });
+      wireSlots(host);
+    }
+
+    /* Empty slots so a shop can name a package the fixed list doesn't cover.
+       Capped, so this stays a considered addition rather than free text. */
+    function slotsHtml(){
+      if (feedQuery.trim() || FREE_SLOTS <= 0) return '';
+      var rows = '';
+      for (var i = 0; i < FREE_SLOTS; i++) {
+        rows += '<div style="display:flex;gap:8px;align-items:center;width:100%;border-bottom:1px solid #f2ece6;padding:5px 2px">'
+          + '<input type="text" class="slotBox" maxlength="40" placeholder="new package name…" data-i="' + i + '"'
+          +   ' style="flex:1;min-width:0;margin:0;font-size:12.5px;padding:5px 8px">'
+          + '<button type="button" class="slotOk" data-i="' + i + '"'
+          +   ' style="flex:0 0 auto;width:26px;height:26px;border:0;border-radius:99px;background:#191512;color:#fff;font-size:13px;cursor:pointer;padding:0">✓</button>'
+          + '</div>';
+      }
+      return '<div class="sub" style="font-size:9.5px;letter-spacing:.04em;padding:10px 0 2px;font-weight:700">YOUR OWN · ' + FREE_SLOTS + ' left</div>' + rows;
+    }
+
+    function wireSlots(host){
+      host.querySelectorAll('.slotOk').forEach(function(b){
+        b.addEventListener('click', function(){
+          var box = host.querySelectorAll('.slotBox')[Number(b.dataset.i)];
+          addCustomSet(box ? box.value : '');
+        });
+      });
+    }
+
+    /* Saved on the shop, so the name is there next time instead of being
+       retyped — and rejected if it only differs from an existing one by
+       case or spacing. */
+    function addCustomSet(raw){
+      var msg = document.getElementById('addSetMsg');
+      // NB: this whole script is inside a template literal, so the backslash
+      // has to be doubled or it renders as /s+/g and eats every "s".
+      var name = String(raw || '').trim().replace(/\\s+/g, ' ');
+      if (!name) return;
+      if (SET_CHOICES.some(function(s){ return s.name.toLowerCase() === name.toLowerCase(); })) {
+        msg.textContent = '"' + name + '" already exists.';
+        renderSetPanel();
+        return;
+      }
+      fetch('/app/owner/' + SHOP_ID + '/menu/set-type', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({name: name}),
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if (!j.ok) { msg.textContent = j.error || 'Failed'; return; }
+        SET_CHOICES.push({name: name, nameSi: '', custom: true});
+        FREE_SLOTS = Math.max(0, FREE_SLOTS - 1);
+        setTick(name);
+      })
+      .catch(function(e){ msg.textContent = e.message; });
     }
 
     /* Only names already in SET_CHOICES reach this — the panel offers nothing

@@ -3225,6 +3225,32 @@ export async function handleApp(req, res, url) {
     return;
   }
 
+  // A set name the shop made for itself. Capped at three and deduped against
+  // both the fixed list and the shop's own, so the picker can't drift into the
+  // free-text mess it replaced.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/menu\/set-type$/);
+  if (m && req.method === "POST") {
+    let body = {};
+    try { body = JSON.parse((await readBody(req, 500)) || "{}"); } catch { /* bad json */ }
+    const name = String(body.name || "").trim().replace(/\s+/g, " ").slice(0, 40);
+    const fail = (error) => res.writeHead(400, { "Content-Type": "application/json" })
+      .end(JSON.stringify({ ok: false, error }));
+    if (!name) { fail("name required"); return; }
+    const shopOid = await oid(m[1]);
+    if (!shopOid) { fail("bad shop"); return; }
+    const owners = await col("shop_owners");
+    const shop = await owners.findOne({ _id: shopOid }, { projection: { customSetTypes: 1 } });
+    const existing = (shop?.customSetTypes || []).map(String);
+    const { SET_PRESET_NAMES } = await import("./shop-suite.mjs");
+    const taken = new Set([...SET_PRESET_NAMES, ...existing].map((s) => s.toLowerCase()));
+    if (taken.has(name.toLowerCase())) { fail("that name already exists"); return; }
+    if (existing.length >= 3) { fail("only three of your own"); return; }
+    await owners.updateOne({ _id: shopOid }, { $push: { customSetTypes: name } });
+    res.writeHead(200, { "Content-Type": "application/json" })
+      .end(JSON.stringify({ ok: true, name, left: 3 - existing.length - 1 }));
+    return;
+  }
+
   // Set a dish's price from the plan builder, so a dish pulled in from the
   // shared list can be priced without leaving the page.
   m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/menu\/dish-price$/);
