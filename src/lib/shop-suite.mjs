@@ -726,9 +726,9 @@ function menuPage(shop, extras = {}) {
           </div>
 
           <div id="paneDish" style="display:none">
-            <label style="margin-top:8px;font-size:9.5px">ADD TO SET</label>
-            <select id="dishSet" style="margin:0;font-size:11.5px;padding:6px"></select>
-            <div class="sub" style="font-size:10px;margin-top:8px;line-height:1.35">Tick dishes on the right, or pull a new one in below.</div>
+            <!-- The target is set by tapping a set's name; this only stores it. -->
+            <select id="dishSet" style="display:none"></select>
+            <div id="dishTarget" class="sub" style="font-size:10px;margin-top:8px;line-height:1.3"></div>
             <div style="border-top:1px solid #ece3da;margin-top:8px;padding-top:8px">
               <label style="margin:0;font-size:9.5px">PICK COMBO</label>
               <!-- Native select popup is hard-capped at 248pt by iOS, so this
@@ -899,6 +899,12 @@ function menuPage(shop, extras = {}) {
       });
 
       var cur = plan[Number(document.getElementById('dishSet').value || 0)] || plan[0];
+      var dishTgt = document.getElementById('dishTarget');
+      if (dishTgt) {
+        dishTgt.innerHTML = cur
+          ? 'ticking adds to <strong style="color:#d9542b">' + esc(cur.name) + '</strong>'
+          : 'pick a set type first';
+      }
       var setBtn = document.getElementById('setItemBtn');
       if (setBtn) {
         setBtn.textContent = cur ? cur.name : 'Pick set types…';
@@ -989,7 +995,8 @@ function menuPage(shop, extras = {}) {
       });
       // Search + Done only — the sets below already show what's been added.
       var head = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
-        + '<input type="text" id="dishSearchBox" placeholder="Search ' + catalogueRows().length + ' dishes…" value="' + esc(dishSearch) + '" style="margin:0;flex:1;min-width:0;font-size:12px;padding:7px 10px">'
+        + '<input type="text" id="dishSearchBox" placeholder="Search ' + list.length
+        +   (setCat === 'All' ? '' : ' ' + setCat) + ' dishes…" value="' + esc(dishSearch) + '" style="margin:0;flex:1;min-width:0;font-size:12px;padding:7px 10px">'
         + '<button type="button" id="pickDone" style="flex:0 0 auto;border:0;background:#191512;color:#fff;border-radius:99px;padding:7px 14px;font-size:11.5px;font-weight:700;cursor:pointer">Done</button>'
         + '</div>';
       var body = list.length
