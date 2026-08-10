@@ -720,13 +720,13 @@ function menuPage(shop, extras = {}) {
             <select id="dishSet" style="margin:0;font-size:11.5px;padding:6px"></select>
             <div class="sub" style="font-size:10px;margin-top:8px;line-height:1.35">Tick dishes on the right, or pull a new one in below.</div>
             <div style="border-top:1px solid #ece3da;margin-top:8px;padding-top:8px">
-              <label style="margin:0;font-size:9.5px">NEW FROM LIST <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
+              <label style="margin:0;font-size:9.5px">PICK COMBO</label>
               <!-- Native select popup is hard-capped at 248pt by iOS, so this
                    is our own panel: 267pt (800 physical px at 3x), searchable,
                    grouped like the native one. Ticking inside it adds the dish
                    straight away at price 0 — pricing happens on the set row,
                    which is the only place that writes back to app_dishes. -->
-              <button type="button" id="dishItemBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Choose a dish…</button>
+              <button type="button" id="dishItemBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Pick combo…</button>
             </div>
           </div>
 
@@ -805,21 +805,26 @@ function menuPage(shop, extras = {}) {
           // so both modes read identically. Price stays editable here.
           var rows = s.dishes.length ? s.dishes.map(function(d, di){
             var unpriced = !d.price;
-            return '<div style="display:flex;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid #f2ece6">'
-              + '<span style="flex:1;min-width:0">'
-              +   '<span style="display:block;font-size:12px;line-height:1.2;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(d.name) + '</span>'
-              +   (d.nameSi ? '<span class="si" style="display:block;font-size:10px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(d.nameSi) + '</span>' : '')
-              +   '<span class="sub" style="display:block;font-size:10px;font-weight:700;color:' + (unpriced ? '#b3261e' : '#d9542b') + '">'
-              +     (unpriced ? 'no price yet' : money(d.price)) + '</span>'
-              + '</span>'
-              + '<span style="flex:0 0 auto;display:flex;align-items:center;gap:3px">'
-              +   '<span class="sub" style="font-size:10px">$</span>'
+            // Name across the full width, price and remove on the line under
+            // it — side by side these squeezed the name down to one letter.
+            return '<div style="padding:6px 0;border-bottom:1px solid #f2ece6;min-width:0">'
+              + '<div style="display:flex;align-items:flex-start;gap:6px;min-width:0">'
+              +   '<span style="flex:1;min-width:0">'
+              +     '<span style="display:block;font-size:12px;line-height:1.25;font-weight:600">' + esc(d.name) + '</span>'
+              +     (d.nameSi ? '<span class="si" style="display:block;font-size:10px;line-height:1.2">' + esc(d.nameSi) + '</span>' : '')
+              +   '</span>'
+              +   '<button type="button" class="delDishBtn" data-si="' + si + '" data-di="' + di + '"'
+              +     ' style="flex:0 0 auto;width:24px;height:24px;border:0;background:none;color:#b3261e;font-size:14px;padding:0;cursor:pointer">✕</button>'
+              + '</div>'
+              + '<div style="display:flex;align-items:center;gap:5px;margin-top:3px;min-width:0">'
+              +   '<span class="sub" style="font-size:10px;flex:0 0 auto">$</span>'
               +   '<input type="number" step="0.01" min="0" value="' + (d.price ? (d.price / 300).toFixed(2) : '') + '"'
               +     ' placeholder="0.00" data-si="' + si + '" data-di="' + di + '" class="dishPriceBox"'
-              +     ' style="margin:0;width:54px;padding:3px 4px;text-align:center;font-weight:700;font-size:11px;'
+              +     ' style="margin:0;width:60px;flex:0 0 auto;padding:3px 4px;text-align:center;font-weight:700;font-size:11px;'
               +     (unpriced ? 'border-color:#b3261e;' : '') + '">'
-              +   '<button type="button" class="delDishBtn" data-si="' + si + '" data-di="' + di + '" style="border:0;background:none;color:#b3261e;font-size:14px;padding:0 2px;cursor:pointer">✕</button>'
-              + '</span>'
+              +   '<span class="sub" style="flex:1;min-width:0;font-size:10px;font-weight:700;color:' + (unpriced ? '#b3261e' : '#d9542b') + '">'
+              +     (unpriced ? 'no price yet' : money(d.price)) + '</span>'
+              + '</div>'
               + '</div>';
           }).join('') : '<div class="sub" style="font-size:10.5px;padding:8px 0;color:#c9bfb7">no dishes yet</div>';
           var live = si === Number(document.getElementById('dishSet').value || 0);
