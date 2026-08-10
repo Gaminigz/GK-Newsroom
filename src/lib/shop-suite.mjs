@@ -1000,11 +1000,12 @@ function menuPage(shop, extras = {}) {
       .then(function(r){ return r.json(); })
       .then(function(j){
         if (!j.ok) { msg.textContent = j.error || 'Failed'; return; }
-        SHOP_DISHES.push({id: j.id, name: name, nameSi: j.nameSi || '', price: 0, cat: '', meals: ['Breakfast','Lunch','Dinner'], own: true});
+        var fedPrice = Number(j.price) || 0;
+        SHOP_DISHES.push({id: j.id, name: name, nameSi: j.nameSi || '', price: fedPrice, cat: '', meals: ['Breakfast','Lunch','Dinner'], own: true});
         if (!plan[si].dishes.some(function(x){ return x.id === j.id; })) {
-          plan[si].dishes.push({id: j.id, name: name, nameSi: j.nameSi || '', price: 0});
+          plan[si].dishes.push({id: j.id, name: name, nameSi: j.nameSi || '', price: fedPrice});
         }
-        msg.textContent = name + ' added — set its price on the right.';
+        msg.textContent = name + (fedPrice ? ' added at ' + money(fedPrice) + '.' : ' added — set its price on the right.');
         renderPlanOnly();
         renderCatalogue();
       })
@@ -1166,11 +1167,12 @@ function menuPage(shop, extras = {}) {
       .then(function(r){ return r.json(); })
       .then(function(j){
         if (!j.ok) { msg.textContent = j.error || 'Failed'; if (box) box.checked = false; return; }
-        SHOP_DISHES.push({id: j.id, name: name, nameSi: j.nameSi || '', price: 0, cat: '', meals: ['Breakfast','Lunch','Dinner'], own: true});
+        var fedPrice = Number(j.price) || 0;
+        SHOP_DISHES.push({id: j.id, name: name, nameSi: j.nameSi || '', price: fedPrice, cat: '', meals: ['Breakfast','Lunch','Dinner'], own: true});
         if (!plan[si].dishes.some(function(d){ return d.id === j.id; })) {
-          plan[si].dishes.push({id: j.id, name: name, nameSi: j.nameSi || '', price: 0});
+          plan[si].dishes.push({id: j.id, name: name, nameSi: j.nameSi || '', price: fedPrice});
         }
-        msg.textContent = name + ' added — set its price on the right.';
+        msg.textContent = name + (fedPrice ? ' added at ' + money(fedPrice) + '.' : ' added — set its price on the right.');
         renderPlan(); renderFeedPanel();
       })
       .catch(function(e){ msg.textContent = e.message; if (box) box.checked = false; });

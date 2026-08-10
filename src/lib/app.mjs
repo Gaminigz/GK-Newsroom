@@ -3008,9 +3008,25 @@ export async function handleApp(req, res, url) {
       extras.presetDishes = await loadPresetDishes(await col("lanka_dishes"));
       // Newsroom catalogue with categories — feeds the "Add set" dropdown so
       // the owner picks from the shared dish library, not free text.
-      extras.feedDishes = await (await col("lanka_dishes"))
-        .find({}, { projection: { name: 1, nameSi: 1, category: 1 } })
-        .sort({ category: 1, name: 1 }).toArray();
+      // The newsroom keeps three catalogues. Dishes AND bakery are both
+      // sellable, so both belong in the picker; spices are ingredients and
+      // stay out of the menu (they live in Kitchen Stock).
+      const [feedDishes, feedBakery] = await Promise.all([
+        (await col("lanka_dishes"))
+          .find({}, { projection: { name: 1, nameSi: 1, category: 1 } }).toArray(),
+        (await col("lanka_bakery"))
+          .find({}, { projection: { name: 1, nameSi: 1, category: 1 } }).toArray(),
+      ]);
+      const seenFeed = new Set();
+      extras.feedDishes = [...feedDishes, ...feedBakery]
+        .filter((d) => {
+          const k = String(d.name || "").toLowerCase();
+          if (!k || seenFeed.has(k)) return false;
+          seenFeed.add(k);
+          return true;
+        })
+        .sort((a, b) => String(a.category || "").localeCompare(String(b.category || ""))
+          || String(a.name || "").localeCompare(String(b.name || "")));
       // The day plan being edited — one per (shop, date, meal). Defaults to
       // today + Lunch; ?date= and ?meal= switch which plan is loaded.
       const today = new Date().toISOString().slice(0, 10);
@@ -3166,14 +3182,23 @@ export async function handleApp(req, res, url) {
       res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: false, error: "name required" }));
       return;
     }
-    const feed = await (await col("lanka_dishes")).findOne({ name });
+    // Bakery is part of the menu catalogue too, so look there as well —
+    // otherwise a bun or a sweet arrives with no Sinhala name and no category.
+    const feed = await (await col("lanka_dishes")).findOne({ name })
+      || await (await col("lanka_bakery")).findOne({ name });
     // Map the newsroom's category vocabulary onto the shop's POS categories.
     const FEED_CAT = {
       "Rice & Staples": "Vegi meals", "Vegetable Curries": "Vegi meals",
       "Meat & Seafood Curries": "Chicken", "Salads, Sambols & Relishes": "Starters",
       "Fried, Dry & Bite Dishes": "Bites", "Bread, Buns & Beer Snacks": "Bites",
       "Mixed, Fusion & Street Food": "Bites",
+      "Bakery & Canteen Classics": "Bites", "Sri Lankan Cakes & Sweets": "Desserts",
     };
+    // The catalogue carries a suggested price for dishes the newsroom has
+    // priced. Use it when the caller didn't send one, so a ticked dish lands
+    // priced instead of red "no price yet".
+    const suggested = Math.max(0, Math.round(Number(feed?.priceLkr) || 0));
+    const finalPrice = price > 0 ? price : suggested;
     const dishes = await col("app_dishes");
     const existing = await dishes.findOne({ shopId: m[1], name });
     if (existing) {
@@ -3184,7 +3209,7 @@ export async function handleApp(req, res, url) {
     const ins = await dishes.insertOne({
       shopId: m[1], type: "single", name,
       nameSi: feed?.nameSi || "",
-      price, portions: 30,
+      price: finalPrice, portions: 30,
       category: FEED_CAT[feed?.category] || "Vegi meals",
       window: meal.toLowerCase(),
       discount: "none", special: false, promoTag: "Today special",
@@ -3193,7 +3218,10 @@ export async function handleApp(req, res, url) {
     const shopOid = await oid(m[1]);
     if (shopOid) await (await col("shop_owners")).updateOne({ _id: shopOid }, { $inc: { listings: 1 } });
     res.writeHead(200, { "Content-Type": "application/json" })
-      .end(JSON.stringify({ ok: true, existed: false, id: String(ins.insertedId), name }));
+      .end(JSON.stringify({
+        ok: true, existed: false, id: String(ins.insertedId), name,
+        nameSi: feed?.nameSi || "", price: finalPrice,
+      }));
     return;
   }
 

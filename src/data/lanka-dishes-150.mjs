@@ -10,6 +10,10 @@
  *
  * Six categories, ~25 dishes each = 150.
  *
+ * `priceLkr` (optional) is a suggested selling price in LKR. When a shop
+ * pulls the dish in from the picker it arrives at this price instead of 0,
+ * so the owner adjusts rather than types from scratch.
+ *
  * Note: some dish names appear in more than one category (e.g. "Fish Bun"
  * lives in both "Mixed, Fusion & Street Food" and "Bread, Buns &
  * Beer Snacks"). The seed script's Mongo upsert by lowercased name means
@@ -35,7 +39,7 @@ export const LANKA_DISHES_150 = {
       { name: "Radish Curry", si: "මුලී කරවල" },
       { name: "Cashew Nut Curry", si: "කජු කරවල" },
       { name: "Mango Curry", si: "අඹ කරවල" },
-      { name: "Pineapple Curry", si: "අනනස් කරවල" },
+      { name: "Pineapple Curry", si: "අනනස් කරවල", priceLkr: 450 },
       { name: "Ash Plantain Curry", si: "අළු කෙසෙල් කරවල" },
       { name: "Tomato Curry", si: "තක්කාලි කරවල" },
       { name: "Green Bean Curry", si: "බෝංචි කරවල" },
@@ -47,11 +51,11 @@ export const LANKA_DISHES_150 = {
       { name: "Lotus Root Curry", si: "නෙළුම් අල කරවල" },
       { name: "Breadfruit Curry", si: "දෙල් කරවල" },
       { name: "Ripe Jackfruit Curry", si: "වැල් කොස් කරවල" },
-      { name: "Dhal / Parippu", si: "පරිප්පු" },
-      { name: "Green Bean / Bonchi", si: "බෝංචි" },
-      { name: "Cashew Curry", si: "කජු මාළුව" },
-      { name: "Temperate Potato", si: "අර්තාපල් තෙලට" },
-      { name: "Soya Meat Curry", si: "සෝයා මීට්" },
+      { name: "Dhal / Parippu", si: "පරිප්පු", priceLkr: 450 },
+      { name: "Green Bean / Bonchi", si: "බෝංචි", priceLkr: 450 },
+      { name: "Cashew Curry", si: "කජු මාළුව", priceLkr: 1050 },
+      { name: "Temperate Potato", si: "අර්තාපල් තෙලට", priceLkr: 450 },
+      { name: "Soya Meat Curry", si: "සෝයා මීට්", priceLkr: 600 },
     ],
   },
   "Meat & Seafood Curries": {
@@ -82,10 +86,10 @@ export const LANKA_DISHES_150 = {
       { name: "Mutton Korma", si: "එළු මස් කෝර්මා" },
       { name: "Liver Fry Curry", si: "අක්මාව බැදපු කරවල" },
       { name: "Beef Lung Curry", si: "බීෆ් පෙනහළු කරවල" },
-      { name: "Chicken Curry", si: "කුකුල් මස්" },
-      { name: "Pork Curry", si: "උරු මස්" },
-      { name: "Beef Bistake", si: "හරක් මස් බිස්ටේක්" },
-      { name: "Temperate Shrimp", si: "ඉස්සෝ තෙලට" },
+      { name: "Chicken Curry", si: "කුකුල් මස්", priceLkr: 1500 },
+      { name: "Pork Curry", si: "උරු මස්", priceLkr: 1500 },
+      { name: "Beef Bistake", si: "හරක් මස් බිස්ටේක්", priceLkr: 1800 },
+      { name: "Temperate Shrimp", si: "ඉස්සෝ තෙලට", priceLkr: 1800 },
     ],
   },
   "Mixed, Fusion & Street Food": {
@@ -146,8 +150,8 @@ export const LANKA_DISHES_150 = {
       { name: "Onion Raita", si: "ලූනු රයිතා" },
       { name: "Gotukola and Coconut Salad", si: "ගොටුකොළ සහ පොල් සලාද" },
       { name: "Centella Salad", si: "ශාක සලාද" },
-      { name: "Coconut Sambal", si: "පොල් සම්බෝල්" },
-      { name: "Gotukola Salad", si: "ගොටුකොල සලාද" },
+      { name: "Coconut Sambal", si: "පොල් සම්බෝල්", priceLkr: 300 },
+      { name: "Gotukola Salad", si: "ගොටුකොල සලාද", priceLkr: 450 },
     ],
   },
   "Fried, Dry & Bite Dishes": {
@@ -178,8 +182,8 @@ export const LANKA_DISHES_150 = {
       { name: "Sausage Devilled", si: "සොසේජස් දෙවලඩ්" },
       { name: "Fried Vadai", si: "උළුඳු වඩේ" },
       { name: "Parippu Vadai", si: "පරිප්පු වඩේ" },
-      { name: "Chicken Cutlet", si: "කුකුල් මස් කට්ලට්" },
-      { name: "Sausage Dewal", si: "සොසේජ්ස් දෙවල්" },
+      { name: "Chicken Cutlet", si: "කුකුල් මස් කට්ලට්", priceLkr: 450 },
+      { name: "Sausage Dewal", si: "සොසේජ්ස් දෙවල්", priceLkr: 600 },
     ],
   },
   "Bread, Buns & Beer Snacks": {
@@ -218,8 +222,8 @@ export const LANKA_DISHES_150 = {
   "Rice & Staples": {
     si: "බත් හා ප්‍රධාන ආහාර",
     dishes: [
-      { name: "Basmathi Yellow Rice", si: "බාස්මතී කහ බත්" },
-      { name: "Ponni Sambaa White Rice", si: "පොන්නි සම්බා සුදු බත්" },
+      { name: "Basmathi Yellow Rice", si: "බාස්මතී කහ බත්", priceLkr: 600 },
+      { name: "Ponni Sambaa White Rice", si: "පොන්නි සම්බා සුදු බත්", priceLkr: 450 },
       { name: "Red Rice", si: "රතු බත්" },
       { name: "White Rice", si: "සුදු බත්" },
       { name: "Yellow Rice", si: "කහ බත්" },
