@@ -3021,21 +3021,6 @@ export async function handleApp(req, res, url) {
       extras.dayPlan = await (await col("day_plans")).findOne({
         shopId: m[1], date: extras.planDate, meal: extras.planMeal,
       });
-      // Set names this shop has used before — they head the "new from list"
-      // picker, so the list grows with the shop instead of staying fixed.
-      const priorPlans = await (await col("day_plans"))
-        .find({ shopId: m[1] }, { projection: { "groups.label": 1 } })
-        .sort({ date: -1 }).limit(60).toArray();
-      const seenLabels = new Set();
-      extras.setLabels = [];
-      for (const p of priorPlans) {
-        for (const g of p.groups || []) {
-          const label = String(g?.label || "").trim();
-          const k = label.toLowerCase();
-          if (label && !seenLabels.has(k)) { seenLabels.add(k); extras.setLabels.push(label); }
-        }
-      }
-      extras.setLabels = extras.setLabels.slice(0, 30);
     }
     // POS needs the shop's dishes (with price + photo) + today's sales totals.
     if (shop && m[2] === "kitchen") {

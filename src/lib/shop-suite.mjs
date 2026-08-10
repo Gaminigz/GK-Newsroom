@@ -13,32 +13,34 @@ import { ingredientSlug } from "./drive.mjs";
 
 const ORANGE = "#d9542b";
 
-/** Common plan-group names, so naming a set is a pick rather than a typing
- *  job — the Set-mode counterpart of the shared dish list. The shop's own
- *  past group labels are listed above these and take priority. */
+/** The set names a shop may use — a CLOSED list, exactly like the dish
+ *  catalogue. Nothing here is user-writable: a free-text box would spawn
+ *  "Main dish" / "Main dishes" / "main  dishes" as three different sets, and
+ *  every downstream reader (POS, kitchen stock, accounting) would treat them
+ *  as three. Add a name here, not in the UI. */
 const SET_PRESETS = [
-  // Package tiers first — a plan usually opens with one of these, then the
-  // groups the buyer picks inside it.
-  { name: "Normal package", nameSi: "සාමාන්‍ය පැකේජය" },
-  { name: "Special menu", nameSi: "විශේෂ මෙනුව" },
-  { name: "King Pack", nameSi: "කිං පැක්" },
-  { name: "Rice", nameSi: "බත්" },
-  { name: "Main dishes", nameSi: "ප්‍රධාන කෑම" },
-  { name: "Curry", nameSi: "ව්‍යංජන" },
-  { name: "Side dishes", nameSi: "අතුරු කෑම" },
-  { name: "Vegetables", nameSi: "එළවළු" },
-  { name: "Sambol", nameSi: "සම්බෝල" },
-  { name: "Salad", nameSi: "සලාද" },
-  { name: "Dhal", nameSi: "පරිප්පු" },
-  { name: "Fish", nameSi: "මාළු" },
-  { name: "Chicken", nameSi: "කුකුල් මස්" },
-  { name: "Egg", nameSi: "බිත්තර" },
-  { name: "Papadam", nameSi: "පපඩම්" },
-  { name: "Roti & bread", nameSi: "රොටී" },
-  { name: "Soup", nameSi: "සුප්" },
-  { name: "Bites", nameSi: "බයිට්" },
-  { name: "Dessert", nameSi: "අතුරුපස" },
-  { name: "Drink", nameSi: "බීම" },
+  // Packages — a plan opens with one of these, then the groups picked inside.
+  { name: "Normal package", nameSi: "සාමාන්‍ය පැකේජය", group: "Packages" },
+  { name: "Special menu", nameSi: "විශේෂ මෙනුව", group: "Packages" },
+  { name: "King Pack", nameSi: "කිං පැක්", group: "Packages" },
+  // Course groups — what the buyer picks inside a package.
+  { name: "Rice", nameSi: "බත්", group: "Course groups" },
+  { name: "Main dishes", nameSi: "ප්‍රධාන කෑම", group: "Course groups" },
+  { name: "Side dishes", nameSi: "අතුරු කෑම", group: "Course groups" },
+  { name: "Curry", nameSi: "ව්‍යංජන", group: "Course groups" },
+  { name: "Vegetables", nameSi: "එළවළු", group: "Course groups" },
+  { name: "Sambol", nameSi: "සම්බෝල", group: "Course groups" },
+  { name: "Salad", nameSi: "සලාද", group: "Course groups" },
+  { name: "Dhal", nameSi: "පරිප්පු", group: "Course groups" },
+  { name: "Fish", nameSi: "මාළු", group: "Course groups" },
+  { name: "Chicken", nameSi: "කුකුල් මස්", group: "Course groups" },
+  { name: "Egg", nameSi: "බිත්තර", group: "Course groups" },
+  { name: "Papadam", nameSi: "පපඩම්", group: "Course groups" },
+  { name: "Roti & bread", nameSi: "රොටී", group: "Course groups" },
+  { name: "Soup", nameSi: "සුප්", group: "Course groups" },
+  { name: "Bites", nameSi: "බයිට්", group: "Course groups" },
+  { name: "Dessert", nameSi: "අතුරුපස", group: "Course groups" },
+  { name: "Drink", nameSi: "බීම", group: "Course groups" },
 ];
 
 /** One tile per function. `href(id)` = real page; suite previews use key.
@@ -566,15 +568,10 @@ function menuPage(shop, extras = {}) {
     (acc[d.category || "Other"] = acc[d.category || "Other"] || []).push(d);
     return acc;
   }, {});
-  // Set names the shop has used on earlier plans come first — the list grows
-  // with use, exactly like the dish side — then the common presets.
-  const usedLabels = (extras.setLabels || []).map((s) => String(s).trim()).filter(Boolean);
-  const usedLower = new Set(usedLabels.map((s) => s.toLowerCase()));
-  const setChoices = [
-    ...usedLabels.map((name) => ({ name, nameSi: "", group: "Used before" })),
-    ...SET_PRESETS.filter((p) => !usedLower.has(p.name.toLowerCase()))
-      .map((p) => ({ ...p, group: "Common sets" })),
-  ];
+  // Fixed list — see SET_PRESETS. Deliberately not merged with whatever
+  // labels earlier plans happen to carry: those were free text once, and
+  // re-offering them would put the typo back in circulation.
+  const setChoices = SET_PRESETS;
 
   return page(shop, "menu", "Plan Menu", "මෙනු සැකසුම", `
     ${msg ? `<div class="card" style="margin-top:10px;padding:10px 13px;background:#e8f6ec;border-color:#bfe5c8;font-size:12.5px;color:#1d7a34">${esc(msg)}</div>` : ""}
@@ -684,16 +681,12 @@ function menuPage(shop, extras = {}) {
             <button type="button" id="modeDish" onclick="setAddMode('dish')" style="flex:1 1 0;border:1px solid #e0d6cc;background:#fff;color:#4a443f;border-radius:99px;padding:5px 4px;font-size:10.5px;font-weight:700;cursor:pointer">Dish</button>
           </div>
 
+          <!-- Pick-from-a-list only, same as Dish mode. There is deliberately
+               no name box: set names are a closed list. -->
           <div id="paneSet">
-            <label style="margin-top:8px;font-size:9.5px">NAME</label>
-            <input type="text" id="newSetName" placeholder="Rice" maxlength="40" style="margin:0;font-size:11.5px;padding:6px">
-            <button type="button" onclick="addSet()" class="btn" style="margin-top:8px;padding:8px 4px;font-size:12px;width:100%">+</button>
-            <!-- Same pick-from-a-list affordance as Dish mode: tick a name and
-                 the set appears on the right, empty and ready for dishes. -->
-            <div style="border-top:1px solid #ece3da;margin-top:8px;padding-top:8px">
-              <label style="margin:0;font-size:9.5px">NEW FROM LIST <span class="sub" style="font-weight:400">· ${setChoices.length}</span></label>
-              <button type="button" id="setItemBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Choose a set…</button>
-            </div>
+            <label style="margin-top:8px;font-size:9.5px">FROM LIST <span class="sub" style="font-weight:400">· ${setChoices.length}</span></label>
+            <button type="button" id="setItemBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Choose a set…</button>
+            <div class="sub" style="font-size:10px;margin-top:8px;line-height:1.35">Tick a set to add it, untick to remove. Then switch to Dish to fill it.</div>
           </div>
 
           <div id="paneDish" style="display:none">
@@ -1022,17 +1015,6 @@ function menuPage(shop, extras = {}) {
       .catch(function(e){ msg.textContent = e.message; });
     }
 
-    function addSet(){
-      var el = document.getElementById('newSetName');
-      var name = el.value.trim();
-      var msg = document.getElementById('addSetMsg');
-      if (!name) { msg.textContent = 'Type a name.'; return; }
-      plan.push({name: name, pick: 1, price: null, dishes: []});
-      noteSetChoice(name);
-      el.value = '';
-      msg.textContent = 'Added "' + name + '".';
-      renderPlan();
-    }
     function delSet(i){ plan.splice(i, 1); renderPlan(); }
     function delDish(si, di){ plan[si].dishes.splice(di, 1); renderPlan(); }
 
@@ -1093,16 +1075,12 @@ function menuPage(shop, extras = {}) {
       document.getElementById('feedCount').textContent =
         plan.length + (plan.length === 1 ? ' set in plan' : ' sets in plan');
       var host = document.getElementById('feedPanelList');
-      // No match is a dead end otherwise — offer the typed words as a new set
-      // rather than making the owner close the panel and retype them.
+      // No "add what you typed" escape hatch — the list is closed on purpose.
       if (!list.length) {
-        var typed = feedQuery.trim();
-        host.innerHTML = '<div style="padding:18px 0;text-align:center">'
+        host.innerHTML = '<div style="padding:18px 4px;text-align:center">'
           + '<div class="sub" style="font-size:12px">nothing matches</div>'
-          + (typed ? '<button type="button" id="setCreateBtn" class="btn" style="margin-top:12px;padding:9px 12px;font-size:12.5px;width:100%">+ Add "' + esc(typed) + '" as a set</button>' : '')
+          + '<div class="sub" style="font-size:10.5px;margin-top:6px;line-height:1.35">Sets come from a fixed list so every shop names them the same way. Ask for a new one to be added.</div>'
           + '</div>';
-        var mk = document.getElementById('setCreateBtn');
-        if (mk) mk.addEventListener('click', function(){ setTick(typed); });
         return;
       }
       var grp = '';
@@ -1127,18 +1105,12 @@ function menuPage(shop, extras = {}) {
       });
     }
 
-    /* A set named here — typed or picked — joins the picker list straight
-       away, so it shows ticked instead of vanishing from it. */
-    function noteSetChoice(name){
-      if (SET_CHOICES.some(function(s){ return s.name.toLowerCase() === name.toLowerCase(); })) return;
-      SET_CHOICES.unshift({name: name, nameSi: '', group: 'Used before'});
-    }
-
+    /* Only names already in SET_CHOICES reach this — the panel offers nothing
+       else, so a plan can never carry an invented set name. */
     function setTick(name){
       var msg = document.getElementById('addSetMsg');
       if (plan.some(function(s){ return s.name.toLowerCase() === name.toLowerCase(); })) return;
       plan.push({name: name, pick: 1, price: null, dishes: []});
-      noteSetChoice(name);
       msg.textContent = '"' + name + '" added — switch to Dish to fill it.';
       renderPlan(); renderSetPanel();
     }
