@@ -1054,6 +1054,9 @@ function menuPage(shop, extras = {}) {
        panel serves both modes: 'dish' lists the shared dish library, 'set'
        lists set names. panelMode says which. */
     var feedQuery = '';
+    /* One line of feedback rendered inside the panel — the status line in the
+       left pane is behind it and can't be seen while it's open. */
+    var slotNote = '';
     var panelMode = 'dish';
     var SET_CHOICES = JSON.parse(document.getElementById('setChoiceData').textContent);
 
@@ -1126,6 +1129,18 @@ function menuPage(shop, extras = {}) {
       }
       host.innerHTML = list.map(function(s){
         var on = have.indexOf(s.name.toLowerCase()) >= 0;
+        // Being renamed — a row of controls, not a tick row. prompt() is a
+        // no-op inside the app's WebView, so the editor has to live here.
+        if (s.custom && s.name === editingSet) {
+          return '<div style="display:flex;gap:6px;align-items:center;width:100%;border-bottom:1px solid #f2ece6;padding:6px 2px">'
+            + '<input type="text" id="setEditBox" maxlength="40" value="' + esc(s.name) + '"'
+            +   ' style="flex:1;min-width:0;margin:0;font-size:13px;padding:7px 9px">'
+            + '<button type="button" id="setEditSave" style="flex:0 0 auto;width:34px;height:34px;border:0;'
+            +   'border-radius:99px;background:#191512;color:#fff;font-size:15px;padding:0;cursor:pointer">✓</button>'
+            + '<button type="button" id="setEditDel" style="flex:0 0 auto;width:34px;height:34px;border:1px solid #efc4bf;'
+            +   'border-radius:99px;background:#fdecea;color:#b3261e;font-size:14px;padding:0;cursor:pointer">🗑</button>'
+            + '</div>';
+        }
         return '<label style="display:flex;gap:8px;align-items:center;width:100%;border-bottom:1px solid #f2ece6;padding:5px 2px;cursor:pointer">'
           + '<span style="flex:1;min-width:0">'
           +   '<span style="display:block;font-size:13px;font-weight:600;line-height:1.2">' + esc(s.name) + '</span>'
@@ -1149,9 +1164,16 @@ function menuPage(shop, extras = {}) {
       host.querySelectorAll('.setEdit').forEach(function(b){
         b.addEventListener('click', function(ev){
           ev.preventDefault(); ev.stopPropagation();
-          editCustomSet(b.dataset.name);
+          editingSet = b.dataset.name;
+          renderSetPanel();
         });
       });
+      var eb = document.getElementById('setEditSave');
+      if (eb) eb.addEventListener('click', function(){
+        saveCustomSet(editingSet, document.getElementById('setEditBox').value);
+      });
+      var db = document.getElementById('setEditDel');
+      if (db) db.addEventListener('click', function(){ saveCustomSet(editingSet, ''); });
       wireSlots(host);
     }
 
@@ -1168,7 +1190,9 @@ function menuPage(shop, extras = {}) {
           +   ' style="flex:0 0 auto;width:26px;height:26px;border:0;border-radius:99px;background:#191512;color:#fff;font-size:13px;cursor:pointer;padding:0">✓</button>'
           + '</div>';
       }
-      return '<div class="sub" style="font-size:9.5px;letter-spacing:.04em;padding:10px 0 2px;font-weight:700">YOUR OWN · ' + FREE_SLOTS + ' left</div>' + rows;
+      return '<div class="sub" style="font-size:9.5px;letter-spacing:.04em;padding:10px 0 2px;font-weight:700">YOUR OWN · ' + FREE_SLOTS + ' left</div>'
+        + (slotNote ? '<div id="slotNote" style="font-size:11px;padding:4px 2px;color:#b3261e;line-height:1.3">' + esc(slotNote) + '</div>' : '')
+        + rows;
     }
 
     function wireSlots(host){
@@ -1190,7 +1214,8 @@ function menuPage(shop, extras = {}) {
       var name = String(raw || '').trim().replace(/\\s+/g, ' ');
       if (!name) return;
       if (SET_CHOICES.some(function(s){ return s.name.toLowerCase() === name.toLowerCase(); })) {
-        msg.textContent = '"' + name + '" already exists.';
+        slotNote = '"' + name + '" is already in the list above.';
+        msg.textContent = slotNote;
         renderSetPanel();
         return;
       }
@@ -1200,7 +1225,8 @@ function menuPage(shop, extras = {}) {
       })
       .then(function(r){ return r.json(); })
       .then(function(j){
-        if (!j.ok) { msg.textContent = j.error || 'Failed'; return; }
+        if (!j.ok) { slotNote = j.error || 'Failed'; msg.textContent = slotNote; renderSetPanel(); return; }
+        slotNote = '';
         SET_CHOICES.push({name: name, nameSi: '', custom: true});
         FREE_SLOTS = Math.max(0, FREE_SLOTS - 1);
         setTick(name);
@@ -1208,21 +1234,21 @@ function menuPage(shop, extras = {}) {
       .catch(function(e){ msg.textContent = e.message; });
     }
 
-    /* Rename one of the shop's own names, or clear it to delete. The rename
-       follows through to the plan on screen and to saved plans server-side. */
-    function editCustomSet(from){
+    /* Rename one of the shop's own names, or pass an empty name to delete.
+       Follows through to the plan on screen and to saved plans server-side. */
+    var editingSet = '';
+    function saveCustomSet(from, raw){
       var msg = document.getElementById('addSetMsg');
-      var to = prompt('Rename "' + from + '" — or clear the box to delete it', from);
-      if (to === null) return;
-      to = String(to).trim().replace(/\\s+/g, ' ');
-      if (to === from) return;
+      var to = String(raw || '').trim().replace(/\\s+/g, ' ');
+      if (to === from) { editingSet = ''; renderSetPanel(); return; }
       fetch('/app/owner/' + SHOP_ID + '/menu/set-type/edit', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({from: from, to: to}),
       })
       .then(function(r){ return r.json(); })
       .then(function(j){
-        if (!j.ok) { msg.textContent = j.error || 'Failed'; renderSetPanel(); return; }
+        if (!j.ok) { slotNote = j.error || 'Failed'; msg.textContent = slotNote; renderSetPanel(); return; }
+        slotNote = '';
         if (j.deleted) {
           SET_CHOICES = SET_CHOICES.filter(function(x){ return x.name !== from; });
           plan = plan.filter(function(p){ return p.name !== from; });
@@ -1233,6 +1259,7 @@ function menuPage(shop, extras = {}) {
           plan.forEach(function(p){ if (p.name === from) p.name = j.to; });
           msg.textContent = from + ' → ' + j.to;
         }
+        editingSet = '';
         renderPlan(); renderSetPanel();
       })
       .catch(function(e){ msg.textContent = e.message; });
@@ -1255,12 +1282,10 @@ function menuPage(shop, extras = {}) {
     function setUntick(name, box){
       var i = plan.map(function(s){ return s.name.toLowerCase(); }).indexOf(name.toLowerCase());
       if (i < 0) return;
-      if (plan[i].dishes.length && !confirm('Remove "' + plan[i].name + '" and its ' + plan[i].dishes.length + ' dish(es)?')) {
-        if (box) box.checked = true;
-        return;
-      }
+      var had = plan[i].dishes.length;
       plan.splice(i, 1);
-      document.getElementById('addSetMsg').textContent = name + ' removed.';
+      slotNote = name + ' removed' + (had ? ' with its ' + had + ' dish(es)' : '') + ' — tick it again to bring it back.';
+      document.getElementById('addSetMsg').textContent = slotNote;
       renderPlan(); renderSetPanel();
     }
 
