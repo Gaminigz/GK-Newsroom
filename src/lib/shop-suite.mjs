@@ -857,13 +857,15 @@ function menuPage(shop, extras = {}) {
         b.addEventListener('click', function(){ delDish(Number(b.dataset.si), Number(b.dataset.di)); });
       });
 
-      var tgt = document.getElementById('comboTarget');
-      if (tgt) {
-        var cur = plan[Number(document.getElementById('dishSet').value || 0)];
-        tgt.innerHTML = plan.length
-          ? 'goes to <strong style="color:#d9542b">' + esc(cur ? cur.name : plan[0].name) + '</strong>'
-          : 'pick a set type first';
+      var cur = plan[Number(document.getElementById('dishSet').value || 0)] || plan[0];
+      var setBtn = document.getElementById('setItemBtn');
+      if (setBtn) {
+        setBtn.textContent = cur ? cur.name : 'Pick set types…';
+        setBtn.style.color = cur ? '#d9542b' : '#8a827b';
+        setBtn.style.fontWeight = cur ? '700' : '400';
       }
+      var tgt = document.getElementById('comboTarget');
+      if (tgt) tgt.textContent = plan.length ? '' : 'pick a set type first';
       var sel = document.getElementById('dishSet');
       var keep = sel.value;
       sel.innerHTML = plan.map(function(s, si){ return '<option value="' + si + '">' + esc(s.name) + '</option>'; }).join('');
