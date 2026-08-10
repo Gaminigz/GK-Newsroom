@@ -16,6 +16,16 @@ const ORANGE = "#d9542b";
 /** How many set names a shop may add for itself, on top of SET_PRESETS. */
 const CUSTOM_SET_MAX = 3;
 
+/** Newsroom category → the POS category chip a dish lands under. Mirrors the
+ *  map in app.mjs's add-from-feed, so filtering matches where it ends up. */
+const FEED_TO_POS = {
+  "Rice & Staples": "Vegi meals", "Vegetable Curries": "Vegi meals",
+  "Meat & Seafood Curries": "Chicken", "Salads, Sambols & Relishes": "Starters",
+  "Fried, Dry & Bite Dishes": "Bites", "Bread, Buns & Beer Snacks": "Bites",
+  "Mixed, Fusion & Street Food": "Bites",
+  "Bakery & Canteen Classics": "Bites", "Sri Lankan Cakes & Sweets": "Desserts",
+};
+
 /** The set names a shop may use — a CLOSED list, exactly like the dish
  *  catalogue. Nothing here is user-writable: a free-text box would spawn
  *  "Main dish" / "Main dishes" / "main  dishes" as three different sets, and
@@ -743,6 +753,7 @@ function menuPage(shop, extras = {}) {
         })))}</script>
         <script id="feedDishData" type="application/json">${JSON.stringify(feedDishes.map((d) => ({
           name: d.name, nameSi: d.nameSi || "", cat: d.category || "",
+          pos: FEED_TO_POS[d.category] || "Vegi meals",
         })))}</script>
         <script id="setChoiceData" type="application/json">${JSON.stringify(setChoices)}</script>
         </div>
@@ -925,6 +936,7 @@ function menuPage(shop, extras = {}) {
       });
       btn.classList.add('on'); btn.style.background='#191512'; btn.style.color='#fff';
       if (addMode === 'dish') renderCatalogue();
+      if (document.getElementById('feedPanel').style.display !== 'none') renderFeedPanel();
     }
 
     function setAddMode(mode){
@@ -1096,12 +1108,14 @@ function menuPage(shop, extras = {}) {
       var si = Number(document.getElementById('dishSet').value);
       var inSet = (plan[si] ? plan[si].dishes : []).map(function(d){ return d.name; });
       var list = FEED_DISHES.filter(function(d){
-        if (!q) return true;
-        return d.name.toLowerCase().indexOf(q) >= 0 || (d.nameSi || '').toLowerCase().indexOf(q) >= 0;
+        // Typing searches everything; otherwise the category chip scopes it.
+        if (q) return d.name.toLowerCase().indexOf(q) >= 0 || (d.nameSi || '').toLowerCase().indexOf(q) >= 0;
+        return setCat === 'All' || d.pos === setCat;
       });
       if (q) list = list.slice().sort(function(a, b){ return a.name.localeCompare(b.name); });
       document.getElementById('feedCount').textContent =
-        (plan[si] ? inSet.length + ' in ' + plan[si].name : 'no set');
+        (plan[si] ? inSet.length + ' in ' + plan[si].name : 'no set')
+        + (setCat === 'All' ? '' : ' · ' + setCat + ' only');
       var host = document.getElementById('feedPanelList');
       if (!list.length) { host.innerHTML = '<div class="sub" style="padding:22px 0;text-align:center;font-size:12px">nothing matches</div>'; return; }
       host.innerHTML = dishRowsHtml(list, q);
