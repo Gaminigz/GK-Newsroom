@@ -3368,6 +3368,47 @@ export async function handleApp(req, res, url) {
     return;
   }
 
+  // Rename or delete one of the shop's own set names. Sending an empty `to`
+  // deletes it and frees the slot. Renaming also rewrites the label on every
+  // plan that used it, so nothing is left pointing at a name that is gone.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/menu\/set-type\/edit$/);
+  if (m && req.method === "POST") {
+    let body = {};
+    try { body = JSON.parse((await readBody(req, 500)) || "{}"); } catch { /* bad json */ }
+    const from = String(body.from || "").trim();
+    const to = String(body.to || "").trim().replace(/\s+/g, " ").slice(0, 40);
+    const fail = (error) => res.writeHead(400, { "Content-Type": "application/json" })
+      .end(JSON.stringify({ ok: false, error }));
+    const shopOid = await oid(m[1]);
+    if (!from || !shopOid) { fail("bad request"); return; }
+    const owners = await col("shop_owners");
+    const shop = await owners.findOne({ _id: shopOid }, { projection: { customSetTypes: 1 } });
+    const own = (shop?.customSetTypes || []).map(String);
+    if (!own.some((n) => n === from)) { fail("not one of your own names"); return; }
+    if (!to) {
+      await owners.updateOne({ _id: shopOid }, { $pull: { customSetTypes: from } });
+      res.writeHead(200, { "Content-Type": "application/json" })
+        .end(JSON.stringify({ ok: true, deleted: from }));
+      return;
+    }
+    const { SET_PRESET_NAMES } = await import("./shop-suite.mjs");
+    const taken = new Set([...SET_PRESET_NAMES, ...own.filter((n) => n !== from)].map((x) => x.toLowerCase()));
+    if (taken.has(to.toLowerCase())) { fail("that name already exists"); return; }
+    await owners.updateOne(
+      { _id: shopOid },
+      { $set: { customSetTypes: own.map((n) => (n === from ? to : n)) } },
+    );
+    // Keep saved plans pointing at the renamed set.
+    await (await col("day_plans")).updateMany(
+      { shopId: m[1], "groups.label": from },
+      { $set: { "groups.$[g].label": to } },
+      { arrayFilters: [{ "g.label": from }] },
+    );
+    res.writeHead(200, { "Content-Type": "application/json" })
+      .end(JSON.stringify({ ok: true, from, to }));
+    return;
+  }
+
   // Set a dish's price from the plan builder, so a dish pulled in from the
   // shared list can be priced without leaving the page.
   m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/menu\/dish-price$/);

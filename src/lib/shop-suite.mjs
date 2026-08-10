@@ -1131,6 +1131,10 @@ function menuPage(shop, extras = {}) {
           +   '<span style="display:block;font-size:13px;font-weight:600;line-height:1.2">' + esc(s.name) + '</span>'
           +   (s.nameSi ? '<span class="si" style="display:block;font-size:10.5px;line-height:1.2">' + esc(s.nameSi) + '</span>' : '')
           + '</span>'
+          // Only the shop's own names can be renamed — the fixed six are shared
+          // vocabulary and stay put.
+          + (s.custom ? '<button type="button" class="setEdit" data-name="' + esc(s.name) + '"'
+              + ' style="flex:0 0 auto;border:0;background:none;font-size:13px;padding:0 4px;cursor:pointer">✎</button>' : '')
           + '<input type="checkbox" class="setBox" data-name="' + esc(s.name) + '"' + (on ? ' checked' : '')
           +   ' style="flex:0 0 auto;width:20px;height:20px;accent-color:#d9542b">'
           + '</label>';
@@ -1139,6 +1143,12 @@ function menuPage(shop, extras = {}) {
         b.addEventListener('change', function(){
           if (b.checked) setTick(b.dataset.name);
           else setUntick(b.dataset.name, b);
+        });
+      });
+      host.querySelectorAll('.setEdit').forEach(function(b){
+        b.addEventListener('click', function(ev){
+          ev.preventDefault(); ev.stopPropagation();
+          editCustomSet(b.dataset.name);
         });
       });
       wireSlots(host);
@@ -1193,6 +1203,36 @@ function menuPage(shop, extras = {}) {
         SET_CHOICES.push({name: name, nameSi: '', custom: true});
         FREE_SLOTS = Math.max(0, FREE_SLOTS - 1);
         setTick(name);
+      })
+      .catch(function(e){ msg.textContent = e.message; });
+    }
+
+    /* Rename one of the shop's own names, or clear it to delete. The rename
+       follows through to the plan on screen and to saved plans server-side. */
+    function editCustomSet(from){
+      var msg = document.getElementById('addSetMsg');
+      var to = prompt('Rename "' + from + '" — or clear the box to delete it', from);
+      if (to === null) return;
+      to = String(to).trim().replace(/\\s+/g, ' ');
+      if (to === from) return;
+      fetch('/app/owner/' + SHOP_ID + '/menu/set-type/edit', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({from: from, to: to}),
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if (!j.ok) { msg.textContent = j.error || 'Failed'; renderSetPanel(); return; }
+        if (j.deleted) {
+          SET_CHOICES = SET_CHOICES.filter(function(x){ return x.name !== from; });
+          plan = plan.filter(function(p){ return p.name !== from; });
+          FREE_SLOTS = FREE_SLOTS + 1;
+          msg.textContent = from + ' deleted.';
+        } else {
+          SET_CHOICES.forEach(function(x){ if (x.name === from) x.name = j.to; });
+          plan.forEach(function(p){ if (p.name === from) p.name = j.to; });
+          msg.textContent = from + ' → ' + j.to;
+        }
+        renderPlan(); renderSetPanel();
       })
       .catch(function(e){ msg.textContent = e.message; });
     }
