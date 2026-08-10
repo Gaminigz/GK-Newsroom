@@ -19,14 +19,12 @@ const ORANGE = "#d9542b";
  *  every downstream reader (POS, kitchen stock, accounting) would treat them
  *  as three. Add a name here, not in the UI. */
 const SET_PRESETS = [
-  // Packages — a plan opens with one of these, then the groups picked inside.
-  { name: "Normal package", nameSi: "සාමාන්‍ය පැකේජය", group: "Packages" },
-  { name: "Special menu", nameSi: "විශේෂ මෙනුව", group: "Packages" },
-  { name: "King Pack", nameSi: "කිං පැක්", group: "Packages" },
-  // Course groups — what the buyer picks inside a package.
-  { name: "Rice set", nameSi: "බත් කට්ටලය", group: "Course groups" },
-  { name: "Meat Combo", nameSi: "මස් කොම්බෝ", group: "Course groups" },
-  { name: "Side dishes", nameSi: "අතුරු කෑම", group: "Course groups" },
+  { name: "Normal package", nameSi: "සාමාන්‍ය පැකේජය" },
+  { name: "Special menu", nameSi: "විශේෂ මෙනුව" },
+  { name: "King Pack", nameSi: "කිං පැක්" },
+  { name: "Rice set", nameSi: "බත් කට්ටලය" },
+  { name: "Meat Combo", nameSi: "මස් කොම්බෝ" },
+  { name: "Side dishes", nameSi: "අතුරු කෑම" },
 ];
 
 /** One tile per function. `href(id)` = real page; suite previews use key.
@@ -1080,12 +1078,9 @@ function menuPage(shop, extras = {}) {
           + '</div>';
         return;
       }
-      var grp = '';
       host.innerHTML = list.map(function(s){
-        var head = '';
-        if (!q && s.group !== grp) { grp = s.group; head = '<div class="sub" style="font-size:10px;letter-spacing:.04em;padding:12px 0 3px;font-weight:700">' + esc(grp || 'Sets') + '</div>'; }
         var on = have.indexOf(s.name.toLowerCase()) >= 0;
-        return head + '<label style="display:flex;gap:8px;align-items:center;width:100%;border-bottom:1px solid #f2ece6;padding:9px 2px;cursor:pointer">'
+        return '<label style="display:flex;gap:8px;align-items:center;width:100%;border-bottom:1px solid #f2ece6;padding:9px 2px;cursor:pointer">'
           + '<span style="flex:1;min-width:0">'
           +   '<span style="display:block;font-size:13px;font-weight:600;line-height:1.25">' + esc(s.name) + '</span>'
           +   (s.nameSi ? '<span class="si" style="display:block;font-size:11px;line-height:1.3">' + esc(s.nameSi) + '</span>' : '')
