@@ -27,21 +27,6 @@ const SET_PRESETS = [
   { name: "Rice set", nameSi: "බත් කට්ටලය", group: "Course groups" },
   { name: "Meat Combo", nameSi: "මස් කොම්බෝ", group: "Course groups" },
   { name: "Side dishes", nameSi: "අතුරු කෑම", group: "Course groups" },
-  { name: "Curry", nameSi: "ව්‍යංජන", group: "Course groups" },
-  { name: "Vegetables", nameSi: "එළවළු", group: "Course groups" },
-  { name: "Sambol", nameSi: "සම්බෝල", group: "Course groups" },
-  { name: "Salad", nameSi: "සලාද", group: "Course groups" },
-  { name: "Dhal", nameSi: "පරිප්පු", group: "Course groups" },
-  { name: "Fish", nameSi: "මාළු", group: "Course groups" },
-  { name: "Chicken", nameSi: "කුකුල් මස්", group: "Course groups" },
-  { name: "Egg", nameSi: "බිත්තර", group: "Course groups" },
-  { name: "Papadam", nameSi: "පපඩම්", group: "Course groups" },
-  { name: "Roti & bread", nameSi: "රොටී", group: "Course groups" },
-  { name: "Soup", nameSi: "සුප්", group: "Course groups" },
-  { name: "Bites", nameSi: "බයිට්", group: "Course groups" },
-  { name: "Dessert", nameSi: "අතුරුපස", group: "Course groups" },
-  { name: "Drink", nameSi: "බීම", group: "Course groups" },
-  { name: "Alcohol", nameSi: "මධ්‍යසාර", group: "Course groups" },
 ];
 
 /** One tile per function. `href(id)` = real page; suite previews use key.
