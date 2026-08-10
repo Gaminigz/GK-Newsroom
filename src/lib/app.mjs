@@ -195,7 +195,7 @@ const MEALS = ["Breakfast", "Lunch", "Dinner"];
 
 /** Dish categories — same list and order the POS chips use. */
 const CATEGORY_LIST = [
-  "Starters", "Bites", "Vegi meals", "Chicken", "Beef", "Mutton", "Pork", "Sea food", "Drinks", "Desserts",
+  "Starters", "Bites", "Vegi meals", "Chicken", "Beef", "Mutton", "Pork", "Sea food", "Drinks", "Alcohol", "Desserts",
 ];
 
 /** Which meals a dish's serving `window` covers.

@@ -47,6 +47,11 @@ export const LANKA_DISHES_150 = {
       { name: "Lotus Root Curry", si: "නෙළුම් අල කරවල" },
       { name: "Breadfruit Curry", si: "දෙල් කරවල" },
       { name: "Ripe Jackfruit Curry", si: "වැල් කොස් කරවල" },
+      { name: "Dhal / Parippu", si: "පරිප්පු" },
+      { name: "Green Bean / Bonchi", si: "බෝංචි" },
+      { name: "Cashew Curry", si: "කජු මාළුව" },
+      { name: "Temperate Potato", si: "අර්තාපල් තෙලට" },
+      { name: "Soya Meat Curry", si: "සෝයා මීට්" },
     ],
   },
   "Meat & Seafood Curries": {
@@ -77,6 +82,10 @@ export const LANKA_DISHES_150 = {
       { name: "Mutton Korma", si: "එළු මස් කෝර්මා" },
       { name: "Liver Fry Curry", si: "අක්මාව බැදපු කරවල" },
       { name: "Beef Lung Curry", si: "බීෆ් පෙනහළු කරවල" },
+      { name: "Chicken Curry", si: "කුකුල් මස්" },
+      { name: "Pork Curry", si: "උරු මස්" },
+      { name: "Beef Bistake", si: "හරක් මස් බිස්ටේක්" },
+      { name: "Temperate Shrimp", si: "ඉස්සෝ තෙලට" },
     ],
   },
   "Mixed, Fusion & Street Food": {
@@ -137,6 +146,8 @@ export const LANKA_DISHES_150 = {
       { name: "Onion Raita", si: "ලූනු රයිතා" },
       { name: "Gotukola and Coconut Salad", si: "ගොටුකොළ සහ පොල් සලාද" },
       { name: "Centella Salad", si: "ශාක සලාද" },
+      { name: "Coconut Sambal", si: "පොල් සම්බෝල්" },
+      { name: "Gotukola Salad", si: "ගොටුකොල සලාද" },
     ],
   },
   "Fried, Dry & Bite Dishes": {
@@ -167,6 +178,8 @@ export const LANKA_DISHES_150 = {
       { name: "Sausage Devilled", si: "සොසේජස් දෙවලඩ්" },
       { name: "Fried Vadai", si: "උළුඳු වඩේ" },
       { name: "Parippu Vadai", si: "පරිප්පු වඩේ" },
+      { name: "Chicken Cutlet", si: "කුකුල් මස් කට්ලට්" },
+      { name: "Sausage Dewal", si: "සොසේජ්ස් දෙවල්" },
     ],
   },
   "Bread, Buns & Beer Snacks": {
@@ -197,6 +210,24 @@ export const LANKA_DISHES_150 = {
       { name: "Crispy Fried Pork Strips", si: "හැපෙනසුළු ඌරු මස් තීරු බැදුම" },
       { name: "Chicken Giblets Devilled", si: "චිකන් ගිබ්ලට්ස් දෙවලඩ්" },
       { name: "Papadum Bites", si: "පප්පඩම් බයිට්ස්" },
+    ],
+  },
+
+  // Rice, and the shop-menu spellings shops actually print on their posters.
+  // Kept as their own entries so a plan can name the exact dish a buyer sees.
+  "Rice & Staples": {
+    si: "බත් හා ප්‍රධාන ආහාර",
+    dishes: [
+      { name: "Basmathi Yellow Rice", si: "බාස්මතී කහ බත්" },
+      { name: "Ponni Sambaa White Rice", si: "පොන්නි සම්බා සුදු බත්" },
+      { name: "Red Rice", si: "රතු බත්" },
+      { name: "White Rice", si: "සුදු බත්" },
+      { name: "Yellow Rice", si: "කහ බත්" },
+      { name: "Milk Rice", si: "කිරි බත්" },
+      { name: "Fried Rice", si: "ෆ්‍රයිඩ් රයිස්" },
+      { name: "String Hoppers", si: "ඉඳිආප්ප" },
+      { name: "Hoppers", si: "ආප්ප" },
+      { name: "Pittu", si: "පිට්ටු" },
     ],
   },
 };

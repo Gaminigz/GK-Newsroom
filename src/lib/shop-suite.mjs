@@ -24,8 +24,8 @@ const SET_PRESETS = [
   { name: "Special menu", nameSi: "විශේෂ මෙනුව", group: "Packages" },
   { name: "King Pack", nameSi: "කිං පැක්", group: "Packages" },
   // Course groups — what the buyer picks inside a package.
-  { name: "Rice", nameSi: "බත්", group: "Course groups" },
-  { name: "Main dishes", nameSi: "ප්‍රධාන කෑම", group: "Course groups" },
+  { name: "Rice set", nameSi: "බත් කට්ටලය", group: "Course groups" },
+  { name: "Meat Combo", nameSi: "මස් කොම්බෝ", group: "Course groups" },
   { name: "Side dishes", nameSi: "අතුරු කෑම", group: "Course groups" },
   { name: "Curry", nameSi: "ව්‍යංජන", group: "Course groups" },
   { name: "Vegetables", nameSi: "එළවළු", group: "Course groups" },
@@ -41,6 +41,7 @@ const SET_PRESETS = [
   { name: "Bites", nameSi: "බයිට්", group: "Course groups" },
   { name: "Dessert", nameSi: "අතුරුපස", group: "Course groups" },
   { name: "Drink", nameSi: "බීම", group: "Course groups" },
+  { name: "Alcohol", nameSi: "මධ්‍යසාර", group: "Course groups" },
 ];
 
 /** One tile per function. `href(id)` = real page; suite previews use key.
@@ -771,7 +772,7 @@ function menuPage(shop, extras = {}) {
     function renderPlan(){
       var host = document.getElementById('setList');
       if (!plan.length) {
-        host.innerHTML = '<div class="sub" style="padding:18px 10px;text-align:center;font-size:11.5px;color:#c9bfb7">Name a set on the left and tap +</div>';
+        host.innerHTML = '<div class="sub" style="padding:18px 10px;text-align:center;font-size:11.5px;color:#c9bfb7">Pick a set from the list on the left</div>';
       } else {
         host.innerHTML = plan.map(function(s, si){
           // Same stacked shape as the Dish list — name, Sinhala, then price —
@@ -801,19 +802,14 @@ function menuPage(shop, extras = {}) {
             +   '<span class="row" style="gap:6px;flex:0 0 auto">'
             +     '<span class="sub" style="font-size:10px">pick</span>'
             +     '<input type="number" min="1" max="40" value="' + s.pick + '" onchange="plan[' + si + '].pick=Math.max(1,Number(this.value)||1)" style="margin:0;width:44px;padding:4px 2px;text-align:center;font-weight:700;font-size:12px">'
+            // Price left empty = the dish the buyer picks sets it; a number is
+            // what the whole set costs.
+            +     '<span class="sub" style="font-size:10px">price</span>'
+            +     '<input type="number" step="0.01" min="0" class="setPriceBox" data-si="' + si + '"'
+            +       ' value="' + (s.price == null ? '' : (s.price / 300).toFixed(2)) + '" placeholder="$"'
+            +       ' style="margin:0;width:52px;padding:4px 2px;text-align:center;font-weight:700;font-size:12px">'
             +     '<button type="button" onclick="delSet(' + si + ')" style="border:0;background:none;color:#b3261e;font-size:14px;padding:0 2px;cursor:pointer">✕</button>'
             +   '</span>'
-            + '</div>'
-            // A set can carry its own price — a King Pack tier costs what the
-            // tier costs. Left empty, the dish the buyer picks sets the price,
-            // which is how a "pick your main" package works.
-            + '<div style="display:flex;align-items:center;gap:5px;margin-top:5px">'
-            +   '<span class="sub" style="font-size:10px;flex:0 0 auto">set price $</span>'
-            +   '<input type="number" step="0.01" min="0" class="setPriceBox" data-si="' + si + '"'
-            +     ' value="' + (s.price == null ? '' : (s.price / 300).toFixed(2)) + '" placeholder="—"'
-            +     ' style="margin:0;width:58px;padding:3px 4px;text-align:center;font-weight:700;font-size:11px">'
-            +   '<span class="sub" style="font-size:9.5px;flex:1;min-width:0;line-height:1.2">'
-            +     (s.price == null ? 'empty = the dish picked sets it' : (s.price ? 'fixed · ' + money(s.price) : 'included, no charge')) + '</span>'
             + '</div>'
             + '<div style="margin-top:6px">' + rows + '</div>'
             + '</div>';
