@@ -111,7 +111,28 @@ function page(shop, key, title, si, body, backTo) {
     body: `
     <div class="row" style="gap:10px"><a class="back" style="margin:0" href="${backHref}">‹</a>
       <h1 style="font-size:21px;flex:1;min-width:0">${title} <span class="si">${si}</span></h1></div>
-    ${body}`,
+    ${body}
+    <script>
+    /* Destructive buttons ask twice without a native dialog: the first tap
+       relabels for 2.5 s, a second tap inside that window submits. WKWebView
+       swallows confirm(), so a form gated on it never submitted at all. */
+    document.querySelectorAll('form.armForm').forEach(function(f){
+      var b = f.querySelector('button');
+      if (!b) return;
+      var label = b.innerHTML, armed = false, t = null;
+      f.addEventListener('submit', function(e){
+        if (armed) return;
+        e.preventDefault();
+        armed = true;
+        b.innerHTML = 'Tap again';
+        b.style.background = '#7a0f0f';
+        b.style.color = '#fff';
+        t = setTimeout(function(){
+          armed = false; b.innerHTML = label; b.style.background = ''; b.style.color = '';
+        }, 2500);
+      });
+    });
+    </script>`,
   });
 }
 
@@ -1479,7 +1500,7 @@ function stockPage(shop, extras = {}) {
         <form method="POST" action="/app/owner/${id}/stock/${sid}/buy" style="margin:0" title="${s.buyNext ? "Remove from Purchase Plan" : "Send to Purchase Plan"}">
           <button class="btn ghost" style="width:auto;padding:6px 9px;font-size:13px;${s.buyNext ? "background:#d9542b;border-color:#d9542b;color:#fff" : "color:#1d7a34"}">🛒</button>
         </form>
-        <form method="POST" action="/app/owner/${id}/stock/${sid}/remove" onsubmit="return confirm('Remove ${esc(s.name)} from stock?')" style="margin:0">
+        <form method="POST" action="/app/owner/${id}/stock/${sid}/remove" class="armForm" style="margin:0">
           <button class="btn ghost" style="width:auto;padding:6px 10px;font-size:11px;color:#b3261e" title="Delete">✕</button>
         </form>
       </div>
@@ -1686,7 +1707,7 @@ function purchasingPage(shop, extras = {}) {
             🧾${billCount > 0 ? `<span style="position:absolute;top:-4px;right:-8px;background:${accent};color:#fff;font-size:9px;font-weight:800;border-radius:99px;padding:1px 5px;min-width:14px;text-align:center">${billCount}</span>` : ""}
             <input type="file" accept="image/*" class="billIn" data-supplier="${sid}" style="display:none" onclick="event.stopPropagation()">
           </label>
-          <form method="POST" action="/app/owner/${id}/suppliers/${sid}/remove" onsubmit="event.stopPropagation();return confirm('Remove ${escP(s.name)}?')" style="margin:0" onclick="event.stopPropagation()">
+          <form method="POST" action="/app/owner/${id}/suppliers/${sid}/remove" class="armForm" onsubmit="event.stopPropagation()" style="margin:0" onclick="event.stopPropagation()">
             <button class="btn ghost" style="width:auto;padding:2px 6px;font-size:10px;color:${on ? "#ffb08f" : "#b3261e"};background:transparent;border:0" title="Remove">✕</button>
           </form>
         </div>
