@@ -3031,6 +3031,9 @@ export async function handleApp(req, res, url) {
     html(res, shell({
       title: "Shop Manager — 3una 5aha",
       hideLogout: true,
+      // The heading below carries its own ‹ — without this the shell adds a
+      // second one right above it.
+      noBack: true,
       body: `
       <div class="row" style="gap:10px"><a class="back" style="margin:0" href="/app/home">‹</a><h1 style="font-size:21px">Shop Manager <span class="si">සාප්පු කළමනාකරු</span></h1></div>
       <div class="card" style="margin-top:14px;padding:16px;text-align:center">
