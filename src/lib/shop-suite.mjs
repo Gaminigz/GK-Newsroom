@@ -13,6 +13,29 @@ import { ingredientSlug } from "./drive.mjs";
 
 const ORANGE = "#d9542b";
 
+/** Common plan-group names, so naming a set is a pick rather than a typing
+ *  job — the Set-mode counterpart of the shared dish list. The shop's own
+ *  past group labels are listed above these and take priority. */
+const SET_PRESETS = [
+  { name: "Rice", nameSi: "බත්" },
+  { name: "Main dish", nameSi: "ප්‍රධාන කෑම" },
+  { name: "Curry", nameSi: "ව්‍යංජන" },
+  { name: "Side dishes", nameSi: "අතුරු කෑම" },
+  { name: "Vegetables", nameSi: "එළවළු" },
+  { name: "Sambol", nameSi: "සම්බෝල" },
+  { name: "Salad", nameSi: "සලාද" },
+  { name: "Dhal", nameSi: "පරිප්පු" },
+  { name: "Fish", nameSi: "මාළු" },
+  { name: "Chicken", nameSi: "කුකුල් මස්" },
+  { name: "Egg", nameSi: "බිත්තර" },
+  { name: "Papadam", nameSi: "පපඩම්" },
+  { name: "Roti & bread", nameSi: "රොටී" },
+  { name: "Soup", nameSi: "සුප්" },
+  { name: "Bites", nameSi: "බයිට්" },
+  { name: "Dessert", nameSi: "අතුරුපස" },
+  { name: "Drink", nameSi: "බීම" },
+];
+
 /** One tile per function. `href(id)` = real page; suite previews use key.
  *  Table QR is not in the grid — it sits top-right under the Logout pill. */
 // `real:` = tile is wired to real Mongo collections (green glow, no padlock).
@@ -538,34 +561,15 @@ function menuPage(shop, extras = {}) {
     (acc[d.category || "Other"] = acc[d.category || "Other"] || []).push(d);
     return acc;
   }, {});
-
-  const dishRow = (d) => {
-    const price = Number(d.price) || 0;
-    return `<label class="card row" style="margin-top:8px;padding:10px 13px;cursor:pointer">
-      <input type="checkbox" name="dishId" value="${String(d._id)}" data-price="${price}" style="width:18px;height:18px;accent-color:${ORANGE};flex:0 0 auto" onchange="recompute()">
-      <div style="flex:1;min-width:0"><strong style="font-size:13.5px">${esc(d.name)}</strong>${d.nameSi ? ` <span class="si">${esc(d.nameSi)}</span>` : ""}
-      <div class="sub" style="font-size:11.5px">${esc(d.window || "All day")}${d.portions ? ` · ${d.portions} portions/day` : ""}</div></div>
-      <span class="sub" style="font-size:12.5px;font-weight:700;flex:0 0 auto">$${price.toFixed(2)}</span></label>`;
-  };
-
-  const savedSet = (s) => `
-    <div class="card row" style="margin-top:10px;padding:11px 13px">
-      <div style="flex:1;min-width:0">
-        <strong style="font-size:13.5px">${esc(s.name)}</strong>${s.nameSi ? ` <span class="si" style="font-size:11px">${esc(s.nameSi)}</span>` : ""}
-        <div class="sub" style="font-size:11.5px">${(s.groups || []).length
-          ? (s.groups || []).map((g) => `${esc(g.label)} · pick ${g.pick} of ${(g.choices || []).length}`).join(" — ")
-          : `${(s.components || []).length} components`} · ${esc(shopPrice(shop, Number(s.price) || 0))} · ${s.portions || 10}/day</div>
-      </div>
-      <form method="POST" action="/app/owner/${id}/menu/set/${String(s._id)}/remove" onsubmit="return confirm('Remove this set meal?')" style="margin:0">
-        <button class="btn ghost" style="width:auto;padding:7px 10px;font-size:11.5px;color:#b3261e">Remove</button>
-      </form>
-    </div>`;
-
-  const singlesHtml = singles.length
-    ? singles.map(dishRow).join("")
-    : `<div class="card" style="margin-top:8px;padding:12px 14px;background:#fdf0ec;border-color:#f3cfc2;font-size:12.5px;color:#946200">You have no dishes yet — add a single dish first from <a href="/app/owner/${id}/dishes" style="text-decoration:underline;color:#946200"><strong>Setup Daily Menu</strong></a>, then come back to combine them into set meals.</div>`;
-
-  const presetOptions = presetDishes.map((d) => `<option value="${esc(d)}">`).join("");
+  // Set names the shop has used on earlier plans come first — the list grows
+  // with use, exactly like the dish side — then the common presets.
+  const usedLabels = (extras.setLabels || []).map((s) => String(s).trim()).filter(Boolean);
+  const usedLower = new Set(usedLabels.map((s) => s.toLowerCase()));
+  const setChoices = [
+    ...usedLabels.map((name) => ({ name, nameSi: "", group: "Used before" })),
+    ...SET_PRESETS.filter((p) => !usedLower.has(p.name.toLowerCase()))
+      .map((p) => ({ ...p, group: "Common sets" })),
+  ];
 
   return page(shop, "menu", "Plan Menu", "මෙනු සැකසුම", `
     ${msg ? `<div class="card" style="margin-top:10px;padding:10px 13px;background:#e8f6ec;border-color:#bfe5c8;font-size:12.5px;color:#1d7a34">${esc(msg)}</div>` : ""}
@@ -679,6 +683,12 @@ function menuPage(shop, extras = {}) {
             <label style="margin-top:8px;font-size:9.5px">NAME</label>
             <input type="text" id="newSetName" placeholder="Rice" maxlength="40" style="margin:0;font-size:11.5px;padding:6px">
             <button type="button" onclick="addSet()" class="btn" style="margin-top:8px;padding:8px 4px;font-size:12px;width:100%">+</button>
+            <!-- Same pick-from-a-list affordance as Dish mode: tick a name and
+                 the set appears on the right, empty and ready for dishes. -->
+            <div style="border-top:1px solid #ece3da;margin-top:8px;padding-top:8px">
+              <label style="margin:0;font-size:9.5px">NEW FROM LIST <span class="sub" style="font-weight:400">· ${setChoices.length}</span></label>
+              <button type="button" id="setItemBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Choose a set…</button>
+            </div>
           </div>
 
           <div id="paneDish" style="display:none">
@@ -689,12 +699,10 @@ function menuPage(shop, extras = {}) {
               <label style="margin:0;font-size:9.5px">NEW FROM LIST <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
               <!-- Native select popup is hard-capped at 248pt by iOS, so this
                    is our own panel: 267pt (800 physical px at 3x), searchable,
-                   grouped like the native one. -->
-              <input type="hidden" id="dishItem" value="">
+                   grouped like the native one. Ticking inside it adds the dish
+                   straight away at price 0 — pricing happens on the set row,
+                   which is the only place that writes back to app_dishes. -->
               <button type="button" id="dishItemBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Choose a dish…</button>
-              <label style="margin-top:6px;font-size:9.5px">PRICE $</label>
-              <input type="number" id="dishPrice" step="0.01" min="0" placeholder="1.50" style="margin:0;font-size:11.5px;padding:5px;text-align:center;font-weight:700">
-              <button type="button" id="addFromFeedBtn" class="btn" style="margin-top:6px;padding:7px 4px;font-size:11.5px;width:100%">+</button>
             </div>
           </div>
 
@@ -712,6 +720,7 @@ function menuPage(shop, extras = {}) {
         <script id="feedDishData" type="application/json">${JSON.stringify(feedDishes.map((d) => ({
           name: d.name, nameSi: d.nameSi || "", cat: d.category || "",
         })))}</script>
+        <script id="setChoiceData" type="application/json">${JSON.stringify(setChoices)}</script>
         </div>
 
         <button class="btn" style="margin-top:16px">Save ${esc(planMeal)} plan · ${esc(planDate)}</button>
@@ -738,15 +747,6 @@ function menuPage(shop, extras = {}) {
     function toggleHelp() {
       const h = document.getElementById('aiHelp');
       h.style.display = h.style.display === 'none' ? '' : 'none';
-    }
-    function recompute() {
-      const boxes = document.querySelectorAll('input[name="dishId"]');
-      let picked = 0, total = 0;
-      boxes.forEach(b => { if (b.checked) { picked++; total += Number(b.dataset.price) || 0; } });
-      const pc = document.getElementById('pickCount');
-      const st = document.getElementById('subtotal');
-      if (pc) pc.textContent = picked + ' picked';
-      if (st) st.textContent = '$' + total.toFixed(2);
     }
     /* ---- dynamic set builder ----------------------------------------
        plan = [{name, pick, dishes:[{id,name,nameSi,price}]}]. The left panel
@@ -1006,48 +1006,16 @@ function menuPage(shop, extras = {}) {
     function delSet(i){ plan.splice(i, 1); renderPlan(); }
     function delDish(si, di){ plan[si].dishes.splice(di, 1); renderPlan(); }
 
-    // Pull a dish the shop doesn't stock out of the shared Sri Lankan list.
-    function addDish(){
-      var msg = document.getElementById('addSetMsg');
-      if (!plan.length) { msg.textContent = 'Make a set first.'; return; }
-      var si = Number(document.getElementById('dishSet').value);
-      var name = document.getElementById('dishItem').value;
-      var dollars = Number(document.getElementById('dishPrice').value) || 0;
-      if (!name)      { msg.textContent = 'Pick a dish.'; return; }
-      if (dollars <= 0) { msg.textContent = 'Set a price.'; return; }
-      msg.textContent = 'Adding…';
-      var lkr = Math.round(dollars * 300);
-      fetch('/app/owner/' + SHOP_ID + '/menu/add-from-feed', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({name: name, price: lkr, meal: PLAN_MEAL}),
-      })
-      .then(function(r){ return r.json(); })
-      .then(function(j){
-        if (!j.ok) { msg.textContent = j.error || 'Failed'; return; }
-        if (!SHOP_DISHES.some(function(x){ return x.id === j.id; })) {
-          SHOP_DISHES.push({id: j.id, name: name, nameSi: j.nameSi || '', price: lkr, cat: '', meals: ['Breakfast','Lunch','Dinner'], own: true});
-        }
-        if (!plan[si].dishes.some(function(d){ return d.id === j.id; })) {
-          plan[si].dishes.push({id: j.id, name: name, nameSi: j.nameSi || '', price: lkr});
-        }
-        document.getElementById('dishPrice').value = '';
-        // Reset the picker so the next add starts clean.
-        document.getElementById('dishItem').value = '';
-        var trigger = document.getElementById('dishItemBtn');
-        trigger.textContent = 'Choose a dish…';
-        trigger.style.color = '#8a827b';
-        msg.textContent = name + ' → ' + plan[si].name;
-        renderPlan();
-        if (addMode === 'dish') renderCatalogue();
-      })
-      .catch(function(e){ msg.textContent = e.message; });
-    }
-    document.getElementById('addFromFeedBtn').addEventListener('click', addDish);
-
-    /* Custom dish panel — the native select popup is capped at 248pt by iOS,
-       so this one is drawn at 267pt (800 physical px on a 3x screen). */
+    /* Custom pick panel — the native select popup is capped at 248pt by iOS,
+       so this one is drawn at 267pt (800 physical px on a 3x screen). One
+       panel serves both modes: 'dish' lists the shared dish library, 'set'
+       lists set names. panelMode says which. */
     var feedQuery = '';
+    var panelMode = 'dish';
+    var SET_CHOICES = JSON.parse(document.getElementById('setChoiceData').textContent);
+
     function renderFeedPanel(){
+      if (panelMode === 'set') { renderSetPanel(); return; }
       var q = feedQuery.trim().toLowerCase();
       var si = Number(document.getElementById('dishSet').value);
       var inSet = (plan[si] ? plan[si].dishes : []).map(function(d){ return d.name; });
@@ -1083,6 +1051,63 @@ function menuPage(shop, extras = {}) {
       });
     }
 
+    /* Set mode — same panel, same multi-tick, but each row is a set name.
+       Ticking creates the set; unticking removes it (with its dishes). */
+    function renderSetPanel(){
+      var q = feedQuery.trim().toLowerCase();
+      var have = plan.map(function(s){ return s.name.toLowerCase(); });
+      var list = SET_CHOICES.filter(function(s){
+        if (!q) return true;
+        return s.name.toLowerCase().indexOf(q) >= 0 || (s.nameSi || '').toLowerCase().indexOf(q) >= 0;
+      });
+      document.getElementById('feedCount').textContent =
+        plan.length + (plan.length === 1 ? ' set in plan' : ' sets in plan');
+      var host = document.getElementById('feedPanelList');
+      if (!list.length) { host.innerHTML = '<div class="sub" style="padding:22px 0;text-align:center;font-size:12px">nothing matches</div>'; return; }
+      var grp = '';
+      host.innerHTML = list.map(function(s){
+        var head = '';
+        if (!q && s.group !== grp) { grp = s.group; head = '<div class="sub" style="font-size:10px;letter-spacing:.04em;padding:12px 0 3px;font-weight:700">' + esc(grp || 'Sets') + '</div>'; }
+        var on = have.indexOf(s.name.toLowerCase()) >= 0;
+        return head + '<label style="display:flex;gap:8px;align-items:center;width:100%;border-bottom:1px solid #f2ece6;padding:9px 2px;cursor:pointer">'
+          + '<span style="flex:1;min-width:0">'
+          +   '<span style="display:block;font-size:13px;font-weight:600;line-height:1.25">' + esc(s.name) + '</span>'
+          +   (s.nameSi ? '<span class="si" style="display:block;font-size:11px;line-height:1.3">' + esc(s.nameSi) + '</span>' : '')
+          + '</span>'
+          + '<input type="checkbox" class="setBox" data-name="' + esc(s.name) + '"' + (on ? ' checked' : '')
+          +   ' style="flex:0 0 auto;width:20px;height:20px;accent-color:#d9542b">'
+          + '</label>';
+      }).join('');
+      host.querySelectorAll('.setBox').forEach(function(b){
+        b.addEventListener('change', function(){
+          if (b.checked) setTick(b.dataset.name);
+          else setUntick(b.dataset.name, b);
+        });
+      });
+    }
+
+    function setTick(name){
+      var msg = document.getElementById('addSetMsg');
+      if (plan.some(function(s){ return s.name.toLowerCase() === name.toLowerCase(); })) return;
+      plan.push({name: name, pick: 1, dishes: []});
+      msg.textContent = '"' + name + '" added — switch to Dish to fill it.';
+      renderPlan(); renderSetPanel();
+    }
+
+    /* Untick drops the set. Confirm first if the owner already put dishes in
+       it, otherwise a stray tap wipes their work. */
+    function setUntick(name, box){
+      var i = plan.map(function(s){ return s.name.toLowerCase(); }).indexOf(name.toLowerCase());
+      if (i < 0) return;
+      if (plan[i].dishes.length && !confirm('Remove "' + plan[i].name + '" and its ' + plan[i].dishes.length + ' dish(es)?')) {
+        if (box) box.checked = true;
+        return;
+      }
+      plan.splice(i, 1);
+      document.getElementById('addSetMsg').textContent = name + ' removed.';
+      renderPlan(); renderSetPanel();
+    }
+
     /* Tick — reuse the shop's dish if it already exists, otherwise pull it in
        from the shared list at price 0 for pricing in the set below. */
     function feedTick(name, box){
@@ -1109,7 +1134,7 @@ function menuPage(shop, extras = {}) {
         if (!plan[si].dishes.some(function(d){ return d.id === j.id; })) {
           plan[si].dishes.push({id: j.id, name: name, nameSi: j.nameSi || '', price: 0});
         }
-        msg.textContent = name + ' added — set its price below.';
+        msg.textContent = name + ' added — set its price on the right.';
         renderPlan(); renderFeedPanel();
       })
       .catch(function(e){ msg.textContent = e.message; if (box) box.checked = false; });
@@ -1122,9 +1147,14 @@ function menuPage(shop, extras = {}) {
       renderPlan(); renderFeedPanel();
     }
 
-    function openFeedPanel(){
+    function openFeedPanel(mode){
+      panelMode = mode === 'set' ? 'set' : 'dish';
       feedQuery = '';
-      document.getElementById('feedSearch').value = '';
+      var search = document.getElementById('feedSearch');
+      search.value = '';
+      search.placeholder = panelMode === 'set'
+        ? 'Search ' + SET_CHOICES.length + ' sets…'
+        : 'Search ' + FEED_DISHES.length + ' dishes…';
       document.getElementById('feedBackdrop').style.display = '';
       document.getElementById('feedPanel').style.display = '';
       renderFeedPanel();
@@ -1133,7 +1163,8 @@ function menuPage(shop, extras = {}) {
       document.getElementById('feedBackdrop').style.display = 'none';
       document.getElementById('feedPanel').style.display = 'none';
     }
-    document.getElementById('dishItemBtn').addEventListener('click', openFeedPanel);
+    document.getElementById('dishItemBtn').addEventListener('click', function(){ openFeedPanel('dish'); });
+    document.getElementById('setItemBtn').addEventListener('click', function(){ openFeedPanel('set'); });
     document.getElementById('feedBackdrop').addEventListener('click', closeFeedPanel);
     document.getElementById('feedDone').addEventListener('click', closeFeedPanel);
     document.getElementById('feedSearch').addEventListener('input', function(){
