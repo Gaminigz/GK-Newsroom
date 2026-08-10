@@ -2396,6 +2396,73 @@ export async function handleApp(req, res, url) {
     return;
   }
 
+  // ---- Shop Manager, native ------------------------------------------
+  // Everything the native Plan Menu needs in one call: who the owner is, the
+  // set types they may pick from, the dish catalogue, their own dishes, and
+  // the plan for the requested (date, meal). Replaces scraping the HTML page.
+  if (path === "/app/api/owner/menu") {
+    const c = cookies(req);
+    let shopId = c.app_shop || "";
+    if (!shopId && c.app_email) {
+      const email = decodeURIComponent(c.app_email).toLowerCase();
+      const own = await (await col("shop_owners")).findOne({ email }, { projection: { _id: 1 } });
+      shopId = own ? String(own._id) : "";
+    }
+    const shop = shopId ? await shopById(shopId) : null;
+    if (!shop) {
+      res.writeHead(401, { "Content-Type": "application/json", "Cache-Control": "no-store" })
+        .end(JSON.stringify({ ok: false, error: "not signed in as a shop owner" }));
+      return;
+    }
+    const { SET_PRESETS_JSON, CUSTOM_SET_LIMIT } = await import("./shop-suite.mjs");
+    const today = new Date().toISOString().slice(0, 10);
+    const qDate = String(url.searchParams.get("date") || "").slice(0, 10);
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(qDate) ? qDate : today;
+    const qMeal = String(url.searchParams.get("meal") || "");
+    const meal = MEALS.includes(qMeal) ? qMeal : "Lunch";
+    const [ownDishes, feedDishes, feedBakery, plan] = await Promise.all([
+      (await col("app_dishes")).find({ shopId, type: { $ne: "set" } }).sort({ name: 1 }).toArray(),
+      (await col("lanka_dishes")).find({}, { projection: { name: 1, nameSi: 1, category: 1, priceLkr: 1 } }).toArray(),
+      (await col("lanka_bakery")).find({}, { projection: { name: 1, nameSi: 1, category: 1, priceLkr: 1 } }).toArray(),
+      (await col("day_plans")).findOne({ shopId, date, meal }),
+    ]);
+    const seen = new Set();
+    const catalogue = [...feedDishes, ...feedBakery].filter((d) => {
+      const k = String(d.name || "").toLowerCase();
+      if (!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    }).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    const custom = (shop.customSetTypes || []).map(String).slice(0, CUSTOM_SET_LIMIT);
+    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({
+      ok: true,
+      shop: { id: shopId, name: shop.name, owner: shop.owner || "" },
+      date, meal, meals: MEALS,
+      setTypes: [
+        ...SET_PRESETS_JSON,
+        ...custom.map((name) => ({ name, nameSi: "", custom: true })),
+      ],
+      freeSlots: Math.max(0, CUSTOM_SET_LIMIT - custom.length),
+      dishes: catalogue.map((d) => ({
+        name: d.name, nameSi: d.nameSi || "", category: d.category || "",
+        price: Number(d.priceLkr) || 0,
+      })),
+      myDishes: ownDishes.map((d) => ({
+        id: String(d._id), name: d.name, nameSi: d.nameSi || "",
+        price: Number(d.price) || 0, category: d.category || "",
+      })),
+      plan: (plan?.groups || []).map((g) => ({
+        name: g.label || "", pick: Number(g.pick) || 1,
+        price: g.price == null ? null : Number(g.price) || 0,
+        dishes: (g.choices || []).map((ch) => ({
+          id: ch.dishId, name: ch.name, nameSi: ch.nameSi || "", price: Number(ch.price) || 0,
+        })),
+      })),
+    }));
+    return;
+  }
+
   if (path === "/app/api/orders") {
     const phone = (url.searchParams.get("phone") || "").trim().slice(0, 24);
     const list = phone
@@ -3222,6 +3289,51 @@ export async function handleApp(req, res, url) {
         ok: true, existed: false, id: String(ins.insertedId), name,
         nameSi: feed?.nameSi || "", price: finalPrice,
       }));
+    return;
+  }
+
+  // Save a day plan from the native screen. Same shape and same rules as the
+  // web builder's form POST, just JSON in and JSON out.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/menu\/plan\.json$/);
+  if (m && req.method === "POST") {
+    let body = {};
+    try { body = JSON.parse((await readBody(req, 60000)) || "{}"); } catch { /* bad json */ }
+    const date = String(body.date || "").slice(0, 10);
+    const meal = MEALS.includes(body.meal) ? body.meal : "Lunch";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.writeHead(400, { "Content-Type": "application/json" })
+        .end(JSON.stringify({ ok: false, error: "bad date" }));
+      return;
+    }
+    const raw = Array.isArray(body.groups) ? body.groups : [];
+    const dishesCol = await col("app_dishes");
+    const groups = [];
+    for (const g of raw.slice(0, 12)) {
+      const label = String(g?.name || "").trim().slice(0, 40);
+      if (!label) continue;
+      const ids = Array.isArray(g.dishes) ? g.dishes.map((d) => String(d?.id || "")).filter(Boolean).slice(0, 40) : [];
+      const oids = (await Promise.all(ids.map(oid))).filter(Boolean);
+      const picked = oids.length ? await dishesCol.find({ _id: { $in: oids }, shopId: m[1] }).toArray() : [];
+      const rawPrice = g?.price;
+      groups.push({
+        key: label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || `set-${groups.length}`,
+        label,
+        price: rawPrice == null || rawPrice === "" ? null : Math.max(0, Math.round(Number(rawPrice) || 0)),
+        pick: Math.max(1, Math.min(40, Number(g?.pick) || 1)),
+        choices: picked.map((d) => ({
+          dishId: String(d._id), name: d.name, nameSi: d.nameSi || "",
+          price: Number(d.price) || 0, category: d.category || "",
+        })),
+      });
+    }
+    await (await col("day_plans")).updateOne(
+      { shopId: m[1], date, meal },
+      { $set: { shopId: m[1], date, meal, groups, updatedAt: new Date() },
+        $setOnInsert: { createdAt: new Date() } },
+      { upsert: true },
+    );
+    res.writeHead(200, { "Content-Type": "application/json" })
+      .end(JSON.stringify({ ok: true, date, meal, groups: groups.length }));
     return;
   }
 

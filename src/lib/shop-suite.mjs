@@ -52,6 +52,12 @@ export const SUITE_TILES = [
   { key: "health", label: "Business health", emoji: "❤️" },
 ];
 
+/** The set types as plain data, for the native Plan Menu screen. */
+export const SET_PRESETS_JSON = SET_PRESETS.map((s) => ({ name: s.name, nameSi: s.nameSi }));
+
+/** How many of its own set names a shop may add — shared with the API. */
+export const CUSTOM_SET_LIMIT = CUSTOM_SET_MAX;
+
 /** Just the names, for the server-side dedupe on custom set types. */
 export const SET_PRESET_NAMES = SET_PRESETS.map((s) => s.name);
 
