@@ -685,9 +685,9 @@ function menuPage(shop, extras = {}) {
           <!-- Pick-from-a-list only, same as Dish mode. There is deliberately
                no name box: set names are a closed list. -->
           <div id="paneSet">
-            <label style="margin-top:8px;font-size:9.5px">FROM LIST <span class="sub" style="font-weight:400">· ${setChoices.length}</span></label>
-            <button type="button" id="setItemBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Choose a set…</button>
-            <div class="sub" style="font-size:10px;margin-top:8px;line-height:1.35">Tick a set to add it, untick to remove. Then switch to Dish to fill it.</div>
+            <label style="margin-top:8px;font-size:9.5px">PICK SET TYPES <span class="sub" style="font-weight:400">· ${setChoices.length}</span></label>
+            <button type="button" id="setItemBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Pick set types…</button>
+            <div class="sub" style="font-size:10px;margin-top:8px;line-height:1.35">Step 1 — tick the set types this plan needs. Step 2 — switch to <strong>Dish</strong> and fill each one from the Sri Lankan dish list.</div>
           </div>
 
           <div id="paneDish" style="display:none">
@@ -1099,7 +1099,7 @@ function menuPage(shop, extras = {}) {
 
       var out = '';
       if (sets.length) {
-        out += sectionHead('SETS · ' + sets.length, 'the group headings');
+        out += sectionHead('SET TYPES · ' + sets.length, 'step 1 — pick these');
         var grp = '';
         out += sets.map(function(s){
           var head = '';
@@ -1116,7 +1116,7 @@ function menuPage(shop, extras = {}) {
         }).join('');
       }
       if (dishes.length) {
-        out += sectionHead('DISHES · ' + dishes.length, dest ? 'tick → ' + dest : 'tick a set above first');
+        out += sectionHead('DISHES · ' + dishes.length, dest ? 'step 2 — tick → ' + dest : 'pick a set type above first');
         out += dishRowsHtml(dishes, q);
       }
       var host = document.getElementById('feedPanelList');
@@ -1201,7 +1201,7 @@ function menuPage(shop, extras = {}) {
       var search = document.getElementById('feedSearch');
       search.value = '';
       search.placeholder = panelMode === 'set'
-        ? 'Search ' + (SET_CHOICES.length + FEED_DISHES.length) + ' sets + dishes…'
+        ? 'Search set types + dishes…'
         : 'Search ' + FEED_DISHES.length + ' dishes…';
       document.getElementById('feedBackdrop').style.display = '';
       document.getElementById('feedPanel').style.display = '';
