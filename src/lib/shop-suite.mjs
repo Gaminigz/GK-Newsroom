@@ -1072,11 +1072,30 @@ function menuPage(shop, extras = {}) {
         plan.length + (plan.length === 1 ? ' set in plan' : ' sets in plan');
       var host = document.getElementById('feedPanelList');
       // No "add what you typed" escape hatch — the list is closed on purpose.
+      // But a miss here is usually a dish name typed into the set box, so say
+      // so and hand the same search over to the dish list.
       if (!list.length) {
+        var typed = feedQuery.trim();
+        var dishHits = FEED_DISHES.filter(function(d){
+          var t = typed.toLowerCase();
+          return d.name.toLowerCase().indexOf(t) >= 0 || (d.nameSi || '').toLowerCase().indexOf(t) >= 0;
+        });
         host.innerHTML = '<div style="padding:18px 4px;text-align:center">'
-          + '<div class="sub" style="font-size:12px">nothing matches</div>'
-          + '<div class="sub" style="font-size:10.5px;margin-top:6px;line-height:1.35">Sets come from a fixed list so every shop names them the same way. Ask for a new one to be added.</div>'
+          + '<div class="sub" style="font-size:12px">no set called "' + esc(typed) + '"</div>'
+          + (dishHits.length
+            ? '<div class="sub" style="font-size:10.5px;margin-top:6px;line-height:1.35">'
+              + 'That is a dish, not a set — <strong>' + dishHits.length + '</strong> match' + (dishHits.length === 1 ? 'es' : '') + ' in the dish list.</div>'
+              + '<button type="button" id="setToDishBtn" class="btn" style="margin-top:10px;padding:9px 12px;font-size:12.5px;width:100%">Search dishes for "' + esc(typed) + '"</button>'
+            : '<div class="sub" style="font-size:10.5px;margin-top:6px;line-height:1.35">Sets come from a fixed list so every shop names them the same way. Ask for a new one to be added.</div>')
           + '</div>';
+        var jump = document.getElementById('setToDishBtn');
+        if (jump) jump.addEventListener('click', function(){
+          setAddMode('dish');
+          openFeedPanel('dish');
+          document.getElementById('feedSearch').value = typed;
+          feedQuery = typed;
+          renderFeedPanel();
+        });
         return;
       }
       var grp = '';
