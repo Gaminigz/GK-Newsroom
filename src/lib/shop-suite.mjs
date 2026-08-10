@@ -743,10 +743,11 @@ function menuPage(shop, extras = {}) {
           <div id="addSetMsg" class="sub" style="font-size:10px;margin-top:6px;line-height:1.3"></div>
         </div>
 
-        <!-- Right: the sets the owner has created, built by JS from the plan array. -->
-        <!-- Picker sits above the sets so both are on screen while ticking. -->
-        <div id="dishCatalogue" style="display:none;margin-bottom:12px"></div>
+        <!-- Right: the sets the owner has created, built by JS from the plan array.
+             Sets sit at the top, level with the pickers on the left, so the
+             card you are filling is always in view. The catalogue goes below. -->
         <div id="setList"></div>
+        <div id="dishCatalogue" style="display:none;margin-top:12px"></div>
         <script id="shopDishData" type="application/json">${JSON.stringify(singles.map((d) => ({
           id: String(d._id), name: d.name, nameSi: d.nameSi || "",
           price: Number(d.price) || 0, cat: d.category || "", meals: mealsFor(d.window), own: true,
