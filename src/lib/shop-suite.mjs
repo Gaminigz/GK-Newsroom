@@ -687,12 +687,11 @@ function menuPage(shop, extras = {}) {
           <div id="paneSet">
             <label style="margin-top:8px;font-size:9.5px">PICK SET TYPES</label>
             <button type="button" id="setItemBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Pick set types…</button>
-            <div class="sub" style="font-size:10px;margin-top:8px;line-height:1.35">Tick the set types this plan needs, then fill each one from the dish list.</div>
             <!-- Same dish picker as the Dish pane — one shared list, reachable
                  from either side without switching tabs. -->
             <div style="border-top:1px solid #ece3da;margin-top:8px;padding-top:8px">
-              <label style="margin:0;font-size:9.5px">NEW FROM LIST <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
-              <button type="button" id="setDishBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Choose a dish…</button>
+              <label style="margin:0;font-size:9.5px">PICK COMBO <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
+              <button type="button" id="setDishBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Pick combo…</button>
             </div>
           </div>
 
