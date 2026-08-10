@@ -1377,6 +1377,9 @@ struct WebViewRepresentable: UIViewRepresentable {
         // reload ONLY when the parent view intentionally bumps it (e.g. a
         // tab-appear), not on every SwiftUI recompute.
         var lastReloadKey: UUID?
+        /// The load must happen exactly once, from whichever path gets there
+        /// first — the cookie group or the watchdog below.
+        var didStartLoad = false
     }
 
     func makeUIView(context: Context) -> WKWebView {
@@ -1396,8 +1399,19 @@ struct WebViewRepresentable: UIViewRepresentable {
             group.enter(); store.setCookie(native) { group.leave() }
         }
         let target = nativeURL(url)
-        group.notify(queue: .main) { web.load(URLRequest(url: target)) }
-        context.coordinator.lastReloadKey = reloadKey
+        // WKHTTPCookieStore's completion handlers don't reliably fire before
+        // the web process is running, so gating the load on them left the tab
+        // blank forever — nothing rendered, nothing to tap. Load on whichever
+        // comes first: the cookies landing, or a short watchdog.
+        let coordinator = context.coordinator
+        let start = {
+            guard !coordinator.didStartLoad else { return }
+            coordinator.didStartLoad = true
+            web.load(URLRequest(url: target))
+        }
+        group.notify(queue: .main, execute: start)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: start)
+        coordinator.lastReloadKey = reloadKey
         return web
     }
 
