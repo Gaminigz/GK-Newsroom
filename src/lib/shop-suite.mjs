@@ -1134,7 +1134,8 @@ function menuPage(shop, extras = {}) {
           // Only the shop's own names can be renamed — the fixed six are shared
           // vocabulary and stay put.
           + (s.custom ? '<button type="button" class="setEdit" data-name="' + esc(s.name) + '"'
-              + ' style="flex:0 0 auto;border:0;background:none;font-size:13px;padding:0 4px;cursor:pointer">✎</button>' : '')
+              + ' style="flex:0 0 auto;width:34px;height:34px;border:1px solid #e3d6c2;background:#fff;'
+              + 'border-radius:99px;font-size:17px;line-height:1;padding:0;margin-right:2px;cursor:pointer;color:#d9542b">✎</button>' : '')
           + '<input type="checkbox" class="setBox" data-name="' + esc(s.name) + '"' + (on ? ' checked' : '')
           +   ' style="flex:0 0 auto;width:20px;height:20px;accent-color:#d9542b">'
           + '</label>';
