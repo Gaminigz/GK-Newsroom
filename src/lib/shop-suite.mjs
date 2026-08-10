@@ -1037,8 +1037,17 @@ function menuPage(shop, extras = {}) {
         (plan[si] ? inSet.length + ' in ' + plan[si].name : 'no set');
       var host = document.getElementById('feedPanelList');
       if (!list.length) { host.innerHTML = '<div class="sub" style="padding:22px 0;text-align:center;font-size:12px">nothing matches</div>'; return; }
+      host.innerHTML = dishRowsHtml(list, q);
+      wireDishBoxes(host);
+    }
+
+    /* Dish rows, shared by both panels — the set panel lists them underneath
+       the sets so one search covers everything the owner might be after. */
+    function dishRowsHtml(list, q){
+      var si = Number(document.getElementById('dishSet').value);
+      var inSet = (plan[si] ? plan[si].dishes : []).map(function(d){ return d.name; });
       var cat = '';
-      host.innerHTML = list.map(function(d){
+      return list.map(function(d){
         var head = '';
         if (!q && d.cat !== cat) { cat = d.cat; head = '<div class="sub" style="font-size:10px;letter-spacing:.04em;padding:12px 0 3px;font-weight:700">' + esc(cat || 'Other') + '</div>'; }
         var on = inSet.indexOf(d.name) >= 0;
@@ -1052,6 +1061,8 @@ function menuPage(shop, extras = {}) {
           +   ' style="flex:0 0 auto;width:20px;height:20px;accent-color:#d9542b">'
           + '</label>';
       }).join('');
+    }
+    function wireDishBoxes(host){
       host.querySelectorAll('.feedBox').forEach(function(b){
         b.addEventListener('change', function(){
           if (b.checked) feedTick(b.dataset.name, b);
@@ -1060,65 +1071,64 @@ function menuPage(shop, extras = {}) {
       });
     }
 
-    /* Set mode — same panel, same multi-tick, but each row is a set name.
-       Ticking creates the set; unticking removes it (with its dishes). */
+    /* One list, two sections: the sets first, then every dish under them.
+       A shop owner searching "Basmathi" should find it here rather than be
+       told it lives behind another toggle. Ticking a dish drops it into the
+       set shown in the header. */
     function renderSetPanel(){
       var q = feedQuery.trim().toLowerCase();
       var have = plan.map(function(s){ return s.name.toLowerCase(); });
-      var list = SET_CHOICES.filter(function(s){
+      var hit = function(n, si2){
         if (!q) return true;
-        return s.name.toLowerCase().indexOf(q) >= 0 || (s.nameSi || '').toLowerCase().indexOf(q) >= 0;
-      });
+        return String(n).toLowerCase().indexOf(q) >= 0 || String(si2 || '').toLowerCase().indexOf(q) >= 0;
+      };
+      var sets = SET_CHOICES.filter(function(s){ return hit(s.name, s.nameSi); });
+      var dishes = FEED_DISHES.filter(function(d){ return hit(d.name, d.nameSi); });
+      var si = Number(document.getElementById('dishSet').value);
+      var dest = plan[si] ? plan[si].name : '';
       document.getElementById('feedCount').textContent =
-        plan.length + (plan.length === 1 ? ' set in plan' : ' sets in plan');
-      var host = document.getElementById('feedPanelList');
-      // No "add what you typed" escape hatch — the list is closed on purpose.
-      // But a miss here is usually a dish name typed into the set box, so say
-      // so and hand the same search over to the dish list.
-      if (!list.length) {
-        var typed = feedQuery.trim();
-        var dishHits = FEED_DISHES.filter(function(d){
-          var t = typed.toLowerCase();
-          return d.name.toLowerCase().indexOf(t) >= 0 || (d.nameSi || '').toLowerCase().indexOf(t) >= 0;
-        });
-        host.innerHTML = '<div style="padding:18px 4px;text-align:center">'
-          + '<div class="sub" style="font-size:12px">no set called "' + esc(typed) + '"</div>'
-          + (dishHits.length
-            ? '<div class="sub" style="font-size:10.5px;margin-top:6px;line-height:1.35">'
-              + 'That is a dish, not a set — <strong>' + dishHits.length + '</strong> match' + (dishHits.length === 1 ? 'es' : '') + ' in the dish list.</div>'
-              + '<button type="button" id="setToDishBtn" class="btn" style="margin-top:10px;padding:9px 12px;font-size:12.5px;width:100%">Search dishes for "' + esc(typed) + '"</button>'
-            : '<div class="sub" style="font-size:10.5px;margin-top:6px;line-height:1.35">Sets come from a fixed list so every shop names them the same way. Ask for a new one to be added.</div>')
+        plan.length + (plan.length === 1 ? ' set' : ' sets') + ' in plan'
+        + (dest ? ' · dishes → ' + dest : '');
+
+      var sectionHead = function(label, note){
+        return '<div style="display:flex;align-items:baseline;gap:6px;padding:14px 0 4px;border-bottom:1px solid #ece3da;margin-bottom:2px">'
+          + '<span style="font-size:11px;font-weight:800;letter-spacing:.05em">' + esc(label) + '</span>'
+          + (note ? '<span class="sub" style="font-size:9.5px">' + esc(note) + '</span>' : '')
           + '</div>';
-        var jump = document.getElementById('setToDishBtn');
-        if (jump) jump.addEventListener('click', function(){
-          setAddMode('dish');
-          openFeedPanel('dish');
-          document.getElementById('feedSearch').value = typed;
-          feedQuery = typed;
-          renderFeedPanel();
-        });
-        return;
+      };
+
+      var out = '';
+      if (sets.length) {
+        out += sectionHead('SETS · ' + sets.length, 'the group headings');
+        var grp = '';
+        out += sets.map(function(s){
+          var head = '';
+          if (!q && s.group !== grp) { grp = s.group; head = '<div class="sub" style="font-size:10px;letter-spacing:.04em;padding:10px 0 3px;font-weight:700">' + esc(grp || 'Sets') + '</div>'; }
+          var on = have.indexOf(s.name.toLowerCase()) >= 0;
+          return head + '<label style="display:flex;gap:8px;align-items:center;width:100%;border-bottom:1px solid #f2ece6;padding:9px 2px;cursor:pointer">'
+            + '<span style="flex:1;min-width:0">'
+            +   '<span style="display:block;font-size:13px;font-weight:600;line-height:1.25">' + esc(s.name) + '</span>'
+            +   (s.nameSi ? '<span class="si" style="display:block;font-size:11px;line-height:1.3">' + esc(s.nameSi) + '</span>' : '')
+            + '</span>'
+            + '<input type="checkbox" class="setBox" data-name="' + esc(s.name) + '"' + (on ? ' checked' : '')
+            +   ' style="flex:0 0 auto;width:20px;height:20px;accent-color:#d9542b">'
+            + '</label>';
+        }).join('');
       }
-      var grp = '';
-      host.innerHTML = list.map(function(s){
-        var head = '';
-        if (!q && s.group !== grp) { grp = s.group; head = '<div class="sub" style="font-size:10px;letter-spacing:.04em;padding:12px 0 3px;font-weight:700">' + esc(grp || 'Sets') + '</div>'; }
-        var on = have.indexOf(s.name.toLowerCase()) >= 0;
-        return head + '<label style="display:flex;gap:8px;align-items:center;width:100%;border-bottom:1px solid #f2ece6;padding:9px 2px;cursor:pointer">'
-          + '<span style="flex:1;min-width:0">'
-          +   '<span style="display:block;font-size:13px;font-weight:600;line-height:1.25">' + esc(s.name) + '</span>'
-          +   (s.nameSi ? '<span class="si" style="display:block;font-size:11px;line-height:1.3">' + esc(s.nameSi) + '</span>' : '')
-          + '</span>'
-          + '<input type="checkbox" class="setBox" data-name="' + esc(s.name) + '"' + (on ? ' checked' : '')
-          +   ' style="flex:0 0 auto;width:20px;height:20px;accent-color:#d9542b">'
-          + '</label>';
-      }).join('');
+      if (dishes.length) {
+        out += sectionHead('DISHES · ' + dishes.length, dest ? 'tick → ' + dest : 'tick a set above first');
+        out += dishRowsHtml(dishes, q);
+      }
+      var host = document.getElementById('feedPanelList');
+      host.innerHTML = out || '<div class="sub" style="padding:22px 0;text-align:center;font-size:12px">nothing matches</div>';
+
       host.querySelectorAll('.setBox').forEach(function(b){
         b.addEventListener('change', function(){
           if (b.checked) setTick(b.dataset.name);
           else setUntick(b.dataset.name, b);
         });
       });
+      wireDishBoxes(host);
     }
 
     /* Only names already in SET_CHOICES reach this — the panel offers nothing
@@ -1191,7 +1201,7 @@ function menuPage(shop, extras = {}) {
       var search = document.getElementById('feedSearch');
       search.value = '';
       search.placeholder = panelMode === 'set'
-        ? 'Search ' + SET_CHOICES.length + ' sets…'
+        ? 'Search ' + (SET_CHOICES.length + FEED_DISHES.length) + ' sets + dishes…'
         : 'Search ' + FEED_DISHES.length + ' dishes…';
       document.getElementById('feedBackdrop').style.display = '';
       document.getElementById('feedPanel').style.display = '';
