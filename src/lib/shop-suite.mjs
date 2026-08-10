@@ -17,8 +17,13 @@ const ORANGE = "#d9542b";
  *  job — the Set-mode counterpart of the shared dish list. The shop's own
  *  past group labels are listed above these and take priority. */
 const SET_PRESETS = [
+  // Package tiers first — a plan usually opens with one of these, then the
+  // groups the buyer picks inside it.
+  { name: "Normal package", nameSi: "සාමාන්‍ය පැකේජය" },
+  { name: "Special menu", nameSi: "විශේෂ මෙනුව" },
+  { name: "King Pack", nameSi: "කිං පැක්" },
   { name: "Rice", nameSi: "බත්" },
-  { name: "Main dish", nameSi: "ප්‍රධාන කෑම" },
+  { name: "Main dishes", nameSi: "ප්‍රධාන කෑම" },
   { name: "Curry", nameSi: "ව්‍යංජන" },
   { name: "Side dishes", nameSi: "අතුරු කෑම" },
   { name: "Vegetables", nameSi: "එළවළු" },
@@ -755,6 +760,9 @@ function menuPage(shop, extras = {}) {
     var plan = ${JSON.stringify((dayPlan?.groups || []).map((g) => ({
       name: g.label || "",
       pick: Number(g.pick) || 1,
+      // null = no fixed price, the dish the buyer picks sets it. A number
+      // (including 0, i.e. "included") is the price of the whole set.
+      price: g.price == null ? null : Number(g.price) || 0,
       dishes: (g.choices || []).map((c) => ({ id: c.dishId, name: c.name, nameSi: c.nameSi || "", price: Number(c.price) || 0 })),
     })))};
     var SHOP_ID = '${id}';
@@ -803,6 +811,17 @@ function menuPage(shop, extras = {}) {
             +     '<button type="button" onclick="delSet(' + si + ')" style="border:0;background:none;color:#b3261e;font-size:14px;padding:0 2px;cursor:pointer">✕</button>'
             +   '</span>'
             + '</div>'
+            // A set can carry its own price — a King Pack tier costs what the
+            // tier costs. Left empty, the dish the buyer picks sets the price,
+            // which is how a "pick your main" package works.
+            + '<div style="display:flex;align-items:center;gap:5px;margin-top:5px">'
+            +   '<span class="sub" style="font-size:10px;flex:0 0 auto">set price $</span>'
+            +   '<input type="number" step="0.01" min="0" class="setPriceBox" data-si="' + si + '"'
+            +     ' value="' + (s.price == null ? '' : (s.price / 300).toFixed(2)) + '" placeholder="—"'
+            +     ' style="margin:0;width:58px;padding:3px 4px;text-align:center;font-weight:700;font-size:11px">'
+            +   '<span class="sub" style="font-size:9.5px;flex:1;min-width:0;line-height:1.2">'
+            +     (s.price == null ? 'empty = the dish picked sets it' : (s.price ? 'fixed · ' + money(s.price) : 'included, no charge')) + '</span>'
+            + '</div>'
             + '<div style="margin-top:6px">' + rows + '</div>'
             + '</div>';
         }).join('');
@@ -819,6 +838,16 @@ function menuPage(shop, extras = {}) {
             method:'POST', headers:{'Content-Type':'application/json'},
             body: JSON.stringify({id: d.id, price: d.price}),
           }).catch(function(){ /* price still saves with the plan */ });
+        });
+      });
+      // Blank clears back to "priced by the dish"; 0 means the set is included.
+      host.querySelectorAll('.setPriceBox').forEach(function(b){
+        b.addEventListener('change', function(){
+          var s = plan[Number(b.dataset.si)];
+          if (!s) return;
+          var v = String(b.value).trim();
+          s.price = v === '' ? null : Math.max(0, Math.round((Number(v) || 0) * 300));
+          renderPlan();
         });
       });
       host.querySelectorAll('.delDishBtn').forEach(function(b){
@@ -998,7 +1027,8 @@ function menuPage(shop, extras = {}) {
       var name = el.value.trim();
       var msg = document.getElementById('addSetMsg');
       if (!name) { msg.textContent = 'Type a name.'; return; }
-      plan.push({name: name, pick: 1, dishes: []});
+      plan.push({name: name, pick: 1, price: null, dishes: []});
+      noteSetChoice(name);
       el.value = '';
       msg.textContent = 'Added "' + name + '".';
       renderPlan();
@@ -1063,7 +1093,18 @@ function menuPage(shop, extras = {}) {
       document.getElementById('feedCount').textContent =
         plan.length + (plan.length === 1 ? ' set in plan' : ' sets in plan');
       var host = document.getElementById('feedPanelList');
-      if (!list.length) { host.innerHTML = '<div class="sub" style="padding:22px 0;text-align:center;font-size:12px">nothing matches</div>'; return; }
+      // No match is a dead end otherwise — offer the typed words as a new set
+      // rather than making the owner close the panel and retype them.
+      if (!list.length) {
+        var typed = feedQuery.trim();
+        host.innerHTML = '<div style="padding:18px 0;text-align:center">'
+          + '<div class="sub" style="font-size:12px">nothing matches</div>'
+          + (typed ? '<button type="button" id="setCreateBtn" class="btn" style="margin-top:12px;padding:9px 12px;font-size:12.5px;width:100%">+ Add "' + esc(typed) + '" as a set</button>' : '')
+          + '</div>';
+        var mk = document.getElementById('setCreateBtn');
+        if (mk) mk.addEventListener('click', function(){ setTick(typed); });
+        return;
+      }
       var grp = '';
       host.innerHTML = list.map(function(s){
         var head = '';
@@ -1086,10 +1127,18 @@ function menuPage(shop, extras = {}) {
       });
     }
 
+    /* A set named here — typed or picked — joins the picker list straight
+       away, so it shows ticked instead of vanishing from it. */
+    function noteSetChoice(name){
+      if (SET_CHOICES.some(function(s){ return s.name.toLowerCase() === name.toLowerCase(); })) return;
+      SET_CHOICES.unshift({name: name, nameSi: '', group: 'Used before'});
+    }
+
     function setTick(name){
       var msg = document.getElementById('addSetMsg');
       if (plan.some(function(s){ return s.name.toLowerCase() === name.toLowerCase(); })) return;
-      plan.push({name: name, pick: 1, dishes: []});
+      plan.push({name: name, pick: 1, price: null, dishes: []});
+      noteSetChoice(name);
       msg.textContent = '"' + name + '" added — switch to Dish to fill it.';
       renderPlan(); renderSetPanel();
     }

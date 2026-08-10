@@ -2368,14 +2368,20 @@ export async function handleApp(req, res, url) {
     const rawPlan = plansToday.find((p) => p.meal === nowMeal) || plansToday[0] || null;
     const plan = rawPlan ? {
       date: rawPlan.date, meal: rawPlan.meal,
-      groups: (rawPlan.groups || []).map((g) => ({
-        key: g.key, label: g.label, labelSi: g.labelSi || "",
-        pick: Number(g.pick) || 1,
-        // Drop anything the owner hasn't priced — it isn't sellable.
-        choices: (g.choices || [])
-          .filter((c) => priced.has(String(c.dishId)) && Number(c.price) > 0)
-          .map((c) => ({ dishId: c.dishId, name: c.name, nameSi: c.nameSi || "", price: Number(c.price) || 0 })),
-      })).filter((g) => g.choices.length),
+      groups: (rawPlan.groups || []).map((g) => {
+        // A set the owner priced covers whatever is inside it, so its rice and
+        // sides stay on offer at 0. Only an unpriced set needs every choice
+        // priced — there the dish picked is what the buyer pays.
+        const setPrice = g.price == null ? null : Number(g.price) || 0;
+        return {
+          key: g.key, label: g.label, labelSi: g.labelSi || "",
+          pick: Number(g.pick) || 1,
+          price: setPrice,
+          choices: (g.choices || [])
+            .filter((c) => priced.has(String(c.dishId)) && (setPrice != null || Number(c.price) > 0))
+            .map((c) => ({ dishId: c.dishId, name: c.name, nameSi: c.nameSi || "", price: Number(c.price) || 0 })),
+        };
+      }).filter((g) => g.choices.length),
     } : null;
     res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
     res.end(JSON.stringify({
@@ -3248,9 +3254,16 @@ export async function handleApp(req, res, url) {
       const ids = Array.isArray(g.dishes) ? g.dishes.map((d) => String(d?.id || "")).filter(Boolean).slice(0, 40) : [];
       const oids = (await Promise.all(ids.map(oid))).filter(Boolean);
       const picked = oids.length ? await dishesCol.find({ _id: { $in: oids }, shopId: m[1] }).toArray() : [];
+      // A set may carry its own price (a King Pack tier), or be left unpriced
+      // so the dish the buyer picks inside it sets the price. 0 = included.
+      const rawPrice = g?.price;
+      const price = rawPrice == null || rawPrice === ""
+        ? null
+        : Math.max(0, Math.round(Number(rawPrice) || 0));
       groups.push({
         key: label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || `set-${groups.length}`,
         label,
+        price,
         pick: Math.max(1, Math.min(40, Number(g?.pick) || 1)),
         choices: picked.map((d) => ({
           dishId: String(d._id), name: d.name, nameSi: d.nameSi || "",

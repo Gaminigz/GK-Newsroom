@@ -70,6 +70,35 @@ struct ShopDetailResponse: Codable {
     let shop: ShopInfo
     let special: Dish?
     let dishes: [Dish]
+    /// Today's package, when the shop planned one for the meal on now.
+    let plan: DayPlan?
+}
+
+struct DayPlan: Codable {
+    let date: String
+    let meal: String
+    let groups: [PlanGroup]
+}
+
+struct PlanGroup: Codable, Identifiable {
+    let key: String
+    let label: String
+    let labelSi: String
+    /// How many the buyer picks from this group.
+    let pick: Int
+    /// What this set costs on its own — a King Pack tier price, or 0 when it
+    /// is included. nil means the dish the buyer picks sets the price.
+    let price: Int?
+    let choices: [PlanChoice]
+    var id: String { key }
+}
+
+struct PlanChoice: Codable, Identifiable {
+    let dishId: String
+    let name: String
+    let nameSi: String
+    let price: Int
+    var id: String { dishId }
 }
 
 struct ShopInfo: Codable {
@@ -387,6 +416,8 @@ struct ShopView: View {
     @State private var orderPlaced = false
     @State private var selectedCategory: String = "All"
     @State private var selectedMeal: String = "All day"
+    /// Today's package picks — group key → chosen dish ids.
+    @State private var planPicks: [String: Set<String>] = [:]
     // Pre-booking: when the buyer wants the food ready. Defaults to now.
     @State private var wantAt: Date = Date()
 
@@ -476,6 +507,74 @@ struct ShopView: View {
                         .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
                         .listRowSeparator(.hidden)
                     }
+                    // Today's package — build your own plate from what the shop
+                    // planned. The main you pick sets the price.
+                    if let plan = d.plan {
+                        Section {
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    Text("BUILD YOUR \(plan.meal.uppercased())")
+                                        .font(.system(size: 10, weight: .heavy)).foregroundColor(.brandOrange)
+                                    Spacer()
+                                    Text(planComplete(plan) ? API.money(planPrice(plan)) : "pick to price")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(planComplete(plan) ? .primary : .secondary)
+                                }
+                                ForEach(plan.groups) { g in
+                                    let chosen = planPicks[g.key] ?? []
+                                    VStack(alignment: .leading, spacing: 5) {
+                                        HStack(spacing: 5) {
+                                            Text(g.label).font(.system(size: 13, weight: .bold))
+                                            Text("pick \(g.pick)").font(.system(size: 10)).foregroundColor(.secondary)
+                                            // A priced set says so up front; an included one says so too,
+                                            // otherwise the buyer can't tell what they're being charged for.
+                                            if let p = g.price {
+                                                Text(p > 0 ? API.money(p) : "included")
+                                                    .font(.system(size: 10, weight: .heavy))
+                                                    .foregroundColor(p > 0 ? .brandOrange : .secondary)
+                                            }
+                                            Spacer()
+                                            Text("\(chosen.count)/\(g.pick)")
+                                                .font(.system(size: 10, weight: .heavy))
+                                                .foregroundColor(chosen.count == g.pick ? .green : .brandOrange)
+                                        }
+                                        // Wrapping chips — tap to pick, tap again to drop.
+                                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 5)], alignment: .leading, spacing: 5) {
+                                            ForEach(g.choices) { c in
+                                                let on = chosen.contains(c.dishId)
+                                                Button { togglePlanPick(group: g, choice: c) } label: {
+                                                    Text(c.name)
+                                                        .font(.system(size: 11, weight: .semibold))
+                                                        .lineLimit(2).minimumScaleFactor(0.85)
+                                                        .frame(maxWidth: .infinity)
+                                                        .padding(.horizontal, 7).padding(.vertical, 7)
+                                                        .background(on ? Color.brandOrange : Color(UIColor.secondarySystemGroupedBackground))
+                                                        .foregroundColor(on ? .white : .primary)
+                                                        .clipShape(RoundedRectangle(cornerRadius: 9))
+                                                }
+                                                .buttonStyle(.plain)
+                                            }
+                                        }
+                                    }
+                                }
+                                Button { addPlanToBasket(plan) } label: {
+                                    Text(planComplete(plan)
+                                         ? "Add package · \(API.money(planPrice(plan)))"
+                                         : "Pick \(planRemaining(plan)) more")
+                                        .font(.system(size: 13, weight: .bold))
+                                        .frame(maxWidth: .infinity).padding(.vertical, 11)
+                                        .background(planComplete(plan) ? Color.brandOrange : Color.gray.opacity(0.25))
+                                        .foregroundColor(planComplete(plan) ? .white : .secondary)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(!planComplete(plan))
+                            }
+                            .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 10, trailing: 12))
+                            .listRowSeparator(.hidden)
+                        }
+                    }
+
                     Section {
                         // Merge special into the main list (special first, tagged) so
                         // there's a single filterable list — no separate "Today's special" section.
@@ -552,6 +651,63 @@ struct ShopView: View {
         .task {
             detail = try? await Net.get("/app/api/shop/\(shopId)", as: ShopDetailResponse.self)
         }
+    }
+
+    /* ---- today's package -------------------------------------------- */
+
+    /// Tapping a chip picks it; tapping it again drops it. Once the group is
+    /// full the next pick replaces the oldest, so the buyer is never stuck.
+    func togglePlanPick(group: PlanGroup, choice: PlanChoice) {
+        var chosen = planPicks[group.key] ?? []
+        if chosen.contains(choice.dishId) {
+            chosen.remove(choice.dishId)
+        } else {
+            if chosen.count >= group.pick, let drop = chosen.first { chosen.remove(drop) }
+            chosen.insert(choice.dishId)
+        }
+        planPicks[group.key] = chosen
+    }
+
+    func planComplete(_ plan: DayPlan) -> Bool {
+        plan.groups.allSatisfy { (planPicks[$0.key] ?? []).count == $0.pick }
+    }
+
+    func planRemaining(_ plan: DayPlan) -> Int {
+        plan.groups.reduce(0) { $0 + max(0, $1.pick - (planPicks[$1.key] ?? []).count) }
+    }
+
+    /// Each set contributes its own price when the shop set one — that is how a
+    /// King Pack tier is quoted, and how rice and sides come in at 0. A set
+    /// left unpriced costs what the priciest thing picked inside it costs,
+    /// which is the "pick your main" package on this shop's poster.
+    func planPrice(_ plan: DayPlan) -> Int {
+        var total = 0
+        for g in plan.groups {
+            if let fixed = g.price { total += fixed; continue }
+            var top = 0
+            for c in g.choices where (planPicks[g.key] ?? []).contains(c.dishId) {
+                top = max(top, c.price)
+            }
+            total += top
+        }
+        return total
+    }
+
+    /// Adds the whole package as one basket line, named with what was picked.
+    func addPlanToBasket(_ plan: DayPlan) {
+        guard planComplete(plan) else { return }
+        var parts: [String] = []
+        for g in plan.groups {
+            let names = g.choices.filter { (planPicks[g.key] ?? []).contains($0.dishId) }.map(\.name)
+            if !names.isEmpty { parts.append(names.joined(separator: " + ")) }
+        }
+        let line = BasketLine(
+            id: "plan-" + plan.groups.flatMap { planPicks[$0.key] ?? [] }.sorted().joined(separator: "-"),
+            name: "\(plan.meal) package — " + parts.joined(separator: ", "),
+            price: planPrice(plan), qty: 1)
+        if let i = basket.firstIndex(where: { $0.id == line.id }) { basket[i].qty += 1 }
+        else { basket.append(line) }
+        planPicks = [:]
     }
 
     func add(_ d: Dish) {
