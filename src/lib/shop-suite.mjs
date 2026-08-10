@@ -688,7 +688,7 @@ function menuPage(shop, extras = {}) {
             <!-- Same dish picker as the Dish pane — one shared list, reachable
                  from either side without switching tabs. -->
             <div style="border-top:1px solid #ece3da;margin-top:8px;padding-top:8px">
-              <label style="margin:0;font-size:9.5px">PICK COMBO <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
+              <label style="margin:0;font-size:9.5px">PICK COMBO</label>
               <button type="button" id="setDishBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Pick combo…</button>
             </div>
           </div>
