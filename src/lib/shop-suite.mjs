@@ -16,8 +16,10 @@ const ORANGE = "#d9542b";
 /** How many set names a shop may add for itself, on top of SET_PRESETS. */
 const CUSTOM_SET_MAX = 3;
 
-/** Newsroom category → the POS category chip a dish lands under. Mirrors the
- *  map in app.mjs's add-from-feed, so filtering matches where it ends up. */
+/** Newsroom category → POS chip. The meat/seafood category covers Beef,
+ *  Pork, Mutton, Sea food AND Chicken, so mapping by category alone sent all
+ *  of them to Chicken and left the other four chips empty. Name decides first,
+ *  category is the fallback. */
 const FEED_TO_POS = {
   "Rice & Staples": "Vegi meals", "Vegetable Curries": "Vegi meals",
   "Meat & Seafood Curries": "Chicken", "Salads, Sambols & Relishes": "Starters",
@@ -25,6 +27,22 @@ const FEED_TO_POS = {
   "Mixed, Fusion & Street Food": "Bites",
   "Bakery & Canteen Classics": "Bites", "Sri Lankan Cakes & Sweets": "Desserts",
 };
+
+const POS_BY_NAME = [
+  [/\b(beef|harak)\b/i, "Beef"],
+  [/\b(pork|ham|bacon|uru)\b/i, "Pork"],
+  [/\b(mutton|goat|lamb|elu)\b/i, "Mutton"],
+  [/(fish|prawn|shrimp|crab|cuttlefish|squid|eel|shark|sprat|tuna|seer|isso|malu|dallo|karawala)/i, "Sea food"],
+  [/\b(chicken|kukul|duck|turkey|quail|egg|bittara)\b/i, "Chicken"],
+  [/\b(tea|coffee|juice|soda|water|milk|faluda|lassi)\b/i, "Drinks"],
+  [/\b(arrack|beer|toddy|wine|whisky|rum)\b/i, "Alcohol"],
+];
+
+/** Which chip a catalogue dish belongs under. */
+function posCategoryFor(name, category) {
+  for (const [re, cat] of POS_BY_NAME) if (re.test(String(name || ""))) return cat;
+  return FEED_TO_POS[category] || "Vegi meals";
+}
 
 /** The set names a shop may use — a CLOSED list, exactly like the dish
  *  catalogue. Nothing here is user-writable: a free-text box would spawn
@@ -754,7 +772,7 @@ function menuPage(shop, extras = {}) {
         })))}</script>
         <script id="feedDishData" type="application/json">${JSON.stringify(feedDishes.map((d) => ({
           name: d.name, nameSi: d.nameSi || "", cat: d.category || "",
-          pos: FEED_TO_POS[d.category] || "Vegi meals",
+          pos: posCategoryFor(d.name, d.category),
         })))}</script>
         <script id="setChoiceData" type="application/json">${JSON.stringify(setChoices)}</script>
         </div>
