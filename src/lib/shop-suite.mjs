@@ -692,7 +692,7 @@ function menuPage(shop, extras = {}) {
         <input type="hidden" name="meal" value="${esc(planMeal)}">
         <input type="hidden" name="planJson" id="planJson">
 
-        <div style="display:grid;grid-template-columns:126px 1fr;gap:6px;align-items:start;margin-top:14px">
+        <div style="display:grid;grid-template-columns:126px minmax(0,1fr);gap:6px;align-items:start;margin-top:14px;max-width:100%">
 
         <!-- Left: name a set, or drop a dish into one. -->
         <div class="card" style="margin:0;padding:10px;position:sticky;top:6px">
@@ -825,22 +825,26 @@ function menuPage(shop, extras = {}) {
           var live = si === Number(document.getElementById('dishSet').value || 0);
           return '<div class="card" style="margin:0 0 10px 0;padding:11px 12px'
             + (live ? ';border-color:#d9542b;box-shadow:0 0 0 2px #d9542b22' : '') + '">'
-            + '<div class="row" style="justify-content:space-between;align-items:center">'
-            +   '<strong class="setName" data-si="' + si + '" style="font-size:13px;cursor:pointer;'
+            // Name on its own line, controls under it. Side by side, the row
+            // ran past the right edge and the ✕ could not be reached at all.
+            + '<div style="display:flex;align-items:center;gap:6px;min-width:0">'
+            +   '<strong class="setName" data-si="' + si + '" style="flex:1;min-width:0;font-size:13px;cursor:pointer;'
+            +     'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
             +     (live ? 'color:#d9542b' : '') + '">' + esc(s.name)
             +     (live ? ' <span style="color:#d9542b">●</span>' : '')
             +   '</strong>'
-            +   '<span class="row" style="gap:6px;flex:0 0 auto">'
-            +     '<span class="sub" style="font-size:10px">pick</span>'
-            +     '<input type="number" min="1" max="40" value="' + s.pick + '" onchange="plan[' + si + '].pick=Math.max(1,Number(this.value)||1)" style="margin:0;width:44px;padding:4px 2px;text-align:center;font-weight:700;font-size:12px">'
+            +   '<button type="button" onclick="delSet(' + si + ')" style="flex:0 0 auto;width:26px;height:26px;'
+            +     'border:0;background:none;color:#b3261e;font-size:15px;padding:0;cursor:pointer">✕</button>'
+            + '</div>'
+            + '<div style="display:flex;align-items:center;gap:5px;margin-top:5px;min-width:0">'
+            +   '<span class="sub" style="font-size:10px;flex:0 0 auto">pick</span>'
+            +   '<input type="number" min="1" max="40" value="' + s.pick + '" onchange="plan[' + si + '].pick=Math.max(1,Number(this.value)||1)" style="margin:0;flex:1 1 0;min-width:0;padding:5px 2px;text-align:center;font-weight:700;font-size:12px">'
             // Price left empty = the dish the buyer picks sets it; a number is
             // what the whole set costs.
-            +     '<span class="sub" style="font-size:10px">price</span>'
-            +     '<input type="number" step="0.01" min="0" class="setPriceBox" data-si="' + si + '"'
-            +       ' value="' + (s.price == null ? '' : (s.price / 300).toFixed(2)) + '" placeholder="$"'
-            +       ' style="margin:0;width:52px;padding:4px 2px;text-align:center;font-weight:700;font-size:12px">'
-            +     '<button type="button" onclick="delSet(' + si + ')" style="border:0;background:none;color:#b3261e;font-size:14px;padding:0 2px;cursor:pointer">✕</button>'
-            +   '</span>'
+            +   '<span class="sub" style="font-size:10px;flex:0 0 auto">price $</span>'
+            +   '<input type="number" step="0.01" min="0" class="setPriceBox" data-si="' + si + '"'
+            +     ' value="' + (s.price == null ? '' : (s.price / 300).toFixed(2)) + '" placeholder="—"'
+            +     ' style="margin:0;flex:1 1 0;min-width:0;padding:5px 2px;text-align:center;font-weight:700;font-size:12px">'
             + '</div>'
             + '<div style="margin-top:6px">' + rows + '</div>'
             + '</div>';
