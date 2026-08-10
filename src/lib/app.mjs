@@ -3026,8 +3026,11 @@ export async function handleApp(req, res, url) {
         return;
       }
     }
-    // Signed in but no shop yet (or not signed in) — send to the welcome /
-    // "open your shop" flow.
+    // Not signed in — go straight to the one login UI (the welcome sheet).
+    // A card in between only repeats its buttons, and it says "you don't have
+    // a shop yet" when the real state is "not signed in".
+    if (!email) { redirect(res, "/app"); return; }
+    // Signed in, genuinely no shop yet — offer to open one.
     html(res, shell({
       title: "Shop Manager — 3una 5aha",
       hideLogout: true,
@@ -3041,7 +3044,6 @@ export async function handleApp(req, res, url) {
         <strong style="display:block;margin-top:8px;font-size:15px">You don't have a shop yet</strong>
         <p class="sub" style="font-size:13px;margin-top:6px">Shop Manager is where restaurants and home cooks manage their menu, kitchen stock, purchase planning and more — all free.<br><span class="si">ඔබට තවම සාප්පුවක් නැත. නොමිලේ එකක් විවෘත කරන්න.</span></p>
         <a class="btn" style="margin-top:14px" href="/app">Open your shop — free</a>
-        ${email ? "" : `<a class="btn ghost" style="margin-top:10px" href="/app">Sign in first</a>`}
       </div>`,
     }));
     return;
