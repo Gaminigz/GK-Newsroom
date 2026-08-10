@@ -800,9 +800,14 @@ function menuPage(shop, extras = {}) {
               + '</span>'
               + '</div>';
           }).join('') : '<div class="sub" style="font-size:10.5px;padding:8px 0;color:#c9bfb7">no dishes yet</div>';
-          return '<div class="card" style="margin:0 0 10px 0;padding:11px 12px">'
+          var live = si === Number(document.getElementById('dishSet').value || 0);
+          return '<div class="card" style="margin:0 0 10px 0;padding:11px 12px'
+            + (live ? ';border-color:#d9542b;box-shadow:0 0 0 2px #d9542b22' : '') + '">'
             + '<div class="row" style="justify-content:space-between;align-items:center">'
-            +   '<strong style="font-size:13px">' + esc(s.name) + '</strong>'
+            +   '<strong class="setName" data-si="' + si + '" style="font-size:13px;cursor:pointer;'
+            +     (live ? 'color:#d9542b' : '') + '">' + esc(s.name)
+            +     (live ? ' <span class="sub" style="font-size:9px;font-weight:700;color:#d9542b">◀ adding here</span>' : '')
+            +   '</strong>'
             +   '<span class="row" style="gap:6px;flex:0 0 auto">'
             +     '<span class="sub" style="font-size:10px">pick</span>'
             +     '<input type="number" min="1" max="40" value="' + s.pick + '" onchange="plan[' + si + '].pick=Math.max(1,Number(this.value)||1)" style="margin:0;width:44px;padding:4px 2px;text-align:center;font-weight:700;font-size:12px">'
@@ -842,6 +847,10 @@ function menuPage(shop, extras = {}) {
           s.price = v === '' ? null : Math.max(0, Math.round((Number(v) || 0) * 300));
           renderPlan();
         });
+      });
+      // Tap a set's name to make it the one new dishes go into.
+      host.querySelectorAll('.setName').forEach(function(b){
+        b.addEventListener('click', function(){ focusSet(Number(b.dataset.si)); });
       });
       host.querySelectorAll('.delDishBtn').forEach(function(b){
         b.addEventListener('click', function(){ delDish(Number(b.dataset.si), Number(b.dataset.di)); });
@@ -1016,6 +1025,17 @@ function menuPage(shop, extras = {}) {
       .catch(function(e){ msg.textContent = e.message; });
     }
 
+    /* Point every picker at this set — the dropdown in Dish mode, the combo
+       panel, and the "adding here" marker on the card itself. */
+    function focusSet(i){
+      if (!plan[i]) return;
+      var sel = document.getElementById('dishSet');
+      sel.value = String(i);
+      document.getElementById('addSetMsg').textContent = 'Adding to ' + plan[i].name;
+      renderPlan();
+      if (addMode === 'dish') renderCatalogue();
+      if (document.getElementById('feedPanel').style.display !== 'none') renderFeedPanel();
+    }
     function delSet(i){ plan.splice(i, 1); renderPlan(); }
     function delDish(si, di){ plan[si].dishes.splice(di, 1); renderPlan(); }
 
@@ -1173,7 +1193,9 @@ function menuPage(shop, extras = {}) {
       var msg = document.getElementById('addSetMsg');
       if (plan.some(function(s){ return s.name.toLowerCase() === name.toLowerCase(); })) return;
       plan.push({name: name, pick: 1, price: null, dishes: []});
-      msg.textContent = '"' + name + '" added — switch to Dish to fill it.';
+      msg.textContent = '"' + name + '" added — dishes go here now.';
+      renderPlan();
+      document.getElementById('dishSet').value = String(plan.length - 1);
       renderPlan(); renderSetPanel();
     }
 
