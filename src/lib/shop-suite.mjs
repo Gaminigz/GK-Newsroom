@@ -685,9 +685,15 @@ function menuPage(shop, extras = {}) {
           <!-- Pick-from-a-list only, same as Dish mode. There is deliberately
                no name box: set names are a closed list. -->
           <div id="paneSet">
-            <label style="margin-top:8px;font-size:9.5px">PICK SET TYPES <span class="sub" style="font-weight:400">· ${setChoices.length}</span></label>
+            <label style="margin-top:8px;font-size:9.5px">PICK SET TYPES</label>
             <button type="button" id="setItemBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Pick set types…</button>
-            <div class="sub" style="font-size:10px;margin-top:8px;line-height:1.35">Step 1 — tick the set types this plan needs. Step 2 — switch to <strong>Dish</strong> and fill each one from the Sri Lankan dish list.</div>
+            <div class="sub" style="font-size:10px;margin-top:8px;line-height:1.35">Tick the set types this plan needs, then fill each one from the dish list.</div>
+            <!-- Same dish picker as the Dish pane — one shared list, reachable
+                 from either side without switching tabs. -->
+            <div style="border-top:1px solid #ece3da;margin-top:8px;padding-top:8px">
+              <label style="margin:0;font-size:9.5px">NEW FROM LIST <span class="sub" style="font-weight:400">· ${feedDishes.length}</span></label>
+              <button type="button" id="setDishBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Choose a dish…</button>
+            </div>
           </div>
 
           <div id="paneDish" style="display:none">
@@ -1071,64 +1077,45 @@ function menuPage(shop, extras = {}) {
       });
     }
 
-    /* One list, two sections: the sets first, then every dish under them.
-       A shop owner searching "Basmathi" should find it here rather than be
-       told it lives behind another toggle. Ticking a dish drops it into the
-       set shown in the header. */
+    /* Set types only. The dish list is its own picker — mixing the two into
+       one scrolling list made both harder to read. */
     function renderSetPanel(){
       var q = feedQuery.trim().toLowerCase();
       var have = plan.map(function(s){ return s.name.toLowerCase(); });
-      var hit = function(n, si2){
+      var list = SET_CHOICES.filter(function(s){
         if (!q) return true;
-        return String(n).toLowerCase().indexOf(q) >= 0 || String(si2 || '').toLowerCase().indexOf(q) >= 0;
-      };
-      var sets = SET_CHOICES.filter(function(s){ return hit(s.name, s.nameSi); });
-      var dishes = FEED_DISHES.filter(function(d){ return hit(d.name, d.nameSi); });
-      var si = Number(document.getElementById('dishSet').value);
-      var dest = plan[si] ? plan[si].name : '';
+        return s.name.toLowerCase().indexOf(q) >= 0 || (s.nameSi || '').toLowerCase().indexOf(q) >= 0;
+      });
       document.getElementById('feedCount').textContent =
-        plan.length + (plan.length === 1 ? ' set' : ' sets') + ' in plan'
-        + (dest ? ' · dishes → ' + dest : '');
-
-      var sectionHead = function(label, note){
-        return '<div style="display:flex;align-items:baseline;gap:6px;padding:14px 0 4px;border-bottom:1px solid #ece3da;margin-bottom:2px">'
-          + '<span style="font-size:11px;font-weight:800;letter-spacing:.05em">' + esc(label) + '</span>'
-          + (note ? '<span class="sub" style="font-size:9.5px">' + esc(note) + '</span>' : '')
-          + '</div>';
-      };
-
-      var out = '';
-      if (sets.length) {
-        out += sectionHead('SET TYPES · ' + sets.length, 'step 1 — pick these');
-        var grp = '';
-        out += sets.map(function(s){
-          var head = '';
-          if (!q && s.group !== grp) { grp = s.group; head = '<div class="sub" style="font-size:10px;letter-spacing:.04em;padding:10px 0 3px;font-weight:700">' + esc(grp || 'Sets') + '</div>'; }
-          var on = have.indexOf(s.name.toLowerCase()) >= 0;
-          return head + '<label style="display:flex;gap:8px;align-items:center;width:100%;border-bottom:1px solid #f2ece6;padding:9px 2px;cursor:pointer">'
-            + '<span style="flex:1;min-width:0">'
-            +   '<span style="display:block;font-size:13px;font-weight:600;line-height:1.25">' + esc(s.name) + '</span>'
-            +   (s.nameSi ? '<span class="si" style="display:block;font-size:11px;line-height:1.3">' + esc(s.nameSi) + '</span>' : '')
-            + '</span>'
-            + '<input type="checkbox" class="setBox" data-name="' + esc(s.name) + '"' + (on ? ' checked' : '')
-            +   ' style="flex:0 0 auto;width:20px;height:20px;accent-color:#d9542b">'
-            + '</label>';
-        }).join('');
-      }
-      if (dishes.length) {
-        out += sectionHead('DISHES · ' + dishes.length, dest ? 'step 2 — tick → ' + dest : 'pick a set type above first');
-        out += dishRowsHtml(dishes, q);
-      }
+        plan.length + (plan.length === 1 ? ' set' : ' sets') + ' in plan';
       var host = document.getElementById('feedPanelList');
-      host.innerHTML = out || '<div class="sub" style="padding:22px 0;text-align:center;font-size:12px">nothing matches</div>';
-
+      if (!list.length) {
+        host.innerHTML = '<div style="padding:18px 4px;text-align:center">'
+          + '<div class="sub" style="font-size:12px">nothing matches</div>'
+          + '<div class="sub" style="font-size:10.5px;margin-top:6px;line-height:1.35">Set types come from a fixed list. Dishes are in the dish picker below.</div>'
+          + '</div>';
+        return;
+      }
+      var grp = '';
+      host.innerHTML = list.map(function(s){
+        var head = '';
+        if (!q && s.group !== grp) { grp = s.group; head = '<div class="sub" style="font-size:10px;letter-spacing:.04em;padding:12px 0 3px;font-weight:700">' + esc(grp || 'Sets') + '</div>'; }
+        var on = have.indexOf(s.name.toLowerCase()) >= 0;
+        return head + '<label style="display:flex;gap:8px;align-items:center;width:100%;border-bottom:1px solid #f2ece6;padding:9px 2px;cursor:pointer">'
+          + '<span style="flex:1;min-width:0">'
+          +   '<span style="display:block;font-size:13px;font-weight:600;line-height:1.25">' + esc(s.name) + '</span>'
+          +   (s.nameSi ? '<span class="si" style="display:block;font-size:11px;line-height:1.3">' + esc(s.nameSi) + '</span>' : '')
+          + '</span>'
+          + '<input type="checkbox" class="setBox" data-name="' + esc(s.name) + '"' + (on ? ' checked' : '')
+          +   ' style="flex:0 0 auto;width:20px;height:20px;accent-color:#d9542b">'
+          + '</label>';
+      }).join('');
       host.querySelectorAll('.setBox').forEach(function(b){
         b.addEventListener('change', function(){
           if (b.checked) setTick(b.dataset.name);
           else setUntick(b.dataset.name, b);
         });
       });
-      wireDishBoxes(host);
     }
 
     /* Only names already in SET_CHOICES reach this — the panel offers nothing
@@ -1201,7 +1188,7 @@ function menuPage(shop, extras = {}) {
       var search = document.getElementById('feedSearch');
       search.value = '';
       search.placeholder = panelMode === 'set'
-        ? 'Search set types + dishes…'
+        ? 'Search set types…'
         : 'Search ' + FEED_DISHES.length + ' dishes…';
       document.getElementById('feedBackdrop').style.display = '';
       document.getElementById('feedPanel').style.display = '';
@@ -1213,6 +1200,7 @@ function menuPage(shop, extras = {}) {
     }
     document.getElementById('dishItemBtn').addEventListener('click', function(){ openFeedPanel('dish'); });
     document.getElementById('setItemBtn').addEventListener('click', function(){ openFeedPanel('set'); });
+    document.getElementById('setDishBtn').addEventListener('click', function(){ openFeedPanel('dish'); });
     document.getElementById('feedBackdrop').addEventListener('click', closeFeedPanel);
     document.getElementById('feedDone').addEventListener('click', closeFeedPanel);
     document.getElementById('feedSearch').addEventListener('input', function(){
