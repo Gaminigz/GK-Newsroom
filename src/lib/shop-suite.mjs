@@ -690,6 +690,7 @@ function menuPage(shop, extras = {}) {
             <div style="border-top:1px solid #ece3da;margin-top:8px;padding-top:8px">
               <label style="margin:0;font-size:9.5px">PICK COMBO</label>
               <button type="button" id="setDishBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Pick combo…</button>
+              <div id="comboTarget" class="sub" style="font-size:10px;margin-top:5px;line-height:1.25"></div>
             </div>
           </div>
 
@@ -806,7 +807,7 @@ function menuPage(shop, extras = {}) {
             + '<div class="row" style="justify-content:space-between;align-items:center">'
             +   '<strong class="setName" data-si="' + si + '" style="font-size:13px;cursor:pointer;'
             +     (live ? 'color:#d9542b' : '') + '">' + esc(s.name)
-            +     (live ? ' <span class="sub" style="font-size:9px;font-weight:700;color:#d9542b">◀ adding here</span>' : '')
+            +     (live ? ' <span style="color:#d9542b">●</span>' : '')
             +   '</strong>'
             +   '<span class="row" style="gap:6px;flex:0 0 auto">'
             +     '<span class="sub" style="font-size:10px">pick</span>'
@@ -856,6 +857,13 @@ function menuPage(shop, extras = {}) {
         b.addEventListener('click', function(){ delDish(Number(b.dataset.si), Number(b.dataset.di)); });
       });
 
+      var tgt = document.getElementById('comboTarget');
+      if (tgt) {
+        var cur = plan[Number(document.getElementById('dishSet').value || 0)];
+        tgt.innerHTML = plan.length
+          ? 'goes to <strong style="color:#d9542b">' + esc(cur ? cur.name : plan[0].name) + '</strong>'
+          : 'pick a set type first';
+      }
       var sel = document.getElementById('dishSet');
       var keep = sel.value;
       sel.innerHTML = plan.map(function(s, si){ return '<option value="' + si + '">' + esc(s.name) + '</option>'; }).join('');
