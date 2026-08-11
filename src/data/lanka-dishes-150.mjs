@@ -102,6 +102,14 @@ export const LANKA_DISHES_150 = {
       { name: "Fish Fry", si: "මාළු බැදුම" },
       { name: "Grilled Chicken", si: "ග්‍රිල් කුකුල් මස්" },
       { name: "Grilled Fish", si: "ග්‍රිල් මාළු" },
+      { name: "Shrimp Curry", si: "ඉස්සෝ කරවල" },
+      { name: "Devilled Shrimp", si: "දෙවල් ඉස්සෝ" },
+      { name: "Devilled Prawn", si: "දෙවල් ඉස්සන්" },
+      { name: "Lobster Curry", si: "පොකිරිස්සා කරවල" },
+      { name: "Devilled Beef", si: "දෙවල් හරක් මස්" },
+      { name: "Chicken Devilled", si: "දෙවල් කුකුල් මස්" },
+      { name: "Fried Fish", si: "බැදපු මාළු" },
+      { name: "Butter Chicken", si: "බටර් චිකන්" },
     ],
   },
   "Mixed, Fusion & Street Food": {
@@ -132,6 +140,10 @@ export const LANKA_DISHES_150 = {
       { name: "Roll with Curry", si: "රෝල්ස්" },
       { name: "Pittu Wrap", si: "පිට්ටු රැප්" },
       { name: "Egg Hopper Combo", si: "බිත්තර ආප්ප කොම්බෝ" },
+      { name: "Kottu", si: "කොත්තු" },
+      { name: "Chicken Biryani", si: "චිකන් බිරියානි" },
+      { name: "Vegetable Fried Rice", si: "එළවළු ෆ්‍රයිඩ් රයිස්" },
+      { name: "Egg Fried Rice", si: "බිත්තර ෆ්‍රයිඩ් රයිස්" },
     ],
   },
   "Salads, Sambols & Relishes": {
@@ -166,6 +178,7 @@ export const LANKA_DISHES_150 = {
       { name: "Gotukola Salad", si: "ගොටුකොල සලාද", priceLkr: 450 },
       { name: "Salad", si: "සලාද" },
       { name: "Papadam", si: "පපඩම්" },
+      { name: "Chilli Paste", si: "මිරිස් මාළුව" },
     ],
   },
   "Fried, Dry & Bite Dishes": {
@@ -201,6 +214,7 @@ export const LANKA_DISHES_150 = {
       { name: "Omelette", si: "ඔම්ලට්" },
       { name: "Fried Egg", si: "බැදපු බිත්තර" },
       { name: "Boiled Egg", si: "තම්බපු බිත්තර" },
+      { name: "Cuttlefish Fry", si: "දැල්ලා බැදුම" },
     ],
   },
   "Bread, Buns & Beer Snacks": {
