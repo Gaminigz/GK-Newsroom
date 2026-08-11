@@ -1145,9 +1145,36 @@ function menuPage(shop, extras = {}) {
         (plan[si] ? inSet.length + ' in ' + plan[si].name : 'no set')
         + (setCat === 'All' ? '' : ' · ' + setCat + ' only');
       var host = document.getElementById('feedPanelList');
-      if (!list.length) { host.innerHTML = '<div class="sub" style="padding:22px 0;text-align:center;font-size:12px">nothing matches</div>'; return; }
-      host.innerHTML = dishRowsHtml(list, q);
+      // Which set a tick lands in, chosen here rather than on the page behind
+      // this panel — that indicator is hidden while the panel is open, so a
+      // tick was a guess and often went to the wrong set.
+      var chips = plan.length
+        ? '<div style="display:flex;flex-wrap:wrap;gap:4px;padding:2px 0 8px;border-bottom:1px solid #ece3da;margin-bottom:4px">'
+          + plan.map(function(p2, pi){
+              var on = pi === si;
+              return '<button type="button" class="panelSet" data-si="' + pi + '"'
+                + ' style="border:1px solid ' + (on ? '#d9542b' : '#e0d6cc') + ';background:' + (on ? '#d9542b' : '#fff')
+                + ';color:' + (on ? '#fff' : '#4a443f') + ';border-radius:99px;padding:5px 10px;font-size:11.5px;'
+                + 'font-weight:700;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+                + esc(p2.name) + '</button>';
+            }).join('')
+          + '</div>'
+        : '<div class="sub" style="font-size:11px;padding:4px 2px 8px;color:#b3261e">Pick a set type first — ticks have nowhere to go.</div>';
+      if (!list.length) { host.innerHTML = chips + '<div class="sub" style="padding:22px 0;text-align:center;font-size:12px">nothing matches</div>'; wirePanelSets(host); return; }
+      host.innerHTML = chips + dishRowsHtml(list, q);
+      wirePanelSets(host);
       wireDishBoxes(host);
+    }
+
+    /* Switching destination only redraws the panel — a full page render is
+       what made this feel slow. */
+    function wirePanelSets(host){
+      host.querySelectorAll('.panelSet').forEach(function(b){
+        b.addEventListener('click', function(){
+          document.getElementById('dishSet').value = b.dataset.si;
+          renderFeedPanel();
+        });
+      });
     }
 
     /* Dish rows, shared by both panels — the set panel lists them underneath
