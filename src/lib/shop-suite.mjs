@@ -975,6 +975,10 @@ function menuPage(shop, extras = {}) {
       var isSet = mode === 'set';
       document.getElementById('paneSet').style.display  = isSet ? '' : 'none';
       document.getElementById('paneDish').style.display = isSet ? 'none' : '';
+      // Dish is about the shop's own dish list, scoped by the category chips —
+      // a shop that never serves Pork or Beef manages that here. Sets belong to
+      // Set mode; the only crossing point is Pick combo.
+      document.getElementById('setList').style.display = isSet ? '' : 'none';
       // The sets stay on screen while picking — hiding them meant the owner
       // couldn't see what they'd just ticked, or reach the X to undo it.
       document.getElementById('dishCatalogue').style.display = isSet ? 'none' : '';
