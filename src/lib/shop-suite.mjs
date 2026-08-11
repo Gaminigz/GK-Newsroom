@@ -922,6 +922,7 @@ function menuPage(shop, extras = {}) {
       });
 
       saveDraft();
+      markDirty();
       var cur = plan[Number(document.getElementById('dishSet').value || 0)] || plan[0];
       var dishTgt = document.getElementById('dishTarget');
       if (dishTgt) {
@@ -1483,13 +1484,34 @@ function menuPage(shop, extras = {}) {
     /* Posts JSON and stays on the page. The old form submit navigated away,
        and in this WebView that navigation can be cancelled — which lost the
        whole plan with no warning. */
+    /* Autosave. A busy kitchen shouldn't have to remember a Save button, so
+       the button becomes the status light instead:
+         orange = edited, not saved yet     green = saved     red = failed */
+    var saveTimer = null, lastSaved = '', firstPaint = true;
+    function paintSave(state, text){
+      var btn = document.getElementById('saveBtn');
+      if (!btn) return;
+      var c = state === 'saved' ? '#1d7a34' : state === 'error' ? '#b3261e' : '#d9542b';
+      btn.style.background = c;
+      btn.style.borderColor = c;
+      btn.style.color = '#fff';
+      btn.textContent = text;
+    }
+    function markDirty(){
+      if (firstPaint) return;
+      var now = JSON.stringify(plan);
+      if (now === lastSaved) return;
+      paintSave('dirty', 'Saving ' + PLAN_MEAL + ' plan…');
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(function(){ savePlan(); }, 1200);
+    }
+
     function savePlan(ev){
       if (ev) ev.preventDefault();
       var btn = document.getElementById('saveBtn');
       var note = document.getElementById('saveNote');
       if (!plan.length) { note.textContent = 'Nothing to save yet.'; return false; }
       btn.disabled = true;
-      note.textContent = 'Saving…';
       fetch('/app/owner/' + SHOP_ID + '/menu/plan.json', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({date: PLAN_DATE, meal: PLAN_MEAL, groups: plan}),
@@ -1497,18 +1519,29 @@ function menuPage(shop, extras = {}) {
       .then(function(r){ return r.json(); })
       .then(function(j){
         btn.disabled = false;
-        if (!j.ok) { note.textContent = j.error || 'Could not save — your plan is still here, try again.'; return; }
+        if (!j.ok) {
+          paintSave('error', 'Not saved — tap to retry');
+          note.textContent = j.error || 'Could not save — your plan is still here.';
+          return;
+        }
+        lastSaved = JSON.stringify(plan);
         try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
-        note.textContent = 'Saved · ' + j.groups + ' set' + (j.groups === 1 ? '' : 's') + ' · ' + PLAN_MEAL + ' ' + PLAN_DATE;
+        paintSave('saved', 'Saved · ' + PLAN_MEAL + ' ' + PLAN_DATE);
+        note.textContent = j.groups + ' set' + (j.groups === 1 ? '' : 's') + ' saved';
       })
       .catch(function(e){
         btn.disabled = false;
-        note.textContent = 'Could not save (' + e.message + ') — your plan is still here, try again.';
+        paintSave('error', 'Not saved — tap to retry');
+        note.textContent = 'No connection (' + e.message + ') — your plan is safe on this page.';
       });
       return false;
     }
     loadDraft();
     renderPlan();
+    lastSaved = JSON.stringify(plan);
+    firstPaint = false;
+    paintSave(plan.length ? 'saved' : 'dirty',
+      plan.length ? 'Saved · ' + PLAN_MEAL + ' ' + PLAN_DATE : 'Save ' + PLAN_MEAL + ' plan · ' + PLAN_DATE);
 
     async function fetchRecipe() {
       const dish = document.getElementById('aiDishName').value.trim();
