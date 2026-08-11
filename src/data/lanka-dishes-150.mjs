@@ -56,6 +56,11 @@ export const LANKA_DISHES_150 = {
       { name: "Cashew Curry", si: "කජු මාළුව", priceLkr: 1050 },
       { name: "Temperate Potato", si: "අර්තාපල් තෙලට", priceLkr: 450 },
       { name: "Soya Meat Curry", si: "සෝයා මීට්", priceLkr: 600 },
+      { name: "Dhal Curry", si: "පරිප්පු කරවල" },
+      { name: "Potato Curry", si: "අර්තාපල් කරවල" },
+      { name: "Vegetable Curry", si: "එළවළු කරවල" },
+      { name: "Mixed Vegetable Curry", si: "මිශ්‍ර එළවළු කරවල" },
+      { name: "Chickpea Curry", si: "කඩල කරවල" },
     ],
   },
   "Meat & Seafood Curries": {
@@ -90,6 +95,13 @@ export const LANKA_DISHES_150 = {
       { name: "Pork Curry", si: "උරු මස්", priceLkr: 1500 },
       { name: "Beef Bistake", si: "හරක් මස් බිස්ටේක්", priceLkr: 1800 },
       { name: "Temperate Shrimp", si: "ඉස්සෝ තෙලට", priceLkr: 1800 },
+      { name: "Fish Curry", si: "මාළු කරවල" },
+      { name: "Beef Curry", si: "හරක් මස් කරවල" },
+      { name: "Egg Curry", si: "බිත්තර කරවල" },
+      { name: "Chicken Fry", si: "කුකුල් මස් බැදුම" },
+      { name: "Fish Fry", si: "මාළු බැදුම" },
+      { name: "Grilled Chicken", si: "ග්‍රිල් කුකුල් මස්" },
+      { name: "Grilled Fish", si: "ග්‍රිල් මාළු" },
     ],
   },
   "Mixed, Fusion & Street Food": {
@@ -152,6 +164,8 @@ export const LANKA_DISHES_150 = {
       { name: "Centella Salad", si: "ශාක සලාද" },
       { name: "Coconut Sambal", si: "පොල් සම්බෝල්", priceLkr: 300 },
       { name: "Gotukola Salad", si: "ගොටුකොල සලාද", priceLkr: 450 },
+      { name: "Salad", si: "සලාද" },
+      { name: "Papadam", si: "පපඩම්" },
     ],
   },
   "Fried, Dry & Bite Dishes": {
@@ -184,6 +198,9 @@ export const LANKA_DISHES_150 = {
       { name: "Parippu Vadai", si: "පරිප්පු වඩේ" },
       { name: "Chicken Cutlet", si: "කුකුල් මස් කට්ලට්", priceLkr: 450 },
       { name: "Sausage Dewal", si: "සොසේජ්ස් දෙවල්", priceLkr: 600 },
+      { name: "Omelette", si: "ඔම්ලට්" },
+      { name: "Fried Egg", si: "බැදපු බිත්තර" },
+      { name: "Boiled Egg", si: "තම්බපු බිත්තර" },
     ],
   },
   "Bread, Buns & Beer Snacks": {
@@ -232,6 +249,8 @@ export const LANKA_DISHES_150 = {
       { name: "String Hoppers", si: "ඉඳිආප්ප" },
       { name: "Hoppers", si: "ආප්ප" },
       { name: "Pittu", si: "පිට්ටු" },
+      { name: "Rice", si: "බත්" },
+      { name: "Noodles", si: "නූඩ්ල්ස්" },
     ],
   },
 };
