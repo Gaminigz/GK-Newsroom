@@ -715,7 +715,7 @@ function menuPage(shop, extras = {}) {
     <!-- SET MENU -->
     <div id="tab-set" style="order:1">
       ${singles.length ? `
-      <form method="POST" action="/app/owner/${id}/menu/plan" onsubmit="return serialisePlan()">
+      <form method="POST" action="/app/owner/${id}/menu/plan" id="planForm" onsubmit="return savePlan(event)">
         <input type="hidden" name="date" value="${esc(planDate)}">
         <input type="hidden" name="meal" value="${esc(planMeal)}">
         <input type="hidden" name="planJson" id="planJson">
@@ -779,7 +779,8 @@ function menuPage(shop, extras = {}) {
         <script id="setChoiceData" type="application/json">${JSON.stringify(setChoices)}</script>
         </div>
 
-        <button class="btn" style="margin-top:16px">Save ${esc(planMeal)} plan · ${esc(planDate)}</button>
+        <button class="btn" id="saveBtn" style="margin-top:16px">Save ${esc(planMeal)} plan · ${esc(planDate)}</button>
+        <div id="saveNote" class="sub" style="font-size:11.5px;margin-top:6px;text-align:center"></div>
       </form>
 
       <!-- Dish panel — 267pt wide (800 physical px at 3x), above the iOS cap. -->
@@ -819,6 +820,7 @@ function menuPage(shop, extras = {}) {
     var SHOP_ID = '${id}';
     var FREE_SLOTS = ${freeSlots};
     var PLAN_MEAL = '${esc(planMeal)}';
+    var PLAN_DATE = '${esc(planDate)}';
 
     function money(lkr){
       var usd = (Number(lkr) || 0) / 300;
@@ -919,6 +921,7 @@ function menuPage(shop, extras = {}) {
         b.addEventListener('click', function(){ delDish(Number(b.dataset.si), Number(b.dataset.di)); });
       });
 
+      saveDraft();
       var cur = plan[Number(document.getElementById('dishSet').value || 0)] || plan[0];
       var dishTgt = document.getElementById('dishTarget');
       if (dishTgt) {
@@ -1457,6 +1460,54 @@ function menuPage(shop, extras = {}) {
       document.getElementById('planJson').value = JSON.stringify(plan);
       return true;
     }
+
+    /* A draft is kept per date+meal so a reload, an accidental back, or the
+       WebView reloading under you never costs the work. */
+    var DRAFT_KEY = 'plan:' + SHOP_ID + ':' + PLAN_DATE + ':' + PLAN_MEAL;
+    function saveDraft(){
+      try { localStorage.setItem(DRAFT_KEY, JSON.stringify(plan)); } catch (e) {}
+    }
+    function loadDraft(){
+      try {
+        var raw = localStorage.getItem(DRAFT_KEY);
+        if (!raw) return false;
+        var d = JSON.parse(raw);
+        if (!Array.isArray(d) || !d.length) return false;
+        if (plan.length) return false;          // a saved plan wins over a draft
+        plan = d;
+        document.getElementById('saveNote').textContent = 'Restored your unsaved changes.';
+        return true;
+      } catch (e) { return false; }
+    }
+
+    /* Posts JSON and stays on the page. The old form submit navigated away,
+       and in this WebView that navigation can be cancelled — which lost the
+       whole plan with no warning. */
+    function savePlan(ev){
+      if (ev) ev.preventDefault();
+      var btn = document.getElementById('saveBtn');
+      var note = document.getElementById('saveNote');
+      if (!plan.length) { note.textContent = 'Nothing to save yet.'; return false; }
+      btn.disabled = true;
+      note.textContent = 'Saving…';
+      fetch('/app/owner/' + SHOP_ID + '/menu/plan.json', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({date: PLAN_DATE, meal: PLAN_MEAL, groups: plan}),
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        btn.disabled = false;
+        if (!j.ok) { note.textContent = j.error || 'Could not save — your plan is still here, try again.'; return; }
+        try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+        note.textContent = 'Saved · ' + j.groups + ' set' + (j.groups === 1 ? '' : 's') + ' · ' + PLAN_MEAL + ' ' + PLAN_DATE;
+      })
+      .catch(function(e){
+        btn.disabled = false;
+        note.textContent = 'Could not save (' + e.message + ') — your plan is still here, try again.';
+      });
+      return false;
+    }
+    loadDraft();
     renderPlan();
 
     async function fetchRecipe() {
