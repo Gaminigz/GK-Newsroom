@@ -1185,7 +1185,9 @@ function menuPage(shop, extras = {}) {
       if (panelMode === 'set') { renderSetPanel(); return; }
       var q = feedQuery.trim().toLowerCase();
       var si = Number(document.getElementById('dishSet').value);
-      var inSet = (plan[si] ? plan[si].dishes : []).map(function(d){ return d.name; });
+      var inSet = plan[si]
+        ? plan[si].dishes.map(function(d){ return d.name; })
+        : SHOP_DISHES.filter(function(x){ return onDay(x.id); }).map(function(x){ return x.name; });
       var list = FEED_DISHES.filter(function(d){
         // Typing searches everything; otherwise the category chip scopes it.
         if (q) return d.name.toLowerCase().indexOf(q) >= 0 || (d.nameSi || '').toLowerCase().indexOf(q) >= 0;
@@ -1193,7 +1195,7 @@ function menuPage(shop, extras = {}) {
       });
       if (q) list = list.slice().sort(function(a, b){ return a.name.localeCompare(b.name); });
       document.getElementById('feedCount').textContent =
-        (plan[si] ? inSet.length + ' in ' + plan[si].name : 'no set')
+        (plan[si] ? inSet.length + ' in ' + plan[si].name : dayDishes.length + ' on this day')
         + (setCat === 'All' ? '' : ' · ' + setCat + ' only');
       var host = document.getElementById('feedPanelList');
       // Which set a tick lands in, chosen here rather than on the page behind
@@ -1210,7 +1212,7 @@ function menuPage(shop, extras = {}) {
                 + esc(p2.name) + '</button>';
             }).join('')
           + '</div>'
-        : '<div class="sub" style="font-size:11px;padding:4px 2px 8px;color:#b3261e">Pick a set type first — ticks have nowhere to go.</div>';
+        : '<div class="sub" style="font-size:11px;padding:4px 2px 8px">Ticking adds the dish to <strong>' + PLAN_DATE + ' ' + PLAN_MEAL + '</strong>. Make a set only if you want a package.</div>';
       if (!list.length) { host.innerHTML = chips + '<div class="sub" style="padding:22px 0;text-align:center;font-size:12px">nothing matches</div>'; wirePanelSets(host); return; }
       host.innerHTML = chips + dishRowsHtml(list, q);
       wirePanelSets(host);
@@ -1444,14 +1446,14 @@ function menuPage(shop, extras = {}) {
     function feedTick(name, box){
       var si = Number(document.getElementById('dishSet').value);
       var msg = document.getElementById('addSetMsg');
-      if (!plan[si]) { msg.textContent = 'Make a set first.'; if (box) box.checked = false; return; }
       var own = SHOP_DISHES.filter(function(x){ return x.name === name; })[0];
       if (own) {
+        // No set chosen? The dish still goes on the day — that is the menu.
         addToDay(own.id);
-        if (!plan[si].dishes.some(function(d){ return d.id === own.id; })) {
+        if (plan[si] && !plan[si].dishes.some(function(d){ return d.id === own.id; })) {
           plan[si].dishes.push({id: own.id, name: own.name, nameSi: own.nameSi, price: own.price});
         }
-        msg.textContent = name + ' → ' + plan[si].name;
+        msg.textContent = plan[si] ? name + ' → ' + plan[si].name : name + ' on ' + PLAN_DATE;
         renderPlan(); renderFeedPanel();
         return;
       }
@@ -1465,7 +1467,7 @@ function menuPage(shop, extras = {}) {
         var fedPrice = Number(j.price) || 0;
         SHOP_DISHES.push({id: j.id, name: name, nameSi: j.nameSi || '', price: fedPrice, cat: '', meals: ['Breakfast','Lunch','Dinner'], own: true});
         addToDay(j.id);
-        if (!plan[si].dishes.some(function(d){ return d.id === j.id; })) {
+        if (plan[si] && !plan[si].dishes.some(function(d){ return d.id === j.id; })) {
           plan[si].dishes.push({id: j.id, name: name, nameSi: j.nameSi || '', price: fedPrice});
         }
         msg.textContent = name + (fedPrice ? ' added at ' + money(fedPrice) + '.' : ' added — set its price on the right.');
@@ -1475,7 +1477,9 @@ function menuPage(shop, extras = {}) {
     }
     function feedUntick(name){
       var si = Number(document.getElementById('dishSet').value);
-      if (!plan[si]) return;
+      var known = SHOP_DISHES.filter(function(x){ return x.name === name; })[0];
+      if (known) dayDishes = dayDishes.filter(function(x){ return x !== String(known.id); });
+      if (!plan[si]) { document.getElementById('addSetMsg').textContent = name + ' off ' + PLAN_DATE + '.'; renderPlan(); renderFeedPanel(); return; }
       plan[si].dishes = plan[si].dishes.filter(function(d){ return d.name !== name; });
       document.getElementById('addSetMsg').textContent = name + ' removed.';
       renderPlan(); renderFeedPanel();
