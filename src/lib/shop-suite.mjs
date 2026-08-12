@@ -818,10 +818,11 @@ function menuPage(shop, extras = {}) {
     /* The dishes this shop serves on this date. A dish is on the day whether
        or not it sits in a set — that is what Dish mode lists. */
     var dayDishes = ${JSON.stringify(
-      Array.from(new Set([
-        ...((dayPlan?.dishIds) || []).map(String),
-        ...((dayPlan?.groups) || []).flatMap((g) => (g.choices || []).map((c) => String(c.dishId))),
-      ]))
+      // A plan saved before day dish lists existed has none, so fall back to
+      // whatever its sets hold. Once it has one, that list is the truth.
+      (dayPlan?.dishIds || []).length
+        ? dayPlan.dishIds.map(String)
+        : Array.from(new Set(((dayPlan?.groups) || []).flatMap((g) => (g.choices || []).map((c) => String(c.dishId)))))
     )};
     function onDay(id){ return dayDishes.indexOf(String(id)) >= 0; }
     function addToDay(id){ if (id && !onDay(id)) dayDishes.push(String(id)); }
@@ -1014,10 +1015,10 @@ function menuPage(shop, extras = {}) {
       var si = Number(document.getElementById('dishSet').value);
       var inSet = (plan[si] ? plan[si].dishes : []).map(function(d){ return d.id; });
       var q = dishSearch.trim().toLowerCase();
-      // What is on THIS date — the day's own list, plus anything a set holds.
+      // The day's dish list, and nothing else. A dish that lives only inside
+      // a set shows on the set card, not here.
       var onPlan = {};
       dayDishes.forEach(function(id){ onPlan[id] = true; });
-      plan.forEach(function(sx){ sx.dishes.forEach(function(x){ onPlan[x.id] = true; }); });
       var list = catalogueRows().filter(function(d){
         // Search wins over everything — that is how you reach the full list.
         if (q) return d.name.toLowerCase().indexOf(q) >= 0 || (d.nameSi || '').toLowerCase().indexOf(q) >= 0;
@@ -1528,7 +1529,10 @@ function menuPage(shop, extras = {}) {
         .then(function(j){
           if (!j.ok) throw new Error(j.error || 'could not load');
           dayDishes = (j.dishIds || []).slice();
-          (j.plan || []).forEach(function(g){ (g.dishes || []).forEach(function(d){ addToDay(d.id); }); });
+          // Same fallback for plans saved before day dish lists existed.
+          if (!dayDishes.length) {
+            (j.plan || []).forEach(function(g){ (g.dishes || []).forEach(function(d){ addToDay(d.id); }); });
+          }
           plan = (j.plan || []).map(function(g){
             return { name: g.name, pick: g.pick, price: g.price == null ? null : g.price,
                      dishes: (g.dishes || []).map(function(d){ return { id: d.id, name: d.name, nameSi: d.nameSi, price: d.price }; }) };
