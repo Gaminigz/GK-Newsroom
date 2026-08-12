@@ -3428,9 +3428,20 @@ export async function handleApp(req, res, url) {
     const _id = await oid(String(body.id || ""));
     const price = Math.max(0, Math.round(Number(body.price) || 0));
     if (_id) {
-      await (await col("app_dishes")).updateOne(
-        { _id, shopId: m[1] }, { $set: { price, updatedAt: new Date() } },
-      );
+      const dishes = await col("app_dishes");
+      await dishes.updateOne({ _id, shopId: m[1] }, { $set: { price, updatedAt: new Date() } });
+      // A price typed once should be the price everywhere. It already applies
+      // to every date for this shop; seed the shared catalogue too, so the
+      // next time anyone pulls this dish in it arrives priced instead of 0.
+      if (price > 0) {
+        const d = await dishes.findOne({ _id }, { projection: { name: 1 } });
+        if (d?.name) {
+          await (await col("lanka_dishes")).updateOne(
+            { name: d.name, $or: [{ priceLkr: { $exists: false } }, { priceLkr: 0 }] },
+            { $set: { priceLkr: price } },
+          );
+        }
+      }
     }
     res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
     return;
