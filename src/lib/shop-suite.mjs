@@ -970,7 +970,7 @@ function menuPage(shop, extras = {}) {
         + '<button type="button" id="pickDone" style="flex:0 0 auto;border:0;background:#191512;color:#fff;border-radius:99px;padding:7px 14px;font-size:11.5px;font-weight:700;cursor:pointer">Done</button>'
         + '</div>';
       var body = list.length
-        ? '<div class="card" style="margin:0;padding:4px 10px;max-height:430px;overflow-y:auto">'
+        ? '<div class="card" style="margin:0;padding:4px 10px">'
           + list.map(function(d){
               var already = d.id && inSet.indexOf(d.id) >= 0;
               // On the plan for this date, in any set? Then it can be taken
