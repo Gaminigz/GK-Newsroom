@@ -2452,6 +2452,8 @@ export async function handleApp(req, res, url) {
         id: String(d._id), name: d.name, nameSi: d.nameSi || "",
         price: Number(d.price) || 0, category: d.category || "",
       })),
+      // The dishes this shop serves on this date, independent of any set.
+      dishIds: (plan?.dishIds || []).map(String),
       plan: (plan?.groups || []).map((g) => ({
         name: g.label || "", pick: Number(g.pick) || 1,
         price: g.price == null ? null : Number(g.price) || 0,
@@ -3331,14 +3333,21 @@ export async function handleApp(req, res, url) {
         })),
       });
     }
+    // The day's own dish list — what the shop serves that date, whether or
+    // not it sits in a set.
+    const rawIds = Array.isArray(body.dishIds) ? body.dishIds.map(String).slice(0, 200) : [];
+    const validIds = (await Promise.all(rawIds.map(oid))).filter(Boolean);
+    const dishIds = validIds.length
+      ? (await dishesCol.find({ _id: { $in: validIds }, shopId: m[1] }).project({ _id: 1 }).toArray()).map((d) => String(d._id))
+      : [];
     await (await col("day_plans")).updateOne(
       { shopId: m[1], date, meal },
-      { $set: { shopId: m[1], date, meal, groups, updatedAt: new Date() },
+      { $set: { shopId: m[1], date, meal, groups, dishIds, updatedAt: new Date() },
         $setOnInsert: { createdAt: new Date() } },
       { upsert: true },
     );
     res.writeHead(200, { "Content-Type": "application/json" })
-      .end(JSON.stringify({ ok: true, date, meal, groups: groups.length }));
+      .end(JSON.stringify({ ok: true, date, meal, groups: groups.length, dishes: dishIds.length }));
     return;
   }
 

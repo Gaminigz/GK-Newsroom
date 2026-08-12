@@ -815,6 +815,16 @@ function menuPage(shop, extras = {}) {
       price: g.price == null ? null : Number(g.price) || 0,
       dishes: (g.choices || []).map((c) => ({ id: c.dishId, name: c.name, nameSi: c.nameSi || "", price: Number(c.price) || 0 })),
     })))};
+    /* The dishes this shop serves on this date. A dish is on the day whether
+       or not it sits in a set — that is what Dish mode lists. */
+    var dayDishes = ${JSON.stringify(
+      Array.from(new Set([
+        ...((dayPlan?.dishIds) || []).map(String),
+        ...((dayPlan?.groups) || []).flatMap((g) => (g.choices || []).map((c) => String(c.dishId))),
+      ]))
+    )};
+    function onDay(id){ return dayDishes.indexOf(String(id)) >= 0; }
+    function addToDay(id){ if (id && !onDay(id)) dayDishes.push(String(id)); }
     var SHOP_ID = '${id}';
     var FREE_SLOTS = ${freeSlots};
     var PLAN_MEAL = '${esc(planMeal)}';
@@ -1004,8 +1014,9 @@ function menuPage(shop, extras = {}) {
       var si = Number(document.getElementById('dishSet').value);
       var inSet = (plan[si] ? plan[si].dishes : []).map(function(d){ return d.id; });
       var q = dishSearch.trim().toLowerCase();
-      // What is on THIS date, so a dish can be pulled off it.
+      // What is on THIS date — the day's own list, plus anything a set holds.
       var onPlan = {};
+      dayDishes.forEach(function(id){ onPlan[id] = true; });
       plan.forEach(function(sx){ sx.dishes.forEach(function(x){ onPlan[x.id] = true; }); });
       var list = catalogueRows().filter(function(d){
         // Search wins over everything — that is how you reach the full list.
@@ -1031,9 +1042,7 @@ function menuPage(shop, extras = {}) {
               var already = d.id && inSet.indexOf(d.id) >= 0;
               // On the plan for this date, in any set? Then it can be taken
               // off the day from here — the set cards aren't shown in Dish.
-              var onDay = d.id && plan.some(function(sx){
-                return sx.dishes.some(function(x){ return x.id === d.id; });
-              });
+              var onDay = d.id && onPlan[d.id];
               // Name and price on their own lines — side by side they collide
               // in a column this narrow.
               return '<label style="display:flex;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid #f2ece6;cursor:pointer">'
@@ -1088,6 +1097,9 @@ function menuPage(shop, extras = {}) {
        shop's dish list and every other date are untouched. */
     function offTheDay(id){
       var gone = '';
+      dayDishes = dayDishes.filter(function(x){ return x !== String(id); });
+      var known = SHOP_DISHES.filter(function(x){ return x.id === id; })[0];
+      if (known) gone = known.name;
       plan.forEach(function(sx){
         sx.dishes = sx.dishes.filter(function(d){
           if (d.id === id) { gone = d.name; return false; }
@@ -1435,6 +1447,7 @@ function menuPage(shop, extras = {}) {
       if (!plan[si]) { msg.textContent = 'Make a set first.'; if (box) box.checked = false; return; }
       var own = SHOP_DISHES.filter(function(x){ return x.name === name; })[0];
       if (own) {
+        addToDay(own.id);
         if (!plan[si].dishes.some(function(d){ return d.id === own.id; })) {
           plan[si].dishes.push({id: own.id, name: own.name, nameSi: own.nameSi, price: own.price});
         }
@@ -1451,6 +1464,7 @@ function menuPage(shop, extras = {}) {
         if (!j.ok) { msg.textContent = j.error || 'Failed'; if (box) box.checked = false; return; }
         var fedPrice = Number(j.price) || 0;
         SHOP_DISHES.push({id: j.id, name: name, nameSi: j.nameSi || '', price: fedPrice, cat: '', meals: ['Breakfast','Lunch','Dinner'], own: true});
+        addToDay(j.id);
         if (!plan[si].dishes.some(function(d){ return d.id === j.id; })) {
           plan[si].dishes.push({id: j.id, name: name, nameSi: j.nameSi || '', price: fedPrice});
         }
@@ -1509,6 +1523,8 @@ function menuPage(shop, extras = {}) {
         .then(function(r){ return r.json(); })
         .then(function(j){
           if (!j.ok) throw new Error(j.error || 'could not load');
+          dayDishes = (j.dishIds || []).slice();
+          (j.plan || []).forEach(function(g){ (g.dishes || []).forEach(function(d){ addToDay(d.id); }); });
           plan = (j.plan || []).map(function(g){
             return { name: g.name, pick: g.pick, price: g.price == null ? null : g.price,
                      dishes: (g.dishes || []).map(function(d){ return { id: d.id, name: d.name, nameSi: d.nameSi, price: d.price }; }) };
@@ -1516,11 +1532,12 @@ function menuPage(shop, extras = {}) {
           document.getElementById('dishSet').value = '0';
           firstPaint = true;                 // loading isn't an edit
           renderPlan();
-          lastSaved = JSON.stringify(plan);
+          lastSaved = JSON.stringify([plan, dayDishes]);
           firstPaint = false;
           document.getElementById('planStamp').textContent = meal + ' plan' + (plan.length ? '' : ' · new');
-          paintSave(plan.length ? 'saved' : 'dirty',
-            plan.length ? 'Saved · ' + meal + ' ' + date : 'Save ' + meal + ' plan · ' + date);
+          var any = plan.length || dayDishes.length;
+          paintSave(any ? 'saved' : 'dirty',
+            any ? 'Saved · ' + meal + ' ' + date : 'Save ' + meal + ' plan · ' + date);
         })
         .catch(function(e){
           document.getElementById('planStamp').textContent = meal + ' plan';
@@ -1576,7 +1593,7 @@ function menuPage(shop, extras = {}) {
     }
     function markDirty(){
       if (firstPaint) return;
-      var now = JSON.stringify(plan);
+      var now = JSON.stringify([plan, dayDishes]);
       if (now === lastSaved) return;
       paintSave('dirty', 'Saving ' + PLAN_MEAL + ' plan…');
       clearTimeout(saveTimer);
@@ -1587,11 +1604,12 @@ function menuPage(shop, extras = {}) {
       if (ev) ev.preventDefault();
       var btn = document.getElementById('saveBtn');
       var note = document.getElementById('saveNote');
-      if (!plan.length) { note.textContent = 'Nothing to save yet.'; return false; }
+      // A day can hold dishes with no sets at all — that is still a menu.
+      if (!plan.length && !dayDishes.length) { note.textContent = 'Nothing to save yet.'; return false; }
       btn.disabled = true;
       fetch('/app/owner/' + SHOP_ID + '/menu/plan.json', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({date: PLAN_DATE, meal: PLAN_MEAL, groups: plan}),
+        body: JSON.stringify({date: PLAN_DATE, meal: PLAN_MEAL, groups: plan, dishIds: dayDishes}),
       })
       .then(function(r){ return r.json(); })
       .then(function(j){
@@ -1601,10 +1619,11 @@ function menuPage(shop, extras = {}) {
           note.textContent = j.error || 'Could not save — your plan is still here.';
           return;
         }
-        lastSaved = JSON.stringify(plan);
+        lastSaved = JSON.stringify([plan, dayDishes]);
         try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
         paintSave('saved', 'Saved · ' + PLAN_MEAL + ' ' + PLAN_DATE);
-        note.textContent = j.groups + ' set' + (j.groups === 1 ? '' : 's') + ' saved';
+        note.textContent = j.groups + ' set' + (j.groups === 1 ? '' : 's')
+          + ' · ' + (j.dishes != null ? j.dishes : dayDishes.length) + ' dishes saved';
       })
       .catch(function(e){
         btn.disabled = false;
@@ -1615,10 +1634,11 @@ function menuPage(shop, extras = {}) {
     }
     loadDraft();
     renderPlan();
-    lastSaved = JSON.stringify(plan);
+    lastSaved = JSON.stringify([plan, dayDishes]);
     firstPaint = false;
-    paintSave(plan.length ? 'saved' : 'dirty',
-      plan.length ? 'Saved · ' + PLAN_MEAL + ' ' + PLAN_DATE : 'Save ' + PLAN_MEAL + ' plan · ' + PLAN_DATE);
+    var hasAny = plan.length || dayDishes.length;
+    paintSave(hasAny ? 'saved' : 'dirty',
+      hasAny ? 'Saved · ' + PLAN_MEAL + ' ' + PLAN_DATE : 'Save ' + PLAN_MEAL + ' plan · ' + PLAN_DATE);
 
     async function fetchRecipe() {
       const dish = document.getElementById('aiDishName').value.trim();
