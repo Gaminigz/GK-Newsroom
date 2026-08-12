@@ -112,6 +112,8 @@ export const LANKA_DISHES_150 = {
       { name: "Chicken Devilled", si: "දෙවල් කුකුල් මස්" },
       { name: "Fried Fish", si: "බැදපු මාළු" },
       { name: "Butter Chicken", si: "බටර් චිකන්" },
+      { name: "Temperate Dry Fish", si: "කරවල තෙලට" },
+      { name: "Dry Fish Devilled", si: "දෙවල් කරවල" },
     ],
   },
   "Mixed, Fusion & Street Food": {
