@@ -61,6 +61,8 @@ export const LANKA_DISHES_150 = {
       { name: "Vegetable Curry", si: "එළවළු කරවල" },
       { name: "Mixed Vegetable Curry", si: "මිශ්‍ර එළවළු කරවල" },
       { name: "Chickpea Curry", si: "කඩල කරවල" },
+      { name: "Muringa Curry", si: "මුරුංගා කරවල" },
+      { name: "Muringa Leaves Mallung", si: "මුරුංගා කොළ මැල්ලුම්" },
     ],
   },
   "Meat & Seafood Curries": {
