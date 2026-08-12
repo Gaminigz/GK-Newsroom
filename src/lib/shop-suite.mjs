@@ -646,70 +646,6 @@ function menuPage(shop, extras = {}) {
          under the filter chips that scope its dish pickers. -->
     <div style="display:flex;flex-direction:column">
 
-    <!-- SINGLE DISH (AI-assisted) -->
-    <div id="tab-single" style="order:2;margin-top:22px;padding-top:16px;border-top:1px solid #ece3da">
-      <div class="row" style="justify-content:space-between;align-items:center">
-        <strong style="font-size:14px">Create a single dish with 35Ai recipe</strong>
-        <button type="button" onclick="toggleHelp()" title="How this works" style="width:26px;height:26px;border-radius:99px;border:1.5px solid #d9542b;background:#fff;color:#d9542b;font-weight:800;font-size:13px;cursor:pointer;flex:0 0 auto;padding:0">i</button>
-      </div>
-      <div id="aiHelp" class="card" style="display:none;margin-top:10px;padding:11px 13px;background:#fff9ec;border-color:#efe0b8;font-size:12px">
-        Type or pick a Sri Lankan dish. 35Ai suggests typical ingredients, per-person grams, and estimated LKR cost. Adjust before saving.<br><span class="si">ඔබේ කෑමේ නම දෙන්න — 35Ai කෑමට යන අමුද්‍රව්‍ය, ග්‍රෑම් ප්‍රමාණය, සහ ලංකා මිල පෙන්වයි.</span>
-      </div>
-
-      <label style="margin-top:14px">DISH NAME <span class="si">කෑමේ නම</span></label>
-      <input type="text" id="aiDishName" placeholder="e.g. Chicken curry — or tap one below" maxlength="80">
-      <button type="button" class="btn" style="margin-top:10px" onclick="fetchRecipe()">Suggest ingredients with 35Ai</button>
-      <div id="aiStatus" class="sub" style="font-size:12px;margin-top:8px;text-align:center"></div>
-      <div class="sub" style="font-size:11.5px;margin-top:10px;text-align:center;color:#946200">🍛 ${presetDishes.length}+ Sri Lankan dishes ready — just type any name <span class="si">ලංකා කෑම ${presetDishes.length}+ — ඕනෑම නමක් ලියන්න</span></div>
-
-      <!-- Grayed-out mock preview: shows what the ingredient list looks like BEFORE the user picks a dish -->
-      <div id="aiMock" style="margin-top:16px;opacity:.45;pointer-events:none">
-        <div class="row" style="justify-content:space-between;margin-top:6px"><strong style="font-size:12.5px">Example — Chicken curry (preview)</strong><span class="sub" style="font-size:11px">what the result looks like</span></div>
-        <div class="card row" style="margin-top:8px;padding:10px 13px"><div style="flex:1"><strong style="font-size:13px">chicken</strong><div class="sub" style="font-size:11.5px">150 g · diced</div></div><span style="font-size:12.5px;font-weight:700">LKR 330</span></div>
-        <div class="card row" style="margin-top:8px;padding:10px 13px"><div style="flex:1"><strong style="font-size:13px">onion</strong><div class="sub" style="font-size:11.5px">30 g · sliced</div></div><span style="font-size:12.5px;font-weight:700">LKR 13.5</span></div>
-        <div class="card row" style="margin-top:8px;padding:10px 13px"><div style="flex:1"><strong style="font-size:13px">coconut milk</strong><div class="sub" style="font-size:11.5px">100 ml</div></div><span style="font-size:12.5px;font-weight:700">LKR 30</span></div>
-        <div class="card row" style="margin-top:8px;padding:10px 13px"><div style="flex:1"><strong style="font-size:13px">curry powder (roasted)</strong><div class="sub" style="font-size:11.5px">5 g</div></div><span style="font-size:12.5px;font-weight:700">LKR 17.5</span></div>
-        <div class="card" style="margin-top:12px;padding:12px 14px"><div class="row" style="justify-content:space-between;font-size:13px"><span class="sub">Estimated ingredient cost / serving</span><strong style="color:${ORANGE}">LKR 480</strong></div></div>
-      </div>
-
-      <div id="aiRecipe" style="display:none;margin-top:14px">
-        <div class="row" style="justify-content:space-between;margin-top:6px"><strong style="font-size:13.5px">Ingredients per serving</strong><span id="aiMatched" class="sub" style="font-size:11.5px"></span></div>
-        <div id="aiIngredients"></div>
-        <div class="card" style="margin-top:12px;padding:12px 14px">
-          <div class="row" style="justify-content:space-between;font-size:13px"><span class="sub">Estimated ingredient cost / serving</span><strong id="aiCost" style="color:${ORANGE}">LKR 0</strong></div>
-          <div class="sub" style="font-size:11px;margin-top:4px">Prices are typical LKR rates from a common ingredient library. Real costs vary — this is a planning aid.</div>
-        </div>
-
-        <form method="POST" action="/app/owner/${id}/dishes/ai-save" id="aiSaveForm" style="margin-top:14px">
-          <input type="hidden" name="name" id="aiSaveName">
-          <input type="hidden" name="recipe" id="aiSaveRecipe">
-          <label>SINHALA NAME <span class="si">සිංහල නම</span></label>
-          <input type="text" name="nameSi" placeholder="කුකුල් මස්" maxlength="80">
-          <label style="margin-top:8px">SELLING PRICE PER SERVING (USD)</label>
-          <input type="number" name="price" step="0.01" min="0" required placeholder="e.g. 3.20" style="font-size:15px;font-weight:700">
-          <!-- Category is required for the dish to appear under any filter chip. -->
-          <label style="margin-top:8px">CATEGORY <span class="si">වර්ගය</span></label>
-          <select name="category" required>${CATEGORY_LIST.map((c) => `<option value="${esc(c)}"${c === "Vegi meals" ? " selected" : ""}>${esc(c)}</option>`).join("")}</select>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
-            <div><label style="margin:0">SERVING WINDOW</label>
-              <select name="window" style="margin:0">
-                <option value="all day">All day</option>
-                <option value="breakfast">Breakfast</option>
-                <option value="lunch" selected>Lunch</option>
-                <option value="dinner">Dinner</option>
-              </select></div>
-            <div><label style="margin:0">DAILY PORTIONS</label>
-              <input type="number" name="portions" min="1" value="20" required style="margin:0"></div>
-          </div>
-          <label class="row" style="gap:8px;margin-top:12px;cursor:pointer">
-            <input type="checkbox" name="special" value="1" style="width:17px;height:17px;accent-color:${ORANGE}">
-            <span style="font-size:12.5px">Show as <strong>Today special</strong> on the buyer home</span>
-          </label>
-          <button class="btn" style="margin-top:14px">Save dish with recipe</button>
-        </form>
-      </div>
-    </div>
-
     <!-- SET MENU -->
     <div id="tab-set" style="order:1">
       ${singles.length ? `
@@ -799,10 +735,6 @@ function menuPage(shop, extras = {}) {
     </div><!-- /both builders -->
 
     <script>
-    function toggleHelp() {
-      const h = document.getElementById('aiHelp');
-      h.style.display = h.style.display === 'none' ? '' : 'none';
-    }
     /* ---- dynamic set builder ----------------------------------------
        plan = [{name, pick, dishes:[{id,name,nameSi,price}]}]. The left panel
        mutates it; the right column is re-rendered from it; it is serialised
@@ -1648,41 +1580,6 @@ function menuPage(shop, extras = {}) {
     paintSave(hasAny ? 'saved' : 'dirty',
       hasAny ? 'Saved · ' + PLAN_MEAL + ' ' + PLAN_DATE : 'Save ' + PLAN_MEAL + ' plan · ' + PLAN_DATE);
 
-    async function fetchRecipe() {
-      const dish = document.getElementById('aiDishName').value.trim();
-      if (!dish) { document.getElementById('aiStatus').textContent = 'Type a dish name first.'; return; }
-      const s = document.getElementById('aiStatus');
-      s.textContent = '⏳ Asking 35Ai…';
-      try {
-        const body = new URLSearchParams({ dish }).toString();
-        const r = await fetch('/app/owner/${id}/dishes/ai-recipe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body,
-        });
-        const j = await r.json();
-        if (!j.ok) { s.textContent = '❌ ' + (j.error || '35Ai failed'); return; }
-        s.textContent = j.cached ? '✓ (from cache)' : '✓ (fresh 35Ai)';
-        renderRecipe(dish, j);
-      } catch (e) { s.textContent = '❌ ' + e.message; }
-    }
-    function renderRecipe(dish, j) {
-      const mock = document.getElementById('aiMock');
-      if (mock) mock.style.display = 'none';
-      document.getElementById('aiRecipe').style.display = '';
-      document.getElementById('aiSaveName').value = dish;
-      document.getElementById('aiSaveRecipe').value = JSON.stringify({ servings: j.servings, ingredients: j.ingredients, methodSummary: j.methodSummary });
-      const list = document.getElementById('aiIngredients');
-      list.innerHTML = j.ingredients.map((i, idx) => \`
-        <div class="card row" style="margin-top:8px;padding:10px 13px">
-          <div style="flex:1;min-width:0"><strong style="font-size:13px">\${i.name}</strong>\${i.notes ? \` <span class="sub" style="font-size:11px">· \${i.notes}</span>\` : ''}
-          <div class="sub" style="font-size:11.5px">\${i.quantity} \${i.unit}\${i.matched ? '' : ' · <span style="color:#946200">no price match</span>'}</div></div>
-          <span style="font-size:12.5px;font-weight:700;color:\${i.lkr != null ? '#1a1a1a' : '#c8c1b8'}">\${i.lkr != null ? 'LKR ' + i.lkr : '—'}</span>
-        </div>\`).join('');
-      document.getElementById('aiCost').textContent = 'LKR ' + j.totalLkr;
-      const matchedCount = j.ingredients.filter(i => i.matched).length;
-      document.getElementById('aiMatched').textContent = matchedCount + '/' + j.ingredients.length + ' priced';
-    }
     </script>`);
 }
 
