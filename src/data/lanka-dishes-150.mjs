@@ -160,6 +160,11 @@ export const LANKA_DISHES_150 = {
       { name: "Fry Rice", si: "ෆ්‍රයි රයිස්" },
       { name: "Egg Fry Rice", si: "බිත්තර ෆ්‍රයි රයිස්" },
       { name: "Chicken Fry Rice", si: "චිකන් ෆ්‍රයි රයිස්" },
+      { name: "Coconut Roti", si: "පොල් රොටී" },
+      { name: "Pol Roti", si: "පොල් රොටී" },
+      { name: "Plain Roti", si: "සාමාන්‍ය රොටී" },
+      { name: "Paratha", si: "පරාටා" },
+      { name: "Godhamba Roti", si: "ගොදම්බ රොටී" },
     ],
   },
   "Salads, Sambols & Relishes": {
