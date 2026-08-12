@@ -636,10 +636,8 @@ function menuPage(shop, extras = {}) {
       </div>
     </div>
 
-    <!-- Filters scope the dish pickers inside every group below. -->
-    <div style="display:flex;gap:4px;margin-top:12px" id="setMeals">
-      ${["All day", ...MEALS].map((mm, i) => `<button type="button" class="setMeal${i === 0 ? " on" : ""}" data-meal="${esc(mm)}" onclick="setMealTab('${esc(mm)}',this)" style="flex:1 1 0;min-width:0;border:1px solid #e0d6cc;background:${i === 0 ? "#191512" : "#fff"};color:${i === 0 ? "#fff" : "#4a443f"};border-radius:99px;padding:6px 4px;font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer">${esc(mm.replace(/\s+/g, ""))}<span class="cnt" style="font-weight:700;color:${ORANGE}">${mm === "All day" ? singles.length : singles.filter((d) => mealsFor(d.window).includes(mm)).length}</span></button>`).join("")}
-    </div>
+    <!-- Category chips scope the dish pickers. The meal is the one chosen
+         with the date above — no second row of meal buttons. -->
     <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px" id="setCats">
       ${["All", ...CATEGORY_LIST].map((c, i) => `<button type="button" class="setCat${i === 0 ? " on" : ""}" data-cat="${esc(c)}" onclick="setCatTab('${esc(c)}',this)" style="border:1px solid #e0d6cc;background:${i === 0 ? "#191512" : "#fff"};color:${i === 0 ? "#fff" : "#4a443f"};border-radius:99px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer">${esc(c)} <span class="cnt" style="font-weight:700;color:${ORANGE}">${c === "All" ? singles.length : singles.filter((d) => (d.category || "") === c).length}</span></button>`).join("")}
     </div>
@@ -950,16 +948,8 @@ function menuPage(shop, extras = {}) {
     var SHOP_DISHES = JSON.parse(document.getElementById('shopDishData').textContent);
     var FEED_DISHES = JSON.parse(document.getElementById('feedDishData').textContent);
     var addMode = 'set';
-    var setMeal = 'All day', setCat = 'All';
+    var setCat = 'All';   // the meal comes from the plan (PLAN_MEAL)
 
-    function setMealTab(meal, btn){
-      setMeal = meal;
-      document.querySelectorAll('#setMeals .setMeal').forEach(function(c){
-        c.classList.remove('on'); c.style.background='#fff'; c.style.color='#4a443f';
-      });
-      btn.classList.add('on'); btn.style.background='#191512'; btn.style.color='#fff';
-      if (addMode === 'dish') renderCatalogue();
-    }
     function setCatTab(cat, btn){
       setCat = cat;
       document.querySelectorAll('#setCats .setCat').forEach(function(c){
@@ -1018,7 +1008,8 @@ function menuPage(shop, extras = {}) {
         // Search wins over the chips — typing looks across everything.
         if (q) return d.name.toLowerCase().indexOf(q) >= 0 || (d.nameSi || '').toLowerCase().indexOf(q) >= 0;
         if (!d.own) return false;
-        var okMeal = setMeal === 'All day' || d.meals.indexOf(setMeal) >= 0;
+        // A dish shows if it is served at the meal this plan is for.
+        var okMeal = !d.meals || !d.meals.length || d.meals.indexOf(PLAN_MEAL) >= 0;
         var okCat  = setCat === 'All' || d.cat === setCat;
         return okMeal && okCat;
       });
