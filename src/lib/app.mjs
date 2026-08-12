@@ -2414,7 +2414,7 @@ export async function handleApp(req, res, url) {
         .end(JSON.stringify({ ok: false, error: "not signed in as a shop owner" }));
       return;
     }
-    const { SET_PRESETS_JSON, CUSTOM_SET_LIMIT } = await import("./shop-suite.mjs");
+    const { SET_PRESETS_JSON, CUSTOM_SET_LIMIT, posCategoryFor } = await import("./shop-suite.mjs");
     const today = new Date().toISOString().slice(0, 10);
     const qDate = String(url.searchParams.get("date") || "").slice(0, 10);
     const date = /^\d{4}-\d{2}-\d{2}$/.test(qDate) ? qDate : today;
@@ -2446,6 +2446,7 @@ export async function handleApp(req, res, url) {
       freeSlots: Math.max(0, CUSTOM_SET_LIMIT - custom.length),
       dishes: catalogue.map((d) => ({
         name: d.name, nameSi: d.nameSi || "", category: d.category || "",
+        pos: posCategoryFor(d.name, d.category),
         price: Number(d.priceLkr) || 0,
       })),
       myDishes: ownDishes.map((d) => ({

@@ -39,7 +39,7 @@ const POS_BY_NAME = [
 ];
 
 /** Which chip a catalogue dish belongs under. */
-function posCategoryFor(name, category) {
+export function posCategoryFor(name, category) {
   for (const [re, cat] of POS_BY_NAME) if (re.test(String(name || ""))) return cat;
   return FEED_TO_POS[category] || "Vegi meals";
 }
@@ -1150,7 +1150,16 @@ function menuPage(shop, extras = {}) {
             }).join('')
           + '</div>'
         : '<div class="sub" style="font-size:11px;padding:4px 2px 8px">Ticking adds the dish to <strong>' + PLAN_DATE + ' ' + PLAN_MEAL + '</strong>. Make a set only if you want a package.</div>';
-      if (!list.length) { host.innerHTML = chips + '<div class="sub" style="padding:22px 0;text-align:center;font-size:12px">nothing matches</div>'; wirePanelSets(host); return; }
+      if (!list.length) {
+        host.innerHTML = chips
+          + '<div class="sub" style="padding:22px 0;text-align:center;font-size:12px">'
+          + (catalogueRefreshing ? 'checking the list…' : 'nothing matches') + '</div>';
+        wirePanelSets(host);
+        // The catalogue may have gained dishes since this page loaded. Fetch it
+        // rather than making the owner reload and lose their place.
+        refreshCatalogue();
+        return;
+      }
       host.innerHTML = chips + dishRowsHtml(list, q);
       wirePanelSets(host);
       wireDishBoxes(host);
@@ -1158,6 +1167,27 @@ function menuPage(shop, extras = {}) {
 
     /* Switching destination only redraws the panel — a full page render is
        what made this feel slow. */
+    /* Pull the dish catalogue again, once per search that finds nothing. */
+    var catalogueRefreshing = false, catalogueTried = {};
+    function refreshCatalogue(){
+      var key = feedQuery.trim().toLowerCase();
+      if (catalogueRefreshing || catalogueTried[key]) return;
+      catalogueTried[key] = true;
+      catalogueRefreshing = true;
+      fetch('/app/api/owner/menu?date=' + encodeURIComponent(PLAN_DATE) + '&meal=' + encodeURIComponent(PLAN_MEAL))
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          catalogueRefreshing = false;
+          if (!j.ok || !j.dishes) return;
+          var before = FEED_DISHES.length;
+          FEED_DISHES = j.dishes.map(function(d){
+            return { name: d.name, nameSi: d.nameSi || '', cat: d.category || '', pos: d.pos || 'Vegi meals' };
+          });
+          if (FEED_DISHES.length !== before) renderFeedPanel();
+        })
+        .catch(function(){ catalogueRefreshing = false; });
+    }
+
     function wirePanelSets(host){
       host.querySelectorAll('.panelSet').forEach(function(b){
         b.addEventListener('click', function(){
