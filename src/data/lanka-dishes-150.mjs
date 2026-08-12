@@ -118,6 +118,11 @@ export const LANKA_DISHES_150 = {
       { name: "BBQ Pork", si: "බීබීකිව් ඌරු මස්" },
       { name: "BBQ Fish", si: "බීබීකිව් මාළු" },
       { name: "BBQ Sausage", si: "බීබීකිව් සොසේජ්" },
+      { name: "BBQ Beef", si: "බීබීකිව් හරක් මස්" },
+      { name: "BBQ Seafood", si: "බීබීකිව් මුහුදු ආහාර" },
+      { name: "BBQ Prawn", si: "බීබීකිව් ඉස්සන්" },
+      { name: "BBQ Mutton", si: "බීබීකිව් එළු මස්" },
+      { name: "BBQ Platter", si: "බීබීකිව් තැටිය" },
     ],
   },
   "Mixed, Fusion & Street Food": {
