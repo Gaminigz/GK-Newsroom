@@ -626,15 +626,15 @@ function menuPage(shop, extras = {}) {
 
     <!-- The plan is per date + per meal: 09.08 Lunch is a different plan from
          09.08 Dinner. Changing either reloads that day's plan. -->
-    <form method="GET" style="margin-top:12px">
+    <div style="margin-top:12px">
       <div style="display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center">
-        <input type="date" name="date" value="${esc(planDate)}" onchange="this.form.submit()" style="margin:0;font-weight:700;font-size:13px">
-        <span class="sub" style="font-size:11px">${esc(planMeal)} plan${dayPlan ? "" : " · new"}</span>
+        <input type="date" id="planDateBox" value="${esc(planDate)}" style="margin:0;font-weight:700;font-size:13px">
+        <span class="sub" id="planStamp" style="font-size:11px">${esc(planMeal)} plan${dayPlan ? "" : " · new"}</span>
       </div>
-      <div style="display:flex;gap:4px;margin-top:6px">
-        ${MEALS.map((mm) => `<button type="submit" name="meal" value="${esc(mm)}" style="flex:1 1 0;border:1px solid #e0d6cc;background:${mm === planMeal ? "#191512" : "#fff"};color:${mm === planMeal ? "#fff" : "#4a443f"};border-radius:99px;padding:7px 4px;font-size:12.5px;font-weight:700;cursor:pointer">${esc(mm)}</button>`).join("")}
+      <div style="display:flex;gap:4px;margin-top:6px" id="mealRow">
+        ${MEALS.map((mm) => `<button type="button" class="mealBtn" data-meal="${esc(mm)}" style="flex:1 1 0;border:1px solid #e0d6cc;background:${mm === planMeal ? "#191512" : "#fff"};color:${mm === planMeal ? "#fff" : "#4a443f"};border-radius:99px;padding:7px 4px;font-size:12.5px;font-weight:700;cursor:pointer">${esc(mm)}</button>`).join("")}
       </div>
-    </form>
+    </div>
 
     <!-- Filters scope the dish pickers inside every group below. -->
     <div style="display:flex;gap:4px;margin-top:12px" id="setMeals">
@@ -820,7 +820,7 @@ function menuPage(shop, extras = {}) {
     var SHOP_ID = '${id}';
     var FREE_SLOTS = ${freeSlots};
     var PLAN_MEAL = '${esc(planMeal)}';
-    var PLAN_DATE = '${esc(planDate)}';
+    var PLAN_DATE = '${esc(planDate)}';   // both reassigned by switchPlan()
 
     function money(lkr){
       var usd = (Number(lkr) || 0) / 300;
@@ -1461,6 +1461,48 @@ function menuPage(shop, extras = {}) {
       feedQuery = this.value; renderFeedPanel();
     });
 
+    /* Load another day/meal without leaving the page. */
+    function switchPlan(date, meal){
+      if (saveTimer) { clearTimeout(saveTimer); savePlan(); }
+      PLAN_DATE = date; PLAN_MEAL = meal;
+      DRAFT_KEY = 'plan:' + SHOP_ID + ':' + PLAN_DATE + ':' + PLAN_MEAL;
+      document.getElementById('planDateBox').value = date;
+      document.querySelectorAll('#mealRow .mealBtn').forEach(function(b){
+        var on = b.dataset.meal === meal;
+        b.style.background = on ? '#191512' : '#fff';
+        b.style.color = on ? '#fff' : '#4a443f';
+      });
+      document.getElementById('planStamp').textContent = meal + ' plan · loading…';
+      paintSave('dirty', 'Loading ' + meal + ' ' + date + '…');
+      fetch('/app/api/owner/menu?date=' + encodeURIComponent(date) + '&meal=' + encodeURIComponent(meal), { headers: { Accept: 'application/json' } })
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          if (!j.ok) throw new Error(j.error || 'could not load');
+          plan = (j.plan || []).map(function(g){
+            return { name: g.name, pick: g.pick, price: g.price == null ? null : g.price,
+                     dishes: (g.dishes || []).map(function(d){ return { id: d.id, name: d.name, nameSi: d.nameSi, price: d.price }; }) };
+          });
+          document.getElementById('dishSet').value = '0';
+          firstPaint = true;                 // loading isn't an edit
+          renderPlan();
+          lastSaved = JSON.stringify(plan);
+          firstPaint = false;
+          document.getElementById('planStamp').textContent = meal + ' plan' + (plan.length ? '' : ' · new');
+          paintSave(plan.length ? 'saved' : 'dirty',
+            plan.length ? 'Saved · ' + meal + ' ' + date : 'Save ' + meal + ' plan · ' + date);
+        })
+        .catch(function(e){
+          document.getElementById('planStamp').textContent = meal + ' plan';
+          paintSave('error', 'Could not load ' + date + ' — tap to retry');
+        });
+    }
+    document.getElementById('planDateBox').addEventListener('change', function(){
+      if (this.value) switchPlan(this.value, PLAN_MEAL);
+    });
+    document.querySelectorAll('#mealRow .mealBtn').forEach(function(b){
+      b.addEventListener('click', function(){ switchPlan(PLAN_DATE, b.dataset.meal); });
+    });
+
     function serialisePlan(){
       document.getElementById('planJson').value = JSON.stringify(plan);
       return true;
@@ -1468,7 +1510,7 @@ function menuPage(shop, extras = {}) {
 
     /* A draft is kept per date+meal so a reload, an accidental back, or the
        WebView reloading under you never costs the work. */
-    var DRAFT_KEY = 'plan:' + SHOP_ID + ':' + PLAN_DATE + ':' + PLAN_MEAL;
+    var DRAFT_KEY = 'plan:' + SHOP_ID + ':' + PLAN_DATE + ':' + PLAN_MEAL;  // recomputed on switch
     function saveDraft(){
       try { localStorage.setItem(DRAFT_KEY, JSON.stringify(plan)); } catch (e) {}
     }
