@@ -1004,10 +1004,16 @@ function menuPage(shop, extras = {}) {
       var si = Number(document.getElementById('dishSet').value);
       var inSet = (plan[si] ? plan[si].dishes : []).map(function(d){ return d.id; });
       var q = dishSearch.trim().toLowerCase();
+      // What is on THIS date, so a dish can be pulled off it.
+      var onPlan = {};
+      plan.forEach(function(sx){ sx.dishes.forEach(function(x){ onPlan[x.id] = true; }); });
       var list = catalogueRows().filter(function(d){
-        // Search wins over the chips — typing looks across everything.
+        // Search wins over everything — that is how you reach the full list.
         if (q) return d.name.toLowerCase().indexOf(q) >= 0 || (d.nameSi || '').toLowerCase().indexOf(q) >= 0;
+        // Otherwise: only this day's menu. The whole catalogue lives behind
+        // Pick combo; listing all 200 here meant scrolling forever to drop one.
         if (!d.own) return false;
+        if (!onPlan[d.id]) return false;
         // A dish shows if it is served at the meal this plan is for.
         var okMeal = !d.meals || !d.meals.length || d.meals.indexOf(PLAN_MEAL) >= 0;
         var okCat  = setCat === 'All' || d.cat === setCat;
@@ -1015,7 +1021,7 @@ function menuPage(shop, extras = {}) {
       });
       // Search + Done only — the sets below already show what's been added.
       var head = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
-        + '<input type="text" id="dishSearchBox" placeholder="Search ' + list.length
+        + '<input type="text" id="dishSearchBox" placeholder="Search all ' + catalogueRows().length
         +   (setCat === 'All' ? '' : ' ' + setCat) + ' dishes…" value="' + esc(dishSearch) + '" style="margin:0;flex:1;min-width:0;font-size:12px;padding:7px 10px">'
         + '<button type="button" id="pickDone" style="flex:0 0 auto;border:0;background:#191512;color:#fff;border-radius:99px;padding:7px 14px;font-size:11.5px;font-weight:700;cursor:pointer">Done</button>'
         + '</div>';
@@ -1045,7 +1051,11 @@ function menuPage(shop, extras = {}) {
                 + '</label>';
             }).join('')
           + '</div>'
-        : '<div class="sub" style="font-size:11px;padding:14px 0;text-align:center;color:#c9bfb7">nothing matches</div>';
+        : '<div class="sub" style="font-size:11.5px;padding:16px 8px;text-align:center;line-height:1.4">'
+          + (dishSearch.trim()
+              ? 'nothing matches'
+              : 'Nothing on ' + PLAN_DATE + ' ' + PLAN_MEAL + ' yet.<br>Use <strong>Pick combo</strong> to add dishes, or search here to find one.')
+          + '</div>';
       host.innerHTML = head + body;
 
       var box = document.getElementById('dishSearchBox');
