@@ -1023,6 +1023,11 @@ function menuPage(shop, extras = {}) {
         ? '<div class="card" style="margin:0;padding:4px 10px;max-height:430px;overflow-y:auto">'
           + list.map(function(d){
               var already = d.id && inSet.indexOf(d.id) >= 0;
+              // On the plan for this date, in any set? Then it can be taken
+              // off the day from here — the set cards aren't shown in Dish.
+              var onDay = d.id && plan.some(function(sx){
+                return sx.dishes.some(function(x){ return x.id === d.id; });
+              });
               // Name and price on their own lines — side by side they collide
               // in a column this narrow.
               return '<label style="display:flex;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid #f2ece6;cursor:pointer">'
@@ -1033,7 +1038,10 @@ function menuPage(shop, extras = {}) {
                 +     esc(d.name) + (d.own ? '' : ' <span class="sub" style="font-weight:400;font-size:9.5px">new</span>') + '</span>'
                 +   (d.nameSi ? '<span class="si" style="display:block;font-size:10px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(d.nameSi) + '</span>' : '')
                 +   '<span class="sub" style="display:block;font-size:10px;font-weight:700;color:#d9542b">' + (d.own ? money(d.price) : 'no price yet') + '</span>'
+                +   (onDay ? '<span class="sub" style="display:block;font-size:9.5px;font-weight:700;color:#1d7a34">on this menu</span>' : '')
                 + '</span>'
+                + (onDay ? '<button type="button" class="offDayBtn" data-id="' + d.id + '" title="Take off this day"'
+                    + ' style="flex:0 0 auto;width:28px;height:28px;border:0;background:none;color:#b3261e;font-size:15px;padding:0;cursor:pointer">✕</button>' : '')
                 + '</label>';
             }).join('')
           + '</div>'
@@ -1052,12 +1060,34 @@ function menuPage(shop, extras = {}) {
         dishSearch = '';
         setAddMode('set');
       });
+      host.querySelectorAll('.offDayBtn').forEach(function(b){
+        b.addEventListener('click', function(ev){
+          ev.preventDefault(); ev.stopPropagation();
+          offTheDay(b.dataset.id);
+        });
+      });
       host.querySelectorAll('.pickBox').forEach(function(b){
         b.addEventListener('change', function(){
           if (b.checked) pickDish(b.dataset.id || null, b.dataset.name);
           else unpickDish(b.dataset.id || null, b.dataset.name);
         });
       });
+    }
+
+    /* Take a dish off this date entirely — out of every set holding it. The
+       shop's dish list and every other date are untouched. */
+    function offTheDay(id){
+      var gone = '';
+      plan.forEach(function(sx){
+        sx.dishes = sx.dishes.filter(function(d){
+          if (d.id === id) { gone = d.name; return false; }
+          return true;
+        });
+      });
+      if (!gone) return;
+      document.getElementById('addSetMsg').textContent = gone + ' off ' + PLAN_DATE + '.';
+      renderPlan();
+      renderCatalogue();
     }
 
     function unpickDish(id, name){
