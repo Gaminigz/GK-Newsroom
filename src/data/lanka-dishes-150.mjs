@@ -265,6 +265,7 @@ export const LANKA_DISHES_150 = {
       { name: "Pittu", si: "පිට්ටු" },
       { name: "Rice", si: "බත්" },
       { name: "Noodles", si: "නූඩ්ල්ස්" },
+      { name: "Basmathi White Rice", si: "බාස්මතී සුදු බත්" },
     ],
   },
 };
