@@ -842,6 +842,10 @@ function menuPage(shop, extras = {}) {
             method:'POST', headers:{'Content-Type':'application/json'},
             body: JSON.stringify({id: d.id, price: d.price}),
           }).catch(function(){ /* price still saves with the plan */ });
+          // Without this the row keeps its old "no price yet" and the old
+          // US$ figure, so a price you just typed looks like it didn't take.
+          renderPlan();
+          if (addMode === 'dish') renderCatalogue();
         });
       });
       // Blank clears back to "priced by the dish"; 0 means the set is included.

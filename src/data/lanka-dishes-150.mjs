@@ -114,6 +114,10 @@ export const LANKA_DISHES_150 = {
       { name: "Butter Chicken", si: "බටර් චිකන්" },
       { name: "Temperate Dry Fish", si: "කරවල තෙලට" },
       { name: "Dry Fish Devilled", si: "දෙවල් කරවල" },
+      { name: "BBQ Chicken", si: "බීබීකිව් කුකුල් මස්" },
+      { name: "BBQ Pork", si: "බීබීකිව් ඌරු මස්" },
+      { name: "BBQ Fish", si: "බීබීකිව් මාළු" },
+      { name: "BBQ Sausage", si: "බීබීකිව් සොසේජ්" },
     ],
   },
   "Mixed, Fusion & Street Food": {
@@ -148,6 +152,9 @@ export const LANKA_DISHES_150 = {
       { name: "Chicken Biryani", si: "චිකන් බිරියානි" },
       { name: "Vegetable Fried Rice", si: "එළවළු ෆ්‍රයිඩ් රයිස්" },
       { name: "Egg Fried Rice", si: "බිත්තර ෆ්‍රයිඩ් රයිස්" },
+      { name: "Fry Rice", si: "ෆ්‍රයි රයිස්" },
+      { name: "Egg Fry Rice", si: "බිත්තර ෆ්‍රයි රයිස්" },
+      { name: "Chicken Fry Rice", si: "චිකන් ෆ්‍රයි රයිස්" },
     ],
   },
   "Salads, Sambols & Relishes": {
