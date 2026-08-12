@@ -957,11 +957,11 @@ function menuPage(shop, extras = {}) {
         // Otherwise: only this day's menu. The whole catalogue lives behind
         // Pick combo; listing all 200 here meant scrolling forever to drop one.
         if (!d.own) return false;
+        // On the day = shown. No meal-window filter here: the owner put it on
+        // THIS date and meal, so hiding it because the dish record says
+        // "breakfast" just makes it look like the pick didn't work.
         if (!onPlan[d.id]) return false;
-        // A dish shows if it is served at the meal this plan is for.
-        var okMeal = !d.meals || !d.meals.length || d.meals.indexOf(PLAN_MEAL) >= 0;
-        var okCat  = setCat === 'All' || d.cat === setCat;
-        return okMeal && okCat;
+        return setCat === 'All' || d.cat === setCat;
       });
       // Search + Done only — the sets below already show what's been added.
       var head = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
