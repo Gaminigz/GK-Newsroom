@@ -2365,7 +2365,10 @@ export async function handleApp(req, res, url) {
     // plan shouldn't disappear for the buyer just because UTC says morning.
     const plansToday = await (await col("day_plans"))
       .find({ shopId: String(shop._id), date: today }).toArray();
-    const rawPlan = plansToday.find((p) => p.meal === nowMeal) || plansToday[0] || null;
+    // Only this meal's plan. A Lunch plan is not a Dinner plan — if the owner
+    // arranged nothing for the meal on now, the buyer gets no sets, just the
+    // dishes served at that meal, and the shop accepts or rejects the order.
+    const rawPlan = plansToday.find((p) => p.meal === nowMeal) || null;
     const plan = rawPlan ? {
       date: rawPlan.date, meal: rawPlan.meal,
       groups: (rawPlan.groups || []).map((g) => {
@@ -2401,7 +2404,7 @@ export async function handleApp(req, res, url) {
           const onDay = new Set((rawPlan.dishIds || []).map(String));
           return rest.filter((d) => onDay.has(String(d._id))).map(toDish);
         }
-        return rest.filter((d) => mealsFor(d.window).length === MEALS.length).map(toDish);
+        return rest.filter((d) => mealsFor(d.window).includes(nowMeal)).map(toDish);
       })(),
       plan: plan && plan.groups.length ? plan : null,
     }));
