@@ -228,9 +228,10 @@ struct RootView: View {
         Binding(
             get: { selectedTab },
             set: { newTab in
-                // If Manager tab is (re)selected — either from another tab
-                // OR by tapping it while already there — force a fresh load.
-                if newTab == 3 { managerReloadKey = UUID() }
+                // Only when tapped while ALREADY on Manager. Bumping the key
+                // on every arrival reloads the WebView out from under whatever
+                // it is doing, cancelling in-flight navigations.
+                if newTab == 3 && selectedTab == 3 { managerReloadKey = UUID() }
                 selectedTab = newTab
             }
         )
