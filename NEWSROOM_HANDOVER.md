@@ -2,6 +2,56 @@
 
 ---
 
+## 🌐 2026-08-13 — Domain setup for ggmt.sg: TWO subdomains needed, same Railway service, do both together
+
+Two separate needs converged on the same `web` service (project
+`gk-newsroom`) — worth doing in one sitting since the Railway + Cloudflare
+steps are near-identical for both.
+
+**`ecom.ggmt.sg`** — open since 2026-08-08 (`SESSION_HANDOVER_2026-08-08.md`
+line 219, app session). Used as `PUBLIC_BASE` so printed Table QR codes
+carry a short, stable URL instead of the raw Railway subdomain — those QRs
+get printed and stuck on physical restaurant tables, so the URL needs to
+not change later.
+
+**`3una5aha.ggmt.sg`** — added today (this session). Serves the app's
+informational/marketing page (what 3una5aha is, App Store link, shop-owner
+login handoff) as its homepage — separate from the QR/ordering flow.
+
+### Why this needs you, not me
+- Railway CLI here returns `Unauthorized` specifically on the domain-add
+  action (everything else — variables, deploys, logs — works fine). Add
+  domains via the Railway **dashboard** instead.
+- Neither news nor app session has Cloudflare access — `ggmt.sg` DNS is on
+  Cloudflare, confirmed via live lookup (Cloudflare IPs, `cf-ray` header).
+
+### Steps (repeat for each subdomain)
+1. Railway dashboard → **GK SMART's Projects** → **gk-newsroom** → **web**
+   service → **Settings → Networking → Custom Domain** → enter the
+   subdomain (`ecom.ggmt.sg` or `3una5aha.ggmt.sg`) → Add. Railway shows a
+   CNAME target (something like `xxxx.up.railway.app`).
+2. Cloudflare DNS → add a **CNAME** record: `ecom` (or `3una5aha`) →
+   that Railway target.
+3. **Critical — set the CNAME to DNS-only ("grey cloud"), not proxied
+   ("orange cloud").** Railway issues its own TLS certificate for the
+   domain; Cloudflare's proxy in front breaks that handshake. This is the
+   one detail that wasn't written down anywhere until now — the app
+   session flagged it live but hadn't committed it.
+4. Once `ecom.ggmt.sg` resolves: set env var `PUBLIC_BASE=https://ecom.ggmt.sg`
+   on the `web` service in Railway — every fresh QR will then encode the
+   pretty URL. (Already-printed QRs keep pointing at the Railway URL and
+   will keep working — nothing breaks, just reprint when convenient.)
+5. Once `3una5aha.ggmt.sg` resolves, tell the news session — it'll confirm
+   the info page renders correctly at the new host (code is already
+   deployed and host-routing is already wired, just waiting on DNS).
+
+### Status as of now
+- `ecom.ggmt.sg`: no CNAME, no `PUBLIC_BASE` set — not live.
+- `3una5aha.ggmt.sg`: no CNAME — not live. Code path is ready and deployed
+  (`c52a34d`), tested end-to-end except the final DNS hop.
+
+---
+
 ## ✂️ 2026-08-05 (later still) — spice_podcast trimmed to a 20-episode sample, owner decided against paid Atlas tier
 
 Owner's call: no paid Atlas tier. Instead of chasing full audio coverage
