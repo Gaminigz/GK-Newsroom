@@ -2395,9 +2395,12 @@ export async function handleApp(req, res, url) {
       // shop with no plan still has a menu instead of its whole catalogue.
       dishes: (() => {
         const rest = dishes.filter((d) => !d.special);
-        const onDay = new Set((rawPlan?.dishIds || []).map(String));
-        if (onDay.size) return rest.filter((d) => onDay.has(String(d._id))).map(toDish);
-        if (rawPlan) return rest.filter((d) => mealsFor(d.window).length === MEALS.length).map(toDish);
+        // Planned day → exactly what the owner put on it. No plan → the
+        // all-day dishes, which is the shop's standing menu.
+        if (rawPlan) {
+          const onDay = new Set((rawPlan.dishIds || []).map(String));
+          return rest.filter((d) => onDay.has(String(d._id))).map(toDish);
+        }
         return rest.filter((d) => mealsFor(d.window).length === MEALS.length).map(toDish);
       })(),
       plan: plan && plan.groups.length ? plan : null,
