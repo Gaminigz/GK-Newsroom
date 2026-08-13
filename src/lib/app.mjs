@@ -1175,9 +1175,20 @@ async function homePage(req, url) {
 async function shopPage(id, extras = {}) {
   const shop = await shopById(id);
   if (!shop) return null;
-  const dishes = await dishesFor(shop._id);
-  const special = dishes.find((d) => d.special);
+  const allDishes = await dishesFor(shop._id);
+  const special = allDishes.find((d) => d.special);
   const tableN = Number(extras.tableN) || 0;
+
+  // Same rule as the app: a QR scanned at the table shows what the shop
+  // arranged for the meal on now, and below it the dishes served at that meal,
+  // which the shop may still accept or reject.
+  const today = new Date().toISOString().slice(0, 10);
+  const nowMeal = mealNow();
+  const dayPlan = await (await col("day_plans")).findOne({ shopId: String(shop._id), date: today, meal: nowMeal });
+  const onDay = new Set((dayPlan?.dishIds || []).map(String));
+  const dishes = dayPlan
+    ? allDishes.filter((d) => onDay.has(String(d._id)))
+    : allDishes.filter((d) => mealsFor(d.window).includes(nowMeal));
 
   const dishRows = dishes
     .filter((d) => !d.special)
