@@ -457,6 +457,78 @@ function landingPage() {
   });
 }
 
+/** Informational / marketing page about the 3una5aha app itself — distinct
+ *  from /food (the spice & dish content catalogue). Purely static: the only
+ *  functional element is the shop-owner login, which hands off to the real
+ *  app (/app) — nothing shop-management-related is built on this page. */
+function una5ahaInfoPage() {
+  return shell({
+    title: "3una 5aha · Sri Lankan food, wherever you are",
+    desc: "3una 5aha connects you to the nearest Sri Lankan restaurants and home cooks, wherever you are in the world.",
+    body: `
+  <style>
+    .u5-wrap { display:flex; flex-direction:column; gap:28px; }
+    @media (min-width:760px) { .u5-wrap { flex-direction:row; align-items:flex-start; } }
+    .u5-left, .u5-right { flex:1; min-width:0; }
+    .u5-card { position:relative; border-radius:24px; overflow:hidden; border:1px solid #ffffff1c;
+               box-shadow:0 10px 30px #0009; text-decoration:none; display:block; aspect-ratio:9/16; max-width:340px; margin:0 auto; }
+    .u5-card img { width:100%; height:100%; object-fit:cover; display:block; }
+    .u5-card .u5-overlay { position:absolute; inset:0; background:linear-gradient(180deg,#00000000 35%,#0d1117ee 78%,#0d1117 100%);
+                            display:flex; flex-direction:column; justify-content:flex-end; padding:20px 18px; }
+    .u5-card h2 { color:#fff; font-size:22px; letter-spacing:-.01em; }
+    .u5-card h2 em { color:#e3b341; font-style:normal; }
+    .u5-card .si { color:#ffffffb0; font-size:14px; margin:2px 0 10px; }
+    .u5-card .tagline { color:#ffffffd0; font-size:13px; line-height:1.4; margin-bottom:14px; }
+    .u5-btnrow { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .u5-pill { background:#ffffff14; border:1px solid #ffffff26; border-radius:12px; padding:9px 10px; text-align:center;
+               font-size:12.5px; color:#ffffffd8; }
+    .u5-card .u5-open { position:absolute; top:14px; right:14px; background:#0d1117d0; border:1px solid #ffffff2e;
+                         border-radius:999px; padding:6px 12px; font-size:12px; color:#e3b341; font-weight:600; }
+    .u5-right h1 { font-size:30px; letter-spacing:-.02em; color:#fff; margin-bottom:10px; }
+    .u5-right .eyebrow { color:#e3b341; font-size:13px; font-weight:700; letter-spacing:.02em; text-transform:uppercase; margin-bottom:8px; }
+    .u5-right p.lead { color:#c9d1d9; font-size:16px; line-height:1.6; margin-bottom:20px; }
+    .u5-reminder { background:#3a2a0d; border:1px solid #6b4e12; border-radius:14px; padding:16px 18px; margin-bottom:24px; }
+    .u5-reminder .u5-rtitle { color:#f5c453; font-weight:700; font-size:14px; margin-bottom:6px; }
+    .u5-reminder p { color:#e8d3a0; font-size:13.5px; line-height:1.55; }
+    .u5-shopbtn { display:inline-block; background:#e3b341; color:#1a1305; font-weight:700; font-size:15px;
+                  padding:13px 22px; border-radius:12px; text-decoration:none; }
+    .u5-shopbtn:active { filter:brightness(1.08); }
+    .u5-shopnote { color:#8b949e; font-size:12.5px; margin-top:10px; max-width:340px; }
+  </style>
+  <a class="back" href="/">← Back</a>
+  <div class="u5-wrap">
+    <div class="u5-left">
+      <a class="u5-card" href="/app" aria-label="Open the 3una 5aha app">
+        <img src="/assets/hero-welcome.jpg" alt="Sri Lankan spices and dishes">
+        <span class="u5-open">Open app →</span>
+        <div class="u5-overlay">
+          <h2><em>3</em>una <em>5</em>aha · තුන පහ</h2>
+          <div class="si">Find Sri Lankan restaurants and home cooking near you</div>
+          <div class="tagline">A non-commercial community app where Sri Lankan restaurants and home cooks post their dishes, deals and daily activities — so travellers anywhere in the world can find Sri Lankan dishes nearby.</div>
+          <div class="u5-btnrow">
+            <span class="u5-pill"> Apple</span>
+            <span class="u5-pill">✉️ Email</span>
+            <span class="u5-pill">💬 SMS</span>
+            <span class="u5-pill">👀 Guest</span>
+          </div>
+        </div>
+      </a>
+    </div>
+    <div class="u5-right">
+      <div class="eyebrow">3una 5aha · තුන පහ</div>
+      <h1>Craving Sri Lankan dishes?</h1>
+      <p class="lead">Our app brings it all together — no matter where you are, you'll be connected to the nearest place serving authentic Sri Lankan dishes.</p>
+      <div class="u5-reminder">
+        <div class="u5-rtitle">⚠️ Reminder</div>
+        <p>The app does not process any payments. Transactions are purely the responsibility of the users involved. We advise checking carefully via chat before making any payment.</p>
+      </div>
+      <a class="u5-shopbtn" href="/app">Shop Owner Login →</a>
+      <div class="u5-shopnote">For restaurants and home cooks. Once logged in, your shop management tools open inside the app (web view) — this page is informational only.</div>
+    </div>
+  </div>`,
+  });
+}
+
 /** 3una5aha — the Sri Lankan spice feed, served from src/data/spices.ts.
  *  `episodes` maps spice id → durationSec for ready mini-podcasts. */
 function spicesPage(episodes = {}, catalogue = []) {
@@ -1110,6 +1182,15 @@ const server = http.createServer(async (req, res) => {
         "Cache-Control": "public, max-age=600",
       });
       res.end(landingPage());
+      return;
+    }
+
+    if (path === "/3una5aha") {
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "public, max-age=600",
+      });
+      res.end(una5ahaInfoPage());
       return;
     }
 
