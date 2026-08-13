@@ -880,7 +880,7 @@ async function userProfilePage(req, flash = "") {
       for (var i = 1; i <= 4; i++) wirePh(i);
     </script>`
     : `<a class="btn" style="margin-top:14px;padding:12px" href="/app">Sign in to save favourites</a>
-       <div class="sub" style="font-size:11.5px;margin:6px 2px 0">Apple · Google · email — your photo, name, phone and favourites live on the account.</div>`}
+       <div class="sub" style="font-size:11.5px;margin:6px 2px 0">Apple · Email · SMS · Guest — your photo, name, phone and favourites live on the account.</div>`}
     <strong style="display:block;margin:18px 0 6px;font-size:14px">★ My favourites</strong>
     ${favShops.map((sh) => shopRow(sh, "★ favourite")).join("") || `<div class="sub card" style="padding:11px 13px;margin:0;font-size:12.5px">Tap ☆ on a shop page or long-press a map pin to save it here.</div>`}
     ${usedShops.length ? `<strong style="display:block;margin:14px 0 6px;font-size:14px">Ordered before</strong>${usedShops.map((sh) => shopRow(sh, "ordered before")).join("")}` : ""}`,
