@@ -495,7 +495,7 @@ function una5ahaInfoPage() {
     .u5-shopbtn:active { filter:brightness(1.08); }
     .u5-shopnote { color:#8b949e; font-size:12.5px; margin-top:10px; max-width:340px; }
   </style>
-  <a class="back" href="/">← Back</a>
+  <a class="back" href="https://web-production-2b43c.up.railway.app/">← GK Newsroom</a>
   <div class="u5-wrap">
     <div class="u5-left">
       <a class="u5-card" href="/app" aria-label="Open the 3una 5aha app">
@@ -1173,6 +1173,17 @@ const server = http.createServer(async (req, res) => {
 
     if (path === "/app" || path.startsWith("/app/") || path.startsWith("/m/")) {
       await handleApp(req, res, url);
+      return;
+    }
+
+    // 3una5aha.ggmt.sg — dedicated subdomain, its own homepage is the info page.
+    const host = String(req.headers.host || "").toLowerCase();
+    if (path === "/" && host.startsWith("3una5aha.")) {
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "public, max-age=600",
+      });
+      res.end(una5ahaInfoPage());
       return;
     }
 
