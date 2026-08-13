@@ -2390,7 +2390,16 @@ export async function handleApp(req, res, url) {
         logo: shop.logo ?? "", frontPhoto: shop.frontPhoto ?? "", open: shop.open !== false,
       },
       special: special ? { ...toDish(special), tag: special.promoTag || "Today special" } : null,
-      dishes: dishes.filter((d) => !d.special).map(toDish),
+      // What the shop is actually serving now. If the owner planned this day,
+      // the buyer sees that day's dishes; if not, only the all-day ones, so a
+      // shop with no plan still has a menu instead of its whole catalogue.
+      dishes: (() => {
+        const rest = dishes.filter((d) => !d.special);
+        const onDay = new Set((rawPlan?.dishIds || []).map(String));
+        if (onDay.size) return rest.filter((d) => onDay.has(String(d._id))).map(toDish);
+        if (rawPlan) return rest.filter((d) => mealsFor(d.window).length === MEALS.length).map(toDish);
+        return rest.filter((d) => mealsFor(d.window).length === MEALS.length).map(toDish);
+      })(),
       plan: plan && plan.groups.length ? plan : null,
     }));
     return;
