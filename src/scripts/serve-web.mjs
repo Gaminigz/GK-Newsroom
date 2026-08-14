@@ -1205,7 +1205,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (path === "/ai") {
+    if (path === "/ai" || path === "/ainews") {
       const html = await feedHtml();
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
@@ -1360,7 +1360,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (path === "/accounting") {
+    if (path === "/accounting" || path === "/biznews") {
       if (!govCache.html || Date.now() - govCache.at > CACHE_MS) {
         let posts = [];
         let episodes = [];
