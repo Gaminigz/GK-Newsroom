@@ -28,6 +28,10 @@
 	<string>3una 5aha uses the camera so shop owners can photograph their dishes.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Your location helps find Sri Lankan food near you.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Your location helps find Sri Lankan food near you. 3una 5aha only uses it while you are using the app.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Your location helps find Sri Lankan food near you. 3una 5aha only uses it while you are using the app.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Choose a photo of your dish from your library.</string>
 	<key>UILaunchStoryboardName</key>
