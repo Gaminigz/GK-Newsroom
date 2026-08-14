@@ -2,6 +2,28 @@
 
 ---
 
+## ✅ 2026-08-14 — Both ggmt.sg subdomains DONE: ecom.ggmt.sg + 3una5aha.ggmt.sg live
+
+Owner logged into Railway + Cloudflare in-session; domains added and DNS
+wired end-to-end (news session drove the browser directly).
+
+- **`ecom.ggmt.sg`** → live, verified, `PUBLIC_BASE=https://ecom.ggmt.sg`
+  set on `web` and redeployed. Table QR codes (`${PUBLIC_BASE}/m/${slug}`
+  in `app.mjs`) will now encode the pretty domain on next generation.
+  Already-printed QRs keep working (still point at the Railway URL).
+- **`3una5aha.ggmt.sg`** → live, verified, serves the info page as its
+  homepage (host-based routing in `serve-web.mjs`).
+- Both CNAMEs are **DNS-only (grey cloud)** in Cloudflare, confirmed —
+  this was the critical caution flagged earlier and it held.
+- Both live-tested end-to-end (200s, correct page content, valid TLS)
+  after DNS propagated — took well under a minute.
+
+**Note for future domain work:** Railway reported *"you have hit the
+custom domain limit for your plan"* right after adding these two — a
+3rd custom domain on this service will need a plan upgrade first.
+
+---
+
 ## 🌐 2026-08-13 — Domain setup for ggmt.sg: TWO subdomains needed, same Railway service, do both together
 
 Two separate needs converged on the same `web` service (project
