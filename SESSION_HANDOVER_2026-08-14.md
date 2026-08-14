@@ -11,14 +11,16 @@ Continues from `SESSION_HANDOVER_2026-08-08.md`. Everything below is pushed to
 |---|---|
 | Web (Railway `web`) | live, all work below deployed |
 | iOS **1.0** | live on the App Store since 30 Jul |
-| iOS **1.1 build 5** | delivered to App Store Connect, **not yet submitted** |
+| iOS **1.1 build 5** | ✅ **submitted for review 14 Aug 20:03** — auto-release on, publishes itself once approved |
 | `ecom.ggmt.sg` | ✅ live (14 Aug, news session — see §7 item 2) |
 | `3una5aha.ggmt.sg` | ✅ live (14 Aug, news session) — info page, own domain |
 | Mongo `gk_newsroom` | 45.6 MB of 512 MB as of 14 Aug (was 147 MB, was 546 MB at the §5 outage — news session trimmed `spice_podcast` further) |
 
-**The one open action:** App Store Connect → 3una 5aha → **+ Version 1.1** →
-What's New → attach **build 5** (not 4) → export compliance *exempt* →
-Add for Review → Submit. Auto-release is on, so it publishes once approved.
+**Submitted 14 Aug.** Version 1.1 created, build 5 attached, encryption
+declared *NO* (exempt), What's New written, and the App Review notes replaced —
+they still held the reply to the 1.0 rejection, which would have read oddly on
+an update. Apple says up to 48 hours. Do not push native changes to 1.1 while
+it is in review; a rejection means build 6.
 
 Build 4 was rejected at upload with error **90683** — missing
 `NSLocationAlwaysAndWhenInUseUsageDescription`. The Capacitor Geolocation
@@ -157,7 +159,7 @@ were safe in `ai_feed_podcast_tmp` and the newsroom session renamed it back.
 
 ## 7. Open items
 
-1. **Submit iOS 1.1 build 5** (see §1)
+1. ~~Submit iOS 1.1 build 5~~ **DONE — submitted 14 Aug 20:03, awaiting review.**
 2. ~~`ecom.ggmt.sg`~~ **DONE — 14 Aug, news session.** Owner logged into
    Railway + Cloudflare live in-browser; news session drove both dashboards
    directly. Custom domain added on the `web` service, Cloudflare CNAME set
