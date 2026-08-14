@@ -12,8 +12,9 @@ Continues from `SESSION_HANDOVER_2026-08-08.md`. Everything below is pushed to
 | Web (Railway `web`) | live, all work below deployed |
 | iOS **1.0** | live on the App Store since 30 Jul |
 | iOS **1.1 build 5** | delivered to App Store Connect, **not yet submitted** |
-| `ecom.ggmt.sg` | still not set up — open since 8 Aug |
-| Mongo `gk_newsroom` | 147 MB of 512 MB (was 546 MB — see §5) |
+| `ecom.ggmt.sg` | ✅ live (14 Aug, news session — see §7 item 2) |
+| `3una5aha.ggmt.sg` | ✅ live (14 Aug, news session) — info page, own domain |
+| Mongo `gk_newsroom` | 45.6 MB of 512 MB as of 14 Aug (was 147 MB, was 546 MB at the §5 outage — news session trimmed `spice_podcast` further) |
 
 **The one open action:** App Store Connect → 3una 5aha → **+ Version 1.1** →
 What's New → attach **build 5** (not 4) → export compliance *exempt* →
@@ -157,10 +158,22 @@ were safe in `ai_feed_podcast_tmp` and the newsroom session renamed it back.
 ## 7. Open items
 
 1. **Submit iOS 1.1 build 5** (see §1)
-2. **`ecom.ggmt.sg`** — Railway custom domain + Cloudflare CNAME, **grey cloud
-   / DNS-only** (Railway issues its own cert). Then set
-   `PUBLIC_BASE=https://ecom.ggmt.sg` so table QRs carry it. Printed QRs keep
-   working on the Railway URL.
+2. ~~`ecom.ggmt.sg`~~ **DONE — 14 Aug, news session.** Owner logged into
+   Railway + Cloudflare live in-browser; news session drove both dashboards
+   directly. Custom domain added on the `web` service, Cloudflare CNAME set
+   to **DNS-only / grey cloud** (confirmed, not proxied — Railway's cert
+   handshake needs this), `PUBLIC_BASE=https://ecom.ggmt.sg` set and
+   redeployed. Live-tested end-to-end (200, correct content, valid TLS).
+   Table QR codes (`${PUBLIC_BASE}/m/${slug}` in `app.mjs`) now carry the
+   pretty domain on next generation; already-printed QRs keep working on the
+   Railway URL, nothing broke. **Bonus, same session:** `3una5aha.ggmt.sg`
+   also wired up the same way — a separate informational/marketing page
+   about the app (not the ordering flow), serves as that subdomain's
+   homepage via host-based routing in `serve-web.mjs`. Full writeup in
+   `NEWSROOM_HANDOVER.md` (2026-08-14 entry). One thing worth knowing:
+   Railway flagged "you have hit the custom domain limit for your plan"
+   right after adding these two — a 3rd custom domain on this service needs
+   a plan upgrade first.
 3. **`gov_podcast` 85 MB** — newsroom side
 4. **Unpriced dishes** — a handful sit at LKR 0 and buyers can't order them
 5. **`2+4` / `1+1` / `3+4`** on 9 Aug Lunch are placeholder set names Gamini
