@@ -642,6 +642,12 @@ function menuPage(shop, extras = {}) {
       ${["All", ...CATEGORY_LIST].map((c, i) => `<button type="button" class="setCat${i === 0 ? " on" : ""}" data-cat="${esc(c)}" onclick="setCatTab('${esc(c)}',this)" style="border:1px solid #e0d6cc;background:${i === 0 ? "#191512" : "#fff"};color:${i === 0 ? "#fff" : "#4a443f"};border-radius:99px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer">${esc(c)} <span class="cnt" style="font-weight:700;color:${ORANGE}">${c === "All" ? singles.length : singles.filter((d) => (d.category || "") === c).length}</span></button>`).join("")}
     </div>
 
+    <!-- Nothing to press: everything autosaves. This line only reports where
+         the plan stands — grey idle, orange while you are editing, green once
+         it is stored, red if a save failed. -->
+    <div id="saveBtn" style="margin-top:10px;font-size:12.5px;font-weight:700;color:#4a443f;cursor:default">Save ${esc(planMeal)} plan · ${esc(planDate)}</div>
+    <div id="saveNote" class="sub" style="font-size:11px;margin-top:2px"></div>
+
     <!-- Both builders stack; CSS order puts Set menu first so it sits directly
          under the filter chips that scope its dish pickers. -->
     <div style="display:flex;flex-direction:column">
@@ -713,8 +719,7 @@ function menuPage(shop, extras = {}) {
         <script id="setChoiceData" type="application/json">${JSON.stringify(setChoices)}</script>
         </div>
 
-        <button class="btn" id="saveBtn" style="margin-top:16px">Save ${esc(planMeal)} plan · ${esc(planDate)}</button>
-        <div id="saveNote" class="sub" style="font-size:11.5px;margin-top:6px;text-align:center"></div>
+
       </form>
 
       <!-- Dish panel — 267pt wide (800 physical px at 3x), above the iOS cap. -->
@@ -1510,8 +1515,8 @@ function menuPage(shop, extras = {}) {
           firstPaint = false;
           document.getElementById('planStamp').textContent = meal + ' plan' + (plan.length ? '' : ' · new');
           var any = plan.length || dayDishes.length;
-          paintSave(any ? 'saved' : 'dirty',
-            any ? 'Saved · ' + meal + ' ' + date : 'Save ' + meal + ' plan · ' + date);
+          paintSave(any ? 'saved' : 'idle',
+            any ? 'Saved · ' + meal + ' ' + date : meal + ' plan · ' + date + ' · nothing added yet');
         })
         .catch(function(e){
           document.getElementById('planStamp').textContent = meal + ' plan';
@@ -1557,19 +1562,19 @@ function menuPage(shop, extras = {}) {
          orange = edited, not saved yet     green = saved     red = failed */
     var saveTimer = null, lastSaved = '', firstPaint = true;
     function paintSave(state, text){
-      var btn = document.getElementById('saveBtn');
-      if (!btn) return;
-      var c = state === 'saved' ? '#1d7a34' : state === 'error' ? '#b3261e' : '#d9542b';
-      btn.style.background = c;
-      btn.style.borderColor = c;
-      btn.style.color = '#fff';
-      btn.textContent = text;
+      var el = document.getElementById('saveBtn');
+      if (!el) return;
+      el.style.color = state === 'saved' ? '#1d7a34'      // green  — stored
+        : state === 'error' ? '#b3261e'                   // red    — failed
+        : state === 'dirty' ? '#d9542b'                   // orange — editing
+        : '#4a443f';                                      // grey   — idle
+      el.textContent = text;
     }
     function markDirty(){
       if (firstPaint) return;
       var now = JSON.stringify([plan, dayDishes]);
       if (now === lastSaved) return;
-      paintSave('dirty', 'Saving ' + PLAN_MEAL + ' plan…');
+      paintSave('dirty', 'Saving ' + PLAN_MEAL + ' ' + PLAN_DATE + '…');
       clearTimeout(saveTimer);
       saveTimer = setTimeout(function(){ savePlan(); }, 1200);
     }
@@ -1611,8 +1616,8 @@ function menuPage(shop, extras = {}) {
     lastSaved = JSON.stringify([plan, dayDishes]);
     firstPaint = false;
     var hasAny = plan.length || dayDishes.length;
-    paintSave(hasAny ? 'saved' : 'dirty',
-      hasAny ? 'Saved · ' + PLAN_MEAL + ' ' + PLAN_DATE : 'Save ' + PLAN_MEAL + ' plan · ' + PLAN_DATE);
+    paintSave(hasAny ? 'saved' : 'idle',
+      hasAny ? 'Saved · ' + PLAN_MEAL + ' ' + PLAN_DATE : PLAN_MEAL + ' plan · ' + PLAN_DATE + ' · nothing added yet');
 
     </script>`);
 }
