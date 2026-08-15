@@ -645,7 +645,7 @@ function menuPage(shop, extras = {}) {
     <!-- Nothing to press: everything autosaves. This line only reports where
          the plan stands — grey idle, orange while you are editing, green once
          it is stored, red if a save failed. -->
-    <div id="saveBtn" style="margin-top:10px;font-size:12.5px;font-weight:700;color:#4a443f;cursor:default">Save ${esc(planMeal)} plan · ${esc(planDate)}</div>
+    <div id="saveBtn" style="margin-top:12px;font-size:15px;font-weight:700;color:#4a443f;cursor:default;line-height:1.3">Save ${esc(planMeal)} plan · ${esc(planDate)}</div>
     <div id="saveNote" class="sub" style="font-size:11px;margin-top:2px"></div>
 
     <!-- Both builders stack; CSS order puts Set menu first so it sits directly
@@ -1561,9 +1561,17 @@ function menuPage(shop, extras = {}) {
        the button becomes the status light instead:
          orange = edited, not saved yet     green = saved     red = failed */
     var saveTimer = null, lastSaved = '', firstPaint = true;
+    var restTimer = null;
     function paintSave(state, text){
       var el = document.getElementById('saveBtn');
       if (!el) return;
+      clearTimeout(restTimer);
+      // Hold the green long enough to be noticed, then settle back to grey.
+      if (state === 'saved') {
+        restTimer = setTimeout(function(){
+          paintSave('idle', PLAN_MEAL + ' plan · ' + PLAN_DATE + ' · all saved');
+        }, 10000);
+      }
       el.style.color = state === 'saved' ? '#1d7a34'      // green  — stored
         : state === 'error' ? '#b3261e'                   // red    — failed
         : state === 'dirty' ? '#d9542b'                   // orange — editing
