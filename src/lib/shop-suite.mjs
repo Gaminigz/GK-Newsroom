@@ -2066,12 +2066,21 @@ function costsPage(shop, extras = {}) {
   /* Dishes the owner never put in a set. Twenty of them as twenty cards is
      unreadable, so they group onto their shelf — rice, meat, vegetables —
      and each card totals the run its portions describe. */
+  // Menu order, not the order the dishes happen to sit in the plan: rice
+  // opens a Sri Lankan meal and sweets close it, and the sheet should read
+  // the way the meal is served.
+  const SHELF_ORDER = ["Rice & staples", "Meat & seafood", "Vegetables",
+    "Salads & sambols", "Breads & snacks", "Sweets", "Other dishes"];
   const shelves = [];
   for (const d of loose) {
     let g = shelves.find((x) => x.name === d.shelf);
     if (!g) { g = { name: d.shelf, rows: [] }; shelves.push(g); }
     g.rows.push(d);
   }
+  shelves.sort((a, b) => {
+    const ai = SHELF_ORDER.indexOf(a.name), bi = SHELF_ORDER.indexOf(b.name);
+    return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+  });
   const dishCards = shelves.map((g) => {
     const cooked = g.rows.filter((r) => r.portions);
     const runCost = cooked.reduce((n, r) => n + (r.cost || 0) * r.portions, 0);
