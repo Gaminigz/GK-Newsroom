@@ -1590,6 +1590,12 @@ function menuPage(shop, extras = {}) {
       if (marks >= 3 && marks / el.value.length > 0.1) el.value = '';
     }
     clearIfGarbled(document.getElementById('pasteText'));
+    /* Coming back to this screen restores the page from the WebView's
+       back/forward cache — same DOM, same field contents, no reload. Without
+       this the broken text is still sitting there every time you return. */
+    window.addEventListener('pageshow', function(){
+      clearIfGarbled(document.getElementById('pasteText'));
+    });
 
     function openPaste(){
       clearIfGarbled(document.getElementById('pasteText'));
