@@ -1131,7 +1131,7 @@ function sendAudio(req, res, buf) {
 // href/src/fetch()/CSS url() are all covered by one pattern, and links to
 // other sites or bare text are never touched. Direct visits (no header) are
 // completely unaffected.
-const PREFIX_ROUTES = "assets|ai|app|food|accounting|admin|leads|garments|podcast|healthz";
+const PREFIX_ROUTES = "assets|ai|ainews|app|food|accounting|biznews|admin|leads|garments|podcast|healthz|3una5aha";
 function applyPrefixShim(req, res) {
   const prefix = String(req.headers["x-forwarded-prefix"] || "").replace(/\/+$/, "");
   if (!prefix || !/^\/[a-z0-9_-]+$/i.test(prefix)) return;
