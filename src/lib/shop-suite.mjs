@@ -1993,13 +1993,13 @@ function costsPage(shop, extras = {}) {
             </span>
           </div>
           <!-- How many the kitchen is cooking today, and what that costs. -->
-          <div style="display:flex;gap:6px;align-items:center;margin-top:5px;font-size:10.5px">
+          <div style="display:flex;gap:8px;align-items:center;margin-top:7px;font-size:12px;flex-wrap:wrap">
             <span class="sub">portions</span>
-            <input type="number" min="0" max="9999" class="portionBox" data-id="${esc(r.id)}" value="${r.portions || ""}"
-              placeholder="0" style="margin:0;width:62px;padding:4px 6px;font-size:11px;text-align:center">
-            <span class="sub" id="tot-${esc(r.id)}" style="font-weight:700;color:#4a443f">${total == null ? "" : "= LKR " + total.toLocaleString()}</span>
+            <input type="number" inputmode="numeric" min="0" max="9999" class="portionBox" data-id="${esc(r.id)}" value="${r.portions || ""}"
+              placeholder="0" style="margin:0;width:88px;padding:9px 8px;font-size:16px;font-weight:700;text-align:center;border-radius:10px">
+            <span id="tot-${esc(r.id)}" style="font-weight:700;font-size:13.5px;color:#4a443f">${total == null ? "" : "= LKR " + total.toLocaleString()}</span>
             <span style="flex:1"></span>
-            ${r.lines.length ? `<button type="button" class="ingToggle" data-id="${esc(r.id)}" style="border:1px solid #e3d6c2;background:#fff;border-radius:99px;padding:3px 9px;font-size:10px;cursor:pointer;color:${ORANGE};font-weight:700">prices</button>` : ""}
+            ${r.lines.length ? `<button type="button" class="ingToggle" data-id="${esc(r.id)}" style="border:1px solid #e3d6c2;background:#fff;border-radius:99px;padding:7px 14px;font-size:12px;cursor:pointer;color:${ORANGE};font-weight:700">prices</button>` : ""}
           </div>
           ${r.lines.length ? `
           <!-- Every ingredient, with what we think it costs. Ours is only a
@@ -2010,8 +2010,8 @@ function costsPage(shop, extras = {}) {
                 <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                   title="${esc(l.name)}">${esc(l.name)}<span class="sub"> · ${l.qty == null ? "to taste" : esc(String(l.qty)) + " " + esc(l.unit || "")}</span></span>
                 <span class="sub" style="flex:0 0 auto">LKR</span>
-                <input type="number" min="0" class="rateBox" data-key="${esc(l.key)}" data-per="${esc(l.per)}" value="${l.rate == null ? "" : l.rate}"
-                  placeholder="?" style="margin:0;width:58px;padding:3px 5px;font-size:10.5px;text-align:center;${l.mine ? `border-color:${ORANGE};color:${ORANGE};font-weight:700` : ""}">
+                <input type="number" inputmode="numeric" min="0" class="rateBox" data-key="${esc(l.key)}" data-per="${esc(l.per)}" value="${l.rate == null ? "" : l.rate}"
+                  placeholder="?" style="margin:0;width:76px;padding:7px 6px;font-size:14px;text-align:center;border-radius:9px;${l.mine ? `border-color:${ORANGE};color:${ORANGE};font-weight:700` : ""}">
                 <span class="sub" style="flex:0 0 auto;width:44px">/${esc(l.per)}</span>
               </div>`).join("")}
             <div class="sub" style="font-size:9.5px;margin-top:4px;line-height:1.35">Type what you pay. Orange means it is your price, not ours. Clear the box to go back to ours.</div>
@@ -2036,6 +2036,15 @@ function costsPage(shop, extras = {}) {
   )).join("");
 
   return page(shop, "costs", "Cost sheet", "පිරිවැය", `
+    <style>
+      /* The stepper arrows come out bigger than the number itself on iOS and
+         are a poor target next to it. Type the number instead. */
+      .portionBox::-webkit-outer-spin-button, .portionBox::-webkit-inner-spin-button,
+      .rateBox::-webkit-outer-spin-button, .rateBox::-webkit-inner-spin-button {
+        -webkit-appearance: none; appearance: none; margin: 0;
+      }
+      .portionBox, .rateBox { -moz-appearance: textfield; appearance: textfield; }
+    </style>
     <!-- The same day and meal as Plan Menu, so the two screens always agree. -->
     <div style="margin-top:12px">
       <div style="display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center">
