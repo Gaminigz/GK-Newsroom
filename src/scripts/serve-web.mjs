@@ -317,17 +317,24 @@ const WA_JS = `
 `;
 
 /** Shared page skeleton for landing + coming-soon pages (no Mongo needed). */
-function shell({ title, desc, body }) {
+function shell({ title, desc, body, image, url, keywords, jsonLd }) {
+  const ogImage = image ? `\n<meta property="og:image" content="${esc(image)}">\n<meta name="twitter:image" content="${esc(image)}">` : "";
+  const ogUrl = url ? `\n<meta property="og:url" content="${esc(url)}">\n<link rel="canonical" href="${esc(url)}">` : "";
+  const kw = keywords ? `\n<meta name="keywords" content="${esc(keywords)}">` : "";
+  const ld = jsonLd ? `\n<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>` : "";
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
-<meta name="description" content="${esc(desc)}">
+<meta name="description" content="${esc(desc)}">${kw}
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(desc)}">
-<meta property="og:type" content="website">
+<meta property="og:type" content="website">${ogImage}${ogUrl}
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${esc(title)}">
+<meta name="twitter:description" content="${esc(desc)}">${ld}
 <style>
   * { box-sizing:border-box; margin:0; }
   body { background:#0d1117; color:#e6edf3; font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
@@ -484,6 +491,22 @@ function una5ahaInfoPage() {
   return shell({
     title: "3una 5aha · Sri Lankan food, wherever you are",
     desc: "3una 5aha connects you to the nearest Sri Lankan restaurants and home cooks, wherever you are in the world.",
+    image: "https://ggmt.sg/newsfeed/assets/hero-welcome.jpg",
+    url: "https://ggmt.sg/newsfeed/3una5aha",
+    keywords: "3una5aha, Sri Lankan food, Sri Lankan restaurants near me, Sri Lankan home cooking, find Sri Lankan food abroad, Sri Lankan community app, Sri Lankan diaspora food, Sri Lankan spices, Sri Lankan recipes, home cooks Sri Lanka, traveller food finder, ගෙදර උයාපු කෑම, ශ්‍රී ලාංකික ආහාර",
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "MobileApplication",
+      "name": "3una 5aha",
+      "alternateName": "තුන පහ",
+      "description": "A non-commercial community app where Sri Lankan restaurants and home cooks post their dishes, deals and daily activities — so travellers anywhere in the world can find Sri Lankan dishes nearby.",
+      "url": "https://ggmt.sg/newsfeed/3una5aha",
+      "image": "https://ggmt.sg/newsfeed/assets/hero-welcome.jpg",
+      "applicationCategory": "FoodApplication",
+      "operatingSystem": "iOS, Web",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "downloadUrl": "https://apps.apple.com/us/app/3una-5aha/id6789434204",
+    },
     body: `
   <style>
     .u5-wrap { display:flex; flex-direction:column; gap:28px; }
@@ -518,6 +541,7 @@ function una5ahaInfoPage() {
     .u5-reminder .u5-rtitle { color:#f5c453; font-weight:700; font-size:14px; margin-bottom:6px; }
     .u5-reminder p { color:#e8d3a0; font-size:13.5px; line-height:1.55; }
     .u5-shopnote { color:#8b949e; font-size:12.5px; margin-top:10px; max-width:340px; }
+    .u5-tags { color:#6b8fc9; font-size:12px; margin-top:16px; line-height:1.7; max-width:400px; }
   </style>
   <a class="back" href="https://web-production-2b43c.up.railway.app/">← GK Newsroom</a>
   <div class="u5-wrap">
@@ -569,6 +593,7 @@ function una5ahaInfoPage() {
         <p>The app does not process any payments. Transactions are purely the responsibility of the users involved. We advise checking carefully via chat before making any payment.</p>
       </div>
       <div class="u5-shopnote">For restaurants and home cooks — use the <strong>Shop Owner</strong> button above. Once logged in, your shop management tools open inside the app (web view) — this page is informational only.</div>
+      <div class="u5-tags">#3una5aha #SriLankanFood #SriLankanRestaurants #HomeCooking #ශ්‍රීලාංකික​ආහාර #SriLankanDiaspora #FindFoodNearYou #TravelFood #SriLanka #CommunityApp</div>
     </div>
   </div>`,
   });
