@@ -33,7 +33,9 @@ export function priceToLkr(raw) {
   if (!m) return null;
   const n = Number(m[0]);
   if (!Number.isFinite(n) || n <= 0) return null;
-  const usd = /\$|usd|dollar/i.test(s);
+  // Unmarked cents are dollars: "0.35per one", "2.50" — nothing on a Sri
+  // Lankan menu costs a third of a rupee, so a small decimal can only be USD.
+  const usd = /\$|usd|dollar/i.test(s) || (m[0].includes(".") && n < 100);
   return Math.round(usd ? n * USD_LKR : n);
 }
 
@@ -138,17 +140,27 @@ export function parseMenuText(text, opts = {}) {
  * ------------------------------------------------------------------------ */
 function readMenu(raw, opts = {}) {
   const setTypes = opts.setTypes || [];
-  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  // Emoji decorate every WhatsApp menu — 🌿 around the rice, 🍗 on the meat
+  // heading. They are never part of a name and they stop a heading matching,
+  // so they come off before anything is read.
+  const deEmoji = (l) => l.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{20E3}\u{2000}-\u{206F}\u{2190}-\u{21FF}\u{2600}-\u{27BF}]/gu, " ")
+    .replace(/\s+/g, " ").trim();
+  const lines = raw.split(/\r?\n/).map((l) => deEmoji(l.trim())).filter(Boolean);
   const groups = [];
   let cur = null;
   const notes = [];
   const garbled = [];
+  let lastNote = "";
 
   // A price on the line means it is something being sold, not a heading.
-  const hasPrice = (l) => /\d\s*\$|\$\s*\d|(?:rs\.?|lkr)\s*\d/i.test(l);
+  const hasPrice = (l) => /\d\s*\$|\$\s*\d|(?:rs\.?|lkr)\s*\d/i.test(l)
+    || /\d+\.\d{2}\s*(?:per|each|ea\b|\/)/i.test(l);
   const priceIn = (l) => {
     const marked = l.match(/(?:rs\.?|lkr)?\s*\d+(?:\.\d+)?\s*\$|\$\s*\d+(?:\.\d+)?|(?:rs\.?|lkr)\s*[\d,]+/i);
     if (marked) return marked[0].trim();
+    // "0.35per one" — a price with no symbol, written against a unit.
+    const per = l.match(/([\d,]+\.\d{1,2})\s*(?:per|each|ea\b)/i);
+    if (per) return per[1].trim();
     // "Devilled chicken කුකුල් මස් දෙවල් 1200" — a plain number at the end of a
     // dish line is rupees. Only at the end: a "1." in front is a list number.
     const bare = l.match(/(?:^|\s)([\d,]{2,6}(?:\.\d{1,2})?)\s*\/?=?\s*$/);
@@ -159,8 +171,10 @@ function readMenu(raw, opts = {}) {
   // Sinhala inside a block is a dish name — headings are written in English
   // on every menu we have seen, and losing a dish costs more than mistaking
   // the rare Sinhala heading for one.
+  // A price means something is being sold, heading or not — even as the very
+  // first line, before any block has opened.
   const isDishy = (l) => l.includes("/") || numbered(l) || bulleted(l)
-    || (cur && (hasPrice(l) || SI.test(l)));
+    || hasPrice(l) || (cur && SI.test(l));
   // Leading numbering, bullets, and the zero-width joiners WhatsApp leaves
   // behind when a numbered list is copied out of it.
   const clean = (l) => l.replace(/^[\s\-•*·⁠]*\d*\s*[.)]?\s*/, "").replace(/[​‌‍⁠]/g, "").trim();
@@ -229,6 +243,23 @@ function readMenu(raw, opts = {}) {
       groups.push(cur);
       lastDish = null;
     }
+    // "Dhal Big cup 2.50$ Small cup 1.25$" — one line selling the same dish in
+    // two sizes. That is two sets, not one dish: every big cup together, every
+    // small cup together, so the buyer picks a size and sees one price list.
+    const sizes = [...line.matchAll(/\b((?:big|large|small|regular|full|half)\s*(?:cup|plate|portion|pack|size)?)\s*[:\-–]?\s*((?:rs\.?|lkr)?\s*[\d,]+(?:\.\d{1,2})?\s*\$?)/gi)];
+    if (sizes.length >= 1) {
+      const dishName = clean(line.slice(0, sizes[0].index)).replace(/[-–:,]\s*$/, "").trim();
+      if (dishName) {
+        for (const s of sizes) {
+          const label = s[1].replace(/\s+/g, " ").trim().replace(/\b\w/g, (ch) => ch.toUpperCase());
+          let g = groups.find((x) => x.name.toLowerCase() === label.toLowerCase());
+          if (!g) { g = { name: label, setType: "", pick: 1, priceText: "", dishes: [] }; groups.push(g); }
+          g.dishes.push({ name: dishName.slice(0, 80), nameSi: "", priceText: s[2].trim(), category: "", match: "" });
+        }
+        lastDish = null;
+        continue;
+      }
+    }
     if (isDishy(line)) {
       if (!cur) { cur = { name: "Menu", setType: "", pick: 1, priceText: "", dishes: [] }; groups.push(cur); }
       const d = readDish(clean(line), priceIn, clean);
@@ -236,7 +267,19 @@ function readMenu(raw, opts = {}) {
       // A broken Sinhala half doesn't cost the dish — the English name is
       // still good — but the owner is told, because the dish now has no
       // Sinhala and that is not what they pasted.
-      if (d) { if (looksMojibake(d.nameSi)) { d.nameSi = ""; garbled.push(d.name); } cur.dishes.push(d); lastDish = d; }
+      if (d) {
+        // "$1.50 per cup" on its own line prices the sentence above it —
+        // "Sweet & delicious Watalappan with honey dripping on top!". Take
+        // the dish's name from that sentence rather than saving "per cup".
+        if (/^(per|each|ea|a|one|cup|plate|portion)\b/i.test(d.name) && lastNote) {
+          const named = (lastNote.match(/\b[A-Z][a-z]{3,}(?:\s+[A-Z][a-z]{2,})*/g) || [])
+            .sort((a, b) => b.length - a.length)[0];
+          if (named) d.name = named;
+        }
+        if (looksMojibake(d.nameSi)) { d.nameSi = ""; garbled.push(d.name); }
+        cur.dishes.push(d);
+        lastDish = d;
+      }
       continue;
     }
     lastDish = null;
@@ -254,8 +297,14 @@ function readMenu(raw, opts = {}) {
       pendingChoice = cur;      // its Sinhala, if any, arrives on the next line
       continue;
     }
+    // "With your selection of curries", "Served with your choice of ONE main
+    // dish", "Today Dinner" — the owner talking, not naming a set. Only a
+    // line that actually names one gets past this.
+    const chatty = /^(with|served?|serve|comes|come|choose|select|pick|order|enjoy|available|and|today|tomorrow|good|fresh|homemade)\b/i.test(line)
+      || /^(today|tomorrow)?\s*(breakfast|lunch|dinner)\s*$/i.test(line)
+      || /^(mon|tues|wednes|thurs|fri|satur|sun)day\b/i.test(line);
     // A heading: short, and not a sentence about the shop.
-    if (line.length <= 46 && !/[.!?]$/.test(line)) {
+    if (line.length <= 46 && !/[.!?]$/.test(line) && !chatty) {
       const pick = pickCount(line);
       // "Side dishes for select 04 item's" names the set in the first half.
       const name = line.replace(/\b(for\s+)?(select|choose|pick|any)\b.*$/i, "")
@@ -274,6 +323,7 @@ function readMenu(raw, opts = {}) {
       continue;
     }
     notes.push(line);
+    lastNote = line;
   }
   // A "heading" that never got a dish under it was not a heading — it was a
   // dish written on its own, the way the rice often opens a menu before any
@@ -281,6 +331,10 @@ function readMenu(raw, opts = {}) {
   for (let i = 0; i < groups.length; i++) {
     const g = groups[i];
     if (g.dishes.length || g.name === "Menu") continue;
+    // Only if it reads like a dish name. A marketing line —
+    // "Fresh • Homemade • Delicious" — or an instruction is not one,
+    // and a heading that named a real set was simply left empty.
+    if (g.setType || g.name.includes("\u2022") || g.name.split(/\s+/).length > 5) { groups.splice(i, 1); i--; continue; }
     const asDish = readDish(clean(g.name), priceIn, clean);
     groups.splice(i, 1);
     if (!asDish) { i--; continue; }
@@ -325,7 +379,12 @@ function readDish(body, priceIn, clean) {
     if (at > 0) { en = noPrice.slice(0, at); si = noPrice.slice(at); }
   }
   // "(Sunday special price)" is a note about the dish, not part of its name.
-  const name = clean(en.replace(/\([^)]*\)/g, "")).replace(/[-–,:]\s*$/, "").trim();
+  const bare = clean(en.replace(/\([^)]*\)/g, "")).replace(/[-–,:]\s*$/, "").trim();
+  // "0.35per one" prices a dish; "per one" is not part of its name. But a line
+  // that is ONLY "per cup" keeps its words — the caller names it from the
+  // sentence above instead.
+  const trimmed = bare.replace(/\s*(?:per|each)\s*(?:one|cup|plate|piece|pc|pcs)?\s*$/i, "").trim();
+  const name = trimmed || bare;
   if (!name) return null;
   return {
     name: name.slice(0, 80),

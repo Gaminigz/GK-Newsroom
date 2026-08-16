@@ -58,6 +58,10 @@ const SET_PRESETS = [
   { name: "Main dishes", nameSi: "ප්‍රධාන කෑම" },
   { name: "Side dishes", nameSi: "අතුරු කෑම" },
   { name: "Dessert", nameSi: "අතුරුපස" },
+  // Curry sold by the cup — one set per size, so the buyer picks a size and
+  // sees one price list rather than every dish twice.
+  { name: "Big cup", nameSi: "විශාල කෝප්පය" },
+  { name: "Small cup", nameSi: "කුඩා කෝප්පය" },
 ];
 
 /** One tile per function. `href(id)` = real page; suite previews use key.
