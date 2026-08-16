@@ -3353,7 +3353,7 @@ export async function handleApp(req, res, url) {
       return;
     }
     const { SET_PRESET_NAMES, CUSTOM_SET_LIMIT, posCategoryFor } = await import("./shop-suite.mjs");
-    const { parseMenuText, priceToLkr, nearName, guessCategory } = await import("./ai-menu-paste.mjs");
+    const { parseMenuText, priceToLkr, matchSetName, guessCategory } = await import("./ai-menu-paste.mjs");
     const owners = await col("shop_owners");
     const shop = await owners.findOne({ _id: shopOid }, { projection: { customSetTypes: 1 } });
     let customTypes = (shop?.customSetTypes || []).map(String);
@@ -3473,8 +3473,7 @@ export async function handleApp(req, res, url) {
       // no slot left the dishes still go on the day, just not in a set.
       const all = [...SET_PRESET_NAMES, ...customTypes];
       const wanted = String(g.setType || g.name || "").trim();
-      let label = all.find((n) => n.toLowerCase() === wanted.toLowerCase())
-        || all.find((n) => nearName(n, wanted));
+      let label = matchSetName(all, wanted);
       // A set name is a name, not a sentence. "For dessert watalappan is
       // available" is the owner talking, and it must not eat one of their
       // three slots — the dishes under it still go on the day.
@@ -3485,7 +3484,9 @@ export async function handleApp(req, res, url) {
           customTypes = [...customTypes, wanted];
           newTypes.push(wanted);
           label = wanted;
-        } else {
+        } else if (wanted !== "Menu") {
+          // "Menu" is the parser's own name for dishes written before any
+          // heading — the owner never wrote it, so don't report it back.
           unplaced.push(wanted);
         }
       }
@@ -3506,11 +3507,16 @@ export async function handleApp(req, res, url) {
       }
     }
 
+    // Dishes that ended up on the day without a set. Silence here is what
+    // made a paste look like it had half-worked.
+    const inSets = new Set(outGroups.flatMap((g) => g.dishes.map((d) => d.id)));
+    const looseDishes = dishIds.filter((id) => !inSets.has(id)).length;
     res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
     res.end(JSON.stringify({
       ok: true, source: parsed.source, meal: menu.meal || "", day: menu.day || "",
-      note: menu.note || "", groups: outGroups, dishIds,
+      note: menu.note || "", groups: outGroups, dishIds, loose: looseDishes,
       created, added, newTypes, unplaced,
+      setsInUse: customTypes,
       slotsLeft: Math.max(0, CUSTOM_SET_LIMIT - customTypes.length),
     }));
     return;

@@ -43,6 +43,9 @@ export function nearName(a, b) {
   const y = String(b || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   if (!x || !y) return false;
   if (x === y) return true;
+  // Two characters of slop on a three-character name matches anything —
+  // a shop's "1+1" would swallow every two-letter word in a heading.
+  if (x.length < 5 || y.length < 5) return false;
   if (Math.abs(x.length - y.length) > 2) return false;
   let prev = Array.from({ length: y.length + 1 }, (_, i) => i);
   for (let i = 1; i <= x.length; i++) {
@@ -53,6 +56,37 @@ export function nearName(a, b) {
     prev = row;
   }
   return prev[y.length] <= 2;
+}
+
+/**
+ * The set name a heading means, out of the ones this shop may use.
+ *
+ * Owners don't write bare labels. They write "For dessert watalappan is
+ * available" and "Rice set for today" — the name is *inside* a sentence. So:
+ * exact, then near-spelling, then the name found within the heading, longest
+ * first so "Rice set" wins over "set". Returns "" when nothing fits.
+ */
+export function matchSetName(allowed, heading) {
+  const h = String(heading || "").trim();
+  const list = (allowed || []).filter(Boolean);
+  if (!h || !list.length) return "";
+  const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+  const exact = list.find((n) => n.toLowerCase() === h.toLowerCase());
+  if (exact) return exact;
+  const near = list.find((n) => nearName(n, h));
+  if (near) return near;
+  const hn = norm(h);
+  const words = h.split(/\s+/).filter(Boolean);
+  for (const n of [...list].sort((a, b) => norm(b).length - norm(a).length)) {
+    const nn = norm(n);
+    if (nn.length >= 5 && hn.includes(nn)) return n;
+    for (let i = 0; i < words.length; i++) {
+      for (let len = 1; len <= 3 && i + len <= words.length; len++) {
+        if (nearName(n, words.slice(i, i + len).join(" "))) return n;
+      }
+    }
+  }
+  return "";
 }
 
 /** Which catalogue shelf a new dish belongs on, from its name alone. The AI
@@ -216,7 +250,29 @@ function rulesParse(raw, opts = {}) {
 
   const clean = (l) => l.replace(/^[\s\-•*·⁠]*\d*[.)]?\s*/, "").replace(/[⁠​]/g, "").trim();
 
-  for (const line of lines) {
+  /** "Rice set Ponni samba white rice / …" — the heading and the first dish
+   *  typed on one line. Split them rather than saving a dish called both. */
+  const splitHeading = (l) => {
+    const words = l.split(/\s+/).filter(Boolean);
+    for (let n = Math.min(4, words.length - 1); n >= 1; n--) {
+      const head = words.slice(0, n).join(" ");
+      const rest = words.slice(n).join(" ");
+      // The remainder has to start like a dish name, or "Rice set / බත්
+      // කට්ටලය" — a dish that happens to share the name — gets cut in half.
+      if (!/^[^/]*[A-Za-z඀-෿]/.test(rest)) continue;
+      if (setTypes.some((s) => nearName(s, head) || s.toLowerCase() === head.toLowerCase())) return [head, rest];
+    }
+    return null;
+  };
+
+  const queue = [];
+  for (const l of lines) {
+    const split = isDishy(l) ? splitHeading(l) : null;
+    if (split) queue.push(split[0], split[1]);
+    else queue.push(l);
+  }
+
+  for (const line of queue) {
     if (isDishy(line)) {
       if (!cur) { cur = { name: "Menu", setType: "", pick: 1, priceText: "", dishes: [] }; groups.push(cur); }
       const body = clean(line);
@@ -232,7 +288,7 @@ function rulesParse(raw, opts = {}) {
     if (line.length <= 46 && !/[.!?]$/.test(line)) {
       const pickM = line.match(/(\d+)\s*item/i);
       const name = line.replace(/for\s+select.*$/i, "").replace(/[:\-–]\s*$/, "").trim();
-      const hit = setTypes.find((s) => nearName(s, name));
+      const hit = matchSetName(setTypes, name);
       cur = {
         name: (hit || name).slice(0, 40), setType: hit || "",
         pick: pickM ? Math.max(1, Math.min(40, Number(pickM[1]))) : 1,

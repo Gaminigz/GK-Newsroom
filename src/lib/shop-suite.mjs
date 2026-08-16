@@ -1680,8 +1680,16 @@ function menuPage(shop, extras = {}) {
       }
       if ((j.unplaced || []).length) {
         out += '<div style="font-size:10.5px;margin-top:6px;line-height:1.4;color:#b3261e">'
-          + esc(j.unplaced.join(', ')) + ' could not become a set — your three own names are used up. '
-          + 'Those dishes are on the day anyway; rename one of your set types to make room.</div>';
+          + '<strong>' + esc(j.unplaced.join(', ')) + '</strong> could not become a set — '
+          + 'set names are the fixed six plus three of your own, and yours are used'
+          + ((j.setsInUse || []).length ? ' (' + esc(j.setsInUse.join(', ')) + ')' : '') + '. '
+          + 'Those dishes are on the day anyway. Free one of your names in <strong>Pick set types</strong> '
+          + '(the ✎), then paste again.</div>';
+      }
+      if (j.loose) {
+        out += '<div style="font-size:10.5px;margin-top:6px;line-height:1.4;color:#946200">'
+          + j.loose + ' dish' + (j.loose === 1 ? '' : 'es') + ' went on the day without a set — '
+          + 'find them under <strong>Dish</strong>, or drop them into a set with Pick combo.</div>';
       }
       if (j.note) {
         out += '<div class="sub" style="font-size:10.5px;margin-top:6px;line-height:1.4">Not a dish, so left out: ' + esc(j.note) + '</div>';
