@@ -759,7 +759,54 @@ function menuPage(shop, extras = {}) {
           <button type="button" id="pasteGo" style="flex:1;border:0;background:${ORANGE};color:#fff;border-radius:99px;padding:9px 15px;font-size:12.5px;font-weight:700;cursor:pointer">Build my menu</button>
         </div>
       </div>
-      ` : `<div class="card" style="margin-top:12px;padding:12px 14px;background:#fdf0ec;border-color:#f3cfc2;font-size:12.5px;color:#946200">Add some dishes first — they become the options inside each set.</div>`}
+      ` : `
+      <!-- A shop with nothing listed yet. The builder needs dishes to build
+           with, but pasting IS how you get them — so this branch carries its
+           own paste box, standalone, and reloads into the real builder once
+           the dishes exist. -->
+      <div class="card" style="margin-top:12px;padding:12px 14px;background:#fdf0ec;border-color:#f3cfc2;font-size:12.5px;color:#946200">
+        No dishes listed yet — paste your menu below and they get created for you.
+      </div>
+      <div class="card" style="margin-top:10px;padding:12px 14px">
+        <div style="font-size:13.5px;font-weight:700">Paste your menu</div>
+        <div class="si" style="font-size:11.5px;margin-top:1px">මෙනුව අලවන්න</div>
+        <div class="sub" style="font-size:11px;margin-top:5px;line-height:1.4">Write it the way you send it on WhatsApp — headings, dishes, prices.</div>
+        <textarea id="emptyPasteText" rows="9" placeholder="Rice Set&#10;Ponni samba white rice / පොන්නි සම්බා සුදූ බත්&#10;&#10;Side dishes for select 04 items&#10;1. Dhal / පරිප්පු" style="width:100%;margin-top:8px;font-size:12.5px;line-height:1.45;padding:9px 10px;min-height:130px"></textarea>
+        <button type="button" id="emptyPasteGo" style="width:100%;margin-top:8px;border:0;background:${ORANGE};color:#fff;border-radius:99px;padding:10px 15px;font-size:13px;font-weight:700;cursor:pointer">Build my menu</button>
+        <div id="emptyPasteMsg" class="sub" style="font-size:11.5px;margin-top:7px;line-height:1.4"></div>
+      </div>
+      <script>
+      (function(){
+        var go = document.getElementById('emptyPasteGo');
+        var msg = document.getElementById('emptyPasteMsg');
+        go.addEventListener('click', function(){
+          var text = document.getElementById('emptyPasteText').value;
+          if (!text.trim()) { msg.textContent = 'Paste the menu text first.'; return; }
+          go.disabled = true; go.textContent = 'Reading…';
+          msg.textContent = 'Reading your menu and creating the dishes…';
+          fetch('/app/owner/${id}/menu/paste.json', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({text: text, date: '${esc(planDate)}', meal: '${esc(planMeal)}'}),
+          })
+          .then(function(r){ return r.json(); })
+          .then(function(j){
+            if (!j.ok) { go.disabled = false; go.textContent = 'Build my menu'; msg.textContent = j.error || 'Could not read that.'; return; }
+            // Save it as the day straight away — there was nothing here to lose.
+            return fetch('/app/owner/${id}/menu/plan.json', {
+              method:'POST', headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({date: '${esc(planDate)}', meal: '${esc(planMeal)}', groups: j.groups || [], dishIds: j.dishIds || []}),
+            }).then(function(){
+              msg.textContent = (j.dishIds || []).length + ' dishes added — opening your menu…';
+              location.reload();
+            });
+          })
+          .catch(function(e){
+            go.disabled = false; go.textContent = 'Build my menu';
+            msg.textContent = 'No connection (' + e.message + ') — your text is still here.';
+          });
+        });
+      })();
+      <\/script>`}
     </div>
 
     </div><!-- /both builders -->
