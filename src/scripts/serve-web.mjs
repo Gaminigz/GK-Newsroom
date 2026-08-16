@@ -531,7 +531,18 @@ function una5ahaInfoPage() {
               <svg viewBox="0 0 24 24" fill="#fff"><path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.57-2.987 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.572-2.27 1.206-2.98.804-.94 2.142-1.64 3.248-1.68.03.13.05.28.05.43zm4.565 15.71c-.03.07-.463 1.58-1.518 3.12-.945 1.34-1.94 2.71-3.43 2.71-1.517 0-1.9-.88-3.63-.88-1.698 0-2.302.91-3.67.91-1.377 0-2.332-1.26-3.428-2.8-1.287-1.82-2.257-4.63-2.257-7.28 0-4.28 2.79-6.55 5.532-6.55 1.406 0 2.576.9 3.457.9.84 0 2.147-.95 3.734-.95.633 0 2.91.06 4.404 2.21-.114.07-2.628 1.53-2.628 4.63 0 3.7 3.24 5.01 3.434 5.02z"/></svg>
             </a>
             <span class="u5-store-icon disabled" aria-label="Google Play — coming soon">
-              <svg viewBox="0 0 24 24"><path d="M3 2.5c-.3.3-.5.7-.5 1.2v16.6c0 .5.2.9.5 1.2l.1.1L12 12.6v-.2L3.1 2.4z" fill="#00d2ff"/><path d="M15 15.6l-3-3v-.2l3-3 3.5 2c1 .6 1 1.6 0 2.2z" fill="#ffcf00"/><path d="M15 15.6L12 12.5 3.1 21.4c.4.4.9.4 1.6.1z" fill="#ff3a44"/><path d="M15 9.4L4.7 2.7c-.7-.4-1.2-.3-1.6.1L12 12.5z" fill="#00e177"/></svg>
+              <svg viewBox="0 0 512 512">
+                <defs>
+                  <linearGradient id="pgBlue" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0" stop-color="#00c6ff"/><stop offset="1" stop-color="#0072ff"/></linearGradient>
+                  <linearGradient id="pgYellow" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0" stop-color="#ffe000"/><stop offset="1" stop-color="#ffb700"/></linearGradient>
+                  <linearGradient id="pgGreen" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0" stop-color="#00f076"/><stop offset="1" stop-color="#00c46a"/></linearGradient>
+                  <linearGradient id="pgRed" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0" stop-color="#ff4b4b"/><stop offset="1" stop-color="#e6002e"/></linearGradient>
+                </defs>
+                <path d="M104 40c-8 7-13 18-13 32v336c0 14 5 25 13 32l4 3 189-189v-4l-15-15z" fill="url(#pgBlue)"/>
+                <path d="M356 271l-63-63v-4l63-63 4 2 75 43c21 12 21 32 0 44l-75 43z" fill="url(#pgYellow)"/>
+                <path d="M360 269l-64-64-193 193c7 8 19 9 32 2z" fill="url(#pgRed)"/>
+                <path d="M296 209l64-64-225-129c-13-7-25-6-32 2z" fill="url(#pgGreen)"/>
+              </svg>
             </span>
           </div>
         </div>
