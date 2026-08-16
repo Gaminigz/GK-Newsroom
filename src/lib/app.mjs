@@ -3423,6 +3423,7 @@ export async function handleApp(req, res, url) {
     const dishIds = [];
     const outGroups = [];
     const unplaced = [];     // headings that couldn't become a set (no slot)
+    const renamed = [];      // headings answered with an allowed name instead
     const newTypes = [];
 
     /** Catalogue entry for a dish, creating it if the catalogue has never
@@ -3491,9 +3492,11 @@ export async function handleApp(req, res, url) {
       const wanted = String(g.setType || g.name || "").trim();
       let label = matchSetName(all, wanted);
       // A block written with no heading at all — the owner just listed the
-      // dishes, the way the rice usually opens a menu. Name it from what is
-      // in it, and only ever with a name this shop is allowed to use.
-      if (!label && wanted === "Menu" && g.dishes.length) {
+      // dishes, the way the rice usually opens a menu — or headed with a name
+      // that is not one this shop may use ("Chicken or pork") and no slot left
+      // to make it. Name it from what is in it, and only ever with a name this
+      // shop is allowed to use. Reported back, never silent.
+      if (!label && g.dishes.length && (wanted === "Menu" || customTypes.length >= CUSTOM_SET_LIMIT)) {
         const shelves = g.dishes.map((d) => guessCategory(d.name));
         const top = shelves.slice().sort((a, b) =>
           shelves.filter((x) => x === b).length - shelves.filter((x) => x === a).length)[0];
@@ -3505,6 +3508,7 @@ export async function handleApp(req, res, url) {
           "Sri Lankan Cakes & Sweets": "Dessert",
           "Bread, Buns & Beer Snacks": "Side dishes",
         }[top] || "");
+        if (label && wanted && wanted !== "Menu") renamed.push({ from: wanted, to: label });
       }
       // A set name is a name, not a sentence. "For dessert watalappan is
       // available" is the owner talking, and it must not eat one of their
@@ -3568,7 +3572,7 @@ export async function handleApp(req, res, url) {
       ok: true, source: parsed.source, meal: menu.meal || "", day: menu.day || "",
       note: menu.note || "", groups: outGroups, dishIds, loose: looseDishes,
       garbled: menu.garbled || 0,
-      created, added, newTypes, unplaced,
+      created, added, newTypes, unplaced, renamed,
       setsInUse: customTypes,
       slotsLeft: Math.max(0, CUSTOM_SET_LIMIT - customTypes.length),
       // Which build answered. Without it, "is my fix live yet?" is guesswork —

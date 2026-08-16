@@ -187,7 +187,35 @@ function readMenu(raw, opts = {}) {
     else queue.push(l);
   }
 
+  let lastDish = null;
   for (const line of queue) {
+    // Sinhala on its own line, right under a dish, is that dish's Sinhala
+    // name — plenty of owners write the two languages on separate lines
+    // instead of either side of a slash. Making it a dish of its own put
+    // "පරිප්පු" in the menu next to "Dhal", twice the list and half of it
+    // unreadable to the kitchen.
+    if (lastDish && !lastDish.nameSi && !/[A-Za-z]/.test(line) && SI.test(line)
+        && !numbered(line) && !bulleted(line)) {
+      const price = priceIn(line);
+      lastDish.nameSi = (price ? line.replace(price, "") : line).replace(/\([^)]*\)/g, "").trim().slice(0, 120);
+      if (price && !lastDish.priceText) lastDish.priceText = price;
+      continue;
+    }
+    // Sinhala on its own line right under a heading is the heading's Sinhala,
+    // not the first dish. "Chicken or pork" / "කුකුල් මස් හෝ ඌරු මස්".
+    if (cur && !cur.dishes.length && !/[A-Za-z]/.test(line) && SI.test(line)
+        && !numbered(line) && !bulleted(line) && !hasPrice(line)) {
+      cur.nameSi = line.trim().slice(0, 120);
+      continue;
+    }
+    // A numbered list starting over while the block already holds dishes is a
+    // new block the owner never headed — the side dishes usually arrive this
+    // way, as "1." straight after the meat choice.
+    if (cur && cur.dishes.length && /^1\s*[.)]/.test(line)) {
+      cur = { name: "Menu", setType: "", pick: 1, priceText: "", dishes: [] };
+      groups.push(cur);
+      lastDish = null;
+    }
     if (isDishy(line)) {
       if (!cur) { cur = { name: "Menu", setType: "", pick: 1, priceText: "", dishes: [] }; groups.push(cur); }
       const d = readDish(clean(line), priceIn, clean);
@@ -195,9 +223,10 @@ function readMenu(raw, opts = {}) {
       // A broken Sinhala half doesn't cost the dish — the English name is
       // still good — but the owner is told, because the dish now has no
       // Sinhala and that is not what they pasted.
-      if (d) { if (looksMojibake(d.nameSi)) { d.nameSi = ""; garbled.push(d.name); } cur.dishes.push(d); }
+      if (d) { if (looksMojibake(d.nameSi)) { d.nameSi = ""; garbled.push(d.name); } cur.dishes.push(d); lastDish = d; }
       continue;
     }
+    lastDish = null;
     // A heading: short, and not a sentence about the shop.
     if (line.length <= 46 && !/[.!?]$/.test(line)) {
       const pick = pickCount(line);
@@ -219,6 +248,20 @@ function readMenu(raw, opts = {}) {
     }
     notes.push(line);
   }
+  // A "heading" that never got a dish under it was not a heading — it was a
+  // dish written on its own, the way the rice often opens a menu before any
+  // heading exists. Turn it back into one.
+  for (let i = 0; i < groups.length; i++) {
+    const g = groups[i];
+    if (g.dishes.length || g.name === "Menu") continue;
+    const asDish = readDish(clean(g.name), priceIn, clean);
+    groups.splice(i, 1);
+    if (!asDish) { i--; continue; }
+    const before = groups[i - 1];
+    if (before && before.name === "Menu") { before.dishes.push(asDish); i--; continue; }
+    groups.splice(i, 0, { name: "Menu", setType: "", pick: 1, priceText: "", dishes: [asDish] });
+  }
+
   return normalise({
     meal: mealIn(raw), day: dayIn(raw), note: notes.join(" ").slice(0, 200), groups,
     garbled: garbled.length,

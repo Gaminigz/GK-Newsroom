@@ -1703,6 +1703,13 @@ function menuPage(shop, extras = {}) {
           + (j.newTypes.length === 1 ? '' : 's') + ': ' + esc(j.newTypes.join(', '))
           + ' · ' + j.slotsLeft + ' of your own left.</div>';
       }
+      if ((j.renamed || []).length) {
+        out += '<div class="sub" style="font-size:10.5px;margin-top:6px;line-height:1.45">'
+          + j.renamed.map(function(r){ return '<strong>' + esc(r.from) + '</strong> → ' + esc(r.to); }).join('<br>')
+          + '<br>Set names come from the fixed list plus three of your own, and yours are full'
+          + ((j.setsInUse || []).length ? ' (' + esc(j.setsInUse.join(', ')) + ')' : '')
+          + '. Free one in <strong>Pick set types</strong> to use your own wording.</div>';
+      }
       if ((j.unplaced || []).length) {
         out += '<div style="font-size:10.5px;margin-top:6px;line-height:1.4;color:#b3261e">'
           + '<strong>' + esc(j.unplaced.join(', ')) + '</strong> could not become a set — '
