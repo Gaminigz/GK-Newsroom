@@ -3270,6 +3270,16 @@ export async function handleApp(req, res, url) {
           lines: c ? c.lines : [],
           // How many of this dish the kitchen is cooking today.
           portions: Number(portions[String(d._id)]) || 0,
+          // Which shelf it belongs on, so dishes the owner never put in a set
+          // still read as a menu rather than twenty loose cards.
+          shelf: {
+            "Rice & Staples": "Rice & staples",
+            "Meat & Seafood Curries": "Meat & seafood",
+            "Vegetable Curries": "Vegetables",
+            "Salads, Sambols & Relishes": "Salads & sambols",
+            "Sri Lankan Cakes & Sweets": "Sweets",
+            "Bread, Buns & Beer Snacks": "Breads & snacks",
+          }[guessCategory(d.name)] || "Other dishes",
         };
       };
 

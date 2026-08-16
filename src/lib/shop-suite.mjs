@@ -2063,14 +2063,30 @@ function costsPage(shop, extras = {}) {
     inner(s.rows),
   )).join("");
 
-  const dishCards = loose.map((d) => row(
-    d.name, "Single dish", d.cost, d.sale,
-    d.cost == null
-      ? "No recipe in the book for this one — cost it by hand, or add the recipe."
-      : (d.missing.length ? `No price held for: ${esc(d.missing.slice(0, 4).join(", "))}` : ""),
-    // A dish outside a set is still cooked in numbers — it gets the counter too.
-    counter(d),
-  )).join("");
+  /* Dishes the owner never put in a set. Twenty of them as twenty cards is
+     unreadable, so they group onto their shelf — rice, meat, vegetables —
+     and each card totals the run its portions describe. */
+  const shelves = [];
+  for (const d of loose) {
+    let g = shelves.find((x) => x.name === d.shelf);
+    if (!g) { g = { name: d.shelf, rows: [] }; shelves.push(g); }
+    g.rows.push(d);
+  }
+  const dishCards = shelves.map((g) => {
+    const cooked = g.rows.filter((r) => r.portions);
+    const runCost = cooked.reduce((n, r) => n + (r.cost || 0) * r.portions, 0);
+    const runSale = cooked.reduce((n, r) => n + (r.sale || 0) * r.portions, 0);
+    const anyCost = cooked.some((r) => r.cost != null);
+    return row(
+      g.name, `${g.rows.length} dish${g.rows.length === 1 ? "" : "es"} on the day`,
+      cooked.length && anyCost ? runCost : null,
+      cooked.length ? runSale : 0,
+      cooked.length
+        ? `for the portions below`
+        : `add portions to cost the run`,
+      inner(g.rows),
+    );
+  }).join("");
 
   return page(shop, "costs", "Cost sheet", "පිරිවැය", `
     <style>
