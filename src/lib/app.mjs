@@ -2426,13 +2426,22 @@ export async function handleApp(req, res, url) {
   // Everything the native Plan Menu needs in one call: who the owner is, the
   // set types they may pick from, the dish catalogue, their own dishes, and
   // the plan for the requested (date, meal). Replaces scraping the HTML page.
-  if (path === "/app/api/owner/menu") {
-    const c = cookies(req);
-    let shopId = c.app_shop || "";
-    if (!shopId && c.app_email) {
-      const email = decodeURIComponent(c.app_email).toLowerCase();
-      const own = await (await col("shop_owners")).findOne({ email }, { projection: { _id: 1 } });
-      shopId = own ? String(own._id) : "";
+  // Native asks as the signed-in owner (`/app/api/owner/menu`); the web Plan
+  // Menu asks for the shop it is already showing (`/app/owner/:id/menu.json`).
+  // The page is reachable by id without a cookie, and its other calls —
+  // plan.json, paste.json, add-from-feed — are all keyed the same way, so
+  // requiring a login here only broke the date and meal switch in a browser.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/menu\.json$/);
+  if (path === "/app/api/owner/menu" || (m && req.method === "GET")) {
+    let shopId = m ? m[1] : "";
+    if (!shopId) {
+      const c = cookies(req);
+      shopId = c.app_shop || "";
+      if (!shopId && c.app_email) {
+        const email = decodeURIComponent(c.app_email).toLowerCase();
+        const own = await (await col("shop_owners")).findOne({ email }, { projection: { _id: 1 } });
+        shopId = own ? String(own._id) : "";
+      }
     }
     const shop = shopId ? await shopById(shopId) : null;
     if (!shop) {

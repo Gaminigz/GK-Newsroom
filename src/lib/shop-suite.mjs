@@ -1274,7 +1274,7 @@ function menuPage(shop, extras = {}) {
       if (catalogueRefreshing || catalogueTried[key]) return;
       catalogueTried[key] = true;
       catalogueRefreshing = true;
-      fetch('/app/api/owner/menu?date=' + encodeURIComponent(PLAN_DATE) + '&meal=' + encodeURIComponent(PLAN_MEAL))
+      fetch('/app/owner/' + SHOP_ID + '/menu.json?date=' + encodeURIComponent(PLAN_DATE) + '&meal=' + encodeURIComponent(PLAN_MEAL))
         .then(function(r){ return r.json(); })
         .then(function(j){
           catalogueRefreshing = false;
@@ -1738,7 +1738,7 @@ function menuPage(shop, extras = {}) {
        locally. The plan itself is left alone — it is on screen and not yet
        saved. */
     function refreshOwnerLists(){
-      fetch('/app/api/owner/menu?date=' + encodeURIComponent(PLAN_DATE) + '&meal=' + encodeURIComponent(PLAN_MEAL))
+      fetch('/app/owner/' + SHOP_ID + '/menu.json?date=' + encodeURIComponent(PLAN_DATE) + '&meal=' + encodeURIComponent(PLAN_MEAL))
         .then(function(r){ return r.json(); })
         .then(function(j){
           if (!j.ok) return;
@@ -1771,7 +1771,7 @@ function menuPage(shop, extras = {}) {
       });
       document.getElementById('planStamp').textContent = meal + ' plan · loading…';
       paintSave('dirty', 'Loading ' + meal + ' ' + date + '…');
-      fetch('/app/api/owner/menu?date=' + encodeURIComponent(date) + '&meal=' + encodeURIComponent(meal), { headers: { Accept: 'application/json' } })
+      fetch('/app/owner/' + SHOP_ID + '/menu.json?date=' + encodeURIComponent(date) + '&meal=' + encodeURIComponent(meal), { headers: { Accept: 'application/json' } })
         .then(function(r){ return r.json(); })
         .then(function(j){
           if (!j.ok) throw new Error(j.error || 'could not load');
