@@ -576,7 +576,7 @@ function una5ahaInfoPage() {
           </div>
         </div>
         <div class="u5-overlay">
-          <h2><em>3</em>una <em>5</em>aha · තුන පහ</h2>
+          <h2><em>3</em>una <em>5</em>aha App · තුන පහ ඇප්</h2>
           <div class="si">Find Sri Lankan restaurants and home cooking near you</div>
           <div class="tagline">A non-commercial community app where Sri Lankan restaurants and home cooks post their dishes, deals and daily activities — so travellers anywhere in the world can find Sri Lankan dishes nearby.</div>
           <div class="u5-btnrow">
