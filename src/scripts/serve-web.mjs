@@ -515,6 +515,8 @@ function una5ahaInfoPage() {
     .u5-card { position:relative; border-radius:24px; overflow:hidden; border:1px solid #ffffff1c;
                box-shadow:0 10px 30px #0009; text-decoration:none; display:block; aspect-ratio:9/16; max-width:340px; margin:0 auto; }
     .u5-card img { width:100%; height:100%; object-fit:cover; display:block; }
+    .u5-flag { position:absolute; top:18px; left:16px; font-size:26px; z-index:2;
+               filter:drop-shadow(0 2px 5px #000a); }
     .u5-card .u5-overlay { position:absolute; inset:0; background:linear-gradient(180deg,#00000000 35%,#0d1117ee 78%,#0d1117 100%);
                             display:flex; flex-direction:column; justify-content:flex-end; padding:20px 18px; }
     .u5-card h2 { color:#fff; font-size:18px; letter-spacing:-.01em; line-height:1.25; }
@@ -555,6 +557,7 @@ function una5ahaInfoPage() {
     <div class="u5-left">
       <div class="u5-card">
         <img src="/assets/hero-welcome.jpg" alt="Sri Lankan spices and dishes">
+        <span class="u5-flag" aria-label="Sri Lanka">🇱🇰</span>
         <div class="u5-badges">
           <a class="u5-shop-badge" href="/app">Shop Owner <span class="u5-door">🚪</span></a>
           <div class="u5-storerow">
