@@ -1933,15 +1933,17 @@ function costsPage(shop, extras = {}) {
   const dishes = extras.dishes || [];
 
   // LKR_TO holds multipliers — LKR × LKR_TO.USD = dollars.
-  // Monday to Sunday of the week the shown date belongs to.
-  const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  // Seven days that roll with the one you are on — yesterday, the day shown,
+  // and the five ahead. A fixed Mon–Sun strands you at the edge on a Sunday;
+  // this way the next days to plan are always the ones in front of you.
+  const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const shown = new Date(date + "T00:00:00Z");
-  const monday = new Date(shown);
-  monday.setUTCDate(shown.getUTCDate() - ((shown.getUTCDay() + 6) % 7));
-  const weekDays = DOW.map((dow, i) => {
-    const d = new Date(monday);
-    d.setUTCDate(monday.getUTCDate() + i);
-    return { iso: d.toISOString().slice(0, 10), dow, day: d.getUTCDate() };
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(shown);
+    d.setUTCDate(shown.getUTCDate() + i - 1);
+    const iso = d.toISOString().slice(0, 10);
+    return { iso, dow: DOW[d.getUTCDay()], day: d.getUTCDate(), today: iso === todayIso };
   });
 
   const money = (lkr) => `$${((Number(lkr) || 0) * LKR_TO.USD).toFixed(2)} / LKR ${(Number(lkr) || 0).toLocaleString()}`;
@@ -2071,6 +2073,7 @@ function costsPage(shop, extras = {}) {
           border-radius:10px;padding:6px 2px;line-height:1.15">
           <span style="display:block;font-size:9.5px;opacity:.75">${d.dow}</span>
           <span style="display:block;font-size:13px;font-weight:700">${d.day}</span>
+          <span style="display:block;height:4px;margin-top:2px">${d.today ? `<span style="display:inline-block;width:4px;height:4px;border-radius:99px;background:${d.iso === date ? "#fff" : ORANGE}"></span>` : ""}</span>
         </a>`).join("")}
       </div>
       <div style="display:flex;gap:4px;margin-top:6px">
