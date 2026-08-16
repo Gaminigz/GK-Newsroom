@@ -522,7 +522,7 @@ function una5ahaInfoPage() {
         <div class="u5-rtitle">⚠️ Reminder</div>
         <p>The app does not process any payments. Transactions are purely the responsibility of the users involved. We advise checking carefully via chat before making any payment.</p>
       </div>
-      <a class="u5-shopbtn" href="/app">Shop Owner Login →</a>
+      <a class="u5-shopbtn" href="/app">Shop Owner →</a>
       <div class="u5-shopnote">For restaurants and home cooks. Once logged in, your shop management tools open inside the app (web view) — this page is informational only.</div>
     </div>
   </div>`,
