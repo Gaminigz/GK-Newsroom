@@ -517,7 +517,7 @@ function una5ahaInfoPage() {
     .u5-card img { width:100%; height:100%; object-fit:cover; display:block; }
     .u5-card .u5-overlay { position:absolute; inset:0; background:linear-gradient(180deg,#00000000 35%,#0d1117ee 78%,#0d1117 100%);
                             display:flex; flex-direction:column; justify-content:flex-end; padding:20px 18px; }
-    .u5-card h2 { color:#fff; font-size:22px; letter-spacing:-.01em; }
+    .u5-card h2 { color:#fff; font-size:18px; letter-spacing:-.01em; line-height:1.25; }
     .u5-card h2 em { color:#e3b341; font-style:normal; }
     .u5-card .si { color:#ffffffb0; font-size:14px; margin:2px 0 10px; }
     .u5-card .tagline { color:#ffffffd0; font-size:13px; line-height:1.4; margin-bottom:14px; }
