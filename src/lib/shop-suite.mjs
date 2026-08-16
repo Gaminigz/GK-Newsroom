@@ -681,7 +681,7 @@ function menuPage(shop, extras = {}) {
               <button type="button" id="setDishBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Pick combo…</button>
               <!-- Ticking 20 boxes for a menu already written out in WhatsApp
                    is the slow way round. Paste the text and let it build. -->
-              <button type="button" class="pasteOpen" style="width:100%;margin:6px 0 0;text-align:left;border:1px dashed ${ORANGE};background:#fdf3ee;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:${ORANGE};font-weight:700">📋 Paste menu text…</button>
+              <button type="button" class="pasteOpen" style="width:100%;margin:6px 0 0;text-align:left;border:1px dashed ${ORANGE};background:#fdf3ee;border-radius:10px;padding:9px 9px 10px;font-size:11.5px;line-height:1.3;cursor:pointer;color:${ORANGE};font-weight:700">📋 Paste menu text…<span class="si" style="display:block;font-weight:400;font-size:10px;line-height:1.45;margin-top:4px;color:#9a6b52">මෙනුව ලියපු විදිහටම මෙතන අලවන්න — සෙට් සහ කෑම ඉබේම හැදෙනවා</span></button>
               <div id="comboTarget" class="sub" style="font-size:10px;margin-top:5px;line-height:1.25"></div>
             </div>
           </div>
@@ -698,7 +698,7 @@ function menuPage(shop, extras = {}) {
                    straight away at price 0 — pricing happens on the set row,
                    which is the only place that writes back to app_dishes. -->
               <button type="button" id="dishItemBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Pick combo…</button>
-              <button type="button" class="pasteOpen" style="width:100%;margin:6px 0 0;text-align:left;border:1px dashed ${ORANGE};background:#fdf3ee;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:${ORANGE};font-weight:700">📋 Paste menu text…</button>
+              <button type="button" class="pasteOpen" style="width:100%;margin:6px 0 0;text-align:left;border:1px dashed ${ORANGE};background:#fdf3ee;border-radius:10px;padding:9px 9px 10px;font-size:11.5px;line-height:1.3;cursor:pointer;color:${ORANGE};font-weight:700">📋 Paste menu text…<span class="si" style="display:block;font-weight:400;font-size:10px;line-height:1.45;margin-top:4px;color:#9a6b52">මෙනුව ලියපු විදිහටම මෙතන අලවන්න — සෙට් සහ කෑම ඉබේම හැදෙනවා</span></button>
             </div>
           </div>
 
@@ -748,6 +748,7 @@ function menuPage(shop, extras = {}) {
           <div style="font-size:14px;font-weight:700">Paste your menu</div>
           <div class="si" style="font-size:11px;margin-top:1px">මෙනුව අලවන්න</div>
           <div class="sub" style="font-size:10.5px;margin-top:4px;line-height:1.35">Write it the way you send it on WhatsApp — headings, dishes, prices. A dish the list doesn't have yet gets added, so next time it's already there.</div>
+          <div class="si sub" style="font-size:10.5px;margin-top:3px;line-height:1.5">WhatsApp එකේ යවන විදිහටම ලියන්න — සෙට් නම, කෑම, මිල. ලැයිස්තුවේ නැති කෑමක් නම් ඒක එකතු වෙනවා, ඊළඟ පාරට තියෙනවා.</div>
         </div>
         <div style="padding:10px 13px;overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;min-height:0">
           <textarea id="pasteText" rows="11" placeholder="Rice Set&#10;Ponni samba white rice / පොන්නි සම්බා සුදූ බත්&#10;&#10;Meat combo&#10;Chicken / කුකුල් මස් 5$&#10;&#10;Side dishes for select 04 items&#10;1. Dhal / පරිප්පු&#10;2. Bean / බෝංචි" style="width:100%;margin:0;font-size:12.5px;line-height:1.45;padding:9px 10px;resize:vertical;min-height:150px"></textarea>
@@ -771,6 +772,7 @@ function menuPage(shop, extras = {}) {
         <div style="font-size:13.5px;font-weight:700">Paste your menu</div>
         <div class="si" style="font-size:11.5px;margin-top:1px">මෙනුව අලවන්න</div>
         <div class="sub" style="font-size:11px;margin-top:5px;line-height:1.4">Write it the way you send it on WhatsApp — headings, dishes, prices.</div>
+        <div class="si sub" style="font-size:11px;margin-top:3px;line-height:1.5">WhatsApp එකේ යවන විදිහටම ලියන්න — සෙට් නම, කෑම, මිල.</div>
         <textarea id="emptyPasteText" rows="9" placeholder="Rice Set&#10;Ponni samba white rice / පොන්නි සම්බා සුදූ බත්&#10;&#10;Side dishes for select 04 items&#10;1. Dhal / පරිප්පු" style="width:100%;margin-top:8px;font-size:12.5px;line-height:1.45;padding:9px 10px;min-height:130px"></textarea>
         <button type="button" id="emptyPasteGo" style="width:100%;margin-top:8px;border:0;background:${ORANGE};color:#fff;border-radius:99px;padding:10px 15px;font-size:13px;font-weight:700;cursor:pointer">Build my menu</button>
         <div id="emptyPasteMsg" class="sub" style="font-size:11.5px;margin-top:7px;line-height:1.4"></div>
