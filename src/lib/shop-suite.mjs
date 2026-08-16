@@ -603,6 +603,9 @@ function menuPage(shop, extras = {}) {
   const id = String(shop._id);
   const singles = extras.singles || [];
   const sets = extras.sets || [];
+  // A dot means "something is planned here", nothing means empty.
+  const planMeals = extras.plannedMeals || [];
+  const planDates = extras.plannedDates || [];
   const presetDishes = extras.presetDishes || [];
   const msg = extras.msg || "";
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -1930,6 +1933,9 @@ function costsPage(shop, extras = {}) {
   const date = extras.date || new Date().toISOString().slice(0, 10);
   const meal = extras.meal || "Lunch";
   const sets = extras.sets || [];
+  // A dot means "something is planned here", nothing means empty.
+  const planMeals = extras.plannedMeals || [];
+  const planDates = extras.plannedDates || [];
   const dishes = extras.dishes || [];
 
   // LKR_TO holds multipliers — LKR × LKR_TO.USD = dollars.
@@ -2068,16 +2074,18 @@ function costsPage(shop, extras = {}) {
            flipping between them is the whole job of this screen. -->
       <div style="display:flex;gap:3px;margin-top:6px">
         ${weekDays.map((d) => `<a href="/app/owner/${id}/suite/costs?date=${d.iso}&meal=${esc(meal)}"
-          style="flex:1 1 0;text-decoration:none;text-align:center;border:1px solid ${d.iso === date ? "#191512" : "#e0d6cc"};
+          style="flex:1 1 0;text-decoration:none;text-align:center;border:${d.today && d.iso !== date ? `1.5px solid ${ORANGE}` : `1px solid ${d.iso === date ? "#191512" : "#e0d6cc"}`};
           background:${d.iso === date ? "#191512" : "#fff"};color:${d.iso === date ? "#fff" : "#4a443f"};
           border-radius:10px;padding:6px 2px;line-height:1.15">
           <span style="display:block;font-size:9.5px;opacity:.75">${d.dow}</span>
           <span style="display:block;font-size:13px;font-weight:700">${d.day}</span>
-          <span style="display:block;height:4px;margin-top:2px">${d.today ? `<span style="display:inline-block;width:4px;height:4px;border-radius:99px;background:${d.iso === date ? "#fff" : ORANGE}"></span>` : ""}</span>
+          <span style="display:block;height:5px;margin-top:2px">${planDates.includes(d.iso) ? `<span style="display:inline-block;width:5px;height:5px;border-radius:99px;background:${d.iso === date ? "#fff" : ORANGE}"></span>` : ""}</span>
         </a>`).join("")}
       </div>
       <div style="display:flex;gap:4px;margin-top:6px">
-        ${(extras.meals || MEALS).map((mm) => `<a href="/app/owner/${id}/suite/costs?date=${esc(date)}&meal=${esc(mm)}" style="flex:1 1 0;text-align:none;text-decoration:none;border:1px solid #e0d6cc;background:${mm === meal ? "#191512" : "#fff"};color:${mm === meal ? "#fff" : "#4a443f"};border-radius:99px;padding:7px 4px;font-size:12.5px;font-weight:700;text-align:center">${esc(mm)}</a>`).join("")}
+        ${(extras.meals || MEALS).map((mm) => `<a href="/app/owner/${id}/suite/costs?date=${esc(date)}&meal=${esc(mm)}" style="flex:1 1 0;text-decoration:none;border:1px solid #e0d6cc;background:${mm === meal ? "#191512" : "#fff"};color:${mm === meal ? "#fff" : "#4a443f"};border-radius:99px;padding:5px 4px 7px;font-size:12.5px;font-weight:700;text-align:center">
+          <span style="display:block;height:6px;line-height:6px">${planMeals.includes(mm) ? `<span style="display:inline-block;width:5px;height:5px;border-radius:99px;background:${mm === meal ? "#fff" : ORANGE}"></span>` : ""}</span>
+          ${esc(mm)}</a>`).join("")}
       </div>
     </div>
 

@@ -3273,6 +3273,21 @@ export async function handleApp(req, res, url) {
         };
       };
 
+      // Which meals of the shown date, and which days in the strip, already
+      // have something planned — so the owner can see where the work is
+      // without opening each one.
+      const strip = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(date + "T00:00:00Z");
+        d.setUTCDate(d.getUTCDate() + i - 1);
+        return d.toISOString().slice(0, 10);
+      });
+      const near = await (await col("day_plans"))
+        .find({ shopId: m[1], date: { $in: strip } }, { projection: { date: 1, meal: 1, groups: 1, dishIds: 1 } })
+        .toArray();
+      const has = (p) => (p.groups || []).length > 0 || (p.dishIds || []).length > 0;
+      extras.plannedMeals = near.filter((p) => p.date === date && has(p)).map((p) => p.meal);
+      extras.plannedDates = [...new Set(near.filter(has).map((p) => p.date))];
+
       extras.date = date;
       extras.meal = meal;
       extras.meals = MEALS;
