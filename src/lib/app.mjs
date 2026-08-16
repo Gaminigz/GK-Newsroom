@@ -3208,6 +3208,77 @@ export async function handleApp(req, res, url) {
         .find({ shopId: m[1] }).sort({ category: 1, name: 1 }).toArray();
       extras.ingredientPhotos = await getIngredientPhotoMap();
     }
+    // Cost sheet: the day's plan, costed. Every ingredient price is ours —
+    // the 5-person tables in the dish catalogue and the LKR ingredient
+    // library — so this works with no network and no AI, same as the menu
+    // reader.
+    if (shop && m[2] === "costs") {
+      const { catalogueRecipe, priceIngredient } = await import("./ai-dish.mjs");
+      const today = new Date().toISOString().slice(0, 10);
+      const qDate = String(url.searchParams.get("date") || "").slice(0, 10);
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(qDate) ? qDate : today;
+      const qMeal = String(url.searchParams.get("meal") || "");
+      const meal = MEALS.includes(qMeal) ? qMeal : mealNow();
+      const [plan, ownDishes] = await Promise.all([
+        (await col("day_plans")).findOne({ shopId: m[1], date, meal }),
+        (await col("app_dishes")).find({ shopId: m[1] }).toArray(),
+      ]);
+      const byId = new Map(ownDishes.map((d) => [String(d._id), d]));
+
+      /** What one serving costs to cook, in LKR, or null when the catalogue
+       *  has no recipe for it. `missing` names the ingredients we hold no
+       *  price for, so a low number is never mistaken for a good margin. */
+      const costOf = (name) => {
+        const r = catalogueRecipe(name);
+        if (!r || !r.ingredients.length) return null;
+        let lkr = 0;
+        const missing = [];
+        for (const ing of r.ingredients) {
+          const p = priceIngredient(ing.name, ing.quantity, ing.unit);
+          if (p.lkr == null) missing.push(ing.name);
+          else lkr += p.lkr;
+        }
+        return { lkr: Math.round(lkr), missing, n: r.ingredients.length };
+      };
+
+      const dishRow = (d) => {
+        const c = costOf(d.name);
+        return {
+          name: d.name, nameSi: d.nameSi || "",
+          sale: Number(d.price) || 0,
+          cost: c ? c.lkr : null,
+          missing: c ? c.missing : [],
+          ingredients: c ? c.n : 0,
+        };
+      };
+
+      extras.date = date;
+      extras.meal = meal;
+      extras.meals = MEALS;
+      // The day's dishes, and its sets costed from what is in them.
+      extras.dishes = (plan?.dishIds || [])
+        .map((id) => byId.get(String(id))).filter(Boolean).map(dishRow);
+      extras.sets = (plan?.groups || []).map((g) => {
+        const rows = (g.choices || [])
+          .map((ch) => byId.get(String(ch.dishId))).filter(Boolean).map(dishRow);
+        const priced = rows.filter((r) => r.cost != null);
+        const pick = Math.max(1, Number(g.pick) || 1);
+        // The buyer picks `pick` of these, so the set costs the average of
+        // what is on offer, times how many they take. Worst case is dearer;
+        // the average is what the kitchen actually spends over a service.
+        const avgCost = priced.length ? priced.reduce((n, r) => n + r.cost, 0) / priced.length : null;
+        const avgSale = rows.length ? rows.reduce((n, r) => n + r.sale, 0) / rows.length : 0;
+        return {
+          label: g.label || "", pick,
+          rows,
+          costed: priced.length, of: rows.length,
+          cost: avgCost == null ? null : Math.round(avgCost * pick),
+          sale: g.price != null ? Number(g.price) : Math.round(avgSale * pick),
+          fixedPrice: g.price != null,
+        };
+      });
+      extras.hasPlan = !!plan;
+    }
     // Bill History: supplier directory + bill counts (optionally filtered
     // by year/month) + the selected supplier's bill photos.
     if (shop && m[2] === "history") {

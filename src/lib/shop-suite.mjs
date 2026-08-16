@@ -1917,29 +1917,108 @@ function menuPage(shop, extras = {}) {
     </script>`);
 }
 
-function costsPage(shop) {
-  const row = (name, kind, cost, sale, margin, warn) => `
+/* The day you planned, costed. Same date and meal row as Plan Menu, so this
+   is the same menu seen from the kitchen's side: what each dish costs to
+   cook against what you charge for it.
+
+   Every number is ours — the 5-person ingredient tables in the dish
+   catalogue, priced from the LKR ingredient library. Nothing is fetched. A
+   dish the catalogue has no recipe for says so rather than showing a
+   flattering zero. */
+function costsPage(shop, extras = {}) {
+  const id = String(shop._id);
+  const date = extras.date || new Date().toISOString().slice(0, 10);
+  const meal = extras.meal || "Lunch";
+  const sets = extras.sets || [];
+  const dishes = extras.dishes || [];
+
+  // LKR_TO holds multipliers — LKR × LKR_TO.USD = dollars.
+  const money = (lkr) => `$${((Number(lkr) || 0) * LKR_TO.USD).toFixed(2)} / LKR ${(Number(lkr) || 0).toLocaleString()}`;
+  const marginOf = (cost, sale) => (!sale || cost == null ? null : Math.round(((sale - cost) / sale) * 100));
+
+  const row = (name, kind, cost, sale, note) => {
+    const margin = marginOf(cost, sale);
+    const pill = margin == null
+      ? `<span class="pill" style="font-size:10.5px;color:#8a827b">NO RECIPE YET</span>`
+      : statusPill("MARGIN " + margin + "%", margin < 30 ? "warn" : "ok");
+    return `
     <div class="card" style="margin-top:10px;padding:12px 14px">
-      <div class="row" style="justify-content:space-between"><strong style="font-size:13.5px">${name}</strong><span class="pill" style="font-size:10.5px">${kind}</span></div>
-      <div class="row" style="gap:14px;margin-top:7px;font-size:12.5px">
-        <span class="sub">PLANNED COST<br><strong style="color:#1a1a1a">${cost}</strong></span>
-        <span class="sub">SALE PRICE<br><strong style="color:#1a1a1a">${sale}</strong></span>
+      <div class="row" style="justify-content:space-between;gap:8px">
+        <strong style="font-size:13.5px">${esc(name)}</strong>
+        <span class="pill" style="font-size:10.5px;flex:0 0 auto">${esc(kind)}</span>
+      </div>
+      <div class="row" style="gap:14px;margin-top:7px;font-size:12.5px;flex-wrap:wrap">
+        <span class="sub">PLANNED COST<br><strong style="color:#1a1a1a">${cost == null ? "—" : money(cost)}</strong></span>
+        <span class="sub">SALE PRICE<br><strong style="color:#1a1a1a">${sale ? money(sale) : `<span style="color:#b3261e">not priced</span>`}</strong></span>
         <span style="flex:1"></span>
-        ${statusPill("MARGIN " + margin, warn ? "warn" : "ok")}
-      </div></div>`;
+        ${pill}
+      </div>
+      ${note ? `<div class="sub" style="font-size:10.5px;margin-top:6px;line-height:1.4">${note}</div>` : ""}
+    </div>`;
+  };
+
+  // Only what can be costed counts towards the average — a dish with no
+  // recipe would otherwise drag the shop's margin around for no reason.
+  const costed = [
+    ...sets.filter((s) => s.cost != null && s.sale),
+    ...dishes.filter((d) => d.cost != null && d.sale),
+  ];
+  const avg = costed.length
+    ? Math.round(costed.reduce((n, x) => n + marginOf(x.cost, x.sale), 0) / costed.length)
+    : null;
+
+  const setCards = sets.map((s) => row(
+    s.label, `Set menu · pick ${s.pick}`, s.cost, s.sale,
+    `${s.costed} of ${s.of} priced from the recipe book`
+    + (s.pick > 1 ? ` · cost is the average of the choices × ${s.pick}` : "")
+    + (s.fixedPrice ? " · you set this set's price" : " · priced by the dish picked"),
+  )).join("");
+
+  // A dish inside a set is already counted there; this is the rest of the day.
+  const inSets = new Set(sets.flatMap((s) => s.rows.map((r) => r.name)));
+  const loose = dishes.filter((d) => !inSets.has(d.name));
+  const dishCards = loose.map((d) => row(
+    d.name, "Single dish", d.cost, d.sale,
+    d.cost == null
+      ? "No recipe in the book for this one — cost it by hand, or add the recipe."
+      : (d.missing.length ? `No price held for: ${esc(d.missing.slice(0, 4).join(", "))}` : ""),
+  )).join("");
+
   return page(shop, "costs", "Cost sheet", "පිරිවැය", `
-    <div class="seg" style="margin-top:12px">
-      <label><input type="radio" name="ctab" checked><span class="opt" style="font-size:12px;padding:6px 12px">All</span></label>
-      <label><input type="radio" name="ctab"><span class="opt" style="font-size:12px;padding:6px 12px">Single dish</span></label>
-      <label><input type="radio" name="ctab"><span class="opt" style="font-size:12px;padding:6px 12px">Set menu</span></label>
-      <label><input type="radio" name="ctab"><span class="opt" style="font-size:12px;padding:6px 12px">Combo</span></label>
+    <!-- The same day and meal as Plan Menu, so the two screens always agree. -->
+    <div style="margin-top:12px">
+      <div style="display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center">
+        <input type="date" id="costDate" value="${esc(date)}" style="margin:0;font-weight:700;font-size:13px">
+        <span class="sub" style="font-size:11px">${extras.hasPlan ? `${esc(meal)} plan` : "no plan yet"}</span>
+      </div>
+      <div style="display:flex;gap:4px;margin-top:6px">
+        ${(extras.meals || MEALS).map((mm) => `<a href="/app/owner/${id}/suite/costs?date=${esc(date)}&meal=${esc(mm)}" style="flex:1 1 0;text-align:none;text-decoration:none;border:1px solid #e0d6cc;background:${mm === meal ? "#191512" : "#fff"};color:${mm === meal ? "#fff" : "#4a443f"};border-radius:99px;padding:7px 4px;font-size:12.5px;font-weight:700;text-align:center">${esc(mm)}</a>`).join("")}
+      </div>
     </div>
-    ${row("Parippu (dhal) curry", "Single dish", "$2.48 / LKR 800", "$4.03 / LKR 1,300", "38%")}
-    ${row("Rice & 3-Curry Lunch Set", "Set menu", "$2.39 / LKR 770", "$3.72 / LKR 1,200", "36%")}
-    ${row("Buriyani set menu", "Set menu", "$6.04 / LKR 1,950", "$8.53 / LKR 2,750", "29%", true)}
-    ${row("Lunch beef + 2 drinks combo", "Combo", "$8.99 / LKR 2,900", "$15.0 / LKR 4,850", "40%")}
-    <div class="card" style="margin-top:12px;padding:10px 14px;background:#e8f6ec;border-color:#bfe5c8">
-      <span style="color:#1d7a34;font-size:12.5px;font-weight:700">✅ Average margin 36% · target ≥ 30% before posting</span></div>`);
+
+    ${!extras.hasPlan ? `
+      <div class="card" style="margin-top:12px;padding:12px 14px;background:#fdf0ec;border-color:#f3cfc2;font-size:12.5px;color:#946200">
+        Nothing planned for ${esc(meal)} on ${esc(date)}.
+        <a href="/app/owner/${id}/suite/menu" style="color:${ORANGE};font-weight:700">Plan the menu</a> and its cost lands here.
+      </div>` : setCards + dishCards}
+
+    ${avg != null ? `
+      <div class="card" style="margin-top:12px;padding:10px 14px;background:${avg >= 30 ? "#e8f6ec" : "#fdf0ec"};border-color:${avg >= 30 ? "#bfe5c8" : "#f3cfc2"}">
+        <span style="color:${avg >= 30 ? "#1d7a34" : "#946200"};font-size:12.5px;font-weight:700">
+          ${avg >= 30 ? "✅" : "⚠️"} Average margin ${avg}% · target ≥ 30% before posting</span>
+        <div class="sub" style="font-size:10.5px;margin-top:4px;line-height:1.4">
+          Costed from the recipe book and today's ingredient prices — ${costed.length} of ${sets.length + loose.length} items.
+        </div>
+      </div>` : (extras.hasPlan ? `
+      <div class="card" style="margin-top:12px;padding:10px 14px;font-size:12px" class="sub">
+        Nothing here has both a recipe and a price yet.
+      </div>` : "")}
+
+    <script>
+    document.getElementById('costDate').addEventListener('change', function(){
+      if (this.value) location.href = '/app/owner/${id}/suite/costs?date=' + this.value + '&meal=${esc(meal)}';
+    });
+    </script>`);
 }
 
 function stockPage(shop, extras = {}) {
