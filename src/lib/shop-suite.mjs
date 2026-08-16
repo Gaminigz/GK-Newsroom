@@ -1997,24 +1997,26 @@ function costsPage(shop, extras = {}) {
   /* What is actually inside the set, line by line. The set's own figure is an
      average across these, so without them a bad margin says nothing about
      which dish caused it. */
-  /* A dish inside the set: what it costs against what it sells for, then the
-     counter. Two tight lines, so eight side dishes read as a list rather than
-     a wall. */
-  const inner = (rows) => !rows.length ? "" : `
-    <div style="margin-top:8px;border-top:1px solid #f2ece6">
-      ${rows.map((r) => {
-        const mg = marginOf(r.cost, r.sale);
-        const total = r.cost != null && r.portions ? r.cost * r.portions : null;
-        return `<div style="padding:7px 0;border-bottom:1px solid #f7f3ef">
-          <div style="display:flex;gap:8px;align-items:baseline">
-            <span style="flex:1;min-width:0">
-              <span style="font-weight:600;font-size:12px">${esc(r.name)}</span>
-              ${r.nameSi ? `<span class="si" style="font-size:10px"> ${esc(r.nameSi)}</span>` : ""}
-            </span>
-            <span style="flex:0 0 auto;font-size:10.5px;white-space:nowrap">
-              <span class="sub">${r.cost == null ? "—" : r.cost.toLocaleString()}</span><span class="sub"> → </span><span style="font-weight:700;color:${mg == null ? "#8a827b" : mg < 30 ? "#b3261e" : "#1d7a34"}">${r.sale ? r.sale.toLocaleString() : "—"}${mg == null ? "" : " · " + mg + "%"}</span>
-            </span>
-          </div>
+  /* Every ingredient of a dish with what it costs, so a wrong price can be
+     corrected where it is noticed. Hidden until "prices" is tapped. */
+  const ingPanel = (r) => !r.lines.length ? "" : `
+          <div id="ing-${esc(r.id)}" style="display:none;margin-top:6px;background:#faf7f4;border-radius:9px;padding:7px 8px">
+            ${r.lines.map((l) => `
+              <div style="display:flex;gap:6px;align-items:center;padding:3px 0;font-size:10.5px">
+                <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                  title="${esc(l.name)}">${esc(l.name)}<span class="sub"> · ${l.qty == null ? "to taste" : esc(String(l.qty)) + " " + esc(l.unit || "")}</span></span>
+                <input type="number" inputmode="numeric" min="0" class="rateBox" data-key="${esc(l.key)}" data-per="${esc(l.per)}" value="${l.rate == null ? "" : l.rate}"
+                  placeholder="?" style="margin:0;width:66px;padding:5px 4px;font-size:12.5px;text-align:center;border-radius:8px;${l.mine ? `border-color:${ORANGE};color:${ORANGE};font-weight:700` : ""}">
+                <span class="sub" style="flex:0 0 auto;width:42px;font-size:9.5px">/${esc(l.per)}</span>
+              </div>`).join("")}
+            <div class="sub" style="font-size:9.5px;margin-top:4px;line-height:1.35">Type what you pay — orange is your price. Clear it to use ours.</div>
+          </div>`;
+
+  /* How many of this dish the kitchen is cooking, and what that run costs.
+     The same control whether the dish sits in a set or stands on its own. */
+  const counter = (r) => {
+    const total = r.cost != null && r.portions ? r.cost * r.portions : null;
+    return `
           <div style="display:flex;gap:6px;align-items:center;margin-top:5px">
             <button type="button" class="stepBtn" data-id="${esc(r.id)}" data-step="-1"
               style="flex:0 0 auto;width:34px;height:34px;border:1px solid #e0d6cc;background:#fff;border-radius:10px;font-size:18px;font-weight:700;line-height:1;color:#4a443f;cursor:pointer;padding:0">−</button>
@@ -2027,18 +2029,27 @@ function costsPage(shop, extras = {}) {
             ${r.lines.length ? `<button type="button" class="ingToggle" data-id="${esc(r.id)}"
               style="flex:0 0 auto;border:0;background:none;font-size:11px;cursor:pointer;color:${ORANGE};font-weight:700;padding:4px 2px;text-decoration:underline">prices</button>` : ""}
           </div>
-          ${r.lines.length ? `
-          <div id="ing-${esc(r.id)}" style="display:none;margin-top:6px;background:#faf7f4;border-radius:9px;padding:7px 8px">
-            ${r.lines.map((l) => `
-              <div style="display:flex;gap:6px;align-items:center;padding:3px 0;font-size:10.5px">
-                <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                  title="${esc(l.name)}">${esc(l.name)}<span class="sub"> · ${l.qty == null ? "to taste" : esc(String(l.qty)) + " " + esc(l.unit || "")}</span></span>
-                <input type="number" inputmode="numeric" min="0" class="rateBox" data-key="${esc(l.key)}" data-per="${esc(l.per)}" value="${l.rate == null ? "" : l.rate}"
-                  placeholder="?" style="margin:0;width:66px;padding:5px 4px;font-size:12.5px;text-align:center;border-radius:8px;${l.mine ? `border-color:${ORANGE};color:${ORANGE};font-weight:700` : ""}">
-                <span class="sub" style="flex:0 0 auto;width:42px;font-size:9.5px">/${esc(l.per)}</span>
-              </div>`).join("")}
-            <div class="sub" style="font-size:9.5px;margin-top:4px;line-height:1.35">Type what you pay — orange is your price. Clear it to use ours.</div>
-          </div>` : ""}
+          ${ingPanel(r)}`;
+  };
+
+  /* A dish inside the set: what it costs against what it sells for, then the
+     counter. Two tight lines, so eight side dishes read as a list rather than
+     a wall. */
+  const inner = (rows) => !rows.length ? "" : `
+    <div style="margin-top:8px;border-top:1px solid #f2ece6">
+      ${rows.map((r) => {
+        const mg = marginOf(r.cost, r.sale);
+        return `<div style="padding:7px 0;border-bottom:1px solid #f7f3ef">
+          <div style="display:flex;gap:8px;align-items:baseline">
+            <span style="flex:1;min-width:0">
+              <span style="font-weight:600;font-size:12px">${esc(r.name)}</span>
+              ${r.nameSi ? `<span class="si" style="font-size:10px"> ${esc(r.nameSi)}</span>` : ""}
+            </span>
+            <span style="flex:0 0 auto;font-size:10.5px;white-space:nowrap">
+              <span class="sub">${r.cost == null ? "—" : r.cost.toLocaleString()}</span><span class="sub"> → </span><span style="font-weight:700;color:${mg == null ? "#8a827b" : mg < 30 ? "#b3261e" : "#1d7a34"}">${r.sale ? r.sale.toLocaleString() : "—"}${mg == null ? "" : " · " + mg + "%"}</span>
+            </span>
+          </div>
+          ${counter(r)}
         </div>`;
       }).join("")}
     </div>`;
@@ -2057,6 +2068,8 @@ function costsPage(shop, extras = {}) {
     d.cost == null
       ? "No recipe in the book for this one — cost it by hand, or add the recipe."
       : (d.missing.length ? `No price held for: ${esc(d.missing.slice(0, 4).join(", "))}` : ""),
+    // A dish outside a set is still cooked in numbers — it gets the counter too.
+    counter(d),
   )).join("");
 
   return page(shop, "costs", "Cost sheet", "පිරිවැය", `
