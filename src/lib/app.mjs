@@ -3353,7 +3353,7 @@ export async function handleApp(req, res, url) {
       return;
     }
     const { SET_PRESET_NAMES, CUSTOM_SET_LIMIT, posCategoryFor } = await import("./shop-suite.mjs");
-    const { parseMenuText, priceToLkr } = await import("./ai-menu-paste.mjs");
+    const { parseMenuText, priceToLkr, nearName } = await import("./ai-menu-paste.mjs");
     const owners = await col("shop_owners");
     const shop = await owners.findOne({ _id: shopOid }, { projection: { customSetTypes: 1 } });
     let customTypes = (shop?.customSetTypes || []).map(String);
@@ -3474,7 +3474,7 @@ export async function handleApp(req, res, url) {
       const all = [...SET_PRESET_NAMES, ...customTypes];
       const wanted = String(g.setType || g.name || "").trim();
       let label = all.find((n) => n.toLowerCase() === wanted.toLowerCase())
-        || all.find((n) => n.toLowerCase().replace(/\s+/g, "") === wanted.toLowerCase().replace(/\s+/g, ""));
+        || all.find((n) => nearName(n, wanted));
       if (!label && wanted) {
         if (customTypes.length < CUSTOM_SET_LIMIT) {
           await owners.updateOne({ _id: shopOid }, { $push: { customSetTypes: wanted } });

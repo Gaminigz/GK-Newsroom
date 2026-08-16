@@ -34,6 +34,27 @@ export function priceToLkr(raw) {
   return Math.round(usd ? n * USD_LKR : n);
 }
 
+/** "Rise Set" is "Rice set" with a typo, and "Dessert" is the "Desert" this
+ *  shop already made — owners type fast. Two characters of slop when matching
+ *  a heading against the set names they are allowed to use, so a typo reuses
+ *  a name instead of burning one of their three custom slots. */
+export function nearName(a, b) {
+  const x = String(a || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const y = String(b || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!x || !y) return false;
+  if (x === y) return true;
+  if (Math.abs(x.length - y.length) > 2) return false;
+  let prev = Array.from({ length: y.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= x.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= y.length; j++) {
+      row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+    }
+    prev = row;
+  }
+  return prev[y.length] <= 2;
+}
+
 const MENU_SCHEMA = {
   type: Type.OBJECT,
   properties: {
@@ -179,23 +200,6 @@ function rulesParse(raw, opts = {}) {
   const hasPrice = (l) => /\d\s*\$|\$\s*\d|(?:rs\.?|lkr)\s*\d/i.test(l);
   const isDishy = (l) => l.includes("/") || /^\d+[.)]/.test(l) || /^[-•*·⁠]/.test(l) || (cur && hasPrice(l));
 
-  /** "Rise Set" is "Rice set" with a typo, and owners type fast. Allow two
-   *  characters of slop when matching a heading to an allowed set name. */
-  const near = (a, b) => {
-    const x = a.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const y = b.toLowerCase().replace(/[^a-z0-9]/g, "");
-    if (x === y) return true;
-    if (Math.abs(x.length - y.length) > 2 || !x || !y) return false;
-    let prev = Array.from({ length: y.length + 1 }, (_, i) => i);
-    for (let i = 1; i <= x.length; i++) {
-      const row = [i];
-      for (let j = 1; j <= y.length; j++) {
-        row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
-      }
-      prev = row;
-    }
-    return prev[y.length] <= 2;
-  };
   const clean = (l) => l.replace(/^[\s\-•*·⁠]*\d*[.)]?\s*/, "").replace(/[⁠​]/g, "").trim();
 
   for (const line of lines) {
@@ -213,7 +217,7 @@ function rulesParse(raw, opts = {}) {
     if (line.length <= 46 && !/[.!?]$/.test(line)) {
       const pickM = line.match(/(\d+)\s*item/i);
       const name = line.replace(/for\s+select.*$/i, "").replace(/[:\-–]\s*$/, "").trim();
-      const hit = setTypes.find((s) => near(s, name));
+      const hit = setTypes.find((s) => nearName(s, name));
       cur = {
         name: (hit || name).slice(0, 40), setType: hit || "",
         pick: pickM ? Math.max(1, Math.min(40, Number(pickM[1]))) : 1,
