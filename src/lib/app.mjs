@@ -3481,6 +3481,22 @@ export async function handleApp(req, res, url) {
       const all = [...SET_PRESET_NAMES, ...customTypes];
       const wanted = String(g.setType || g.name || "").trim();
       let label = matchSetName(all, wanted);
+      // A block written with no heading at all — the owner just listed the
+      // dishes, the way the rice usually opens a menu. Name it from what is
+      // in it, and only ever with a name this shop is allowed to use.
+      if (!label && wanted === "Menu" && g.dishes.length) {
+        const shelves = g.dishes.map((d) => guessCategory(d.name));
+        const top = shelves.slice().sort((a, b) =>
+          shelves.filter((x) => x === b).length - shelves.filter((x) => x === a).length)[0];
+        label = matchSetName(all, {
+          "Rice & Staples": "Rice set",
+          "Meat & Seafood Curries": "Meat Combo",
+          "Vegetable Curries": "Side dishes",
+          "Salads, Sambols & Relishes": "Side dishes",
+          "Sri Lankan Cakes & Sweets": "Dessert",
+          "Bread, Buns & Beer Snacks": "Side dishes",
+        }[top] || "");
+      }
       // A set name is a name, not a sentence. "For dessert watalappan is
       // available" is the owner talking, and it must not eat one of their
       // three slots — the dishes under it still go on the day.

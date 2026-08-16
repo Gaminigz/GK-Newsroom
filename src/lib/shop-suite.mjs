@@ -55,7 +55,9 @@ const SET_PRESETS = [
   { name: "King Pack", nameSi: "කිං පැක්" },
   { name: "Rice set", nameSi: "බත් කට්ටලය" },
   { name: "Meat Combo", nameSi: "මස් කොම්බෝ" },
+  { name: "Main dishes", nameSi: "ප්‍රධාන කෑම" },
   { name: "Side dishes", nameSi: "අතුරු කෑම" },
+  { name: "Dessert", nameSi: "අතුරුපස" },
 ];
 
 /** One tile per function. `href(id)` = real page; suite previews use key.
