@@ -3510,6 +3510,20 @@ export async function handleApp(req, res, url) {
       }
     }
 
+    // Keep the last few pastes with what the reader made of them. A menu that
+    // reads wrong is almost always a line shape we have not seen — WhatsApp
+    // joins lines, drops line breaks, inserts invisible characters — and
+    // without the text that arrived, fixing it is guesswork.
+    try {
+      const log = await col("paste_log");
+      await log.insertOne({
+        shopId, date, meal, text, at: new Date(),
+        read: menu.groups.map((g) => `${g.name} (${g.dishes.length})`),
+      });
+      const old = await log.find({ shopId }).sort({ at: -1 }).skip(10).project({ _id: 1 }).toArray();
+      if (old.length) await log.deleteMany({ _id: { $in: old.map((o) => o._id) } });
+    } catch { /* diagnostics only — never fail a paste over them */ }
+
     // Dishes that ended up on the day without a set. Silence here is what
     // made a paste look like it had half-worked.
     const inSets = new Set(outGroups.flatMap((g) => g.dishes.map((d) => d.id)));
