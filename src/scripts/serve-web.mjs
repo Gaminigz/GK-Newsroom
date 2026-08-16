@@ -493,7 +493,7 @@ function una5ahaInfoPage() {
     desc: "3una 5aha connects you to the nearest Sri Lankan restaurants and home cooks, wherever you are in the world.",
     image: "https://ggmt.sg/newsfeed/assets/hero-welcome.jpg",
     url: "https://ggmt.sg/newsfeed/3una5aha",
-    keywords: "3una5aha, Sri Lankan food, Sri Lankan restaurants near me, Sri Lankan home cooking, find Sri Lankan food abroad, Sri Lankan community app, Sri Lankan diaspora food, Sri Lankan spices, Sri Lankan recipes, home cooks Sri Lanka, traveller food finder, ගෙදර උයාපු කෑම, ශ්‍රී ලාංකික ආහාර",
+    keywords: "3una5aha, Sri Lankan food, Sri Lankan restaurants near me, Sri Lankan home cooking, find Sri Lankan food abroad, Sri Lankan community app, Sri Lankan diaspora food, Sri Lankan spices, Sri Lankan recipes, home cooks Sri Lanka, traveller food finder, ගෙදර උයලවගේ කෑම, ශ්‍රී ලාංකික ආහාර",
     jsonLd: {
       "@context": "https://schema.org",
       "@type": "MobileApplication",
