@@ -501,25 +501,29 @@ function una5ahaInfoPage() {
     .u5-btnrow { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
     .u5-pill { background:#ffffff14; border:1px solid #ffffff26; border-radius:12px; padding:9px 10px; text-align:center;
                font-size:12.5px; color:#ffffffd8; }
-    .u5-card .u5-open { position:absolute; top:14px; right:14px; background:#0d1117d0; border:1px solid #ffffff2e;
-                         border-radius:999px; padding:6px 12px; font-size:12px; color:#e3b341; font-weight:600; }
+    .u5-badges { position:absolute; top:14px; right:14px; display:flex; flex-direction:column; align-items:flex-end; gap:8px; z-index:2; }
+    .u5-badges .u5-shop-badge { background:#e3b341; color:#1a1305; border:none; border-radius:999px; padding:7px 14px;
+                                 font-size:13px; font-weight:700; text-decoration:none; }
+    .u5-badges .u5-shop-badge:active { filter:brightness(1.08); }
+    .u5-badges .u5-open { background:#0d1117d0; border:1px solid #ffffff2e;
+                           border-radius:999px; padding:6px 12px; font-size:12px; color:#e3b341; font-weight:600; text-decoration:none; }
     .u5-right h1 { font-size:30px; letter-spacing:-.02em; color:#fff; margin-bottom:10px; }
     .u5-right .eyebrow { color:#e3b341; font-size:13px; font-weight:700; letter-spacing:.02em; text-transform:uppercase; margin-bottom:8px; }
     .u5-right p.lead { color:#c9d1d9; font-size:16px; line-height:1.6; margin-bottom:20px; }
     .u5-reminder { background:#3a2a0d; border:1px solid #6b4e12; border-radius:14px; padding:16px 18px; margin-bottom:24px; }
     .u5-reminder .u5-rtitle { color:#f5c453; font-weight:700; font-size:14px; margin-bottom:6px; }
     .u5-reminder p { color:#e8d3a0; font-size:13.5px; line-height:1.55; }
-    .u5-shopbtn { display:inline-block; background:#e3b341; color:#1a1305; font-weight:700; font-size:15px;
-                  padding:13px 22px; border-radius:12px; text-decoration:none; }
-    .u5-shopbtn:active { filter:brightness(1.08); }
     .u5-shopnote { color:#8b949e; font-size:12.5px; margin-top:10px; max-width:340px; }
   </style>
   <a class="back" href="https://web-production-2b43c.up.railway.app/">← GK Newsroom</a>
   <div class="u5-wrap">
     <div class="u5-left">
-      <a class="u5-card" href="/app" aria-label="Open the 3una 5aha app">
+      <div class="u5-card">
         <img src="/assets/hero-welcome.jpg" alt="Sri Lankan spices and dishes">
-        <span class="u5-open">Open app →</span>
+        <div class="u5-badges">
+          <a class="u5-shop-badge" href="/app">Shop Owner →</a>
+          <a class="u5-open" href="/app">Open app →</a>
+        </div>
         <div class="u5-overlay">
           <h2><em>3</em>una <em>5</em>aha · තුන පහ</h2>
           <div class="si">Find Sri Lankan restaurants and home cooking near you</div>
@@ -531,7 +535,7 @@ function una5ahaInfoPage() {
             <span class="u5-pill">👀 Guest</span>
           </div>
         </div>
-      </a>
+      </div>
     </div>
     <div class="u5-right">
       <div class="eyebrow">3una 5aha · තුන පහ</div>
@@ -541,8 +545,7 @@ function una5ahaInfoPage() {
         <div class="u5-rtitle">⚠️ Reminder</div>
         <p>The app does not process any payments. Transactions are purely the responsibility of the users involved. We advise checking carefully via chat before making any payment.</p>
       </div>
-      <a class="u5-shopbtn" href="/app">Shop Owner →</a>
-      <div class="u5-shopnote">For restaurants and home cooks. Once logged in, your shop management tools open inside the app (web view) — this page is informational only.</div>
+      <div class="u5-shopnote">For restaurants and home cooks — use the <strong>Shop Owner</strong> button above. Once logged in, your shop management tools open inside the app (web view) — this page is informational only.</div>
     </div>
   </div>`,
   });
