@@ -100,7 +100,8 @@ export function matchSetName(allowed, heading) {
 export function guessCategory(name) {
   const s = String(name || "").toLowerCase();
   if (/watalappan|wattalappam|cake|pudding|sweet|dessert|ice cream|kavum|kokis|aluwa/.test(s)) return "Sri Lankan Cakes & Sweets";
-  if (/\b(rice|bath|biryani|buriyani|kottu|noodle|string hopper|idiyappa|pittu|hopper|appa)\b/.test(s)) return "Rice & Staples";
+  // Rice is named by its variety as often as by the word "rice".
+  if (/\b(rice|bath|samba|sambaa|ponni|nadu|keeri|kekulu|basmathi|basmati|biryani|buriyani|kottu|noodle|string hopper|idiyappa|pittu|hopper|appa)\b/.test(s)) return "Rice & Staples";
   if (/chicken|pork|beef|mutton|fish|prawn|shrimp|squid|crab|cuttle|egg|malu|mas\b/.test(s)) return "Meat & Seafood Curries";
   if (/sambol|sambal|salad|mallu|mallum|achcharu|pickle|chutney/.test(s)) return "Salads, Sambols & Relishes";
   if (/roti|paratha|bun|bread|paan|vadai|cutlet|patty|roll/.test(s)) return "Bread, Buns & Beer Snacks";
@@ -145,7 +146,9 @@ function readMenu(raw, opts = {}) {
   // so they come off before anything is read.
   const deEmoji = (l) => l.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{20E3}\u{2000}-\u{206F}\u{2190}-\u{21FF}\u{2600}-\u{27BF}]/gu, " ")
     .replace(/\s+/g, " ").trim();
-  const lines = raw.split(/\r?\n/).map((l) => deEmoji(l.trim())).filter(Boolean);
+  // Blank lines are kept: they are the only thing separating one block from
+  // the next in a menu written with no headings at all.
+  const lines = raw.split(/\r?\n/).map((l) => deEmoji(l.trim()));
   const groups = [];
   let cur = null;
   const notes = [];
@@ -196,6 +199,7 @@ function readMenu(raw, opts = {}) {
 
   const queue = [];
   for (const l of lines) {
+    if (!l) { queue.push(""); continue; }
     const split = isDishy(l) ? splitHeading(l) : null;
     if (split) queue.push(split[0], split[1]);
     else queue.push(l);
@@ -204,6 +208,14 @@ function readMenu(raw, opts = {}) {
   let lastDish = null;
   let pendingChoice = null;
   for (const line of queue) {
+    if (!line) {
+      // A line on its own with a gap under it and no set name in it was a
+      // dish, not a heading — "Basmathi white rice" opening a menu. Close
+      // it here so the dishes after the gap start their own block.
+      if (cur && !cur.setType && !cur.dishes.length) cur = null;
+      lastDish = null; pendingChoice = null;
+      continue;
+    }
     // The Sinhala half of a choice line: "කුකුල් මස් හෝ ඌරු මස්" names the two
     // dishes just made from "Chicken or pork".
     if (pendingChoice && !/[A-Za-z]/.test(line) && SI.test(line)) {
@@ -338,6 +350,7 @@ function readMenu(raw, opts = {}) {
     const asDish = readDish(clean(g.name), priceIn, clean);
     groups.splice(i, 1);
     if (!asDish) { i--; continue; }
+    if (!asDish.nameSi && g.nameSi) asDish.nameSi = g.nameSi;
     const before = groups[i - 1];
     if (before && before.name === "Menu") { before.dishes.push(asDish); i--; continue; }
     groups.splice(i, 0, { name: "Menu", setType: "", pick: 1, priceText: "", dishes: [asDish] });

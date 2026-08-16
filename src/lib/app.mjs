@@ -3514,7 +3514,7 @@ export async function handleApp(req, res, url) {
       // available" is the owner talking, and it must not eat one of their
       // three slots — the dishes under it still go on the day.
       const nameable = wanted.length <= 28 && wanted.split(/\s+/).length <= 4;
-      if (!label && wanted) {
+      if (!label && wanted && wanted !== "Menu") {
         if (nameable && customTypes.length < CUSTOM_SET_LIMIT) {
           await owners.updateOne({ _id: shopOid }, { $push: { customSetTypes: wanted } });
           customTypes = [...customTypes, wanted];
