@@ -1933,6 +1933,17 @@ function costsPage(shop, extras = {}) {
   const dishes = extras.dishes || [];
 
   // LKR_TO holds multipliers — LKR × LKR_TO.USD = dollars.
+  // Monday to Sunday of the week the shown date belongs to.
+  const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const shown = new Date(date + "T00:00:00Z");
+  const monday = new Date(shown);
+  monday.setUTCDate(shown.getUTCDate() - ((shown.getUTCDay() + 6) % 7));
+  const weekDays = DOW.map((dow, i) => {
+    const d = new Date(monday);
+    d.setUTCDate(monday.getUTCDate() + i);
+    return { iso: d.toISOString().slice(0, 10), dow, day: d.getUTCDate() };
+  });
+
   const money = (lkr) => `$${((Number(lkr) || 0) * LKR_TO.USD).toFixed(2)} / LKR ${(Number(lkr) || 0).toLocaleString()}`;
   const marginOf = (cost, sale) => (!sale || cost == null ? null : Math.round(((sale - cost) / sale) * 100));
 
@@ -2050,6 +2061,17 @@ function costsPage(shop, extras = {}) {
       <div style="display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center">
         <input type="date" id="costDate" value="${esc(date)}" style="margin:0;font-weight:700;font-size:13px">
         <span class="sub" style="font-size:11px">${extras.hasPlan ? `${esc(meal)} plan` : "no plan yet"}</span>
+      </div>
+      <!-- The week the shown date sits in. A kitchen plans in days, and
+           flipping between them is the whole job of this screen. -->
+      <div style="display:flex;gap:3px;margin-top:6px">
+        ${weekDays.map((d) => `<a href="/app/owner/${id}/suite/costs?date=${d.iso}&meal=${esc(meal)}"
+          style="flex:1 1 0;text-decoration:none;text-align:center;border:1px solid ${d.iso === date ? "#191512" : "#e0d6cc"};
+          background:${d.iso === date ? "#191512" : "#fff"};color:${d.iso === date ? "#fff" : "#4a443f"};
+          border-radius:10px;padding:6px 2px;line-height:1.15">
+          <span style="display:block;font-size:9.5px;opacity:.75">${d.dow}</span>
+          <span style="display:block;font-size:13px;font-weight:700">${d.day}</span>
+        </a>`).join("")}
       </div>
       <div style="display:flex;gap:4px;margin-top:6px">
         ${(extras.meals || MEALS).map((mm) => `<a href="/app/owner/${id}/suite/costs?date=${esc(date)}&meal=${esc(mm)}" style="flex:1 1 0;text-align:none;text-decoration:none;border:1px solid #e0d6cc;background:${mm === meal ? "#191512" : "#fff"};color:${mm === meal ? "#fff" : "#4a443f"};border-radius:99px;padding:7px 4px;font-size:12.5px;font-weight:700;text-align:center">${esc(mm)}</a>`).join("")}
