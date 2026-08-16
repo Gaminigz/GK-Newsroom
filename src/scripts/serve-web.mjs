@@ -506,11 +506,10 @@ function una5ahaInfoPage() {
                                  font-size:13px; font-weight:700; text-decoration:none; }
     .u5-badges .u5-shop-badge:active { filter:brightness(1.08); }
     .u5-storerow { display:flex; gap:8px; }
-    .u5-store-icon { display:flex; align-items:center; justify-content:center; width:34px; height:34px;
+    .u5-store-icon { display:flex; align-items:center; justify-content:center; width:44px; height:44px;
                       background:#0d1117d0; border:1px solid #ffffff2e; border-radius:10px; }
-    .u5-store-icon svg { width:18px; height:18px; }
-    .u5-store-icon.disabled { width:44px; height:44px; background:#ffffff; border-color:#ffffff; pointer-events:none; }
-    .u5-store-icon.disabled svg { width:20px; height:20px; }
+    .u5-store-icon svg { width:22px; height:22px; }
+    .u5-store-icon.disabled { background:#ffffff; border-color:#ffffff; pointer-events:none; }
     .u5-right h1 { font-size:30px; letter-spacing:-.02em; color:#fff; margin-bottom:10px; }
     .u5-right .eyebrow { color:#e3b341; font-size:13px; font-weight:700; letter-spacing:.02em; text-transform:uppercase; margin-bottom:8px; }
     .u5-si-sub { color:#e3b341; font-size:15px; margin-bottom:14px; }
