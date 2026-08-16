@@ -679,6 +679,9 @@ function menuPage(shop, extras = {}) {
             <div style="border-top:1px solid #ece3da;margin-top:8px;padding-top:8px">
               <label style="margin:0;font-size:9.5px">PICK COMBO</label>
               <button type="button" id="setDishBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Pick combo…</button>
+              <!-- Ticking 20 boxes for a menu already written out in WhatsApp
+                   is the slow way round. Paste the text and let it build. -->
+              <button type="button" class="pasteOpen" style="width:100%;margin:6px 0 0;text-align:left;border:1px dashed ${ORANGE};background:#fdf3ee;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:${ORANGE};font-weight:700">📋 Paste menu text…</button>
               <div id="comboTarget" class="sub" style="font-size:10px;margin-top:5px;line-height:1.25"></div>
             </div>
           </div>
@@ -695,6 +698,7 @@ function menuPage(shop, extras = {}) {
                    straight away at price 0 — pricing happens on the set row,
                    which is the only place that writes back to app_dishes. -->
               <button type="button" id="dishItemBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Pick combo…</button>
+              <button type="button" class="pasteOpen" style="width:100%;margin:6px 0 0;text-align:left;border:1px dashed ${ORANGE};background:#fdf3ee;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:${ORANGE};font-weight:700">📋 Paste menu text…</button>
             </div>
           </div>
 
@@ -733,6 +737,27 @@ function menuPage(shop, extras = {}) {
           <div id="feedCount" class="sub" style="font-size:10.5px;margin-top:5px;color:${ORANGE};font-weight:700"></div>
         </div>
         <div id="feedPanelList" style="max-height:calc(70vh - 78px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:0 10px 10px"></div>
+      </div>
+
+      <!-- Paste panel. Write the day out the way you'd send it on WhatsApp;
+           the server reads it, creates whatever the catalogue is missing, and
+           fills the builder below so it can still be edited by hand. -->
+      <div id="pasteBackdrop" style="display:none;position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.24)"></div>
+      <div id="pastePanel" style="display:none;position:fixed;z-index:910;top:5%;left:50%;transform:translateX(-50%);width:min(92vw,340px);max-height:88vh;background:#fff;border-radius:16px;box-shadow:0 18px 50px rgba(0,0,0,.3);overflow:hidden;flex-direction:column">
+        <div style="padding:11px 13px;border-bottom:1px solid #ece3da">
+          <div style="font-size:14px;font-weight:700">Paste your menu</div>
+          <div class="si" style="font-size:11px;margin-top:1px">මෙනුව අලවන්න</div>
+          <div class="sub" style="font-size:10.5px;margin-top:4px;line-height:1.35">Write it the way you send it on WhatsApp — headings, dishes, prices. A dish the list doesn't have yet gets added, so next time it's already there.</div>
+        </div>
+        <div style="padding:10px 13px;overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;min-height:0">
+          <textarea id="pasteText" rows="11" placeholder="Rice Set&#10;Ponni samba white rice / පොන්නි සම්බා සුදූ බත්&#10;&#10;Meat combo&#10;Chicken / කුකුල් මස් 5$&#10;&#10;Side dishes for select 04 items&#10;1. Dhal / පරිප්පු&#10;2. Bean / බෝංචි" style="width:100%;margin:0;font-size:12.5px;line-height:1.45;padding:9px 10px;resize:vertical;min-height:150px"></textarea>
+          <div id="pasteMsg" class="sub" style="font-size:11px;margin-top:7px;line-height:1.4"></div>
+          <div id="pasteResult" style="font-size:11.5px;margin-top:7px;line-height:1.45"></div>
+        </div>
+        <div style="padding:10px 13px;border-top:1px solid #ece3da;display:flex;gap:7px">
+          <button type="button" id="pasteCancel" style="flex:0 0 auto;border:1px solid #e0d6cc;background:#fff;color:#4a443f;border-radius:99px;padding:9px 15px;font-size:12.5px;font-weight:700;cursor:pointer">Close</button>
+          <button type="button" id="pasteGo" style="flex:1;border:0;background:${ORANGE};color:#fff;border-radius:99px;padding:9px 15px;font-size:12.5px;font-weight:700;cursor:pointer">Build my menu</button>
+        </div>
       </div>
       ` : `<div class="card" style="margin-top:12px;padding:12px 14px;background:#fdf0ec;border-color:#f3cfc2;font-size:12.5px;color:#946200">Add some dishes first — they become the options inside each set.</div>`}
     </div>
@@ -1481,6 +1506,152 @@ function menuPage(shop, extras = {}) {
     document.getElementById('feedSearch').addEventListener('input', function(){
       feedQuery = this.value; renderFeedPanel();
     });
+
+    /* ---- paste a whole menu ------------------------------------------
+       The owner writes the day out for WhatsApp anyway. This sends that text
+       to the server, which reads it, adds anything the shared dish list is
+       missing, and hands back sets and dishes. They land in the builder
+       unsaved-but-autosaving, so everything is still editable by hand. */
+    function openPaste(){
+      document.getElementById('pasteBackdrop').style.display = '';
+      document.getElementById('pastePanel').style.display = 'flex';
+      document.getElementById('pasteMsg').textContent = '';
+      document.getElementById('pasteResult').innerHTML = '';
+      var t = document.getElementById('pasteText');
+      t.focus();
+    }
+    function closePaste(){
+      document.getElementById('pasteBackdrop').style.display = 'none';
+      document.getElementById('pastePanel').style.display = 'none';
+    }
+    document.querySelectorAll('.pasteOpen').forEach(function(b){
+      b.addEventListener('click', function(){ closeFeedPanel(); openPaste(); });
+    });
+    document.getElementById('pasteCancel').addEventListener('click', closePaste);
+    document.getElementById('pasteBackdrop').addEventListener('click', closePaste);
+
+    var pasteBusy = false;
+    document.getElementById('pasteGo').addEventListener('click', function(){
+      var go = document.getElementById('pasteGo');
+      var msg = document.getElementById('pasteMsg');
+      var text = document.getElementById('pasteText').value;
+      if (!text.trim()) { msg.textContent = 'Paste the menu text first.'; return; }
+      if (pasteBusy) return;
+      pasteBusy = true;
+      go.disabled = true;
+      go.textContent = 'Reading…';
+      msg.textContent = 'Reading your menu, checking every dish against the list…';
+      document.getElementById('pasteResult').innerHTML = '';
+      fetch('/app/owner/' + SHOP_ID + '/menu/paste.json', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({text: text, date: PLAN_DATE, meal: PLAN_MEAL}),
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        pasteBusy = false; go.disabled = false; go.textContent = 'Build my menu';
+        if (!j.ok) { msg.textContent = j.error || 'Could not read that — try again.'; return; }
+        applyPasted(j);
+      })
+      .catch(function(e){
+        pasteBusy = false; go.disabled = false; go.textContent = 'Build my menu';
+        msg.textContent = 'No connection (' + e.message + ') — your text is still here.';
+      });
+    });
+
+    /* Merge what came back into the plan on screen. Sets already there keep
+       their dishes and gain the pasted ones; nothing is replaced. */
+    function applyPasted(j){
+      var nSets = 0, nDishes = 0;
+      (j.groups || []).forEach(function(g){
+        var names = plan.map(function(s){ return s.name.toLowerCase(); });
+        var i = names.indexOf(String(g.name).toLowerCase());
+        if (i < 0) { plan.push({name: g.name, pick: Number(g.pick) || 1, price: g.price == null ? null : g.price, dishes: []}); i = plan.length - 1; nSets++; }
+        else {
+          if (g.pick) plan[i].pick = Number(g.pick);
+          if (g.price != null) plan[i].price = g.price;
+        }
+        (g.dishes || []).forEach(function(d){
+          if (plan[i].dishes.some(function(x){ return x.id === d.id; })) return;
+          plan[i].dishes.push({id: d.id, name: d.name, nameSi: d.nameSi || '', price: Number(d.price) || 0});
+        });
+      });
+      (j.dishIds || []).forEach(function(id){
+        if (!onDay(id)) { addToDay(id); nDishes++; }
+      });
+      // Dishes the shop had never listed are now real — put them in the local
+      // list so Dish mode and the pickers see them without a page reload.
+      (j.groups || []).forEach(function(g){
+        (g.dishes || []).forEach(function(d){
+          if (SHOP_DISHES.some(function(x){ return x.id === d.id; })) return;
+          SHOP_DISHES.push({id: d.id, name: d.name, nameSi: d.nameSi || '', price: Number(d.price) || 0, cat: '', meals: ['Breakfast','Lunch','Dinner'], own: true});
+        });
+      });
+      (j.newTypes || []).forEach(function(n){
+        if (!SET_CHOICES.some(function(s){ return s.name.toLowerCase() === n.toLowerCase(); })) {
+          SET_CHOICES.push({name: n, nameSi: '', custom: true});
+          FREE_SLOTS = Math.max(0, FREE_SLOTS - 1);
+        }
+      });
+
+      document.getElementById('pasteMsg').textContent = '';
+      var out = '<div class="card" style="margin:0;padding:9px 11px;background:#e8f6ec;border-color:#bfe5c8">'
+        + '<div style="font-weight:700;color:#1d7a34;font-size:12px">Built · ' + (j.groups || []).length + ' set'
+        + (((j.groups || []).length === 1) ? '' : 's') + ' · ' + (j.dishIds || []).length + ' dishes on '
+        + PLAN_MEAL + ' ' + PLAN_DATE + '</div>'
+        + '<div class="sub" style="font-size:10.5px;margin-top:4px;line-height:1.4">It saves itself. Close this and edit anything — prices, dishes, how many the buyer picks.</div>'
+        + '</div>';
+      if ((j.created || []).length) {
+        out += '<div class="sub" style="font-size:10.5px;margin-top:6px;line-height:1.4">'
+          + '<strong style="color:#d9542b">New in the shared dish list:</strong> ' + esc(j.created.join(', '))
+          + ' — there next time, for every shop.</div>';
+      }
+      if ((j.newTypes || []).length) {
+        out += '<div class="sub" style="font-size:10.5px;margin-top:4px;line-height:1.4">New set name'
+          + (j.newTypes.length === 1 ? '' : 's') + ': ' + esc(j.newTypes.join(', '))
+          + ' · ' + j.slotsLeft + ' of your own left.</div>';
+      }
+      if ((j.unplaced || []).length) {
+        out += '<div style="font-size:10.5px;margin-top:6px;line-height:1.4;color:#b3261e">'
+          + esc(j.unplaced.join(', ')) + ' could not become a set — your three own names are used up. '
+          + 'Those dishes are on the day anyway; rename one of your set types to make room.</div>';
+      }
+      if (j.note) {
+        out += '<div class="sub" style="font-size:10.5px;margin-top:6px;line-height:1.4">Not a dish, so left out: ' + esc(j.note) + '</div>';
+      }
+      if (j.source === 'rules') {
+        out += '<div class="sub" style="font-size:10px;margin-top:6px;line-height:1.4">Read without AI this time, so check the sets below.</div>';
+      }
+      document.getElementById('pasteResult').innerHTML = out;
+
+      renderPlan();                              // draws, drafts, and marks dirty
+      if (addMode === 'dish') renderCatalogue();
+      refreshOwnerLists();
+    }
+
+    /* Pull the shop's dish list and the catalogue again after a paste, so the
+       new dishes carry their real categories instead of the blank we guessed
+       locally. The plan itself is left alone — it is on screen and not yet
+       saved. */
+    function refreshOwnerLists(){
+      fetch('/app/api/owner/menu?date=' + encodeURIComponent(PLAN_DATE) + '&meal=' + encodeURIComponent(PLAN_MEAL))
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          if (!j.ok) return;
+          if (j.myDishes) {
+            SHOP_DISHES = j.myDishes.map(function(d){
+              return {id: d.id, name: d.name, nameSi: d.nameSi || '', price: Number(d.price) || 0,
+                      cat: d.category || '', meals: ['Breakfast','Lunch','Dinner'], own: true};
+            });
+          }
+          if (j.dishes) {
+            FEED_DISHES = j.dishes.map(function(d){
+              return {name: d.name, nameSi: d.nameSi || '', cat: d.category || '', pos: d.pos || 'Vegi meals'};
+            });
+          }
+          if (addMode === 'dish') renderCatalogue();
+        })
+        .catch(function(){ /* the local list is good enough until the next load */ });
+    }
 
     /* Load another day/meal without leaving the page. */
     function switchPlan(date, meal){

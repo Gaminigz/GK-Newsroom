@@ -3326,6 +3326,192 @@ export async function handleApp(req, res, url) {
     return;
   }
 
+  // Paste a whole day's menu as text and have it built.
+  //
+  // The owner already writes the menu out for WhatsApp — headings, dishes in
+  // English and Sinhala, the odd price, "select 04 items". This reads that,
+  // creates anything the catalogue is missing so the next shop finds it there,
+  // pulls every dish onto this shop, and hands back a plan the page can drop
+  // straight into its builder. Nothing is saved to the day here: the page
+  // merges it, shows it, and its autosave writes it — so the owner can edit or
+  // undo before it becomes the menu.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/menu\/paste\.json$/);
+  if (m && req.method === "POST") {
+    const shopId = m[1];
+    let body = {};
+    try { body = JSON.parse((await readBody(req, 20000)) || "{}"); } catch { /* bad json */ }
+    const text = String(body.text || "").trim();
+    const meal = MEALS.includes(body.meal) ? body.meal : "Lunch";
+    if (!text) {
+      res.writeHead(400, { "Content-Type": "application/json" })
+        .end(JSON.stringify({ ok: false, error: "paste your menu text first" }));
+      return;
+    }
+    const shopOid = await oid(shopId);
+    if (!shopOid) {
+      res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: false, error: "bad shop" }));
+      return;
+    }
+    const { SET_PRESET_NAMES, CUSTOM_SET_LIMIT, posCategoryFor } = await import("./shop-suite.mjs");
+    const { parseMenuText, priceToLkr } = await import("./ai-menu-paste.mjs");
+    const owners = await col("shop_owners");
+    const shop = await owners.findOne({ _id: shopOid }, { projection: { customSetTypes: 1 } });
+    let customTypes = (shop?.customSetTypes || []).map(String);
+
+    const lanka = await col("lanka_dishes");
+    const bakery = await col("lanka_bakery");
+    const proj = { name: 1, nameSi: 1, category: 1, priceLkr: 1 };
+    const [feedDishes, feedBakery] = await Promise.all([
+      lanka.find({}, { projection: proj }).toArray(),
+      bakery.find({}, { projection: proj }).toArray(),
+    ]);
+    // One lookup for both catalogues, keyed the way they key themselves —
+    // lowercased name. `lanka_dishes._id` IS the lowercased name.
+    const byName = new Map();
+    // Second index on a loose key, so "Beetroot" finds "Beetroot Curry" and
+    // "coconut sambal" finds "Coconut Sambal" instead of both being created
+    // again under a slightly different spelling.
+    const loose = (s) => String(s || "").toLowerCase()
+      .replace(/\b(curry|curries)\b/g, "").replace(/[^a-z0-9]/g, "");
+    const byLoose = new Map();
+    for (const d of [...feedBakery, ...feedDishes]) {
+      const k = String(d.name || "").trim().toLowerCase();
+      if (k && !byName.has(k)) byName.set(k, d);
+      const l = loose(d.name);
+      if (l && !byLoose.has(l)) byLoose.set(l, d);
+    }
+    const CATEGORIES = [
+      "Rice & Staples", "Vegetable Curries", "Meat & Seafood Curries",
+      "Salads, Sambols & Relishes", "Fried, Dry & Bite Dishes",
+      "Bread, Buns & Beer Snacks", "Mixed, Fusion & Street Food",
+      "Bakery & Canteen Classics", "Sri Lankan Cakes & Sweets",
+    ];
+    const parsed = await parseMenuText(text, {
+      setTypes: [...SET_PRESET_NAMES, ...customTypes],
+      categories: CATEGORIES,
+      catalogue: [...byName.values()].map((d) => d.name),
+    });
+    if (!parsed.ok) {
+      res.writeHead(400, { "Content-Type": "application/json" })
+        .end(JSON.stringify({ ok: false, error: parsed.error || "could not read that" }));
+      return;
+    }
+    const menu = parsed.menu;
+
+    // A new catalogue entry needs a post number; keep counting from the top.
+    let nextOrder = 0;
+    const lastOrder = await lanka.find({}, { projection: { postNumber: 1 } }).sort({ postNumber: -1 }).limit(1).toArray();
+    nextOrder = Number(lastOrder[0]?.postNumber || 0);
+
+    const dishesCol = await col("app_dishes");
+    const created = [];      // new to the shared catalogue
+    const added = [];        // new to this shop
+    const dishIds = [];
+    const outGroups = [];
+    const unplaced = [];     // headings that couldn't become a set (no slot)
+    const newTypes = [];
+
+    /** Catalogue entry for a dish, creating it if the catalogue has never
+     *  heard of it — that is the "so next time you don't have to" part. */
+    async function catalogueEntry(d) {
+      const wanted = String(d.match || "").trim().toLowerCase();
+      const own = String(d.name || "").trim().toLowerCase();
+      const hit = (wanted && (byName.get(wanted) || byLoose.get(loose(wanted))))
+        || byName.get(own) || byLoose.get(loose(d.name));
+      if (hit) return hit;
+      const category = CATEGORIES.includes(d.category) ? d.category : "Mixed, Fusion & Street Food";
+      const priceLkr = priceToLkr(d.priceText);
+      const doc = {
+        _id: own, name: d.name, nameSi: d.nameSi || "", category,
+        order: ++nextOrder, postNumber: nextOrder,
+        addedAt: new Date(), addedBy: shopId, source: "owner-paste",
+      };
+      if (priceLkr) doc.priceLkr = priceLkr;
+      try {
+        await lanka.insertOne(doc);
+        created.push(d.name);
+      } catch {
+        // Raced with another paste, or the name collides — either way the
+        // existing entry wins.
+      }
+      byName.set(own, doc);
+      byLoose.set(loose(d.name), doc);
+      return doc;
+    }
+
+    /** This shop's own dish record, created at the pasted price if there is
+     *  one. Idempotent by (shopId, name), same as add-from-feed. */
+    async function shopDish(d, entry) {
+      const name = entry.name;
+      const price = priceToLkr(d.priceText) || Math.max(0, Math.round(Number(entry.priceLkr) || 0));
+      const existing = await dishesCol.findOne({ shopId, name });
+      if (existing) {
+        // A price written on the paste is the owner saying it out loud — it
+        // wins over a stale 0, and over an older price for the same dish.
+        if (price && Number(existing.price) !== price) {
+          await dishesCol.updateOne({ _id: existing._id }, { $set: { price } });
+          existing.price = price;
+        }
+        return existing;
+      }
+      const ins = await dishesCol.insertOne({
+        shopId, type: "single", name, nameSi: entry.nameSi || "",
+        price, portions: 30,
+        category: posCategoryFor(name, entry.category) || "Vegi meals",
+        window: meal.toLowerCase(),
+        discount: "none", special: false, promoTag: "Today special",
+        fromFeed: true, fromPaste: true, createdAt: new Date(),
+      });
+      await owners.updateOne({ _id: shopOid }, { $inc: { listings: 1 } });
+      added.push(name);
+      return { _id: ins.insertedId, name, nameSi: entry.nameSi || "", price };
+    }
+
+    for (const g of menu.groups) {
+      // The set name stays inside the closed list: a preset, or one of the
+      // shop's own three. A heading that is neither takes a free slot; with
+      // no slot left the dishes still go on the day, just not in a set.
+      const all = [...SET_PRESET_NAMES, ...customTypes];
+      const wanted = String(g.setType || g.name || "").trim();
+      let label = all.find((n) => n.toLowerCase() === wanted.toLowerCase())
+        || all.find((n) => n.toLowerCase().replace(/\s+/g, "") === wanted.toLowerCase().replace(/\s+/g, ""));
+      if (!label && wanted) {
+        if (customTypes.length < CUSTOM_SET_LIMIT) {
+          await owners.updateOne({ _id: shopOid }, { $push: { customSetTypes: wanted } });
+          customTypes = [...customTypes, wanted];
+          newTypes.push(wanted);
+          label = wanted;
+        } else {
+          unplaced.push(wanted);
+        }
+      }
+      const rows = [];
+      for (const d of g.dishes) {
+        const entry = await catalogueEntry(d);
+        const own = await shopDish(d, entry);
+        const id = String(own._id);
+        if (!dishIds.includes(id)) dishIds.push(id);
+        if (label) rows.push({ id, name: own.name, nameSi: own.nameSi || "", price: Number(own.price) || 0 });
+      }
+      if (label) {
+        outGroups.push({
+          name: label, pick: Math.max(1, Math.min(40, Number(g.pick) || 1)),
+          price: priceToLkr(g.priceText),   // null = the dish picked sets it
+          dishes: rows,
+        });
+      }
+    }
+
+    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({
+      ok: true, source: parsed.source, meal: menu.meal || "", day: menu.day || "",
+      note: menu.note || "", groups: outGroups, dishIds,
+      created, added, newTypes, unplaced,
+      slotsLeft: Math.max(0, CUSTOM_SET_LIMIT - customTypes.length),
+    }));
+    return;
+  }
+
   // Save a day plan from the native screen. Same shape and same rules as the
   // web builder's form POST, just JSON in and JSON out.
   m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/menu\/plan\.json$/);
