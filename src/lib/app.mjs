@@ -3475,8 +3475,12 @@ export async function handleApp(req, res, url) {
       const wanted = String(g.setType || g.name || "").trim();
       let label = all.find((n) => n.toLowerCase() === wanted.toLowerCase())
         || all.find((n) => nearName(n, wanted));
+      // A set name is a name, not a sentence. "For dessert watalappan is
+      // available" is the owner talking, and it must not eat one of their
+      // three slots — the dishes under it still go on the day.
+      const nameable = wanted.length <= 28 && wanted.split(/\s+/).length <= 4;
       if (!label && wanted) {
-        if (customTypes.length < CUSTOM_SET_LIMIT) {
+        if (nameable && customTypes.length < CUSTOM_SET_LIMIT) {
           await owners.updateOne({ _id: shopOid }, { $push: { customSetTypes: wanted } });
           customTypes = [...customTypes, wanted];
           newTypes.push(wanted);

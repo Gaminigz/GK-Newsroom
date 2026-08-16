@@ -209,7 +209,8 @@ function rulesParse(raw, opts = {}) {
       const price = (body.match(/(?:rs\.?|lkr)?\s*\d+(?:\.\d+)?\s*\$|\$\s*\d+(?:\.\d+)?|(?:rs\.?|lkr)\s*\d+(?:[\d,]*)/i) || [""])[0];
       const noPrice = price ? body.replace(price, "").trim() : body;
       const [en, si] = noPrice.split("/");
-      const name = (en || "").replace(/[()]/g, "").trim();
+      // "(Sunday special price)" is a note about the dish, not part of its name.
+      const name = (en || "").replace(/\([^)]*\)/g, "").trim();
       if (name) cur.dishes.push({ name: name.slice(0, 80), nameSi: (si || "").trim().slice(0, 120), priceText: price.trim(), category: "", match: "" });
       continue;
     }
