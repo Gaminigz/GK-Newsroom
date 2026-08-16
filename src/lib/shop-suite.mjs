@@ -681,7 +681,14 @@ function menuPage(shop, extras = {}) {
               <button type="button" id="setDishBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Pick combo…</button>
               <!-- Ticking 20 boxes for a menu already written out in WhatsApp
                    is the slow way round. Paste the text and let it build. -->
-              <button type="button" class="pasteOpen" style="width:100%;margin:6px 0 0;text-align:left;border:1px dashed ${ORANGE};background:#fdf3ee;border-radius:10px;padding:9px 9px 10px;font-size:11.5px;line-height:1.3;cursor:pointer;color:${ORANGE};font-weight:700">📋 Paste menu text…<span class="si" style="display:block;font-weight:400;font-size:10px;line-height:1.45;margin-top:4px;color:#9a6b52">මෙනුව ලියපු විදිහටම මෙතන අලවන්න — සෙට් සහ කෑම ඉබේම හැදෙනවා</span></button>
+              <!-- Deliberately a big target: it's the fastest way into the
+                   whole screen, and the column below it is empty anyway. -->
+              <button type="button" class="pasteOpen" style="width:100%;margin:8px 0 0;display:block;text-align:center;border:1.5px dashed ${ORANGE};background:linear-gradient(180deg,#fffaf7 0%,#fbeade 100%);border-radius:14px;padding:16px 9px 17px;min-height:172px;cursor:pointer;color:${ORANGE};box-shadow:0 1px 0 rgba(217,84,43,.06)">
+                <span style="display:block;font-size:27px;line-height:1">📋</span>
+                <span style="display:block;font-size:12.5px;font-weight:800;line-height:1.25;margin-top:9px">Paste menu<br>text</span>
+                <span style="display:block;width:26px;height:1.5px;background:${ORANGE};opacity:.35;margin:9px auto"></span>
+                <span class="si" style="display:block;font-size:10px;font-weight:400;line-height:1.55;color:#9a6b52">මෙනුව ලියපු විදිහටම මෙතන අලවන්න — සෙට් සහ කෑම ඉබේම හැදෙනවා</span>
+              </button>
               <div id="comboTarget" class="sub" style="font-size:10px;margin-top:5px;line-height:1.25"></div>
             </div>
           </div>
@@ -698,7 +705,14 @@ function menuPage(shop, extras = {}) {
                    straight away at price 0 — pricing happens on the set row,
                    which is the only place that writes back to app_dishes. -->
               <button type="button" id="dishItemBtn" style="width:100%;margin:0;text-align:left;border:1px solid #e3d6c2;background:#fff;border-radius:10px;padding:6px 8px;font-size:11px;line-height:1.3;cursor:pointer;color:#8a827b">Pick combo…</button>
-              <button type="button" class="pasteOpen" style="width:100%;margin:6px 0 0;text-align:left;border:1px dashed ${ORANGE};background:#fdf3ee;border-radius:10px;padding:9px 9px 10px;font-size:11.5px;line-height:1.3;cursor:pointer;color:${ORANGE};font-weight:700">📋 Paste menu text…<span class="si" style="display:block;font-weight:400;font-size:10px;line-height:1.45;margin-top:4px;color:#9a6b52">මෙනුව ලියපු විදිහටම මෙතන අලවන්න — සෙට් සහ කෑම ඉබේම හැදෙනවා</span></button>
+              <!-- Deliberately a big target: it's the fastest way into the
+                   whole screen, and the column below it is empty anyway. -->
+              <button type="button" class="pasteOpen" style="width:100%;margin:8px 0 0;display:block;text-align:center;border:1.5px dashed ${ORANGE};background:linear-gradient(180deg,#fffaf7 0%,#fbeade 100%);border-radius:14px;padding:16px 9px 17px;min-height:172px;cursor:pointer;color:${ORANGE};box-shadow:0 1px 0 rgba(217,84,43,.06)">
+                <span style="display:block;font-size:27px;line-height:1">📋</span>
+                <span style="display:block;font-size:12.5px;font-weight:800;line-height:1.25;margin-top:9px">Paste menu<br>text</span>
+                <span style="display:block;width:26px;height:1.5px;background:${ORANGE};opacity:.35;margin:9px auto"></span>
+                <span class="si" style="display:block;font-size:10px;font-weight:400;line-height:1.55;color:#9a6b52">මෙනුව ලියපු විදිහටම මෙතන අලවන්න — සෙට් සහ කෑම ඉබේම හැදෙනවා</span>
+              </button>
             </div>
           </div>
 
