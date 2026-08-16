@@ -354,6 +354,7 @@ function shell({ title, desc, body }) {
   .t-food { background:linear-gradient(135deg,#8a3f12,#c2611c 55%,#e08a2e); }
   .t-ai   { background:linear-gradient(135deg,#0a1f47,#173a7a 60%,#2a5cb8); }
   .t-acct { background:linear-gradient(135deg,#0b3d2e,#14654a 60%,#1e8f66); }
+  .t-shop { background:linear-gradient(135deg,#7a2e12,#c2410c 55%,#ff9d6c); }
   .tile .lock { font-size:13px; opacity:.75; margin-left:6px; }
   .soon { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:10px; }
   .soon .emoji { font-size:64px; }
@@ -422,6 +423,18 @@ const ICONS = {
     <circle cx="32" cy="40" r="6" fill="#5c4416"/>
     <rect x="29" y="44" width="6" height="9" rx="3" fill="#5c4416"/>
   </svg>`,
+  shop: `<svg viewBox="0 0 64 64" width="54" height="54" aria-hidden="true">
+    <defs>
+      <linearGradient id="sRoof" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff9d6c"/><stop offset="1" stop-color="#c2410c"/></linearGradient>
+      <linearGradient id="sBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe9d6"/><stop offset="1" stop-color="#e8c39e"/></linearGradient>
+    </defs>
+    <path d="M10 26l4-14h36l4 14z" fill="url(#sRoof)"/>
+    <rect x="12" y="26" width="40" height="26" rx="3" fill="url(#sBody)"/>
+    <rect x="26" y="34" width="12" height="18" rx="1.5" fill="#7a4a26"/>
+    <rect x="16" y="32" width="8" height="8" rx="1" fill="#8ab4e8"/>
+    <rect x="40" y="32" width="8" height="8" rx="1" fill="#8ab4e8"/>
+    <ellipse cx="20" cy="20" rx="8" ry="2.6" fill="#ffffff55"/>
+  </svg>`,
 };
 
 function landingPage() {
@@ -451,6 +464,12 @@ function landingPage() {
       <span class="icon"><img src="/assets/tile-ai.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display=''"><span style="display:none">${ICONS.ai}</span></span>
       <h2>Ai News</h2>
       <p>The daily Ai brief — fresh stories every morning at 5 AM, plus the podcast.</p>
+      <span class="go">Open →</span>
+    </a>
+    <a class="tile t-shop" href="/app">
+      <span class="icon"><img src="/assets/tile-shop.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display=''"><span style="display:none">${ICONS.shop}</span></span>
+      <h2>Shop Owner</h2>
+      <p>Manage your restaurant or home kitchen — dishes, orders, plan menu, stock.</p>
       <span class="go">Open →</span>
     </a>
   </nav>`,
