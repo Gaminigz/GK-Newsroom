@@ -3514,15 +3514,21 @@ export async function handleApp(req, res, url) {
     // reads wrong is almost always a line shape we have not seen — WhatsApp
     // joins lines, drops line breaks, inserts invisible characters — and
     // without the text that arrived, fixing it is guesswork.
+    let logged = "";
     try {
       const log = await col("paste_log");
-      await log.insertOne({
+      const ins = await log.insertOne({
         shopId, date, meal, text, at: new Date(),
         read: menu.groups.map((g) => `${g.name} (${g.dishes.length})`),
       });
+      logged = String(ins.insertedId);
       const old = await log.find({ shopId }).sort({ at: -1 }).skip(10).project({ _id: 1 }).toArray();
       if (old.length) await log.deleteMany({ _id: { $in: old.map((o) => o._id) } });
-    } catch { /* diagnostics only — never fail a paste over them */ }
+    } catch (e) {
+      // Diagnostics must never fail a paste — but a silent failure here is
+      // what kept the fix invisible, so say so in the response.
+      logged = "failed: " + (e && e.message ? e.message : "unknown");
+    }
 
     // Dishes that ended up on the day without a set. Silence here is what
     // made a paste look like it had half-worked.
@@ -3538,7 +3544,7 @@ export async function handleApp(req, res, url) {
       slotsLeft: Math.max(0, CUSTOM_SET_LIMIT - customTypes.length),
       // Which build answered. Without it, "is my fix live yet?" is guesswork —
       // it cost an hour once.
-      build: (process.env.RAILWAY_GIT_COMMIT_SHA || "local").slice(0, 7),
+      build: (process.env.RAILWAY_GIT_COMMIT_SHA || "local").slice(0, 7), logged,
     }));
     return;
   }
