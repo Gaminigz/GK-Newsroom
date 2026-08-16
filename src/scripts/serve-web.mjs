@@ -554,7 +554,7 @@ function una5ahaInfoPage() {
       <div class="u5-card">
         <img src="/assets/hero-welcome.jpg" alt="Sri Lankan spices and dishes">
         <div class="u5-badges">
-          <a class="u5-shop-badge" href="/app">Shop Owner →</a>
+          <a class="u5-shop-badge" href="/app">Shop Owner 🚪</a>
           <div class="u5-storerow">
             <a class="u5-store-icon" href="https://apps.apple.com/us/app/3una-5aha/id6789434204" aria-label="Download on the App Store">
               <svg viewBox="0 0 24 24" fill="#fff"><path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.57-2.987 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.572-2.27 1.206-2.98.804-.94 2.142-1.64 3.248-1.68.03.13.05.28.05.43zm4.565 15.71c-.03.07-.463 1.58-1.518 3.12-.945 1.34-1.94 2.71-3.43 2.71-1.517 0-1.9-.88-3.63-.88-1.698 0-2.302.91-3.67.91-1.377 0-2.332-1.26-3.428-2.8-1.287-1.82-2.257-4.63-2.257-7.28 0-4.28 2.79-6.55 5.532-6.55 1.406 0 2.576.9 3.457.9.84 0 2.147-.95 3.734-.95.633 0 2.91.06 4.404 2.21-.114.07-2.628 1.53-2.628 4.63 0 3.7 3.24 5.01 3.434 5.02z"/></svg>
