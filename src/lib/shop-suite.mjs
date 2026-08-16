@@ -1955,24 +1955,27 @@ function costsPage(shop, extras = {}) {
   const money = (lkr) => `$${((Number(lkr) || 0) * LKR_TO.USD).toFixed(2)} / LKR ${(Number(lkr) || 0).toLocaleString()}`;
   const marginOf = (cost, sale) => (!sale || cost == null ? null : Math.round(((sale - cost) / sale) * 100));
 
+  /* One set, one card. The header is a single line — a kitchen reads
+     "costs 414, sells 300, −38%" faster than three stacked labels. */
   const row = (name, kind, cost, sale, note, detail = "") => {
     const margin = marginOf(cost, sale);
     const pill = margin == null
-      ? `<span class="pill" style="font-size:10.5px;color:#8a827b">NO RECIPE YET</span>`
-      : statusPill("MARGIN " + margin + "%", margin < 30 ? "warn" : "ok");
+      ? `<span class="pill" style="font-size:10px;color:#8a827b;padding:3px 8px">no recipe</span>`
+      : statusPill(margin + "%", margin < 30 ? "warn" : "ok");
     return `
-    <div class="card" style="margin-top:10px;padding:12px 14px">
-      <div class="row" style="justify-content:space-between;gap:8px">
-        <strong style="font-size:13.5px">${esc(name)}</strong>
-        <span class="pill" style="font-size:10.5px;flex:0 0 auto">${esc(kind)}</span>
+    <div class="card" style="margin-top:9px;padding:11px 13px">
+      <div style="display:flex;gap:8px;align-items:baseline">
+        <strong style="font-size:13.5px;flex:1;min-width:0">${esc(name)}</strong>
+        <span class="sub" style="font-size:10px;flex:0 0 auto">${esc(kind)}</span>
       </div>
-      <div class="row" style="gap:14px;margin-top:7px;font-size:12.5px;flex-wrap:wrap">
-        <span class="sub">PLANNED COST<br><strong style="color:#1a1a1a">${cost == null ? "—" : money(cost)}</strong></span>
-        <span class="sub">SALE PRICE<br><strong style="color:#1a1a1a">${sale ? money(sale) : `<span style="color:#b3261e">not priced</span>`}</strong></span>
-        <span style="flex:1"></span>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:4px;font-size:12px">
+        <span style="flex:1;min-width:0">
+          <span class="sub">costs</span> <strong>${cost == null ? "—" : "LKR " + cost.toLocaleString()}</strong>
+          <span class="sub"> · sells</span> <strong>${sale ? "LKR " + sale.toLocaleString() : `<span style="color:#b3261e">—</span>`}</strong>
+        </span>
         ${pill}
       </div>
-      ${note ? `<div class="sub" style="font-size:10.5px;margin-top:6px;line-height:1.4">${note}</div>` : ""}
+      ${note ? `<div class="sub" style="font-size:10px;margin-top:3px;line-height:1.35">${note}</div>` : ""}
       ${detail}
     </div>`;
   };
@@ -1994,59 +1997,52 @@ function costsPage(shop, extras = {}) {
   /* What is actually inside the set, line by line. The set's own figure is an
      average across these, so without them a bad margin says nothing about
      which dish caused it. */
+  /* A dish inside the set: what it costs against what it sells for, then the
+     counter. Two tight lines, so eight side dishes read as a list rather than
+     a wall. */
   const inner = (rows) => !rows.length ? "" : `
-    <div style="margin-top:9px;border-top:1px solid #f2ece6;padding-top:6px">
+    <div style="margin-top:8px;border-top:1px solid #f2ece6">
       ${rows.map((r) => {
         const mg = marginOf(r.cost, r.sale);
         const total = r.cost != null && r.portions ? r.cost * r.portions : null;
-        return `<div style="padding:6px 0;border-bottom:1px solid #f7f3ef">
+        return `<div style="padding:7px 0;border-bottom:1px solid #f7f3ef">
           <div style="display:flex;gap:8px;align-items:baseline">
             <span style="flex:1;min-width:0">
-              <span style="font-weight:600;font-size:11.5px">${esc(r.name)}</span>
-              ${r.nameSi ? `<span class="si" style="display:block;font-size:10px;line-height:1.2">${esc(r.nameSi)}</span>` : ""}
+              <span style="font-weight:600;font-size:12px">${esc(r.name)}</span>
+              ${r.nameSi ? `<span class="si" style="font-size:10px"> ${esc(r.nameSi)}</span>` : ""}
             </span>
-            <span style="flex:0 0 auto;text-align:right;line-height:1.35">
-              <span class="sub" style="display:block;font-size:10px">cost ${r.cost == null ? "—" : "LKR " + r.cost.toLocaleString()} each</span>
-              <span style="display:block;font-size:10.5px;font-weight:700;color:${mg == null ? "#8a827b" : mg < 30 ? "#b3261e" : "#1d7a34"}">
-                ${r.sale ? "sells LKR " + r.sale.toLocaleString() : "not priced"}${mg == null ? "" : " · " + mg + "%"}</span>
+            <span style="flex:0 0 auto;font-size:10.5px;white-space:nowrap">
+              <span class="sub">${r.cost == null ? "—" : r.cost.toLocaleString()}</span><span class="sub"> → </span><span style="font-weight:700;color:${mg == null ? "#8a827b" : mg < 30 ? "#b3261e" : "#1d7a34"}">${r.sale ? r.sale.toLocaleString() : "—"}${mg == null ? "" : " · " + mg + "%"}</span>
             </span>
           </div>
-          <!-- How many the kitchen is cooking today, and what that costs. -->
-          <div style="display:flex;gap:8px;align-items:center;margin-top:7px;font-size:12px;flex-wrap:wrap">
-            <span class="sub">portions</span>
-            <!-- Thumb-sized steppers: a cook counts up in ones with wet hands,
-                 not by tapping into a keyboard. -->
+          <div style="display:flex;gap:6px;align-items:center;margin-top:5px">
             <button type="button" class="stepBtn" data-id="${esc(r.id)}" data-step="-1"
-              style="flex:0 0 auto;width:42px;height:42px;border:1px solid #e0d6cc;background:#fff;border-radius:12px;font-size:22px;font-weight:700;line-height:1;color:#4a443f;cursor:pointer;padding:0">−</button>
+              style="flex:0 0 auto;width:34px;height:34px;border:1px solid #e0d6cc;background:#fff;border-radius:10px;font-size:18px;font-weight:700;line-height:1;color:#4a443f;cursor:pointer;padding:0">−</button>
             <input type="number" inputmode="numeric" min="0" max="9999" class="portionBox" data-id="${esc(r.id)}"
               data-cost="${r.cost == null ? "" : r.cost}" value="${r.portions || ""}"
-              placeholder="0" style="margin:0;width:76px;padding:9px 6px;font-size:17px;font-weight:700;text-align:center;border-radius:10px">
+              placeholder="0" style="margin:0;width:56px;padding:6px 4px;font-size:15px;font-weight:700;text-align:center;border-radius:9px">
             <button type="button" class="stepBtn" data-id="${esc(r.id)}" data-step="1"
-              style="flex:0 0 auto;width:42px;height:42px;border:0;background:${ORANGE};color:#fff;border-radius:12px;font-size:22px;font-weight:700;line-height:1;cursor:pointer;padding:0">+</button>
-            <span style="flex:1"></span>
-            ${r.lines.length ? `<button type="button" class="ingToggle" data-id="${esc(r.id)}" style="border:1px solid #e3d6c2;background:#fff;border-radius:99px;padding:7px 14px;font-size:12px;cursor:pointer;color:${ORANGE};font-weight:700">prices</button>` : ""}
+              style="flex:0 0 auto;width:34px;height:34px;border:0;background:${ORANGE};color:#fff;border-radius:10px;font-size:18px;font-weight:700;line-height:1;cursor:pointer;padding:0">+</button>
+            <span id="tot-${esc(r.id)}" style="flex:1;min-width:0;font-weight:700;font-size:12.5px;color:#4a443f">${total == null ? "" : "LKR " + total.toLocaleString()}</span>
+            ${r.lines.length ? `<button type="button" class="ingToggle" data-id="${esc(r.id)}"
+              style="flex:0 0 auto;border:0;background:none;font-size:11px;cursor:pointer;color:${ORANGE};font-weight:700;padding:4px 2px;text-decoration:underline">prices</button>` : ""}
           </div>
-          <!-- The run total sits under the counter, not beside it: on a phone
-               it wrapped onto its own line half the time anyway. -->
-          <div id="tot-${esc(r.id)}" style="font-weight:700;font-size:13.5px;color:#4a443f;margin-top:5px;min-height:16px">${total == null ? "" : "= LKR " + total.toLocaleString()}</div>
           ${r.lines.length ? `
-          <!-- Every ingredient, with what we think it costs. Ours is only a
-               starting figure; a price typed here is this shop's own. -->
           <div id="ing-${esc(r.id)}" style="display:none;margin-top:6px;background:#faf7f4;border-radius:9px;padding:7px 8px">
             ${r.lines.map((l) => `
               <div style="display:flex;gap:6px;align-items:center;padding:3px 0;font-size:10.5px">
                 <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
                   title="${esc(l.name)}">${esc(l.name)}<span class="sub"> · ${l.qty == null ? "to taste" : esc(String(l.qty)) + " " + esc(l.unit || "")}</span></span>
-                <span class="sub" style="flex:0 0 auto">LKR</span>
                 <input type="number" inputmode="numeric" min="0" class="rateBox" data-key="${esc(l.key)}" data-per="${esc(l.per)}" value="${l.rate == null ? "" : l.rate}"
-                  placeholder="?" style="margin:0;width:76px;padding:7px 6px;font-size:14px;text-align:center;border-radius:9px;${l.mine ? `border-color:${ORANGE};color:${ORANGE};font-weight:700` : ""}">
-                <span class="sub" style="flex:0 0 auto;width:44px">/${esc(l.per)}</span>
+                  placeholder="?" style="margin:0;width:66px;padding:5px 4px;font-size:12.5px;text-align:center;border-radius:8px;${l.mine ? `border-color:${ORANGE};color:${ORANGE};font-weight:700` : ""}">
+                <span class="sub" style="flex:0 0 auto;width:42px;font-size:9.5px">/${esc(l.per)}</span>
               </div>`).join("")}
-            <div class="sub" style="font-size:9.5px;margin-top:4px;line-height:1.35">Type what you pay. Orange means it is your price, not ours. Clear the box to go back to ours.</div>
+            <div class="sub" style="font-size:9.5px;margin-top:4px;line-height:1.35">Type what you pay — orange is your price. Clear it to use ours.</div>
           </div>` : ""}
         </div>`;
       }).join("")}
     </div>`;
+
 
   const setCards = sets.map((s) => row(
     s.label, `Set menu · pick ${s.pick}`, s.cost, s.sale,
@@ -2138,7 +2134,7 @@ function costsPage(shop, extras = {}) {
       var out = document.getElementById('tot-' + inp.dataset.id);
       if (!out) return;
       var cost = Number(inp.dataset.cost), n = Number(inp.value) || 0;
-      out.textContent = (!cost || !n) ? '' : '= LKR ' + (cost * n).toLocaleString();
+      out.textContent = (!cost || !n) ? '' : 'LKR ' + (cost * n).toLocaleString();
     }
     function savePortions(inp){
       paintTotal(inp);
