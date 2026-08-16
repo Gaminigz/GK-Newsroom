@@ -2431,9 +2431,9 @@ export async function handleApp(req, res, url) {
   // The page is reachable by id without a cookie, and its other calls —
   // plan.json, paste.json, add-from-feed — are all keyed the same way, so
   // requiring a login here only broke the date and meal switch in a browser.
-  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/menu\.json$/);
-  if (path === "/app/api/owner/menu" || (m && req.method === "GET")) {
-    let shopId = m ? m[1] : "";
+  const menuJson = path.match(/^\/app\/owner\/([a-f0-9]{24})\/menu\.json$/);
+  if (path === "/app/api/owner/menu" || (menuJson && req.method === "GET")) {
+    let shopId = menuJson ? menuJson[1] : "";
     if (!shopId) {
       const c = cookies(req);
       shopId = c.app_shop || "";
