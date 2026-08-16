@@ -1936,7 +1936,7 @@ function costsPage(shop, extras = {}) {
   const money = (lkr) => `$${((Number(lkr) || 0) * LKR_TO.USD).toFixed(2)} / LKR ${(Number(lkr) || 0).toLocaleString()}`;
   const marginOf = (cost, sale) => (!sale || cost == null ? null : Math.round(((sale - cost) / sale) * 100));
 
-  const row = (name, kind, cost, sale, note) => {
+  const row = (name, kind, cost, sale, note, detail = "") => {
     const margin = marginOf(cost, sale);
     const pill = margin == null
       ? `<span class="pill" style="font-size:10.5px;color:#8a827b">NO RECIPE YET</span>`
@@ -1954,29 +1954,55 @@ function costsPage(shop, extras = {}) {
         ${pill}
       </div>
       ${note ? `<div class="sub" style="font-size:10.5px;margin-top:6px;line-height:1.4">${note}</div>` : ""}
+      ${detail}
     </div>`;
   };
+
+  // A dish inside a set is costed there; this is the rest of the day.
+  const inSets = new Set(sets.flatMap((s) => s.rows.map((r) => r.name)));
+  const loose = dishes.filter((d) => !inSets.has(d.name));
 
   // Only what can be costed counts towards the average — a dish with no
   // recipe would otherwise drag the shop's margin around for no reason.
   const costed = [
     ...sets.filter((s) => s.cost != null && s.sale),
-    ...dishes.filter((d) => d.cost != null && d.sale),
+    ...loose.filter((d) => d.cost != null && d.sale),
   ];
   const avg = costed.length
     ? Math.round(costed.reduce((n, x) => n + marginOf(x.cost, x.sale), 0) / costed.length)
     : null;
+
+  /* What is actually inside the set, line by line. The set's own figure is an
+     average across these, so without them a bad margin says nothing about
+     which dish caused it. */
+  const inner = (rows) => !rows.length ? "" : `
+    <div style="margin-top:9px;border-top:1px solid #f2ece6;padding-top:6px">
+      ${rows.map((r) => {
+        const mg = marginOf(r.cost, r.sale);
+        return `<div style="display:flex;gap:8px;align-items:baseline;padding:4px 0;font-size:11.5px;border-bottom:1px solid #f7f3ef">
+          <span style="flex:1;min-width:0">
+            <span style="font-weight:600">${esc(r.name)}</span>
+            ${r.nameSi ? `<span class="si" style="display:block;font-size:10px;line-height:1.2">${esc(r.nameSi)}</span>` : ""}
+            ${r.cost == null ? `<span class="sub" style="display:block;font-size:9.5px">no recipe in the book</span>`
+              : r.missing.length ? `<span class="sub" style="display:block;font-size:9.5px">no price held for ${esc(r.missing.slice(0, 3).join(", "))}</span>` : ""}
+          </span>
+          <span style="flex:0 0 auto;text-align:right;line-height:1.35">
+            <span class="sub" style="display:block;font-size:10px">cost ${r.cost == null ? "—" : "LKR " + r.cost.toLocaleString()}</span>
+            <span style="display:block;font-size:10.5px;font-weight:700;color:${mg == null ? "#8a827b" : mg < 30 ? "#b3261e" : "#1d7a34"}">
+              ${r.sale ? "sells LKR " + r.sale.toLocaleString() : "not priced"}${mg == null ? "" : " · " + mg + "%"}</span>
+          </span>
+        </div>`;
+      }).join("")}
+    </div>`;
 
   const setCards = sets.map((s) => row(
     s.label, `Set menu · pick ${s.pick}`, s.cost, s.sale,
     `${s.costed} of ${s.of} priced from the recipe book`
     + (s.pick > 1 ? ` · cost is the average of the choices × ${s.pick}` : "")
     + (s.fixedPrice ? " · you set this set's price" : " · priced by the dish picked"),
+    inner(s.rows),
   )).join("");
 
-  // A dish inside a set is already counted there; this is the rest of the day.
-  const inSets = new Set(sets.flatMap((s) => s.rows.map((r) => r.name)));
-  const loose = dishes.filter((d) => !inSets.has(d.name));
   const dishCards = loose.map((d) => row(
     d.name, "Single dish", d.cost, d.sale,
     d.cost == null
