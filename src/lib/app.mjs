@@ -3673,6 +3673,9 @@ export async function handleApp(req, res, url) {
           "Salads, Sambols & Relishes": "Side dishes",
           "Sri Lankan Cakes & Sweets": "Dessert",
           "Bread, Buns & Beer Snacks": "Side dishes",
+          // Anything we cannot place, arriving as a numbered list under the
+          // rice and the meat, is what a Sri Lankan menu calls side dishes.
+          "Mixed, Fusion & Street Food": "Side dishes",
         }[top] || "");
         if (label && wanted && wanted !== "Menu") renamed.push({ from: wanted, to: label });
       }

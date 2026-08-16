@@ -103,9 +103,9 @@ export function guessCategory(name) {
   // Rice is named by its variety as often as by the word "rice".
   if (/\b(rice|bath|samba|sambaa|ponni|nadu|keeri|kekulu|basmathi|basmati|biryani|buriyani|kottu|noodle|string hopper|idiyappa|pittu|hopper|appa)\b/.test(s)) return "Rice & Staples";
   if (/chicken|pork|beef|mutton|fish|prawn|shrimp|squid|crab|cuttle|egg|malu|mas\b/.test(s)) return "Meat & Seafood Curries";
-  if (/sambol|sambal|salad|mallu|mallum|achcharu|pickle|chutney/.test(s)) return "Salads, Sambols & Relishes";
   if (/roti|paratha|bun|bread|paan|vadai|cutlet|patty|roll/.test(s)) return "Bread, Buns & Beer Snacks";
-  if (/curry|kariya|hodi|hoddi|dhal|parippu|polos|kos|bean|beetroot|pumpkin|cabbage|potato|jack|gotukola|leek|carrot|okra|brinjal|cashew/.test(s)) return "Vegetable Curries";
+  if (/sambol|sambal|salad|mallu|mallum|mellung|mallung|moju|achcharu|pickle|chutney/.test(s)) return "Salads, Sambols & Relishes";
+  if (/curry|kariya|hodi|hoddi|thelata|temperate|tempered|dhal|parippu|polos|kos|bean|beetroot|pumpkin|cabbage|potato|jack|gotukola|leek|carrot|okra|brinjal|cashew|mushroom|banana blo|banana flower|kesel|drumstick|muringa|murunga|lotus|ash plantain|soya|spinach|kankun|mukunuwenna/.test(s)) return "Vegetable Curries";
   return "Mixed, Fusion & Street Food";
 }
 
