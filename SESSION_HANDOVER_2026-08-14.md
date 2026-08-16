@@ -181,3 +181,42 @@ were safe in `ai_feed_podcast_tmp` and the newsroom session renamed it back.
 5. **`2+4` / `1+1` / `3+4`** on 9 Aug Lunch are placeholder set names Gamini
    made while testing; he said their contents are wrong but never said what
    they should be. Ask before touching.
+6. **Gemini spend cap** — the shared `GEMINI_API_KEY` (same key locally and on
+   Railway) returns **429 RESOURCE_EXHAUSTED, "project has exceeded its
+   monthly spending cap"** as of 16 Aug. Raise it at <https://ai.studio/spend>.
+   Until then Paste-a-menu (§8) reads with its rules parser, and the daily
+   recipe cron will be failing too.
+
+---
+
+## 8. Paste a menu — 16 Aug
+
+`src/lib/ai-menu-paste.mjs` + `POST /app/owner/:id/menu/paste.json`, opened
+from **📋 Paste menu text…** under Pick combo (and, for a shop with nothing
+listed, from a standalone card that replaces the old "Add some dishes first").
+
+The owner pastes the day the way they'd send it on WhatsApp. Headings become
+sets, lines become dishes, `select 04 item's` becomes pick 4, `5$` becomes
+LKR 1,500 (USD_LKR = 300, the same rate `money()` uses). A dish the catalogue
+has never heard of is **created in `lanka_dishes`** (`source: "owner-paste"`)
+so the next shop finds it, then pulled onto this shop at the pasted price.
+The result merges into the builder and autosaves — sets already there keep
+their dishes and gain the new ones.
+
+Guards worth knowing:
+- Set names stay in the closed list. A heading matches a preset or one of the
+  shop's three, within two characters of slop (`nearName`, so "Rise Set" is
+  "Rice set" and "Dessert" reuses their "Desert"). A heading longer than 28
+  chars or 4 words is a sentence, not a name — its dishes still go on the day,
+  and the response reports it in `unplaced`.
+- A loose index (lowercased, "curry" dropped) reuses catalogue entries rather
+  than creating near-duplicates: "Beetroot" → Beetroot Curry, "Coconut sambal"
+  → Coconut Sambal, arriving with their Sinhala names and suggested prices.
+- `guessCategory()` shelves a genuinely new dish by name when the AI can't.
+
+Verified live on the demo shop (Ceylon Kitchen Colombo) end to end — empty
+shop → paste → 13 dishes + 3 sets saved → second paste merged Beef Curry into
+Meat Combo and added Special menu → green "4 sets · 16 dishes saved". Test
+data removed afterwards; the six real dishes it created (Ponni samba white
+rice, Chick pea and Cashew mix curry, Bean, Baby jack curry, Jew plum curry,
+Watalappan) were kept in the catalogue.
