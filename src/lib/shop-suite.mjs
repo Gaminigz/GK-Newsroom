@@ -1691,11 +1691,15 @@ function menuPage(shop, extras = {}) {
           + j.loose + ' dish' + (j.loose === 1 ? '' : 'es') + ' went on the day without a set — '
           + 'find them under <strong>Dish</strong>, or drop them into a set with Pick combo.</div>';
       }
+      if (j.garbled) {
+        out += '<div style="font-size:10.5px;margin-top:6px;line-height:1.4;color:#b3261e">'
+          + j.garbled + ' line' + (j.garbled === 1 ? '' : 's') + ' arrived with broken Sinhala '
+          + '(‡∂¥ instead of පො), so the Sinhala was dropped — the English name is fine. '
+          + 'It happens when the text crosses a computer that mangles it; copy it again '
+          + 'from the phone rather than retyping.</div>';
+      }
       if (j.note) {
         out += '<div class="sub" style="font-size:10.5px;margin-top:6px;line-height:1.4">Not a dish, so left out: ' + esc(j.note) + '</div>';
-      }
-      if (j.source === 'rules') {
-        out += '<div class="sub" style="font-size:10px;margin-top:6px;line-height:1.4">Read without AI this time, so check the sets below.</div>';
       }
       document.getElementById('pasteResult').innerHTML = out;
 

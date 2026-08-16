@@ -3353,7 +3353,7 @@ export async function handleApp(req, res, url) {
       return;
     }
     const { SET_PRESET_NAMES, CUSTOM_SET_LIMIT, posCategoryFor } = await import("./shop-suite.mjs");
-    const { parseMenuText, priceToLkr, matchSetName, guessCategory } = await import("./ai-menu-paste.mjs");
+    const { parseMenuText, priceToLkr, matchSetName, guessCategory } = await import("./menu-paste.mjs");
     const owners = await col("shop_owners");
     const shop = await owners.findOne({ _id: shopOid }, { projection: { customSetTypes: 1 } });
     let customTypes = (shop?.customSetTypes || []).map(String);
@@ -3374,11 +3374,16 @@ export async function handleApp(req, res, url) {
     const loose = (s) => String(s || "").toLowerCase()
       .replace(/\b(curry|curries)\b/g, "").replace(/[^a-z0-9]/g, "");
     const byLoose = new Map();
+    // And on the Sinhala name, so a line written only in Sinhala finds the
+    // dish the catalogue already has instead of creating it again.
+    const bySi = new Map();
     for (const d of [...feedBakery, ...feedDishes]) {
       const k = String(d.name || "").trim().toLowerCase();
       if (k && !byName.has(k)) byName.set(k, d);
       const l = loose(d.name);
       if (l && !byLoose.has(l)) byLoose.set(l, d);
+      const si = String(d.nameSi || "").replace(/\s+/g, "");
+      if (si && !bySi.has(si)) bySi.set(si, d);
     }
     const CATEGORIES = [
       "Rice & Staples", "Vegetable Curries", "Meat & Seafood Curries",
@@ -3386,11 +3391,7 @@ export async function handleApp(req, res, url) {
       "Bread, Buns & Beer Snacks", "Mixed, Fusion & Street Food",
       "Bakery & Canteen Classics", "Sri Lankan Cakes & Sweets",
     ];
-    const parsed = await parseMenuText(text, {
-      setTypes: [...SET_PRESET_NAMES, ...customTypes],
-      categories: CATEGORIES,
-      catalogue: [...byName.values()].map((d) => d.name),
-    });
+    const parsed = parseMenuText(text, { setTypes: [...SET_PRESET_NAMES, ...customTypes] });
     if (!parsed.ok) {
       res.writeHead(400, { "Content-Type": "application/json" })
         .end(JSON.stringify({ ok: false, error: parsed.error || "could not read that" }));
@@ -3417,7 +3418,9 @@ export async function handleApp(req, res, url) {
       const wanted = String(d.match || "").trim().toLowerCase();
       const own = String(d.name || "").trim().toLowerCase();
       const hit = (wanted && (byName.get(wanted) || byLoose.get(loose(wanted))))
-        || byName.get(own) || byLoose.get(loose(d.name));
+        || byName.get(own) || byLoose.get(loose(d.name))
+        || bySi.get(String(d.nameSi || "").replace(/\s+/g, ""))
+        || bySi.get(String(d.name || "").replace(/\s+/g, ""));
       if (hit) return hit;
       const category = CATEGORIES.includes(d.category) ? d.category : guessCategory(d.name);
       const priceLkr = priceToLkr(d.priceText);
@@ -3515,6 +3518,7 @@ export async function handleApp(req, res, url) {
     res.end(JSON.stringify({
       ok: true, source: parsed.source, meal: menu.meal || "", day: menu.day || "",
       note: menu.note || "", groups: outGroups, dishIds, loose: looseDishes,
+      garbled: menu.garbled || 0,
       created, added, newTypes, unplaced,
       setsInUse: customTypes,
       slotsLeft: Math.max(0, CUSTOM_SET_LIMIT - customTypes.length),
