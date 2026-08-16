@@ -576,7 +576,7 @@ function una5ahaInfoPage() {
           </div>
         </div>
         <div class="u5-overlay">
-          <h2><em>3</em>una <em>5</em>aha App · තුන පහ ඇප්</h2>
+          <h2><em>3</em>una <em>5</em>aha App · තුන පහ APP</h2>
           <div class="si">Find Sri Lankan restaurants and home cooking near you</div>
           <div class="tagline">A non-commercial community app where Sri Lankan restaurants and home cooks post their dishes, deals and daily activities — so travellers anywhere in the world can find Sri Lankan dishes nearby.</div>
           <div class="u5-btnrow">
@@ -591,7 +591,7 @@ function una5ahaInfoPage() {
     <div class="u5-right">
       <div class="eyebrow">3una 5aha · තුන පහ</div>
       <h1>🧳✈️ Craving Sri Lankan dishes?</h1>
-      <p class="u5-si-sub">ගෙදර උයලවගේ කෑම කමුද?<br><span class="u5-si-body">ලෝකයේ කොහේ සිටියත්, ළඟම ඇති ශ්‍රී ලාංකික ආහාර සොයාගන්න — අපගේ ඇප් එකෙන්.</span></p>
+      <p class="u5-si-sub">ගෙදර උයලවගේ කෑම කමුද?<br><span class="u5-si-body">ලෝකයේ කොහේ සිටියත්, ළඟම ඇති ශ්‍රී ලාංකික ආහාර සොයාගන්න — අපගේ APP එකෙන්.</span></p>
       <p class="lead">Our app brings it all together — no matter where you are, you'll be connected to the nearest place serving authentic Sri Lankan dishes.</p>
       <div class="u5-reminder">
         <div class="u5-rtitle">⚠️ Reminder</div>
