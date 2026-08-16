@@ -188,7 +188,20 @@ function readMenu(raw, opts = {}) {
   }
 
   let lastDish = null;
+  let pendingChoice = null;
   for (const line of queue) {
+    // The Sinhala half of a choice line: "කුකුල් මස් හෝ ඌරු මස්" names the two
+    // dishes just made from "Chicken or pork".
+    if (pendingChoice && !/[A-Za-z]/.test(line) && SI.test(line)) {
+      const halves = line.split(/\s+හෝ\s+|\s*\/\s*/);
+      if (halves.length === 2) {
+        pendingChoice.dishes[0].nameSi = halves[0].trim().slice(0, 120);
+        pendingChoice.dishes[1].nameSi = halves[1].trim().slice(0, 120);
+      }
+      pendingChoice = null;
+      continue;
+    }
+    pendingChoice = null;
     // Sinhala on its own line, right under a dish, is that dish's Sinhala
     // name — plenty of owners write the two languages on separate lines
     // instead of either side of a slash. Making it a dish of its own put
@@ -227,6 +240,20 @@ function readMenu(raw, opts = {}) {
       continue;
     }
     lastDish = null;
+    // "Chicken or pork" — a choice written as one line, with no dishes under
+    // it. It is not a heading, it is the set: two dishes, pick one. The
+    // Sinhala under it ("කුකුල් මස් හෝ ඌරු මස්") splits the same way.
+    const choice = line.length <= 46 && !hasPrice(line) && line.match(/^(.{2,24}?)\s+or\s+(.{2,24})$/i);
+    if (choice && !matchSetName(setTypes, line)) {
+      cur = { name: "Menu", setType: "", pick: 1, priceText: "", dishes: [
+        { name: clean(choice[1]).slice(0, 80), nameSi: "", priceText: "", category: "", match: "" },
+        { name: clean(choice[2]).slice(0, 80), nameSi: "", priceText: "", category: "", match: "" },
+      ] };
+      groups.push(cur);
+      lastDish = null;
+      pendingChoice = cur;      // its Sinhala, if any, arrives on the next line
+      continue;
+    }
     // A heading: short, and not a sentence about the shop.
     if (line.length <= 46 && !/[.!?]$/.test(line)) {
       const pick = pickCount(line);
