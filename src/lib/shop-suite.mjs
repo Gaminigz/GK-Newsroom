@@ -2014,8 +2014,15 @@ function costsPage(shop, extras = {}) {
           <!-- How many the kitchen is cooking today, and what that costs. -->
           <div style="display:flex;gap:8px;align-items:center;margin-top:7px;font-size:12px;flex-wrap:wrap">
             <span class="sub">portions</span>
-            <input type="number" inputmode="numeric" min="0" max="9999" class="portionBox" data-id="${esc(r.id)}" value="${r.portions || ""}"
-              placeholder="0" style="margin:0;width:88px;padding:9px 8px;font-size:16px;font-weight:700;text-align:center;border-radius:10px">
+            <!-- Thumb-sized steppers: a cook counts up in ones with wet hands,
+                 not by tapping into a keyboard. -->
+            <button type="button" class="stepBtn" data-id="${esc(r.id)}" data-step="-1"
+              style="flex:0 0 auto;width:42px;height:42px;border:1px solid #e0d6cc;background:#fff;border-radius:12px;font-size:22px;font-weight:700;line-height:1;color:#4a443f;cursor:pointer;padding:0">−</button>
+            <input type="number" inputmode="numeric" min="0" max="9999" class="portionBox" data-id="${esc(r.id)}"
+              data-cost="${r.cost == null ? "" : r.cost}" value="${r.portions || ""}"
+              placeholder="0" style="margin:0;width:76px;padding:9px 6px;font-size:17px;font-weight:700;text-align:center;border-radius:10px">
+            <button type="button" class="stepBtn" data-id="${esc(r.id)}" data-step="1"
+              style="flex:0 0 auto;width:42px;height:42px;border:0;background:${ORANGE};color:#fff;border-radius:12px;font-size:22px;font-weight:700;line-height:1;cursor:pointer;padding:0">+</button>
             <span id="tot-${esc(r.id)}" style="font-weight:700;font-size:13.5px;color:#4a443f">${total == null ? "" : "= LKR " + total.toLocaleString()}</span>
             <span style="flex:1"></span>
             ${r.lines.length ? `<button type="button" class="ingToggle" data-id="${esc(r.id)}" style="border:1px solid #e3d6c2;background:#fff;border-radius:99px;padding:7px 14px;font-size:12px;cursor:pointer;color:${ORANGE};font-weight:700">prices</button>` : ""}
@@ -2121,14 +2128,36 @@ function costsPage(shop, extras = {}) {
     });
 
     /* Portions cooked today. Saved on the plan for this date and meal, so
-       tomorrow starts clean. */
-    document.querySelectorAll('.portionBox').forEach(function(inp){
-      inp.addEventListener('change', function(){
+       tomorrow starts clean. The total beside the box is worked out here —
+       portions don't change any set's per-serving figure, so tapping + never
+       reloads the page out from under you. */
+    var saveTimers = {};
+    function paintTotal(inp){
+      var out = document.getElementById('tot-' + inp.dataset.id);
+      if (!out) return;
+      var cost = Number(inp.dataset.cost), n = Number(inp.value) || 0;
+      out.textContent = (!cost || !n) ? '' : '= LKR ' + (cost * n).toLocaleString();
+    }
+    function savePortions(inp){
+      paintTotal(inp);
+      clearTimeout(saveTimers[inp.dataset.id]);
+      saveTimers[inp.dataset.id] = setTimeout(function(){
         fetch('/app/owner/${id}/costs/portions.json', {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({date:'${esc(date)}', meal:'${esc(meal)}', dishId: inp.dataset.id, portions: inp.value}),
-        }).then(function(r){ return r.json(); }).then(function(){ location.reload(); })
-          .catch(function(){ /* the number is still typed in */ });
+        }).catch(function(){ /* the number is still on screen */ });
+      }, 600);
+    }
+    document.querySelectorAll('.portionBox').forEach(function(inp){
+      inp.addEventListener('change', function(){ savePortions(inp); });
+      inp.addEventListener('input', function(){ paintTotal(inp); });
+    });
+    document.querySelectorAll('.stepBtn').forEach(function(b){
+      b.addEventListener('click', function(){
+        var inp = document.querySelector('.portionBox[data-id="' + b.dataset.id + '"]');
+        if (!inp) return;
+        inp.value = Math.max(0, Math.min(9999, (Number(inp.value) || 0) + Number(b.dataset.step)));
+        savePortions(inp);
       });
     });
 
