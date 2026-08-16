@@ -590,7 +590,7 @@ function una5ahaInfoPage() {
     <div class="u5-right">
       <div class="eyebrow">3una 5aha · තුන පහ</div>
       <h1>🧳✈️ Craving Sri Lankan dishes?</h1>
-      <p class="u5-si-sub">ගෙදර උයාපු වගේ කෑම කනවද? <span style="opacity:.6">(gedhara uyalawage kama kamuda)</span></p>
+      <p class="u5-si-sub">ගෙදර උයලවගේ කෑම කමුද?</p>
       <p class="lead">Our app brings it all together — no matter where you are, you'll be connected to the nearest place serving authentic Sri Lankan dishes.</p>
       <div class="u5-reminder">
         <div class="u5-rtitle">⚠️ Reminder</div>
