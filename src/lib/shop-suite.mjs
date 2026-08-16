@@ -795,6 +795,11 @@ function menuPage(shop, extras = {}) {
       (function(){
         var go = document.getElementById('emptyPasteGo');
         var msg = document.getElementById('emptyPasteMsg');
+        // Same as the panel: WebKit restores the field on reload, and broken
+        // Sinhala restored over and over looks like the app's doing.
+        var box = document.getElementById('emptyPasteText');
+        var marks = (box.value.match(/[‡†∂∑ΩÎÄâÃ¬Â]/g) || []).length;
+        if (box.value && marks >= 3 && marks / box.value.length > 0.1) box.value = '';
         go.addEventListener('click', function(){
           var text = document.getElementById('emptyPasteText').value;
           if (!text.trim()) { msg.textContent = 'Paste the menu text first.'; return; }
@@ -1575,7 +1580,19 @@ function menuPage(shop, extras = {}) {
        to the server, which reads it, adds anything the shared dish list is
        missing, and hands back sets and dishes. They land in the builder
        unsaved-but-autosaving, so everything is still editable by hand. */
+    /* WKWebView puts back whatever was typed in a form when the page reloads.
+       Handy for a half-written menu, wrong for text that arrived with its
+       Sinhala already broken (‡∂¥ for පො) — that comes back every refresh and
+       looks like the app is doing it. Only that gets cleared. */
+    function clearIfGarbled(el){
+      if (!el || !el.value) return;
+      var marks = (el.value.match(/[‡†∂∑ΩÎÄâÃ¬Â]/g) || []).length;
+      if (marks >= 3 && marks / el.value.length > 0.1) el.value = '';
+    }
+    clearIfGarbled(document.getElementById('pasteText'));
+
     function openPaste(){
+      clearIfGarbled(document.getElementById('pasteText'));
       document.getElementById('pasteBackdrop').style.display = '';
       document.getElementById('pastePanel').style.display = 'flex';
       document.getElementById('pasteMsg').textContent = '';
