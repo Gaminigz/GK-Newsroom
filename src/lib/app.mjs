@@ -1186,9 +1186,13 @@ async function shopPage(id, extras = {}) {
   const nowMeal = mealNow();
   const dayPlan = await (await col("day_plans")).findOne({ shopId: String(shop._id), date: today, meal: nowMeal });
   const onDay = new Set((dayPlan?.dishIds || []).map(String));
+  // No plan for this meal? The buyer sees the shop's standing menu — but only
+  // the dishes it actually serves. `offMenu` is the owner's own list of things
+  // they keep on file and serve rarely; it stays out of the public view until
+  // they put it on a day.
   const dishes = dayPlan
     ? allDishes.filter((d) => onDay.has(String(d._id)))
-    : allDishes.filter((d) => mealsFor(d.window).includes(nowMeal));
+    : allDishes.filter((d) => !d.offMenu && mealsFor(d.window).includes(nowMeal));
 
   const dishRows = dishes
     .filter((d) => !d.special)
@@ -1638,7 +1642,7 @@ async function ownerDash(id, toast = "") {
           <span class="pill" style="position:absolute;top:7px;right:7px;background:#fff;border:1px solid #ece3da">✏️ Edit</span>
           ${d.special ? `<span class="pill deal" style="position:absolute;top:7px;left:7px">Special</span>` : ""}
           <div style="padding:8px 10px"><strong style="font-size:13px;line-height:1.3;display:block">${esc(d.name)}</strong>
-          <div class="sub" style="font-size:12px">${Number(d.price) > 0 ? shopPrice(shop, d.price) : `<strong style="color:#b3261e">No price — hidden from buyers</strong>`}${d.discount && d.discount !== "none" ? ` · <span style=\"color:${ORANGE}\">${esc(d.discount)}</span>` : ""}${d.category ? ` · <span style="color:#946200">${esc(d.category)}</span>` : ""}</div></div></a>`;
+          <div class="sub" style="font-size:12px">${Number(d.price) > 0 ? shopPrice(shop, d.price) : `<strong style="color:#b3261e">No price — hidden from buyers</strong>`}${d.discount && d.discount !== "none" ? ` · <span style=\"color:${ORANGE}\">${esc(d.discount)}</span>` : ""}${d.category ? ` · <span style="color:#946200">${esc(d.category)}</span>` : ""}${d.offMenu ? ` · <span style="color:#8a827b">off menu — add it to a day to serve it</span>` : ""}</div></div></a>`;
       }).join("")}
     </div>
     <script>
@@ -2415,7 +2419,7 @@ export async function handleApp(req, res, url) {
           const onDay = new Set((rawPlan.dishIds || []).map(String));
           return rest.filter((d) => onDay.has(String(d._id))).map(toDish);
         }
-        return rest.filter((d) => mealsFor(d.window).includes(nowMeal)).map(toDish);
+        return rest.filter((d) => !d.offMenu && mealsFor(d.window).includes(nowMeal)).map(toDish);
       })(),
       plan: plan && plan.groups.length ? plan : null,
     }));
@@ -3623,6 +3627,9 @@ export async function handleApp(req, res, url) {
     const dishIds = validIds.length
       ? (await dishesCol.find({ _id: { $in: validIds }, shopId: m[1] }).project({ _id: 1 }).toArray()).map((d) => String(d._id))
       : [];
+    // Putting a dish on a day is the owner saying they serve it — it comes
+    // back onto the standing menu buyers see when no plan is set.
+    if (validIds.length) await dishesCol.updateMany({ _id: { $in: validIds }, shopId: m[1] }, { $unset: { offMenu: "" } });
     await (await col("day_plans")).updateOne(
       { shopId: m[1], date, meal },
       { $set: { shopId: m[1], date, meal, groups, dishIds, updatedAt: new Date() },
@@ -3771,6 +3778,9 @@ export async function handleApp(req, res, url) {
         })),
       });
     }
+    // Putting a dish on a day is the owner saying they serve it — it comes
+    // back onto the standing menu buyers see when no plan is set.
+    if (validIds.length) await dishesCol.updateMany({ _id: { $in: validIds }, shopId: m[1] }, { $unset: { offMenu: "" } });
     await (await col("day_plans")).updateOne(
       { shopId: m[1], date, meal },
       { $set: { shopId: m[1], date, meal, groups, updatedAt: new Date() },
