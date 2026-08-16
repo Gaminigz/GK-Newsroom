@@ -3353,7 +3353,7 @@ export async function handleApp(req, res, url) {
       return;
     }
     const { SET_PRESET_NAMES, CUSTOM_SET_LIMIT, posCategoryFor } = await import("./shop-suite.mjs");
-    const { parseMenuText, priceToLkr, nearName } = await import("./ai-menu-paste.mjs");
+    const { parseMenuText, priceToLkr, nearName, guessCategory } = await import("./ai-menu-paste.mjs");
     const owners = await col("shop_owners");
     const shop = await owners.findOne({ _id: shopOid }, { projection: { customSetTypes: 1 } });
     let customTypes = (shop?.customSetTypes || []).map(String);
@@ -3419,7 +3419,7 @@ export async function handleApp(req, res, url) {
       const hit = (wanted && (byName.get(wanted) || byLoose.get(loose(wanted))))
         || byName.get(own) || byLoose.get(loose(d.name));
       if (hit) return hit;
-      const category = CATEGORIES.includes(d.category) ? d.category : "Mixed, Fusion & Street Food";
+      const category = CATEGORIES.includes(d.category) ? d.category : guessCategory(d.name);
       const priceLkr = priceToLkr(d.priceText);
       const doc = {
         _id: own, name: d.name, nameSi: d.nameSi || "", category,
