@@ -513,6 +513,7 @@ function una5ahaInfoPage() {
     .u5-store-icon.disabled svg { width:20px; height:20px; }
     .u5-right h1 { font-size:30px; letter-spacing:-.02em; color:#fff; margin-bottom:10px; }
     .u5-right .eyebrow { color:#e3b341; font-size:13px; font-weight:700; letter-spacing:.02em; text-transform:uppercase; margin-bottom:8px; }
+    .u5-si-sub { color:#e3b341; font-size:15px; margin-bottom:14px; }
     .u5-right p.lead { color:#c9d1d9; font-size:16px; line-height:1.6; margin-bottom:20px; }
     .u5-reminder { background:#3a2a0d; border:1px solid #6b4e12; border-radius:14px; padding:16px 18px; margin-bottom:24px; }
     .u5-reminder .u5-rtitle { color:#f5c453; font-weight:700; font-size:14px; margin-bottom:6px; }
@@ -562,6 +563,7 @@ function una5ahaInfoPage() {
     <div class="u5-right">
       <div class="eyebrow">3una 5aha · තුන පහ</div>
       <h1>🧳✈️ Craving Sri Lankan dishes?</h1>
+      <p class="u5-si-sub">ගෙදර උයාපු වගේ කෑම කනවද? <span style="opacity:.6">(gedhara uyalawage kama kamuda)</span></p>
       <p class="lead">Our app brings it all together — no matter where you are, you'll be connected to the nearest place serving authentic Sri Lankan dishes.</p>
       <div class="u5-reminder">
         <div class="u5-rtitle">⚠️ Reminder</div>
