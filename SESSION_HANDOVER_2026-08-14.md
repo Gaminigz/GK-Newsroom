@@ -183,15 +183,17 @@ were safe in `ai_feed_podcast_tmp` and the newsroom session renamed it back.
    they should be. Ask before touching.
 6. **Gemini spend cap** — the shared `GEMINI_API_KEY` (same key locally and on
    Railway) returns **429 RESOURCE_EXHAUSTED, "project has exceeded its
-   monthly spending cap"** as of 16 Aug. Raise it at <https://ai.studio/spend>.
-   Until then Paste-a-menu (§8) reads with its rules parser, and the daily
-   recipe cron will be failing too.
+   monthly spending cap"** as of 16 Aug. Paste-a-menu no longer touches it at
+   all (§8), but `src/lib/ai-dish.mjs` still does for recipe generation, so
+   the daily recipe cron is failing. Either raise it at
+   <https://ai.studio/spend> or move that offline too — Gamini's standing rule
+   is that app features belong in our own code, not behind someone's key.
 
 ---
 
 ## 8. Paste a menu — 16 Aug
 
-`src/lib/ai-menu-paste.mjs` + `POST /app/owner/:id/menu/paste.json`, opened
+`src/lib/menu-paste.mjs` + `POST /app/owner/:id/menu/paste.json`, opened
 from **📋 Paste menu text…** under Pick combo (and, for a shop with nothing
 listed, from a standalone card that replaces the old "Add some dishes first").
 
@@ -202,6 +204,16 @@ has never heard of is **created in `lanka_dishes`** (`source: "owner-paste"`)
 so the next shop finds it, then pulled onto this shop at the pasted price.
 The result merges into the builder and autosaves — sets already there keep
 their dishes and gain the new ones.
+
+**No AI API.** The reader is ours end to end — no `@google/genai`, no key, no
+network. Gamini's call, after the Gemini key's spend cap silently demoted every
+paste to the fallback. Everything it knows about menus is in that one file, so
+a wrong reading is a code fix here. It reads: `name / Sinhala`, `name Sinhala`
+with no slash, prices as `5$` / `Rs 950` / a bare `1200` at the end, list
+numbering including WhatsApp's invisible joiners, `select 04 item's` and
+`choose any three`, headings glued to their first dish, and headings written as
+sentences. Sinhala that lost its encoding in transit (`‡∂¥` for `පො`) is
+dropped rather than saved, so a bad paste can't pollute the shared catalogue.
 
 Guards worth knowing:
 - Set names stay in the closed list. A heading matches a preset or one of the
