@@ -3214,6 +3214,7 @@ export async function handleApp(req, res, url) {
     // reader.
     if (shop && m[2] === "costs") {
       const { catalogueRecipe, priceIngredient, libraryKeyFor, INGREDIENT_LIBRARY } = await import("./ai-dish.mjs");
+      const { guessCategory } = await import("./menu-paste.mjs");
       const today = new Date().toISOString().slice(0, 10);
       const qDate = String(url.searchParams.get("date") || "").slice(0, 10);
       const date = /^\d{4}-\d{2}-\d{2}$/.test(qDate) ? qDate : today;
