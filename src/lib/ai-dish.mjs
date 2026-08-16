@@ -45,8 +45,78 @@ function parseQty5(qty5) {
 /** Look up a dish in the catalogue and return a per-serving recipe in the
  *  same shape Gemini produces: { servings, ingredients:[{name,quantity,unit,notes}] }.
  *  Returns null if the dish isn't in the catalogue. */
+/** The catalogue is written in Sri Lankan names — a shop writes "Chicken
+ *  Curry", the recipe book says "Kukul Mas Curry". These are the pairs the
+ *  shops' own menus have thrown up; add to it when a dish shows NO RECIPE YET
+ *  that plainly has one. */
+const RECIPE_ALIAS = {
+  "chicken curry": "Kukul Mas Curry",
+  "chicken": "Kukul Mas Curry",
+  "pork curry": "Black Pork Curry",
+  "pork": "Black Pork Curry",
+  "beef curry": "Sri Lankan Beef Curry",
+  "beef": "Sri Lankan Beef Curry",
+  "beef bistake": "Sri Lankan Beef Curry",
+  "mutton": "Mutton Curry",
+  "dhal curry": "Parippu",
+  "dhal": "Parippu",
+  "dhal / parippu": "Parippu",
+  "coconut sambal": "Pol Sambol",
+  "coconut sambol": "Pol Sambol",
+  "gotukola salad": "Gotukola and Coconut Salad",
+  "gotukola sambol": "Gotukola Sambol",
+  "mukunuwenna mellung": "Mukunuwenna Sambol",
+  "mellung": "Cabbage Mallung",
+  "mallung": "Cabbage Mallung",
+  "baby jack curry": "Polos",
+  "polos": "Polos",
+  "jew plum curry": "Mango Curry",
+  "bean": "Green Bean Curry",
+  "green bean / bonchi": "Green Bean Curry",
+  "muringa curry": "Drumstick Curry",
+  "temperate lady finger": "Bandakka Curry",
+  "lady finger curry (bandakka)": "Bandakka Curry",
+  "temperate dry fish": "Dry Fish Curry",
+  "temperate tin fish": "Dry Fish Curry",
+  "tin fish salad": "Dry Fish Curry",
+  "bitter gourd salad": "Bitter Gourd Curry",
+  "spongaud curry": "Luffa Curry",
+  "mix vegetables curry": "Mixed Fried Rice",
+  "fried papadam and dry chilli": "Papadum Bites",
+  "temperate small shrimp": "Prawn Curry",
+  "shrimp curry": "Prawn Curry",
+  "soya meat curry": "Mushroom Curry",
+  "potato curry": "Potato White Curry",
+  "temperate potato": "Ala Theldala",
+  "basmathi yellow rice": "Yellow Rice and Curry",
+  "yellow rice": "Yellow Rice and Curry",
+  "fried rice": "Mixed Fried Rice",
+  "ponni samba white rice": "Ghee Rice",
+  "ponni sambaa white rice": "Ghee Rice",
+  "basmathi white rice": "Ghee Rice",
+  "ponni sambaa": "Ghee Rice",
+  "string hoppers": "String Hoppers with Curry",
+  "watalappan": "Watalappam",
+};
+
+/** Loose key: lowercase, without the words that decorate a dish name. */
+function looseKey(name) {
+  return String(name || "").toLowerCase()
+    .replace(/\([^)]*\)/g, "")
+    .replace(/\b(curry|curries|salad|dish|fresh|homemade)\b/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+const CATALOGUE_BY_LOOSE = new Map(
+  SPICES.filter((s) => Array.isArray(s.ingredients) && s.ingredients.length)
+    .map((s) => [looseKey(s.name), s]),
+);
+
 export function catalogueRecipe(dishName) {
-  const s = CATALOGUE_BY_NAME.get(String(dishName || "").trim().toLowerCase());
+  const raw = String(dishName || "").trim().toLowerCase();
+  const alias = RECIPE_ALIAS[raw];
+  const s = CATALOGUE_BY_NAME.get(raw)
+    || (alias && CATALOGUE_BY_NAME.get(alias.toLowerCase()))
+    || CATALOGUE_BY_LOOSE.get(looseKey(dishName));
   if (!s) return null;
   const ingredients = s.ingredients.map((ing) => {
     const { quantity, unit } = parseQty5(ing.qty5);
@@ -213,18 +283,65 @@ export async function generateRecipe(dishName, mongoCollection) {
 
 /** Look up an ingredient in the price library and compute its LKR cost.
  *  Returns { lkr, matched } where matched is the library key used (or null). */
+/** Recipes name an ingredient the way a cook would — "Chicken, curry-cut",
+ *  "Red onion, minced", "Fresh grated coconut". The price library is keyed on
+ *  the plain ingredient. Match on the longest library key the name contains,
+ *  so the cut and the preparation don't cost us the price. */
+const LIB_KEYS = Object.keys(INGREDIENT_LIBRARY).sort((a, b) => b.length - a.length);
+function libraryKeyFor(name) {
+  const s = String(name || "").toLowerCase().replace(/\([^)]*\)/g, " ");
+  if (INGREDIENT_LIBRARY[s.trim()]) return s.trim();
+  const head = s.split(/[,/]/)[0].trim();
+  if (INGREDIENT_LIBRARY[head]) return head;
+  for (const k of LIB_KEYS) {
+    const bare = k.replace(/\s*\([^)]*\)/, "").trim();
+    if (bare.length >= 3 && new RegExp("\\b" + bare.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "s?\\b").test(s)) return k;
+  }
+  return "";
+}
+
 export function priceIngredient(name, quantity, unit) {
-  const key = String(name || "").toLowerCase().trim();
+  const key = libraryKeyFor(name) || String(name || "").toLowerCase().trim();
   const entry = INGREDIENT_LIBRARY[key];
   if (!entry) return { lkr: null, matched: null };
-  const q = Number(quantity) || 0;
-  const u = String(unit || "").toLowerCase();
-  // Normalise so we compare like-for-like against entry.unit.
-  const unitMatch = (a, b) => a === b || (a === "g" && b === "100g") || (a === "ml" && b === "100ml") || (a === "piece" && b === "1 piece");
-  if (u === "g" && entry.unit === "100g") return { lkr: Math.round((q / 100) * entry.lkr * 10) / 10, matched: key };
-  if (u === "ml" && entry.unit === "100ml") return { lkr: Math.round((q / 100) * entry.lkr * 10) / 10, matched: key };
-  if (u === "g" && entry.unit === "10g") return { lkr: Math.round((q / 10) * entry.lkr * 10) / 10, matched: key };
-  if (u === "piece" && entry.unit === "1 piece") return { lkr: Math.round(q * entry.lkr * 10) / 10, matched: key };
-  if (unitMatch(u, entry.unit)) return { lkr: Math.round(q * entry.lkr * 10) / 10, matched: key };
-  return { lkr: null, matched: key }; // matched name but couldn't align units
+  const q = Number(quantity);
+  // "Salt — to taste" has no quantity. It is not missing a price; it costs
+  // next to nothing, so it should not make the whole dish uncostable.
+  if (!Number.isFinite(q) || q <= 0) return { lkr: 0, matched: key };
+
+  // Recipes are written the way a cook talks: kg, tbsp, cups, sprigs, "1
+  // large". Bring it all to grams, millilitres or pieces before pricing.
+  const u = String(unit || "").toLowerCase().trim();
+  const SPOON = { tbsp: 15, tablespoon: 15, tsp: 5, teaspoon: 5, cup: 200, cups: 200 };
+  const EACH = { sprig: 2, sprigs: 2, clove: 5, cloves: 5, stick: 3, sticks: 3, leaf: 1, leaves: 1, pod: 1, pods: 1 };
+  let grams = null, ml = null, pieces = null;
+  if (/^kgs?$|^kilo/.test(u)) grams = q * 1000;
+  else if (/^g$|^gram/.test(u)) grams = q;
+  else if (/^(l|litre|liter)s?$/.test(u)) ml = q * 1000;
+  else if (/^ml$|^millilit/.test(u)) ml = q;
+  else if (SPOON[u] != null) grams = q * SPOON[u];
+  else if (EACH[u] != null) grams = q * EACH[u];
+  else if (/piece|pcs?$|whole|large|medium|small|nos?$|^$/.test(u)) pieces = q;
+
+  const per = entry.unit;
+  if (grams != null) {
+    if (per === "100g") return { lkr: round1((grams / 100) * entry.lkr), matched: key };
+    if (per === "10g") return { lkr: round1((grams / 10) * entry.lkr), matched: key };
+    if (per === "100ml") return { lkr: round1((grams / 100) * entry.lkr), matched: key };
+    if (per === "1 piece") return { lkr: round1(Math.max(1, grams / 50) * entry.lkr), matched: key };
+  }
+  if (ml != null) {
+    if (per === "100ml" || per === "100g") return { lkr: round1((ml / 100) * entry.lkr), matched: key };
+    if (per === "10g") return { lkr: round1((ml / 10) * entry.lkr), matched: key };
+  }
+  if (pieces != null) {
+    if (per === "1 piece" || per === "1 slice") return { lkr: round1(pieces * entry.lkr), matched: key };
+    // "1 large onion" — about 150 g of it.
+    if (per === "100g") return { lkr: round1((pieces * 150 / 100) * entry.lkr), matched: key };
+    if (per === "10g") return { lkr: round1((pieces * 10 / 10) * entry.lkr), matched: key };
+  }
+  return { lkr: null, matched: key }; // known ingredient, unit we can't align
 }
+
+function round1(n) { return Math.round(n * 10) / 10; }
+

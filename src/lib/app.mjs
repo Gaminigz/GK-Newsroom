@@ -3238,6 +3238,9 @@ export async function handleApp(req, res, url) {
           if (p.lkr == null) missing.push(ing.name);
           else lkr += p.lkr;
         }
+        // Everything unpriced means we know nothing, not that it is free —
+        // a zero here would have shown as a 100% margin.
+        if (!lkr) return null;
         return { lkr: Math.round(lkr), missing, n: r.ingredients.length };
       };
 
