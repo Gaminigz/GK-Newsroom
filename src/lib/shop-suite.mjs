@@ -2023,10 +2023,12 @@ function costsPage(shop, extras = {}) {
               placeholder="0" style="margin:0;width:76px;padding:9px 6px;font-size:17px;font-weight:700;text-align:center;border-radius:10px">
             <button type="button" class="stepBtn" data-id="${esc(r.id)}" data-step="1"
               style="flex:0 0 auto;width:42px;height:42px;border:0;background:${ORANGE};color:#fff;border-radius:12px;font-size:22px;font-weight:700;line-height:1;cursor:pointer;padding:0">+</button>
-            <span id="tot-${esc(r.id)}" style="font-weight:700;font-size:13.5px;color:#4a443f">${total == null ? "" : "= LKR " + total.toLocaleString()}</span>
             <span style="flex:1"></span>
             ${r.lines.length ? `<button type="button" class="ingToggle" data-id="${esc(r.id)}" style="border:1px solid #e3d6c2;background:#fff;border-radius:99px;padding:7px 14px;font-size:12px;cursor:pointer;color:${ORANGE};font-weight:700">prices</button>` : ""}
           </div>
+          <!-- The run total sits under the counter, not beside it: on a phone
+               it wrapped onto its own line half the time anyway. -->
+          <div id="tot-${esc(r.id)}" style="font-weight:700;font-size:13.5px;color:#4a443f;margin-top:5px;min-height:16px">${total == null ? "" : "= LKR " + total.toLocaleString()}</div>
           ${r.lines.length ? `
           <!-- Every ingredient, with what we think it costs. Ours is only a
                starting figure; a price typed here is this shop's own. -->
