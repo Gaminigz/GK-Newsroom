@@ -1620,7 +1620,11 @@ function menuPage(shop, extras = {}) {
           if (g.price != null) plan[i].price = g.price;
         }
         (g.dishes || []).forEach(function(d){
-          if (plan[i].dishes.some(function(x){ return x.id === d.id; })) return;
+          var had = plan[i].dishes.filter(function(x){ return x.id === d.id; })[0];
+          // Already in the set: take the price from the paste. Writing "6$"
+          // for a dish that was 5$ has already changed it on the server, so
+          // leaving the old figure on screen would just look like it failed.
+          if (had) { had.price = Number(d.price) || 0; had.nameSi = d.nameSi || had.nameSi; return; }
           plan[i].dishes.push({id: d.id, name: d.name, nameSi: d.nameSi || '', price: Number(d.price) || 0});
         });
       });
@@ -1631,7 +1635,8 @@ function menuPage(shop, extras = {}) {
       // list so Dish mode and the pickers see them without a page reload.
       (j.groups || []).forEach(function(g){
         (g.dishes || []).forEach(function(d){
-          if (SHOP_DISHES.some(function(x){ return x.id === d.id; })) return;
+          var known = SHOP_DISHES.filter(function(x){ return x.id === d.id; })[0];
+          if (known) { known.price = Number(d.price) || 0; return; }
           SHOP_DISHES.push({id: d.id, name: d.name, nameSi: d.nameSi || '', price: Number(d.price) || 0, cat: '', meals: ['Breakfast','Lunch','Dinner'], own: true});
         });
       });
