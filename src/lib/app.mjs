@@ -3536,6 +3536,9 @@ export async function handleApp(req, res, url) {
       created, added, newTypes, unplaced,
       setsInUse: customTypes,
       slotsLeft: Math.max(0, CUSTOM_SET_LIMIT - customTypes.length),
+      // Which build answered. Without it, "is my fix live yet?" is guesswork —
+      // it cost an hour once.
+      build: (process.env.RAILWAY_GIT_COMMIT_SHA || "local").slice(0, 7),
     }));
     return;
   }
