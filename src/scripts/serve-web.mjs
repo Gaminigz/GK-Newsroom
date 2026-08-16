@@ -466,7 +466,7 @@ function landingPage() {
       <p>The daily Ai brief — fresh stories every morning at 5 AM, plus the podcast.</p>
       <span class="go">Open →</span>
     </a>
-    <a class="tile t-shop" href="/app">
+    <a class="tile t-shop" href="/3una5aha">
       <span class="icon"><img src="/assets/tile-shop.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display=''"><span style="display:none">${ICONS.shop}</span></span>
       <h2>Shop Owner</h2>
       <p>Manage your restaurant or home kitchen — dishes, orders, plan menu, stock.</p>
