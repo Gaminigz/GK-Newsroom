@@ -542,6 +542,10 @@ function una5ahaInfoPage() {
     .u5-reminder p { color:#e8d3a0; font-size:13.5px; line-height:1.55; }
     .u5-shopnote { color:#8b949e; font-size:12.5px; margin-top:10px; max-width:340px; }
     .u5-tags { color:#6b8fc9; font-size:12px; margin-top:16px; line-height:1.7; max-width:400px; }
+    .u5-contact { margin-top:20px; padding-top:16px; border-top:1px solid #ffffff1c; display:flex; flex-direction:column; gap:6px; }
+    .u5-contact .u5-ctitle { color:#8b949e; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.02em; margin-bottom:4px; }
+    .u5-contact a { color:#c9d1d9; font-size:13.5px; text-decoration:none; }
+    .u5-contact a:hover { color:#e3b341; text-decoration:underline; }
   </style>
   <a class="back" href="https://web-production-2b43c.up.railway.app/">← GK Newsroom</a>
   <div class="u5-wrap">
@@ -593,6 +597,12 @@ function una5ahaInfoPage() {
         <p>The app does not process any payments. Transactions are purely the responsibility of the users involved. We advise checking carefully via chat before making any payment.</p>
       </div>
       <div class="u5-shopnote">For restaurants and home cooks — use the <strong>Shop Owner</strong> button above. Once logged in, your shop management tools open inside the app (web view) — this page is informational only.</div>
+      <div class="u5-contact">
+        <div class="u5-ctitle">Support &amp; Contact</div>
+        <a href="mailto:gk.smart@ggmt.sg?subject=3una%205aha%20support">✉️ gk.smart@ggmt.sg</a>
+        <a href="https://t.me/GKSmartbiz" target="_blank" rel="noopener">✈️ Telegram · @GKSmartbiz</a>
+        <a href="https://wa.me/6585565977" target="_blank" rel="noopener">💬 WhatsApp · +65 8556 5977</a>
+      </div>
       <div class="u5-tags">#3una5aha #SriLankanFood #SriLankanRestaurants #HomeCooking #ශ්‍රීලාංකික​ආහාර #SriLankanDiaspora #FindFoodNearYou #TravelFood #SriLanka #CommunityApp</div>
     </div>
   </div>`,
