@@ -1121,8 +1121,58 @@ function sendAudio(req, res, buf) {
   }
 }
 
+// ── Reverse-proxy prefix support ────────────────────────────────────────────
+// ggmt.sg serves this app under /newsfeed through the IEWS server's proxy.
+// The proxy strips the prefix on the way in and announces it via
+// X-Forwarded-Prefix, so every route below keeps thinking in root paths.
+// This shim puts the prefix back on the way OUT — Location headers on
+// redirects, and root-relative URLs inside HTML. The URL rewrite keys on the
+// app's known top-level routes rather than any particular attribute, so
+// href/src/fetch()/CSS url() are all covered by one pattern, and links to
+// other sites or bare text are never touched. Direct visits (no header) are
+// completely unaffected.
+const PREFIX_ROUTES = "assets|ai|app|food|accounting|admin|leads|garments|podcast|healthz";
+function applyPrefixShim(req, res) {
+  const prefix = String(req.headers["x-forwarded-prefix"] || "").replace(/\/+$/, "");
+  if (!prefix || !/^\/[a-z0-9_-]+$/i.test(prefix)) return;
+  const reRoutes = new RegExp(`(["'(])/(${PREFIX_ROUTES})(?=[/"'?#)])`, "g");
+  const reHome = /(href=["'])\/(["'])/g;
+  let htmlHead = null; // [status, headers] deferred while we buffer HTML
+  const chunks = [];
+  const origWriteHead = res.writeHead.bind(res);
+  const origWrite = res.write.bind(res);
+  const origEnd = res.end.bind(res);
+  res.writeHead = (status, headers = {}) => {
+    if (typeof headers.Location === "string" && headers.Location.startsWith("/")) {
+      headers = { ...headers, Location: prefix + headers.Location };
+    }
+    if (String(headers["Content-Type"] || "").startsWith("text/html")) {
+      htmlHead = [status, { ...headers }];
+      delete htmlHead[1]["Content-Length"]; // recomputed after rewrite
+      return res;
+    }
+    return origWriteHead(status, headers);
+  };
+  res.write = (chunk, ...rest) => {
+    if (htmlHead) { chunks.push(Buffer.from(chunk)); return true; }
+    return origWrite(chunk, ...rest);
+  };
+  res.end = (chunk, ...rest) => {
+    if (!htmlHead) return origEnd(chunk, ...rest);
+    if (chunk) chunks.push(Buffer.from(chunk));
+    const html = Buffer.concat(chunks).toString("utf8")
+      .replace(reRoutes, `$1${prefix}/$2`)
+      .replace(reHome, `$1${prefix}/$2`);
+    const buf = Buffer.from(html, "utf8");
+    htmlHead[1]["Content-Length"] = buf.length;
+    origWriteHead(...htmlHead);
+    return origEnd(buf);
+  };
+}
+
 const server = http.createServer(async (req, res) => {
   try {
+    applyPrefixShim(req, res);
     const url = new URL(req.url, "http://x");
     const path = url.pathname;
 
