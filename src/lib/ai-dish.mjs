@@ -288,7 +288,7 @@ export async function generateRecipe(dishName, mongoCollection) {
  *  the plain ingredient. Match on the longest library key the name contains,
  *  so the cut and the preparation don't cost us the price. */
 const LIB_KEYS = Object.keys(INGREDIENT_LIBRARY).sort((a, b) => b.length - a.length);
-function libraryKeyFor(name) {
+export function libraryKeyFor(name) {
   const s = String(name || "").toLowerCase().replace(/\([^)]*\)/g, " ");
   if (INGREDIENT_LIBRARY[s.trim()]) return s.trim();
   const head = s.split(/[,/]/)[0].trim();
@@ -300,9 +300,12 @@ function libraryKeyFor(name) {
   return "";
 }
 
-export function priceIngredient(name, quantity, unit) {
+export function priceIngredient(name, quantity, unit, own = null) {
+  // `own` is the shop's own price list. Ingredients cost different money in
+  // different countries, so what the owner types always wins over ours.
   const key = libraryKeyFor(name) || String(name || "").toLowerCase().trim();
-  const entry = INGREDIENT_LIBRARY[key];
+  const mine = own && (own[key] || own[String(name || "").toLowerCase().trim()]);
+  const entry = mine || INGREDIENT_LIBRARY[key];
   if (!entry) return { lkr: null, matched: null };
   const q = Number(quantity);
   // "Salt — to taste" has no quantity. It is not missing a price; it costs

@@ -1979,18 +1979,43 @@ function costsPage(shop, extras = {}) {
     <div style="margin-top:9px;border-top:1px solid #f2ece6;padding-top:6px">
       ${rows.map((r) => {
         const mg = marginOf(r.cost, r.sale);
-        return `<div style="display:flex;gap:8px;align-items:baseline;padding:4px 0;font-size:11.5px;border-bottom:1px solid #f7f3ef">
-          <span style="flex:1;min-width:0">
-            <span style="font-weight:600">${esc(r.name)}</span>
-            ${r.nameSi ? `<span class="si" style="display:block;font-size:10px;line-height:1.2">${esc(r.nameSi)}</span>` : ""}
-            ${r.cost == null ? `<span class="sub" style="display:block;font-size:9.5px">no recipe in the book</span>`
-              : r.missing.length ? `<span class="sub" style="display:block;font-size:9.5px">no price held for ${esc(r.missing.slice(0, 3).join(", "))}</span>` : ""}
-          </span>
-          <span style="flex:0 0 auto;text-align:right;line-height:1.35">
-            <span class="sub" style="display:block;font-size:10px">cost ${r.cost == null ? "—" : "LKR " + r.cost.toLocaleString()}</span>
-            <span style="display:block;font-size:10.5px;font-weight:700;color:${mg == null ? "#8a827b" : mg < 30 ? "#b3261e" : "#1d7a34"}">
-              ${r.sale ? "sells LKR " + r.sale.toLocaleString() : "not priced"}${mg == null ? "" : " · " + mg + "%"}</span>
-          </span>
+        const total = r.cost != null && r.portions ? r.cost * r.portions : null;
+        return `<div style="padding:6px 0;border-bottom:1px solid #f7f3ef">
+          <div style="display:flex;gap:8px;align-items:baseline">
+            <span style="flex:1;min-width:0">
+              <span style="font-weight:600;font-size:11.5px">${esc(r.name)}</span>
+              ${r.nameSi ? `<span class="si" style="display:block;font-size:10px;line-height:1.2">${esc(r.nameSi)}</span>` : ""}
+            </span>
+            <span style="flex:0 0 auto;text-align:right;line-height:1.35">
+              <span class="sub" style="display:block;font-size:10px">cost ${r.cost == null ? "—" : "LKR " + r.cost.toLocaleString()} each</span>
+              <span style="display:block;font-size:10.5px;font-weight:700;color:${mg == null ? "#8a827b" : mg < 30 ? "#b3261e" : "#1d7a34"}">
+                ${r.sale ? "sells LKR " + r.sale.toLocaleString() : "not priced"}${mg == null ? "" : " · " + mg + "%"}</span>
+            </span>
+          </div>
+          <!-- How many the kitchen is cooking today, and what that costs. -->
+          <div style="display:flex;gap:6px;align-items:center;margin-top:5px;font-size:10.5px">
+            <span class="sub">portions</span>
+            <input type="number" min="0" max="9999" class="portionBox" data-id="${esc(r.id)}" value="${r.portions || ""}"
+              placeholder="0" style="margin:0;width:62px;padding:4px 6px;font-size:11px;text-align:center">
+            <span class="sub" id="tot-${esc(r.id)}" style="font-weight:700;color:#4a443f">${total == null ? "" : "= LKR " + total.toLocaleString()}</span>
+            <span style="flex:1"></span>
+            ${r.lines.length ? `<button type="button" class="ingToggle" data-id="${esc(r.id)}" style="border:1px solid #e3d6c2;background:#fff;border-radius:99px;padding:3px 9px;font-size:10px;cursor:pointer;color:${ORANGE};font-weight:700">prices</button>` : ""}
+          </div>
+          ${r.lines.length ? `
+          <!-- Every ingredient, with what we think it costs. Ours is only a
+               starting figure; a price typed here is this shop's own. -->
+          <div id="ing-${esc(r.id)}" style="display:none;margin-top:6px;background:#faf7f4;border-radius:9px;padding:7px 8px">
+            ${r.lines.map((l) => `
+              <div style="display:flex;gap:6px;align-items:center;padding:3px 0;font-size:10.5px">
+                <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                  title="${esc(l.name)}">${esc(l.name)}<span class="sub"> · ${l.qty == null ? "to taste" : esc(String(l.qty)) + " " + esc(l.unit || "")}</span></span>
+                <span class="sub" style="flex:0 0 auto">LKR</span>
+                <input type="number" min="0" class="rateBox" data-key="${esc(l.key)}" data-per="${esc(l.per)}" value="${l.rate == null ? "" : l.rate}"
+                  placeholder="?" style="margin:0;width:58px;padding:3px 5px;font-size:10.5px;text-align:center;${l.mine ? `border-color:${ORANGE};color:${ORANGE};font-weight:700` : ""}">
+                <span class="sub" style="flex:0 0 auto;width:44px">/${esc(l.per)}</span>
+              </div>`).join("")}
+            <div class="sub" style="font-size:9.5px;margin-top:4px;line-height:1.35">Type what you pay. Orange means it is your price, not ours. Clear the box to go back to ours.</div>
+          </div>` : ""}
         </div>`;
       }).join("")}
     </div>`;
@@ -2043,6 +2068,37 @@ function costsPage(shop, extras = {}) {
     <script>
     document.getElementById('costDate').addEventListener('change', function(){
       if (this.value) location.href = '/app/owner/${id}/suite/costs?date=' + this.value + '&meal=${esc(meal)}';
+    });
+
+    /* Show a dish's ingredients so their prices can be corrected. */
+    document.querySelectorAll('.ingToggle').forEach(function(b){
+      b.addEventListener('click', function(){
+        var box = document.getElementById('ing-' + b.dataset.id);
+        if (box) box.style.display = box.style.display === 'none' ? '' : 'none';
+      });
+    });
+
+    /* Portions cooked today. Saved on the plan for this date and meal, so
+       tomorrow starts clean. */
+    document.querySelectorAll('.portionBox').forEach(function(inp){
+      inp.addEventListener('change', function(){
+        fetch('/app/owner/${id}/costs/portions.json', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({date:'${esc(date)}', meal:'${esc(meal)}', dishId: inp.dataset.id, portions: inp.value}),
+        }).then(function(r){ return r.json(); }).then(function(){ location.reload(); })
+          .catch(function(){ /* the number is still typed in */ });
+      });
+    });
+
+    /* An ingredient price this shop pays. Blank clears it back to ours. */
+    document.querySelectorAll('.rateBox').forEach(function(inp){
+      inp.addEventListener('change', function(){
+        fetch('/app/owner/${id}/costs/price.json', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({key: inp.dataset.key, unit: inp.dataset.per, lkr: inp.value}),
+        }).then(function(r){ return r.json(); }).then(function(){ location.reload(); })
+          .catch(function(){});
+      });
     });
     </script>`);
 }

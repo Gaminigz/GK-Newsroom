@@ -3213,17 +3213,21 @@ export async function handleApp(req, res, url) {
     // library — so this works with no network and no AI, same as the menu
     // reader.
     if (shop && m[2] === "costs") {
-      const { catalogueRecipe, priceIngredient } = await import("./ai-dish.mjs");
+      const { catalogueRecipe, priceIngredient, libraryKeyFor, INGREDIENT_LIBRARY } = await import("./ai-dish.mjs");
       const today = new Date().toISOString().slice(0, 10);
       const qDate = String(url.searchParams.get("date") || "").slice(0, 10);
       const date = /^\d{4}-\d{2}-\d{2}$/.test(qDate) ? qDate : today;
       const qMeal = String(url.searchParams.get("meal") || "");
       const meal = MEALS.includes(qMeal) ? qMeal : mealNow();
-      const [plan, ownDishes] = await Promise.all([
+      const [plan, ownDishes, myPrices] = await Promise.all([
         (await col("day_plans")).findOne({ shopId: m[1], date, meal }),
         (await col("app_dishes")).find({ shopId: m[1] }).toArray(),
+        (await col("shop_prices")).find({ shopId: m[1] }).toArray(),
       ]);
       const byId = new Map(ownDishes.map((d) => [String(d._id), d]));
+      // The shop's own ingredient prices, keyed the same way the library is.
+      const own = Object.fromEntries(myPrices.map((p) => [p.key, { lkr: Number(p.lkr) || 0, unit: p.unit }]));
+      const portions = plan?.portions || {};
 
       /** What one serving costs to cook, in LKR, or null when the catalogue
        *  has no recipe for it. `missing` names the ingredients we hold no
@@ -3233,25 +3237,39 @@ export async function handleApp(req, res, url) {
         if (!r || !r.ingredients.length) return null;
         let lkr = 0;
         const missing = [];
+        // Every ingredient, so the owner can see and correct any price —
+        // not only the ones we happen to hold.
+        const lines = [];
         for (const ing of r.ingredients) {
-          const p = priceIngredient(ing.name, ing.quantity, ing.unit);
+          const p = priceIngredient(ing.name, ing.quantity, ing.unit, own);
+          const key = libraryKeyFor(ing.name) || String(ing.name).toLowerCase().trim();
+          const held = own[key] || INGREDIENT_LIBRARY[key] || null;
           if (p.lkr == null) missing.push(ing.name);
           else lkr += p.lkr;
+          lines.push({
+            name: ing.name, key,
+            qty: ing.quantity, unit: ing.unit,
+            lkr: p.lkr, mine: !!own[key],
+            rate: held ? held.lkr : null,
+            per: held ? held.unit : "100g",
+          });
         }
-        // Everything unpriced means we know nothing, not that it is free —
-        // a zero here would have shown as a 100% margin.
         if (!lkr) return null;
-        return { lkr: Math.round(lkr), missing, n: r.ingredients.length };
+        return { lkr: Math.round(lkr), missing, n: r.ingredients.length, lines };
       };
 
       const dishRow = (d) => {
         const c = costOf(d.name);
         return {
+          id: String(d._id),
           name: d.name, nameSi: d.nameSi || "",
           sale: Number(d.price) || 0,
           cost: c ? c.lkr : null,
           missing: c ? c.missing : [],
           ingredients: c ? c.n : 0,
+          lines: c ? c.lines : [],
+          // How many of this dish the kitchen is cooking today.
+          portions: Number(portions[String(d._id)]) || 0,
         };
       };
 
@@ -3410,6 +3428,50 @@ export async function handleApp(req, res, url) {
         ok: true, existed: false, id: String(ins.insertedId), name,
         nameSi: feed?.nameSi || "", price: finalPrice,
       }));
+    return;
+  }
+
+  // What an ingredient costs this shop. Prices differ country to country —
+  // ours is only a starting figure, and whatever the owner types wins.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/costs\/price\.json$/);
+  if (m && req.method === "POST") {
+    let body = {};
+    try { body = JSON.parse((await readBody(req, 1000)) || "{}"); } catch { /* bad json */ }
+    const key = String(body.key || "").trim().toLowerCase().slice(0, 60);
+    const unit = String(body.unit || "100g").trim().slice(0, 12);
+    const lkr = Math.max(0, Math.round(Number(body.lkr) || 0));
+    if (!key) {
+      res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: false, error: "which ingredient?" }));
+      return;
+    }
+    const col_ = await col("shop_prices");
+    if (!lkr) await col_.deleteOne({ shopId: m[1], key });   // cleared — back to ours
+    else await col_.updateOne({ shopId: m[1], key },
+      { $set: { shopId: m[1], key, lkr, unit, updatedAt: new Date() } }, { upsert: true });
+    res.writeHead(200, { "Content-Type": "application/json" })
+      .end(JSON.stringify({ ok: true, key, lkr, unit }));
+    return;
+  }
+
+  // How many of a dish the kitchen is cooking that day. Stored on the plan,
+  // so it belongs to the date and meal rather than to the dish for all time.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/costs\/portions\.json$/);
+  if (m && req.method === "POST") {
+    let body = {};
+    try { body = JSON.parse((await readBody(req, 1000)) || "{}"); } catch { /* bad json */ }
+    const date = String(body.date || "").slice(0, 10);
+    const meal = MEALS.includes(body.meal) ? body.meal : "Lunch";
+    const dishId = String(body.dishId || "").trim();
+    const n = Math.max(0, Math.min(9999, Math.round(Number(body.portions) || 0)));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^[a-f0-9]{24}$/.test(dishId)) {
+      res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: false, error: "bad request" }));
+      return;
+    }
+    const plans = await col("day_plans");
+    if (n) await plans.updateOne({ shopId: m[1], date, meal }, { $set: { [`portions.${dishId}`]: n } }, { upsert: true });
+    else await plans.updateOne({ shopId: m[1], date, meal }, { $unset: { [`portions.${dishId}`]: "" } });
+    res.writeHead(200, { "Content-Type": "application/json" })
+      .end(JSON.stringify({ ok: true, dishId, portions: n }));
     return;
   }
 
