@@ -3342,6 +3342,10 @@ export async function handleApp(req, res, url) {
     try { body = JSON.parse((await readBody(req, 20000)) || "{}"); } catch { /* bad json */ }
     const text = String(body.text || "").trim();
     const meal = MEALS.includes(body.meal) ? body.meal : "Lunch";
+    // The page sends the date it is showing. Nothing is written to the day
+    // here — the page saves that — so this only stamps the diagnostic log.
+    const qDate = String(body.date || "").slice(0, 10);
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(qDate) ? qDate : new Date().toISOString().slice(0, 10);
     if (!text) {
       res.writeHead(400, { "Content-Type": "application/json" })
         .end(JSON.stringify({ ok: false, error: "paste your menu text first" }));
