@@ -3239,6 +3239,69 @@ export async function handleApp(req, res, url) {
     if (shop && m[2] === "plan") {
       extras.presetDishes = await loadPresetDishes(await col("lanka_dishes"));
       extras.currency = currencyOf(shop);
+
+      // The same day and meal the Portion Plan is on. What a kitchen buys is
+      // decided by what it is cooking, so the shopping list is worked out
+      // from that day's portions rather than sitting in its own world.
+      const pDate = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get("date") || "")
+        ? url.searchParams.get("date") : new Date().toISOString().slice(0, 10);
+      const pMeal = MEALS.includes(url.searchParams.get("meal")) ? url.searchParams.get("meal") : "Lunch";
+      extras.date = pDate;
+      extras.meal = pMeal;
+      extras.meals = MEALS;
+
+      const pStrip = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(pDate + "T00:00:00Z");
+        d.setUTCDate(d.getUTCDate() + i - 1);
+        return d.toISOString().slice(0, 10);
+      });
+      const pNear = await (await col("day_plans"))
+        .find({ shopId: m[1], date: { $in: pStrip } }, { projection: { date: 1, meal: 1, groups: 1, dishIds: 1, portions: 1 } })
+        .toArray();
+      const pHas = (x) => (x.groups || []).length > 0 || (x.dishIds || []).length > 0;
+      extras.plannedMeals = pNear.filter((x) => x.date === pDate && pHas(x)).map((x) => x.meal);
+      extras.plannedDates = [...new Set(pNear.filter(pHas).map((x) => x.date))];
+
+      // Ingredients that day needs: every dish's recipe × the portions set on
+      // the Portion Plan, added up per ingredient.
+      const pPlan = pNear.find((x) => x.date === pDate && x.meal === pMeal);
+      extras.needed = [];
+      extras.neededFor = 0;
+      if (pPlan?.portions && Object.keys(pPlan.portions).length) {
+        const { catalogueRecipe } = await import("./ai-dish.mjs");
+        const pIds = (await Promise.all(Object.keys(pPlan.portions).map(oid))).filter(Boolean);
+        const pDishes = await (await col("app_dishes")).find({ _id: { $in: pIds } }).toArray();
+        const researched = await (await col("lanka_dishes"))
+          .find({ $or: [{ ingredients: { $exists: true, $ne: [] } }, { aliasOf: { $exists: true, $ne: "" } }] },
+            { projection: { name: 1, ingredients: 1, aliasOf: 1 } }).toArray();
+        const byName = new Map(researched.map((r) => [String(r.name || "").toLowerCase(), r]));
+        const tally = new Map();
+        for (const d of pDishes) {
+          const n = Number(pPlan.portions[String(d._id)]) || 0;
+          if (!n) continue;
+          extras.neededFor += n;
+          const doc = byName.get(String(d.name || "").toLowerCase());
+          const rec = doc?.ingredients?.length
+            ? { ingredients: doc.ingredients.map((i) => {
+                const mm = String(i.qty5 || "").trim().match(/^([\d.]+)\s*(.*)$/);
+                return { name: i.name, quantity: mm ? Number(mm[1]) / 5 : null, unit: mm ? mm[2].trim() : "" };
+              }) }
+            : catalogueRecipe(doc?.aliasOf || d.name);
+          if (!rec?.ingredients?.length) continue;
+          for (const ing of rec.ingredients) {
+            const q = Number(ing.quantity);
+            if (!Number.isFinite(q) || q <= 0) continue;   // "to taste" buys nothing
+            const key = `${String(ing.name).toLowerCase()}|${String(ing.unit || "").toLowerCase()}`;
+            const at = tally.get(key) || { name: ing.name, unit: ing.unit || "", qty: 0, dishes: [] };
+            at.qty += q * n;
+            if (!at.dishes.includes(d.name)) at.dishes.push(d.name);
+            tally.set(key, at);
+          }
+        }
+        extras.needed = [...tally.values()]
+          .map((x) => ({ ...x, qty: Math.round(x.qty * 100) / 100 }))
+          .sort((a, b) => b.dishes.length - a.dishes.length || a.name.localeCompare(b.name));
+      }
       // Items the owner flagged 🛒 in Kitchen Stock — surface at the top.
       extras.storeBuys = await (await col("kitchen_stock"))
         .find({ shopId: m[1], buyNext: true }).sort({ buyNextAt: -1 }).toArray();

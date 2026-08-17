@@ -74,7 +74,7 @@ export const SUITE_TILES = [
   { key: "kitchen", label: "In Kitchen", emoji: "👨‍🍳", real: (id) => `/app/owner/${id}/suite/kitchen` },
   { key: "menu", label: "Plan Menu", emoji: "🍱", real: (id) => `/app/owner/${id}/suite/menu` },
   { key: "costs", label: "Portion Plan", emoji: "🧮" },
-  { key: "plan", label: "Purchasing", emoji: "🧾", real: (id) => `/app/owner/${id}/suite/plan` },
+  { key: "plan", label: "Purchase Plan", emoji: "🧾", real: (id) => `/app/owner/${id}/suite/plan` },
   { key: "stock", label: "Kitchen stock", emoji: "📦", real: (id) => `/app/owner/${id}/suite/stock` },
   { key: "purchasing", label: "Buying & bills", emoji: "🛒", real: (id) => `/app/owner/${id}/suite/purchasing` },
   { key: "history", label: "Bill History", emoji: "🗂️", real: (id) => `/app/owner/${id}/suite/history` },
@@ -2899,10 +2899,81 @@ function planPage(shop, extras = {}) {
     </div>
     <div class="sub" style="font-size:11px;margin-top:10px">Add or remove items with the 🛒 button on each Kitchen Stock row.</div>` : emptyState;
 
-  return page(shop, "plan", "Purchasing", "මිලදී ගැනීම්", `
-    <div class="sub" style="font-size:12.5px;margin-top:8px">Items you flagged with 🛒 in Kitchen Stock — your shopping list, priced at what you paid last time.<br><span class="si">කුස්සි ගබඩාවේ 🛒 කරන ලද ද්‍රව්‍ය මෙතැන පෙන්වයි.</span></div>
-    <a href="/app/owner/${id}/market-prices" class="btn ghost" style="margin-top:10px;padding:9px 13px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;width:auto;text-decoration:none;border:1.5px solid ${ORANGE};color:${ORANGE};font-weight:700">📊 Market prices <span class="si" style="font-weight:400;font-size:11px">· වෙළඳ මිල</span></a>
-    ${list}`);
+  /* The same day, week and meal as the Portion Plan — what a kitchen buys is
+     decided by what it is cooking, so both screens sit on the same date. */
+  const pDate = extras.date || new Date().toISOString().slice(0, 10);
+  const pMeal = extras.meal || "Lunch";
+  const planMeals = extras.plannedMeals || [];
+  const planDates = extras.plannedDates || [];
+  const DOWP = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const shownP = new Date(pDate + "T00:00:00Z");
+  const todayP = new Date().toISOString().slice(0, 10);
+  const weekP = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(shownP);
+    d.setUTCDate(shownP.getUTCDate() + i - 1);
+    const iso = d.toISOString().slice(0, 10);
+    return { iso, dow: DOWP[d.getUTCDay()], day: d.getUTCDate(), today: iso === todayP };
+  });
+  const dayBar = `
+    <div style="margin-top:12px">
+      <div style="display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center">
+        <input type="date" id="planDate" value="${escS(pDate)}" style="margin:0;font-weight:700;font-size:13px">
+        <span class="sub" style="font-size:11px">${planMeals.includes(pMeal) ? `${escS(pMeal)} plan` : "no plan yet"}</span>
+      </div>
+      <div style="display:flex;gap:3px;margin-top:6px">
+        ${weekP.map((d) => `<a href="/app/owner/${id}/suite/plan?date=${d.iso}&meal=${escS(pMeal)}"
+          style="flex:1 1 0;text-decoration:none;text-align:center;border:${d.today && d.iso !== pDate ? `1.5px solid ${ORANGE}` : `1px solid ${d.iso === pDate ? "#191512" : "#e0d6cc"}`};
+          background:${d.iso === pDate ? "#191512" : "#fff"};color:${d.iso === pDate ? "#fff" : "#4a443f"};
+          border-radius:10px;padding:6px 2px;line-height:1.15">
+          <span style="display:block;font-size:9.5px;opacity:.75">${d.dow}</span>
+          <span style="display:block;font-size:13px;font-weight:700">${d.day}</span>
+          <span style="display:block;height:5px;margin-top:2px">${planDates.includes(d.iso) ? `<span style="display:inline-block;width:5px;height:5px;border-radius:99px;background:${d.iso === pDate ? "#fff" : ORANGE}"></span>` : ""}</span>
+        </a>`).join("")}
+      </div>
+      <div style="display:flex;gap:4px;margin-top:6px">
+        ${(extras.meals || ["Breakfast", "Lunch", "Dinner"]).map((mm) => `<a href="/app/owner/${id}/suite/plan?date=${escS(pDate)}&meal=${escS(mm)}" style="flex:1 1 0;text-decoration:none;border:1px solid #e0d6cc;background:${mm === pMeal ? "#191512" : "#fff"};color:${mm === pMeal ? "#fff" : "#4a443f"};border-radius:99px;padding:5px 4px 7px;font-size:12.5px;font-weight:700;text-align:center">
+          <span style="display:block;height:6px;line-height:6px">${planMeals.includes(mm) ? `<span style="display:inline-block;width:5px;height:5px;border-radius:99px;background:${mm === pMeal ? "#fff" : ORANGE}"></span>` : ""}</span>
+          ${escS(mm)}</a>`).join("")}
+      </div>
+    </div>`;
+
+  /* What that day actually needs: every dish's recipe multiplied by the
+     portions set on the Portion Plan. The 🛒 list below is the standing
+     shopping list; this is the run in front of you. */
+  const needed = extras.needed || [];
+  const needList = needed.length ? `
+    <div class="row" style="justify-content:space-between;margin-top:16px">
+      <strong style="font-size:14px">To cook ${extras.neededFor} portions <span class="si">අවශ්‍ය ද්‍රව්‍ය</span></strong>
+      <span class="sub" style="font-size:12px">${needed.length} ingredient${needed.length === 1 ? "" : "s"}</span>
+    </div>
+    <div class="card" style="margin-top:8px;padding:6px 12px">
+      ${needed.map((n) => `
+        <div style="display:flex;gap:8px;align-items:baseline;padding:7px 0;border-bottom:1px solid #f4efe9">
+          <span style="flex:1;min-width:0">
+            <strong style="font-size:12.5px">${escS(n.name)}</strong>
+            <span class="sub" style="display:block;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">for ${escS(n.dishes.slice(0, 3).join(", "))}${n.dishes.length > 3 ? ` +${n.dishes.length - 3}` : ""}</span>
+          </span>
+          <strong style="flex:0 0 auto;font-size:13px;color:${ORANGE};font-variant-numeric:tabular-nums">${n.qty.toLocaleString()} ${escS(n.unit)}</strong>
+        </div>`).join("")}
+    </div>
+    <div class="sub" style="font-size:10.5px;margin-top:6px">Worked out from the recipes and the portions you set on Portion Plan. "To taste" items are not counted.</div>`
+    : `<div class="card" style="margin-top:14px;padding:14px;text-align:center">
+        <strong style="display:block;font-size:13px">Nothing to work out yet</strong>
+        <p class="sub" style="font-size:12px;margin-top:5px;line-height:1.5">Set how many portions you are cooking on <strong>Portion Plan</strong> for this day and the ingredients you need appear here.<br><span class="si">කී දෙනෙකුට උයනවාද යන්න සඳහන් කළ පසු අවශ්‍ය ද්‍රව්‍ය මෙතැන පෙන්වයි.</span></p>
+        <a class="btn" style="margin-top:10px;padding:10px" href="/app/owner/${id}/suite/costs?date=${escS(pDate)}&meal=${escS(pMeal)}">Open Portion Plan</a>
+      </div>`;
+
+  return page(shop, "plan", "Purchase Plan", "මිලදී ගැනීම්", `
+    <div class="sub" style="font-size:12.5px;margin-top:8px">What the day's cooking needs, and the items you flagged with 🛒 in Kitchen Stock.<br><span class="si">දවසේ උයන්න අවශ්‍ය දේ සහ කුස්සි ගබඩාවේ 🛒 කරන ලද ද්‍රව්‍ය.</span></div>
+    ${dayBar}
+    ${needList}
+    <a href="/app/owner/${id}/market-prices" class="btn ghost" style="margin-top:14px;padding:9px 13px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;width:auto;text-decoration:none;border:1.5px solid ${ORANGE};color:${ORANGE};font-weight:700">📊 Market prices <span class="si" style="font-weight:400;font-size:11px">· වෙළඳ මිල</span></a>
+    ${list}
+    <script>
+      document.getElementById('planDate').addEventListener('change', function(){
+        if (this.value) location.href = '/app/owner/${id}/suite/plan?date=' + this.value + '&meal=${escS(pMeal)}';
+      });
+    </script>`);
 }
 
 export function marketPricesPage(shop, extras = {}) {
