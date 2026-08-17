@@ -72,7 +72,7 @@ export const SUITE_TILES = [
   // The QR a table is ordered from — the first thing a shop hands a customer,
   // so it opens the board rather than hiding in the header corner.
   { key: "qr", label: "Table QR", emoji: "▦", real: (id) => `/app/owner/${id}/qr` },
-  { key: "dishes", label: "Setup Daily Menu", emoji: "🍛", real: (id) => `/app/owner/${id}/dishes` },
+  { key: "dishes", label: "Shop Daily Menu", emoji: "🍛", real: (id) => `/app/owner/${id}/dishes` },
   { key: "pos", label: "POS", emoji: "💳", real: (id) => `/app/owner/${id}/suite/pos` },
   { key: "kitchen", label: "In Kitchen", emoji: "👨‍🍳", real: (id) => `/app/owner/${id}/suite/kitchen` },
   { key: "menu", label: "Plan Menu", emoji: "🍱", real: (id) => `/app/owner/${id}/suite/menu` },
