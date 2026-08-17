@@ -3268,7 +3268,7 @@ export async function handleApp(req, res, url) {
         return d.toISOString().slice(0, 10);
       });
       const pNear = await (await col("day_plans"))
-        .find({ shopId: m[1], date: { $in: pStrip } }, { projection: { date: 1, meal: 1, groups: 1, dishIds: 1, portions: 1 } })
+        .find({ shopId: m[1], date: { $in: pStrip } }, { projection: { date: 1, meal: 1, groups: 1, dishIds: 1, portions: 1, buyList: 1 } })
         .toArray();
       const pHas = (x) => (x.groups || []).length > 0 || (x.dishIds || []).length > 0;
       extras.plannedMeals = pNear.filter((x) => x.date === pDate && pHas(x)).map((x) => x.meal);
