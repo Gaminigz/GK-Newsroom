@@ -479,8 +479,8 @@ function kitchenPage(shop, extras = {}) {
   const DEFAULT_PREP_MIN = 20;
   const STATUS = {
     pending:   { label: "New",       badge: "#946200", bg: "#fdf3d7", border: "#efdba8", next: "preparing", nextLabel: `Start Preparing · ${DEFAULT_PREP_MIN}m` },
-    preparing: { label: "Preparing", badge: "#8b3a1f", bg: "#fdf0ec", border: "#e8a087", next: "done",      nextLabel: "Mark Ready" },
-    done:      { label: "Ready",     badge: "#1d7a34", bg: "#e8f6ec", border: "#8fce9e", next: "delivered", nextLabel: "Mark Delivered" },
+    preparing: { label: "Preparing", badge: "#8b3a1f", bg: "#fdf0ec", border: "#e8a087", next: "done",      nextLabel: "Start Delivering" },
+    done:      { label: "Delivering", badge: "#1d7a34", bg: "#e8f6ec", border: "#8fce9e", next: "delivered", nextLabel: "Mark Delivered" },
   };
   const bucket = { pending: [], preparing: [], done: [] };
   orders.forEach((o) => { if (bucket[o.status]) bucket[o.status].push(o); });
@@ -525,11 +525,11 @@ function kitchenPage(shop, extras = {}) {
       ${items.length ? items.map(card).join("") : `<div class="sub" style="font-size:10.5px;padding:14px 0;text-align:center;color:#c9bfb7">—</div>`}
     </div>`;
   return page(shop, "kitchen", "In Kitchen", "කුස්සියේ", `
-    <div class="sub" style="font-size:11.5px;margin-top:6px">Clerk sends it here → <strong>Start Preparing</strong> runs a ${DEFAULT_PREP_MIN}-minute cook timer → <strong>Ready</strong> when it rings.</div>
+    <div class="sub" style="font-size:11.5px;margin-top:6px">Clerk sends it here → <strong>Start Preparing</strong> runs a ${DEFAULT_PREP_MIN}-minute cook timer → <strong>Delivering</strong> when it rings.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:14px">
       ${col("New", "just arrived", bucket.pending, "අලුත්")}
       ${col("Preparing", `${DEFAULT_PREP_MIN} min on the stove`, bucket.preparing, "පිසෙයි")}
-      ${col("Ready", "pack / plate up", bucket.done, "සූදානම්")}
+      ${col("Delivering", "packed — on its way", bucket.done, "බෙදාහරිනවා")}
     </div>
     <style>
       @keyframes kPulse { 0%,100%{opacity:1} 50%{opacity:.45} }

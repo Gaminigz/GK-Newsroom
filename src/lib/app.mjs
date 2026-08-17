@@ -60,8 +60,8 @@ const ORDER_STAGES = ["pending", "preparing", "done", "delivered"];
 const ORDER_STATUS = {
   pending: { label: "Order received", short: "Received", color: "#946200", bg: "#fdf3d7" },
   preparing: { label: "In the kitchen", short: "Cooking", color: "#8b3a1f", bg: "#fdf0ec" },
-  done: { label: "Ready for pickup", short: "Ready", color: "#1d7a34", bg: "#e3f4e6" },
-  delivered: { label: "Picked up", short: "Picked up", color: "#4a443f", bg: "#efe9e2" },
+  done: { label: "On its way", short: "Delivering", color: "#1d7a34", bg: "#e3f4e6" },
+  delivered: { label: "Delivered", short: "Delivered", color: "#4a443f", bg: "#efe9e2" },
 };
 /** Small "Received → Cooking → Ready" strip so a buyer can see how far along
  *  their order is without reading a single word of jargon. */
@@ -1394,8 +1394,8 @@ async function orderPage(id, asShop = false) {
       <div style="margin-top:10px">${items}</div>
       <div class="row" style="justify-content:space-between;border-top:1px solid #f0e7de;margin-top:8px;padding-top:8px"><strong>Total</strong><strong style="color:${ORANGE}">${lkr(order.total)}</strong></div>
     </div>
-    ${order.status === "done" ? `<div class="ok">✓ Ready — come and pick it up${order.pickupAt ? ` (${esc(order.pickupAt)})` : ""}</div>`
-      : order.status === "delivered" ? `<div class="ok">✓ Order picked up${order.pickupAt ? ` — ${esc(order.pickupAt)}` : ""}</div>`
+    ${order.status === "done" ? `<div class="ok">✓ Packed and on its way${order.pickupAt ? ` — ${esc(order.pickupAt)}` : ""}</div>`
+      : order.status === "delivered" ? `<div class="ok">✓ Delivered${order.pickupAt ? ` — ${esc(order.pickupAt)}` : ""}</div>`
       : order.confirmedAt ? `<div class="ok">✓ Order confirmed for ${esc(order.pickupAt ?? "pickup")}</div>` : ""}
     ${!asShop && !["done", "delivered"].includes(order.status) ? `
     <script>
