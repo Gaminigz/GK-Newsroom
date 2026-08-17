@@ -2089,6 +2089,24 @@ export const SPICES: Spice[] = [
     ],
   },
   {
+    // Plain boiled rice — the base of nearly every Sri Lankan lunch, and the
+    // one thing the book was missing. Without it every white rice matched
+    // Ghee Rice and arrived costed with cashews, raisins and ghee.
+    id: "plain-rice",
+    imgQuery: "Plain white samba rice bowl",
+    name: "Plain Rice",
+    sinhala: "සුදු බත්",
+    category: "Rice & Staples",
+    emoji: "🍚",
+    post: "Plain boiled rice — samba, ponni, nadu or kekulu — washed, boiled in salted water and left to steam. The plate every curry sits on.",
+    postSi: "සුදු බත් — සම්බා, පොන්නි, නාඩු හෝ කැකුළු. සෝදා, ලුණු දමූ වතුරේ තම්බා, තැම්බීමට හරින්න.",
+    ingredients: [
+      { name: "Samba rice", nameSi: "සම්බා සහල්", qty5: "750 g" },
+      { name: "Water", nameSi: "වතුර", qty5: "1.5 l" },
+      { name: "Salt", nameSi: "ලුණු", qty5: "to taste" },
+    ],
+  },
+  {
     id: "ghee-rice",
     imgQuery: "Ghee rice bowl cashews raisins",
     name: "Ghee Rice",

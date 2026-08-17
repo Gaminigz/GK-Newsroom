@@ -2237,7 +2237,7 @@ function costsPage(shop, extras = {}) {
         <span style="color:${avg >= 30 ? "#1d7a34" : "#946200"};font-size:12.5px;font-weight:700">
           ${avg >= 30 ? "✅" : "⚠️"} Average margin ${avg}% · target ≥ 30% before posting</span>
         <div class="sub" style="font-size:10.5px;margin-top:4px;line-height:1.4">
-          Costed from the recipe book and today's ingredient prices — ${costed.length} of ${sets.length + loose.length} items.
+          Costed from the recipe book and today's ingredient prices — ${costed.length} of ${allDishes.length} dishes.
         </div>
       </div>` : (extras.hasPlan ? `
       <div class="card" style="margin-top:12px;padding:10px 14px;font-size:12px" class="sub">
