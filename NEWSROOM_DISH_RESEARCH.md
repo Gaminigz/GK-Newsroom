@@ -187,3 +187,68 @@ and the shop app only ever reads what came out of it.
 4. Anything that is not a dish, delete and tell me.
 5. When the queue is empty, `db.lanka_dishes.countDocuments({ needsReview: true })`
    is 0 and every dish on every shop's menu is costable.
+
+---
+
+# Part two — market prices, once a week
+
+**Gamini's four sources, 18 Aug 2026.** The Market Prices screen is now a
+comparison: one row per item, one column per place, ours at the end.
+
+| column | source | URL |
+|---|---|---|
+| `cb` | Central Bank daily price report | <https://www.cbsl.gov.lk/en/statistics/economic-indicators/price-report> |
+| `carg` | Cargills FoodCity online | <https://cargillsonline.com/> |
+| `arp` | Arpico Supercentre | <https://myarpico.com/> |
+| `uber` | Keells via UberEats | <https://www.ubereats.com/lk/store/keells-union-place/ONGXYb3pW6W3uKrWukpq9A> |
+| **35APP** | **ours** | computed — the average of whichever columns have a number |
+
+Not every shop stocks every item. Leave a column `null` and the average simply
+skips it; the screen shows a dash.
+
+## Write it here
+
+```js
+db.market_prices.updateOne({ _id: "big onion" }, { $set: {
+  name: "Big onion",
+  cb: 360, carg: 395, arp: null, uber: 420,   // null = they did not have it
+  checkedAt: new Date(),
+  packs: "1/5/10 kg net",                      // optional, how it is sold
+}}, { upsert: true });
+```
+
+`_id` is the item name lowercased, matching `src/data/market-prices.mjs`.
+That file is the **seed** — 46 items with the pack sizes already filled in.
+The page merges your documents over it, so an item you have not checked keeps
+its seed figure rather than going blank.
+
+## Once a week is enough
+
+Gamini's call: these do not need checking on every request or every day. A
+weekly job is the target. Nothing in the app calls these hosts — same rule as
+the recipes.
+
+## What each source will actually cost you (checked 18 Aug 2026)
+
+- **Central Bank** — publishes one **PDF per day** ("Daily Price Report – 17
+  August 2026"), not an HTML table. Needs PDF text extraction, but it is the
+  most reliable and the least likely to block you. Start here.
+- **Cargills** — an Angular app. The HTML holds `{{product.Price}}`
+  placeholders and nothing else; the real numbers come from a backend call.
+  Find that endpoint in the network tab once and it should be straightforward
+  JSON thereafter.
+- **Arpico** — returned **403** to a plain fetch. Needs a normal browser
+  user-agent, and possibly a real browser session.
+- **UberEats** — the hardest of the four: heavy client-side rendering and bot
+  protection. Treat it as best-effort; a `null` in that column is fine and the
+  screen is built for it.
+
+## Two things worth knowing
+
+Prices from these are **retail per kg**. `INGREDIENT_LIBRARY` in
+`src/lib/ai-dish.mjs` is per 100 g / 100 ml / piece — divide by ten going in.
+
+And none of them price *"Roasted curry powder"* or *"Goraka paste"*. They
+price raw commodities: rice, onion, chilli, coconut, fish, meat. Roughly 60%
+of our ingredients map across; the compounds still need a shop's own price,
+which is why the box where the owner types theirs stays authoritative.
