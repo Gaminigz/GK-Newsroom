@@ -3230,11 +3230,39 @@ export async function handleApp(req, res, url) {
       const own = Object.fromEntries(myPrices.map((p) => [p.key, { lkr: Number(p.lkr) || 0, unit: p.unit }]));
       const portions = plan?.portions || {};
 
+      // Recipes the newsroom has researched and written into Mongo. The
+      // static book in src/data/spices.ts is only the starting stock — this
+      // is how a dish learned yesterday is costable today, with no deploy.
+      const researched = await (await col("lanka_dishes"))
+        .find({ $or: [{ ingredients: { $exists: true, $ne: [] } }, { aliasOf: { $exists: true, $ne: "" } }] },
+          { projection: { name: 1, ingredients: 1, aliasOf: 1 } })
+        .toArray();
+      const fromMongo = new Map(researched.map((r) => [String(r.name || "").toLowerCase(), r]));
+
       /** What one serving costs to cook, in LKR, or null when the catalogue
        *  has no recipe for it. `missing` names the ingredients we hold no
        *  price for, so a low number is never mistaken for a good margin. */
+      /** Per-serving quantities for a dish: what the newsroom researched
+       *  first, then an alias it recorded, then our own book. */
+      const recipeFor = (name) => {
+        const doc = fromMongo.get(String(name || "").toLowerCase());
+        if (doc?.ingredients?.length) {
+          // Same shape as the book: a table for five, normalised to one.
+          return {
+            servings: 1,
+            ingredients: doc.ingredients.map((i) => {
+              const m = String(i.qty5 || "").trim().match(/^([\d.]+)\s*(.*)$/);
+              const per = m ? Math.round((Number(m[1]) / 5) * 100) / 100 : null;
+              return { name: i.name, quantity: per, unit: m ? m[2].trim() : "" };
+            }),
+          };
+        }
+        if (doc?.aliasOf) return catalogueRecipe(doc.aliasOf);
+        return catalogueRecipe(name);
+      };
+
       const costOf = (name) => {
-        const r = catalogueRecipe(name);
+        const r = recipeFor(name);
         if (!r || !r.ingredients.length) return null;
         let lkr = 0;
         const missing = [];

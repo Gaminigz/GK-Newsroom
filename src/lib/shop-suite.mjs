@@ -73,7 +73,7 @@ export const SUITE_TILES = [
   { key: "pos", label: "POS", emoji: "💳", real: (id) => `/app/owner/${id}/suite/pos` },
   { key: "kitchen", label: "In Kitchen", emoji: "👨‍🍳", real: (id) => `/app/owner/${id}/suite/kitchen` },
   { key: "menu", label: "Plan Menu", emoji: "🍱", real: (id) => `/app/owner/${id}/suite/menu` },
-  { key: "costs", label: "Cost sheet", emoji: "🧮" },
+  { key: "costs", label: "Portion Plan", emoji: "🧮" },
   { key: "stock", label: "Kitchen stock", emoji: "📦", real: (id) => `/app/owner/${id}/suite/stock` },
   { key: "plan", label: "Purchasing", emoji: "🧾", real: (id) => `/app/owner/${id}/suite/plan` },
   { key: "purchasing", label: "Buying & bills", emoji: "🛒", real: (id) => `/app/owner/${id}/suite/purchasing` },
@@ -2115,7 +2115,7 @@ function costsPage(shop, extras = {}) {
     );
   }).join("");
 
-  return page(shop, "costs", "Cost sheet", "පිරිවැය", `
+  return page(shop, "costs", "Portion Plan", "කී දෙනෙකුට උයනවාද?", `
     <style>
       /* The stepper arrows come out bigger than the number itself on iOS and
          are a poor target next to it. Type the number instead. */
