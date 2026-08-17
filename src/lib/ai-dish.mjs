@@ -412,3 +412,63 @@ function nearName(a, b) {
   }
   return prev[y.length] <= 2;
 }
+
+
+/**
+ * A cook's quantity in one measure: grams, millilitres or pieces.
+ *
+ * Recipes say "2 tbsp", "1 kg", "2 sprigs", "1 large onion" — the same
+ * ingredient in three different measures across three recipes, which is how
+ * a shopping list ends up with "Coconut Milk 16.5 cups" and "coconut milk
+ * 2,400 ml" as two lines. Everything lands in one measure here so it can be
+ * added up once.
+ */
+export function toBaseAmount(quantity, unit, name = "") {
+  const q = Number(quantity);
+  if (!Number.isFinite(q) || q <= 0) return null;    // "to taste" buys nothing
+  const u = String(unit || "").toLowerCase().trim();
+  const SPOON = { tbsp: 15, tablespoon: 15, tsp: 5, teaspoon: 5, cup: 200, cups: 200 };
+  const EACH = { sprig: 2, sprigs: 2, clove: 5, cloves: 5, stick: 3, sticks: 3, leaf: 1, leaves: 1, pod: 1, pods: 1 };
+  if (/^kgs?$|^kilo/.test(u)) return { n: q * 1000, base: "g" };
+  if (/^g$|^gram/.test(u)) return { n: q, base: "g" };
+  if (/^(l|litre|liter)s?$/.test(u)) return { n: q * 1000, base: "ml" };
+  if (/^ml$|^millilit/.test(u)) return { n: q, base: "ml" };
+  // A spoon of a liquid is millilitres; of anything else, near enough grams.
+  const liquid = /milk|oil|ghee|water|juice|vinegar|stock|cream|sauce|syrup/i.test(String(name));
+  if (SPOON[u] != null) return { n: q * SPOON[u], base: liquid ? "ml" : "g" };
+  if (EACH[u] != null) return { n: q * EACH[u], base: "g" };
+  if (/piece|pcs?$|whole|large|medium|small|nos?$|^$/.test(u)) return { n: q, base: "piece" };
+  return null;
+}
+
+/** How this is sold. A kitchen buys a 5 kg bag of rice, a 400 ml tin of
+ *  coconut milk, a 100 g packet of chilli powder — not "3,240 g". */
+const PACKS = [
+  [/rice|flour|sugar|lentil|parippu|dhal|dal|onion|potato|coconut$/, "g", [1000, 5000, 10000, 20000], "bag"],
+  [/chicken|pork|beef|mutton|fish|prawn|squid|crab|meat/, "g", [500, 1000, 2000, 5000], "pack"],
+  [/coconut milk/, "ml", [400, 1000], "tin"],
+  [/oil|ghee|butter|vinegar|milk|water|juice/, "ml", [500, 1000, 5000], "bottle"],
+  [/powder|masala|cardamom|clove|cinnamon|pepper|turmeric|chilli|chili|mustard|fenugreek|cumin|coriander|saffron|spice/, "g", [100, 250, 500, 1000], "packet"],
+  [/leaf|leaves|pandan|rampe|curry leaves|gotukola|spinach|kankun|mukunuwenna/, "g", [50, 100, 250], "bunch"],
+  [/egg/, "piece", [6, 10, 12, 30], "tray"],
+];
+export function packFor(name, base, need) {
+  const s = String(name || "").toLowerCase();
+  const row = PACKS.find(([re, b]) => b === base && re.test(s))
+    || (base === "g" ? [null, "g", [250, 500, 1000, 5000], "pack"]
+      : base === "ml" ? [null, "ml", [500, 1000], "bottle"]
+      : [null, "piece", [1], ""]);
+  const sizes = row[2], word = row[3];
+  // The smallest single pack that covers it, else how many of the biggest.
+  const one = sizes.find((sz) => sz >= need);
+  if (one) return { size: one, count: 1, word, base };
+  const big = sizes[sizes.length - 1];
+  return { size: big, count: Math.ceil(need / big), word, base };
+}
+
+/** "1,200 g" reads worse than "1.2 kg" on a list you carry to the market. */
+export function niceAmount(n, base) {
+  if (base === "piece") return `${Math.round(n * 10) / 10}`;
+  if (base === "ml") return n >= 1000 ? `${Math.round(n / 100) / 10} L` : `${Math.round(n)} ml`;
+  return n >= 1000 ? `${Math.round(n / 100) / 10} kg` : `${Math.round(n)} g`;
+}

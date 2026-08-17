@@ -2942,28 +2942,65 @@ function planPage(shop, extras = {}) {
       </div>
     </div>`;
 
-  /* What that day actually needs: every dish's recipe multiplied by the
-     portions set on the Portion Plan. The 🛒 list below is the standing
-     shopping list; this is the run in front of you. */
+  /* What that day actually needs, read the way the menu is built: the sets in
+     order, then Others for the salt and curry leaves every pot wants.
+
+     Each line is need / have. "20 kg / 1 kg" means the day takes 20 and the
+     store holds 1, so buy the difference — rounded up to how the thing is
+     actually sold, because nobody sells 19 kg of rice. No stock record at all
+     shows as / 0. */
   const needed = extras.needed || [];
+  const nice = (n, base) => base === "piece" ? `${Math.round(n * 10) / 10}`
+    : base === "ml" ? (n >= 1000 ? `${Math.round(n / 100) / 10} L` : `${Math.round(n)} ml`)
+    : (n >= 1000 ? `${Math.round(n / 100) / 10} kg` : `${Math.round(n)} g`);
+
+  const SET_ORDER = ["Rice set", "Meat Combo", "Side dishes", "Dessert"];
+  const shelvesN = [];
+  for (const n of needed) {
+    let g = shelvesN.find((x) => x.name === n.set);
+    if (!g) { g = { name: n.set, rows: [] }; shelvesN.push(g); }
+    g.rows.push(n);
+  }
+  shelvesN.sort((a, b) => {
+    const rank = (x) => x === "Others" ? 98 : (SET_ORDER.indexOf(x) < 0 ? 90 : SET_ORDER.indexOf(x));
+    return rank(a.name) - rank(b.name);
+  });
+
+  const needLine = (n) => {
+    const ok = n.short <= 0;
+    return `<div style="padding:8px 0;border-bottom:1px solid #f4efe9">
+      <div style="display:flex;gap:8px;align-items:baseline">
+        <strong style="flex:1;min-width:0;font-size:12.5px">${escS(n.name)}</strong>
+        <span style="flex:0 0 auto;font-size:13px;font-variant-numeric:tabular-nums">
+          <strong style="color:${ORANGE}">${escS(nice(n.need, n.base))}</strong>
+          <span class="sub"> / </span>
+          <strong style="color:${ok ? "#1d7a34" : "#8a827b"}">${escS(nice(n.have, n.base))}</strong>
+        </span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:baseline;margin-top:2px">
+        <span class="sub" style="flex:1;min-width:0;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escS(n.dishes.slice(0, 3).join(", "))}${n.dishes.length > 3 ? ` +${n.dishes.length - 3}` : ""}</span>
+        <span style="flex:0 0 auto;font-size:10.5px;font-weight:700;color:${ok ? "#1d7a34" : ORANGE}">
+          ${ok ? "enough in store" : `buy ${n.buy.count} × ${escS(nice(n.buy.size, n.buy.base))}${n.buy.word ? " " + escS(n.buy.word) : ""}`}
+        </span>
+      </div>
+    </div>`;
+  };
+
+  const toBuy = needed.filter((n) => n.short > 0).length;
   const needList = needed.length ? `
-    <div class="row" style="justify-content:space-between;margin-top:16px">
-      <strong style="font-size:14px">To cook ${extras.neededFor} portions <span class="si">අවශ්‍ය ද්‍රව්‍ය</span></strong>
-      <span class="sub" style="font-size:12px">${needed.length} ingredient${needed.length === 1 ? "" : "s"}</span>
+    <div class="row" style="justify-content:space-between;margin-top:14px">
+      <strong style="font-size:14px">For ${extras.neededFor} portions <span class="si">අවශ්‍ය ද්‍රව්‍ය</span></strong>
+      <span class="sub" style="font-size:11.5px">${toBuy} to buy · ${needed.length - toBuy} in store</span>
     </div>
-    <div class="card" style="margin-top:8px;padding:6px 12px">
-      ${needed.map((n) => `
-        <div style="display:flex;gap:8px;align-items:baseline;padding:7px 0;border-bottom:1px solid #f4efe9">
-          <span style="flex:1;min-width:0">
-            <strong style="font-size:12.5px">${escS(n.name)}</strong>
-            <span class="sub" style="display:block;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">for ${escS(n.dishes.slice(0, 3).join(", "))}${n.dishes.length > 3 ? ` +${n.dishes.length - 3}` : ""}</span>
-          </span>
-          <strong style="flex:0 0 auto;font-size:13px;color:${ORANGE};font-variant-numeric:tabular-nums">${n.qty.toLocaleString()} ${escS(n.unit)}</strong>
-        </div>`).join("")}
-    </div>
-    <div class="sub" style="font-size:10.5px;margin-top:6px">Worked out from the recipes and the portions you set on Portion Plan. "To taste" items are not counted.</div>`
-    // No portions set for this day: say nothing rather than fill the screen
-    // explaining an empty list.
+    ${shelvesN.map((g) => `
+      <div class="card" style="margin-top:9px;padding:10px 13px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <strong style="font-size:13px">${escS(g.name)}</strong>
+          <span class="sub" style="font-size:10px">${g.rows.length} item${g.rows.length === 1 ? "" : "s"}</span>
+        </div>
+        <div style="margin-top:4px">${g.rows.map(needLine).join("")}</div>
+      </div>`).join("")}
+    <div class="sub" style="font-size:10.5px;margin-top:8px;line-height:1.4">Need / in store. Buy quantities are rounded to how the thing is sold. "To taste" items are not counted.</div>`
     : "";
 
   return page(shop, "plan", "Purchase Plan", "මිලදී ගැනීම්", `

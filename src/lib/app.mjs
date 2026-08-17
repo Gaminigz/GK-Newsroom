@@ -3263,18 +3263,28 @@ export async function handleApp(req, res, url) {
       extras.plannedDates = [...new Set(pNear.filter(pHas).map((x) => x.date))];
 
       // Ingredients that day needs: every dish's recipe × the portions set on
-      // the Portion Plan, added up per ingredient.
+      // the Portion Plan — in one measure so the same thing written three
+      // ways adds up to one line, grouped the way the sets are, and set
+      // against what the store already holds.
       const pPlan = pNear.find((x) => x.date === pDate && x.meal === pMeal);
       extras.needed = [];
       extras.neededFor = 0;
       if (pPlan?.portions && Object.keys(pPlan.portions).length) {
-        const { catalogueRecipe } = await import("./ai-dish.mjs");
+        const { catalogueRecipe, libraryKeyFor, toBaseAmount, packFor } = await import("./ai-dish.mjs");
         const pIds = (await Promise.all(Object.keys(pPlan.portions).map(oid))).filter(Boolean);
         const pDishes = await (await col("app_dishes")).find({ _id: { $in: pIds } }).toArray();
         const researched = await (await col("lanka_dishes"))
           .find({ $or: [{ ingredients: { $exists: true, $ne: [] } }, { aliasOf: { $exists: true, $ne: "" } }] },
             { projection: { name: 1, ingredients: 1, aliasOf: 1 } }).toArray();
         const byName = new Map(researched.map((r) => [String(r.name || "").toLowerCase(), r]));
+
+        // Which set each dish belongs to, so the list reads the way the menu
+        // does rather than as one alphabetical heap.
+        const setOfDish = new Map();
+        for (const g of pPlan.groups || []) {
+          for (const ch of g.choices || []) setOfDish.set(String(ch.dishId), g.name || "");
+        }
+
         const tally = new Map();
         for (const d of pDishes) {
           const n = Number(pPlan.portions[String(d._id)]) || 0;
@@ -3289,18 +3299,43 @@ export async function handleApp(req, res, url) {
             : catalogueRecipe(doc?.aliasOf || d.name);
           if (!rec?.ingredients?.length) continue;
           for (const ing of rec.ingredients) {
-            const q = Number(ing.quantity);
-            if (!Number.isFinite(q) || q <= 0) continue;   // "to taste" buys nothing
-            const key = `${String(ing.name).toLowerCase()}|${String(ing.unit || "").toLowerCase()}`;
-            const at = tally.get(key) || { name: ing.name, unit: ing.unit || "", qty: 0, dishes: [] };
-            at.qty += q * n;
+            const amt = toBaseAmount(ing.quantity, ing.unit, ing.name);
+            if (!amt) continue;                              // "to taste" buys nothing
+            // Keyed on the price library's name, so "Coconut Milk" in cups
+            // and "coconut milk" in millilitres are one ingredient.
+            const key = (libraryKeyFor(ing.name) || String(ing.name).toLowerCase().trim()) + "|" + amt.base;
+            const at = tally.get(key) || { key, name: ing.name, base: amt.base, need: 0, dishes: [], sets: new Set() };
+            at.need += amt.n * n;
             if (!at.dishes.includes(d.name)) at.dishes.push(d.name);
+            at.sets.add(setOfDish.get(String(d._id)) || "");
             tally.set(key, at);
           }
         }
-        extras.needed = [...tally.values()]
-          .map((x) => ({ ...x, qty: Math.round(x.qty * 100) / 100 }))
-          .sort((a, b) => b.dishes.length - a.dishes.length || a.name.localeCompare(b.name));
+
+        // What the shop already holds, in the same measure.
+        const stock = await (await col("kitchen_stock")).find({ shopId: m[1] }).toArray();
+        const haveBy = new Map();
+        for (const it of stock) {
+          const amt = toBaseAmount(it.qty, it.unit, it.name);
+          if (!amt) continue;
+          const k = (libraryKeyFor(it.name) || String(it.name).toLowerCase().trim()) + "|" + amt.base;
+          haveBy.set(k, (haveBy.get(k) || 0) + amt.n);
+        }
+
+        extras.needed = [...tally.values()].map((x) => {
+          const need = Math.round(x.need * 10) / 10;
+          const have = Math.round((haveBy.get(x.key) || 0) * 10) / 10;
+          const short = Math.max(0, need - have);
+          return {
+            name: x.name, base: x.base, need, have, short,
+            buy: short > 0 ? packFor(x.name, x.base, short) : null,
+            dishes: x.dishes,
+            // Used by one set: it belongs there. Used across the menu — salt,
+            // curry leaves, coconut — it is one of the small things every pot
+            // needs, and goes under Others.
+            set: x.sets.size === 1 ? ([...x.sets][0] || "Others") : "Others",
+          };
+        }).sort((a, b) => b.need - a.need || a.name.localeCompare(b.name));
       }
       // Items the owner flagged 🛒 in Kitchen Stock — surface at the top.
       extras.storeBuys = await (await col("kitchen_stock"))
