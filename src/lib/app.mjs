@@ -3627,10 +3627,19 @@ export async function handleApp(req, res, url) {
       if (hit) return hit;
       const category = CATEGORIES.includes(d.category) ? d.category : guessCategory(d.name);
       const priceLkr = priceToLkr(d.priceText);
+      // A dish nobody has entered before. Rather than letting it slip in
+      // half-known — no recipe, no Sinhala, guessed shelf — it is written
+      // down as needing a look, with the nearest recipe we hold and how sure
+      // we are, so one confirmation teaches it for every shop.
+      const { nearestRecipe } = await import("./ai-dish.mjs");
+      const near = nearestRecipe(d.name);
       const doc = {
         _id: own, name: d.name, nameSi: d.nameSi || "", category,
         order: ++nextOrder, postNumber: nextOrder,
         addedAt: new Date(), addedBy: shopId, source: "owner-paste",
+        needsReview: true,
+        looksLike: near ? near.name : "",
+        looksLikeScore: near ? near.score : 0,
       };
       if (priceLkr) doc.priceLkr = priceLkr;
       try {

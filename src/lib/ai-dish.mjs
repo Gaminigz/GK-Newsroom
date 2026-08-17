@@ -368,3 +368,47 @@ export function priceIngredient(name, quantity, unit, own = null) {
 
 function round1(n) { return Math.round(n * 10) / 10; }
 
+
+
+/**
+ * The nearest recipe we hold to a name we have never seen.
+ *
+ * A new dish arrives on nearly every paste — "Banana blooms", "Beef Bistake",
+ * "Spongaud curry". Rather than skipping it, we say what it looks most like
+ * out of the 175 recipes we have, with a score, so it can be confirmed once
+ * and known from then on. All local: token overlap first, then spelling.
+ */
+export function nearestRecipe(name) {
+  const words = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ")
+    .split(/\s+/).filter((w) => w.length > 2 && !["and", "the", "with", "curry", "dish"].includes(w));
+  const want = words(name);
+  if (!want.length) return null;
+  let best = null;
+  for (const s of SPICES) {
+    if (!Array.isArray(s.ingredients) || !s.ingredients.length) continue;
+    const have = words(s.name);
+    const shared = want.filter((w) => have.some((h) => h === w || h.startsWith(w) || w.startsWith(h)));
+    let score = shared.length / Math.max(want.length, have.length);
+    // Nothing in common by word? Fall back to how close the whole name is.
+    if (!score && nearName(s.name, name)) score = 0.5;
+    if (score > (best?.score || 0)) best = { name: s.name, score: Math.round(score * 100) / 100 };
+  }
+  return best && best.score >= 0.3 ? best : null;
+}
+
+/** nearName lives in the reader; costing needs the same two-character slop. */
+function nearName(a, b) {
+  const x = String(a || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const y = String(b || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!x || !y || x.length < 5 || y.length < 5) return false;
+  if (Math.abs(x.length - y.length) > 2) return false;
+  let prev = Array.from({ length: y.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= x.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= y.length; j++) {
+      row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+    }
+    prev = row;
+  }
+  return prev[y.length] <= 2;
+}
