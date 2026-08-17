@@ -3423,6 +3423,30 @@ export async function handleApp(req, res, url) {
       const byId = new Map(ownDishes.map((d) => [String(d._id), d]));
       // The shop's own ingredient prices, keyed the same way the library is.
       const own = Object.fromEntries(myPrices.map((p) => [p.key, { lkr: Number(p.lkr) || 0, unit: p.unit }]));
+
+      /* Market prices sit under the shop's own and over our built-in library.
+         The Market Prices screen quotes per kg or per litre; the costing
+         library is per 100 g / 100 ml, so divide by ten on the way in. Empty
+         today — the newsroom fills the columns weekly — and the moment it
+         does, every cost sheet and purchase plan follows with no other
+         change. */
+      {
+        const { MARKET_PRICES, appPrice } = await import("../data/market-prices.mjs");
+        const fresh = await (await col("market_prices")).find({}).toArray();
+        const live = new Map(fresh.map((r) => [String(r.name || "").toLowerCase(), r]));
+        for (const seed of MARKET_PRICES) {
+          const row = { ...seed, ...(live.get(seed.name.toLowerCase()) || {}) };
+          const per = appPrice(row);
+          if (!per) continue;
+          const key = libraryKeyFor(seed.name) || seed.name.toLowerCase();
+          if (own[key]) continue;                     // the shop's own wins
+          const u = String(seed.unit || "").toLowerCase();
+          if (u === "kg") own[key] = { lkr: Math.round(per / 10), unit: "100g", fromMarket: true };
+          else if (u === "l" || u === "litre") own[key] = { lkr: Math.round(per / 10), unit: "100ml", fromMarket: true };
+          else if (u === "100g") own[key] = { lkr: per, unit: "100g", fromMarket: true };
+          else if (u === "nos" || u === "piece") own[key] = { lkr: per, unit: "1 piece", fromMarket: true };
+        }
+      }
       const portions = plan?.portions || {};
 
       // Recipes the newsroom has researched and written into Mongo. The
@@ -3473,7 +3497,7 @@ export async function handleApp(req, res, url) {
           lines.push({
             name: ing.name, key,
             qty: ing.quantity, unit: ing.unit,
-            lkr: p.lkr, mine: !!own[key],
+            lkr: p.lkr, mine: !!(own[key] && !own[key].fromMarket),
             rate: held ? held.lkr : null,
             per: held ? held.unit : "100g",
           });
