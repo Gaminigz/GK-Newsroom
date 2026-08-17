@@ -3282,7 +3282,10 @@ export async function handleApp(req, res, url) {
         // does rather than as one alphabetical heap.
         const setOfDish = new Map();
         for (const g of pPlan.groups || []) {
-          for (const ch of g.choices || []) setOfDish.set(String(ch.dishId), g.name || "");
+          // Plans written by the paste reader hold `dishes: [{id}]`; older
+          // ones hold `choices: [{dishId}]`. Read both.
+          for (const d of g.dishes || []) setOfDish.set(String(d.id || d.dishId || ""), g.name || "");
+          for (const ch of g.choices || []) setOfDish.set(String(ch.dishId || ch.id || ""), g.name || "");
         }
 
         const tally = new Map();
