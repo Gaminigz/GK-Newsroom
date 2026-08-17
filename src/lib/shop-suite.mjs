@@ -76,7 +76,7 @@ export const SUITE_TILES = [
   { key: "pos", label: "POS", emoji: "💳", real: (id) => `/app/owner/${id}/suite/pos` },
   { key: "kitchen", label: "In Kitchen", emoji: "👨‍🍳", real: (id) => `/app/owner/${id}/suite/kitchen` },
   { key: "menu", label: "Plan Menu", emoji: "🍱", real: (id) => `/app/owner/${id}/suite/menu` },
-  { key: "costs", label: "Portion Plan", emoji: "🧮" },
+  { key: "costs", label: "Portion Plan", emoji: "🧮", real: (id) => `/app/owner/${id}/suite/costs` },
   { key: "plan", label: "Purchase Plan", emoji: "🧾", real: (id) => `/app/owner/${id}/suite/plan` },
   { key: "stock", label: "Kitchen stock", emoji: "📦", real: (id) => `/app/owner/${id}/suite/stock` },
   { key: "purchasing", label: "Buying & bills", emoji: "🛒", real: (id) => `/app/owner/${id}/suite/purchasing` },
