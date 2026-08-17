@@ -2971,14 +2971,9 @@ function planPage(shop, extras = {}) {
          actual list below the fold on a phone. -->
     <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
       <a href="/app/owner/${id}/market-prices" style="flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;text-decoration:none;border:1.5px solid ${ORANGE};color:${ORANGE};font-weight:700;border-radius:99px;padding:7px 12px;font-size:12px">📊 Market prices</a>
-      ${buyTotal > 0 ? `<div style="flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:8px;background:#191512;border-radius:99px;padding:7px 14px">
-        <span style="flex:1;min-width:0;font-size:10px;color:#fff;opacity:.75;letter-spacing:.04em;font-weight:700">TO BUY · ${storeBuys.length}</span>
-        <strong style="flex:0 0 auto;font-size:13.5px;color:#ffb08f">${escS(cur.symbol)} ${buyTotal.toLocaleString()}</strong>
-      </div>` : ""}
     </div>
     ${dayBar}
     ${needList}
-    ${list}
     <script>
       document.getElementById('planDate').addEventListener('change', function(){
         if (this.value) location.href = '/app/owner/${id}/suite/plan?date=' + this.value + '&meal=${escS(pMeal)}';
