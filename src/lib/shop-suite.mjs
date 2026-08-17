@@ -101,11 +101,65 @@ export const SET_PRESET_NAMES = SET_PRESETS.map((s) => s.name);
 /* ------------------------------------------------------------- the hub */
 
 /** Round function button. Ready = green glow; locked = small padlock badge. */
-function hubCircle(emoji, size, ready) {
+/**
+ * The board's icons, drawn rather than borrowed.
+ *
+ * Emoji were standing in for these — a mesh character ▦ for the table QR, an
+ * abacus for the portion plan — and they render differently on every device,
+ * carry the wrong metaphor, and cannot take the shop's colour. These are
+ * plain SVG on a 24 grid: one stroke weight, one language, ours.
+ */
+const TILE_ICONS = {
+  // A real QR: three finder eyes and a scatter of modules.
+  qr: `<rect x="3" y="3" width="7" height="7" rx="1.2"/><rect x="14" y="3" width="7" height="7" rx="1.2"/><rect x="3" y="14" width="7" height="7" rx="1.2"/>
+       <rect x="5.6" y="5.6" width="1.8" height="1.8" fill="currentColor" stroke="none"/><rect x="16.6" y="5.6" width="1.8" height="1.8" fill="currentColor" stroke="none"/><rect x="5.6" y="16.6" width="1.8" height="1.8" fill="currentColor" stroke="none"/>
+       <path d="M14 14h3M20 14h1M14 17v4M17 17h1M20 17.5v3.5M17 21h1"/>`,
+  // A plate with its cover — the day's dishes.
+  dishes: `<path d="M3.5 19h17"/><path d="M5.5 19a6.5 6.5 0 0 1 13 0"/><path d="M12 8.5V6.8"/><circle cx="12" cy="5.6" r="1.1"/>`,
+  // Card terminal.
+  pos: `<rect x="4" y="3" width="16" height="18" rx="2.2"/><rect x="7" y="6" width="10" height="4.5" rx="1"/><path d="M7.5 14h2M11 14h2M14.5 14h2M7.5 17.5h2M11 17.5h2M14.5 17.5h2"/>`,
+  // Chef's hat.
+  kitchen: `<path d="M6 20h12v-1.6H6z"/><path d="M7 18.4v-4.2a4.2 4.2 0 0 1-1.6-7.4A3.6 3.6 0 0 1 12 4.6a3.6 3.6 0 0 1 6.6 2.2A4.2 4.2 0 0 1 17 14.2v4.2"/><path d="M10 14.4v4M14 14.4v4"/>`,
+  // Calendar — the day being planned.
+  menu: `<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3"/><path d="M7.5 13h3M13.5 13h3M7.5 16.5h3M13.5 16.5h3"/>`,
+  // Scales — portions weighed against what they cost.
+  costs: `<path d="M12 4.5v15M7 19.5h10"/><path d="M5 8.5h14"/><path d="M5 8.5 2.6 14a2.6 2.6 0 0 0 4.8 0z"/><path d="M19 8.5 16.6 14a2.6 2.6 0 0 0 4.8 0z"/><circle cx="12" cy="6.2" r="1.4"/>`,
+  // The shopping list on its clipboard.
+  plan: `<rect x="4.5" y="4.5" width="15" height="16" rx="2"/><rect x="9" y="2.5" width="6" height="3.4" rx="1.2"/><path d="M8.5 11h1M8.5 14.5h1M8.5 18h1M12 11h4M12 14.5h4M12 18h3"/>`,
+  // Stacked crates.
+  stock: `<rect x="3" y="10.5" width="8" height="9" rx="1.3"/><rect x="13" y="10.5" width="8" height="9" rx="1.3"/><rect x="8" y="3.5" width="8" height="6.5" rx="1.3"/><path d="M5.6 10.5v2.4M15.6 10.5v2.4M10.6 3.5v2.4"/>`,
+  // Trolley.
+  purchasing: `<path d="M2.5 4h2.2l2.4 10.6h10.2"/><path d="M6.4 7h14l-1.7 6.2H7.8"/><circle cx="9.5" cy="19" r="1.6"/><circle cx="17" cy="19" r="1.6"/>`,
+  // Filed bills.
+  history: `<rect x="3" y="6.5" width="18" height="13.5" rx="2"/><path d="M3 10.5h18"/><path d="M8.5 4.5h7l1.2 2h-9.4z"/><path d="M10 14.5h4"/>`,
+  // A note passed about pay.
+  salaries: `<path d="M20.5 13.5a3 3 0 0 1-3 3H9l-4.5 3.5v-3.5a3 3 0 0 1-1-2.2v-6a3 3 0 0 1 3-3h11a3 3 0 0 1 3 3z"/><path d="M12 7.8v6M10.2 9.4h2.6a1.3 1.3 0 0 1 0 2.6h-1.6a1.3 1.3 0 0 0 0 2.6h2.6"/>`,
+  // Two people.
+  staff: `<circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="9.5" r="2.4"/><path d="M14.6 20a4.4 4.4 0 0 1 6.9-3.6"/>`,
+  // A bulb.
+  utilities: `<path d="M9.2 17.5h5.6"/><path d="M10 20.5h4"/><path d="M12 3.5a5.6 5.6 0 0 1 3.4 10 2.4 2.4 0 0 0-.9 1.8v.2H9.5v-.2a2.4 2.4 0 0 0-.9-1.8A5.6 5.6 0 0 1 12 3.5z"/>`,
+  // The ledgers.
+  books: `<path d="M4 5.2a2 2 0 0 1 2-2h4.5v17.6H6a2 2 0 0 1-2-2z"/><path d="M10.5 3.2H18a2 2 0 0 1 2 2v13.6a2 2 0 0 1-2 2h-7.5"/><path d="M13.5 8h3.5M13.5 11.5h3.5"/>`,
+  // Bars.
+  dashboard: `<path d="M3.5 20.5h17"/><rect x="5.5" y="12" width="3.4" height="6"/><rect x="10.6" y="7.5" width="3.4" height="10.5"/><rect x="15.7" y="4" width="3.4" height="14"/>`,
+  // A heart with a pulse through it.
+  health: `<path d="M12 20.5s-7.8-4.7-7.8-10a4.4 4.4 0 0 1 7.8-2.8 4.4 4.4 0 0 1 7.8 2.8c0 5.3-7.8 10-7.8 10z"/><path d="M5.6 12.6h3l1.4-2.4 1.9 4 1.4-2.4h4"/>`,
+};
+
+/** One icon, one stroke weight, sized to the circle it sits in. */
+function tileIcon(key, emoji, size) {
+  const d = TILE_ICONS[key];
+  if (!d) return `<span style="font-size:${Math.round(size * 0.42)}px">${emoji}</span>`;
+  const px = Math.round(size * 0.46);
+  return `<svg viewBox="0 0 24 24" width="${px}" height="${px}" fill="none" stroke="#1a1a1a"
+    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+}
+
+function hubCircle(emoji, size, ready, key = "") {
   return `<span style="position:relative;width:${size}px;height:${size}px;border-radius:99px;background:#fff;
       border:2px solid ${ready ? "#35c98a" : "#ece3da"};
       box-shadow:${ready ? "0 0 0 5px #35c98a2e, 0 4px 16px #35c98a52" : "0 3px 10px #00000014"};
-      display:flex;align-items:center;justify-content:center;font-size:${Math.round(size * 0.42)}px">${emoji}${ready ? "" :
+      display:flex;align-items:center;justify-content:center">${tileIcon(key, emoji, size)}${ready ? "" :
       `<span style="position:absolute;bottom:-7px;left:50%;transform:translateX(-50%);width:22px;height:22px;border-radius:99px;background:#fff;border:1px solid #e3d9cf;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 1px 4px #0002">🔒</span>`}
     </span>`;
 }
@@ -114,7 +168,7 @@ export function ownerHubPage(shop, toast = "") {
   const id = String(shop._id);
   const tiles = SUITE_TILES.map((t) => `
     <a href="${t.real ? t.real(id) : `/app/owner/${id}/suite/${t.key}`}" style="display:flex;flex-direction:column;align-items:center;gap:9px;text-decoration:none">
-      ${hubCircle(t.emoji, 80, !!t.real)}
+      ${hubCircle(t.emoji, 80, !!t.real, t.key)}
       <span style="font-size:11.5px;font-weight:700;color:#1a1a1a;text-align:center;line-height:1.2">${t.label}</span>
     </a>`).join("");
   return shell({
