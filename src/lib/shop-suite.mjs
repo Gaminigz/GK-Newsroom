@@ -3149,21 +3149,46 @@ export function marketPricesPage(shop, extras = {}) {
   const cats = ["All", "Vegi", "Meat", "Dry", "Spices"];
   const countIn = (c) => c === "All" ? items.length : items.filter((i) => i.category === c).length;
   const chips = cats.map((c, i) => `<button type="button" class="chip${i === 0 ? " on" : ""}" data-cat="${escM(c)}" onclick="mpTab('${escM(c)}',this)">${escM(c)} · ${countIn(c)}</button>`).join("");
+  /* One row per item, one column per place we check, and ours at the end.
+     A blank column means that shop did not stock it the week it was checked;
+     our figure averages only the ones that answered. */
+  const SRC_COLS = [["cb", "CB"], ["carg", "CARG"], ["arp", "ARIP"], ["uber", "UBER"]];
+  const cell = (v) => v == null || !Number.isFinite(Number(v))
+    ? `<span style="color:#cfc5bb">–</span>`
+    : Number(v).toLocaleString();
+  const GRID = "grid-template-columns:1fr repeat(4,30px) 46px;gap:4px";
   const row = (it) => `
-    <div class="mpRow" data-cat="${escM(it.category)}" style="display:grid;grid-template-columns:1fr auto;gap:8px;padding:8px 4px;border-bottom:1px solid #ece3da;font-size:12.5px;align-items:baseline">
-      <div style="min-width:0"><strong>${escM(it.name)}</strong>  <span class="sub" style="font-size:11px">per ${escM(it.unit)}</span></div>
-      <strong style="color:#d9542b;flex:0 0 auto;font-variant-numeric:tabular-nums">Rs ${(it.lkr || 0).toLocaleString()}</strong>
+    <div class="mpRow" data-cat="${escM(it.category)}" data-name="${escM(it.name.toLowerCase())}"
+      style="display:grid;${GRID};padding:7px 2px;border-bottom:1px solid #f2ece6;font-size:11px;align-items:baseline">
+      <div style="min-width:0">
+        <strong style="font-size:12px">${escM(it.name)}</strong>
+        <span class="sub" style="display:block;font-size:9.5px">per ${escM(it.unit)}${it.packs ? ` · ${escM(it.packs)}` : ""}</span>
+      </div>
+      ${SRC_COLS.map(([k]) => `<div style="text-align:right;font-variant-numeric:tabular-nums;color:#6b625a">${cell(it[k])}</div>`).join("")}
+      <div style="text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:${ORANGE}">${cell(it.app ?? it.lkr)}</div>
     </div>`;
+
+  const header = `
+    <div style="display:grid;${GRID};padding:6px 2px;border-bottom:1.5px solid #e0d6cc;
+      font-size:9px;font-weight:800;letter-spacing:.03em;color:#8a827b;text-transform:uppercase">
+      <div>Item</div>
+      ${SRC_COLS.map(([, label]) => `<div style="text-align:right">${label}</div>`).join("")}
+      <div style="text-align:right;color:${ORANGE}">35APP</div>
+    </div>`;
+
   return page(shop, "market", "Market Prices", "වෙළඳ මිල", `
-    <div class="sub" style="font-size:12px;margin-top:8px;line-height:1.5">Typical retail from <strong>Cargills FoodCity</strong>, <strong>Keells Super</strong>, and <strong>New Manning Market</strong>. Use as a benchmark for what you should be paying suppliers.<br><span class="si" style="font-size:12.4px">කාගිල්ස්, කීල්ස් සහ මැනිං වෙළඳපොළ සාමාන්‍ය මිල.</span></div>
+    <div class="sub" style="font-size:11.5px;margin-top:8px;line-height:1.45">
+      <strong>CB</strong> Central Bank · <strong>CARG</strong> Cargills · <strong>ARIP</strong> Arpico · <strong>UBER</strong> Keells on UberEats · <strong style="color:${ORANGE}">35APP</strong> ours, the average of those that had it.
+      <br><span class="si" style="font-size:11.5px">සතියකට වරක් යාවත්කාලීන වේ.</span></div>
     <div class="chips" style="display:flex;gap:8px;margin-top:12px;overflow-x:auto;-webkit-overflow-scrolling:touch">${chips}</div>
     <input type="search" id="mpSearch" placeholder="Search — carrot, chicken, cardamom…" style="margin-top:10px;font-size:14px" oninput="mpFilter()">
-    <div id="mpList" style="margin-top:8px">
+    <div style="margin-top:10px">${header}</div>
+    <div id="mpList">
       ${items.map(row).join("")}
     </div>
     <div class="sub" style="font-size:10.5px;margin-top:14px;text-align:center;color:#8a827b">
-      Prices refreshed weekly. Real market varies by day &amp; season.<br>
-      <span style="color:${ORANGE};font-weight:700">🤖 AI refresh · coming soon</span>
+      Checked weekly${extras.checkedAt ? ` · last ${escM(String(extras.checkedAt).slice(0, 10))}` : " · seed figures, not yet checked"}. A dash means that shop did not have it.<br>
+      Real market varies by day and season.
     </div>
     <script>
       var currentCat = 'All';

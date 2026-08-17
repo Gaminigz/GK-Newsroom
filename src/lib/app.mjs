@@ -3148,11 +3148,21 @@ export async function handleApp(req, res, url) {
   if (m) {
     const shop = await shopById(m[1]);
     if (!shop) { res.writeHead(404).end("not found"); return; }
-    const [{ marketPricesPage }, { MARKET_PRICES }] = await Promise.all([
+    const [{ marketPricesPage }, { MARKET_PRICES, appPrice }] = await Promise.all([
       import("./shop-suite.mjs"),
       import("../data/market-prices.mjs"),
     ]);
-    html(res, marketPricesPage(shop, { prices: MARKET_PRICES }));
+    // Whatever the newsroom checked last — one document per item, one field
+    // per shop it was checked at. The file below is only the seed.
+    const fresh = await (await col("market_prices")).find({}).toArray();
+    const byName = new Map(fresh.map((r) => [String(r.name || "").toLowerCase(), r]));
+    const rows = MARKET_PRICES.map((r) => {
+      const live = byName.get(r.name.toLowerCase()) || {};
+      const merged = { ...r, ...Object.fromEntries(["cb", "carg", "arp", "uber"].map((k) => [k, live[k] ?? r[k] ?? null])) };
+      return { ...merged, app: appPrice(merged), checkedAt: live.checkedAt || null };
+    });
+    const last = rows.map((r) => r.checkedAt).filter(Boolean).sort().pop() || null;
+    html(res, marketPricesPage(shop, { prices: rows, checkedAt: last }));
     return;
   }
 
