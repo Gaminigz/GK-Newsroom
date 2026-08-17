@@ -1957,11 +1957,14 @@ function costsPage(shop, extras = {}) {
 
   /* One set, one card. The header is a single line — a kitchen reads
      "costs 414, sells 300, −38%" faster than three stacked labels. */
-  const row = (name, kind, cost, sale, note, detail = "") => {
-    const margin = marginOf(cost, sale);
+  const row = (name, kind, cost, sale, note, detail = "", base = undefined, partial = false) => {
+    // A set's margin is measured against the dishes that could be costed, not
+    // against the whole set's price — otherwise one costed dish out of five
+    // reports the set as 90% profitable.
+    const margin = marginOf(cost, base === undefined ? sale : base);
     const pill = margin == null
       ? `<span class="pill" style="font-size:10px;color:#8a827b;padding:3px 8px">no recipe</span>`
-      : statusPill(margin + "%", margin < 30 ? "warn" : "ok");
+      : statusPill((partial ? "≈" : "") + margin + "%", margin < 30 ? "warn" : "ok");
     return `
     <div class="card" style="margin-top:9px;padding:11px 13px">
       <div style="display:flex;gap:8px;align-items:baseline">
@@ -2000,11 +2003,11 @@ function costsPage(shop, extras = {}) {
   // Only what can be costed counts towards the average — a dish with no
   // recipe would otherwise drag the shop's margin around for no reason.
   const costed = [
-    ...sets.filter((s) => s.cost != null && s.sale),
+    ...sets.filter((s) => s.cost != null && s.marginBase),
     ...loose.filter((d) => d.cost != null && d.sale),
   ];
   const avg = costed.length
-    ? Math.round(costed.reduce((n, x) => n + marginOf(x.cost, x.sale), 0) / costed.length)
+    ? Math.round(costed.reduce((n, x) => n + marginOf(x.cost, x.marginBase || x.sale), 0) / costed.length)
     : null;
 
   /* What is actually inside the set, line by line. The set's own figure is an
@@ -2076,9 +2079,10 @@ function costsPage(shop, extras = {}) {
   const setCards = sets.map((s) => row(
     s.label, `Set menu · pick ${s.pick}`, s.cost, s.sale,
     `${s.costed} of ${s.of} priced from the recipe book`
+    + (s.partial ? ` · ≈ margin is for those ${s.costed}` : "")
     + (s.pick > 1 ? ` · cost is the average of the choices × ${s.pick}` : "")
     + (s.fixedPrice ? " · you set this set's price" : " · priced by the dish picked"),
-    inner(s.rows),
+    inner(s.rows), s.marginBase, s.partial,
   )).join("");
 
   /* Dishes the owner never put in a set. Twenty of them as twenty cards is
@@ -2940,6 +2944,19 @@ function planPage(shop, extras = {}) {
           <span style="display:block;height:6px;line-height:6px">${planMeals.includes(mm) ? `<span style="display:inline-block;width:5px;height:5px;border-radius:99px;background:${mm === pMeal ? "#fff" : ORANGE}"></span>` : ""}</span>
           ${escS(mm)}</a>`).join("")}
       </div>
+      <!-- Something to buy that no recipe knows about — gas, bags, a sack of
+           rice for the week. Type it and it joins the day's list. -->
+      <div style="display:flex;gap:5px;margin-top:7px;align-items:center">
+        <input list="ingList" id="addName" placeholder="add an item…" style="margin:0;flex:1;min-width:0;padding:8px 10px;font-size:12.5px;border-radius:10px">
+        <input type="number" inputmode="decimal" min="0" id="addQty" placeholder="qty" style="margin:0;width:64px;padding:8px 4px;font-size:12.5px;text-align:center;border-radius:10px">
+        <select id="addUnit" style="margin:0;width:66px;padding:8px 4px;font-size:12px;border-radius:10px">
+          <option value="kg">kg</option><option value="g">g</option>
+          <option value="l">L</option><option value="ml">ml</option>
+          <option value="piece">pcs</option>
+        </select>
+        <button type="button" id="addBuy" style="flex:0 0 auto;border:0;background:${ORANGE};color:#fff;border-radius:10px;width:38px;height:36px;font-size:19px;font-weight:700;line-height:1;cursor:pointer;padding:0">+</button>
+      </div>
+      <datalist id="ingList">${(extras.knownIngredients || []).map((n) => `<option value="${escS(n)}">`).join("")}</datalist>
     </div>`;
 
   /* What that day actually needs, read the way the menu is built: the sets in
@@ -2976,6 +2993,9 @@ function planPage(shop, extras = {}) {
           <span class="sub"> / </span>
           <strong style="color:${ok ? "#1d7a34" : "#8a827b"}">${escS(nice(n.have, n.base))}</strong>
         </span>
+        <!-- Skip it for today: already have it, or cooking it another way. -->
+        <button type="button" class="skipBuy" data-key="${escS(n.key)}" title="skip this one"
+          style="flex:0 0 auto;border:0;background:none;color:#c9bfb7;font-size:15px;line-height:1;cursor:pointer;padding:0 2px">✕</button>
       </div>
       <div style="display:flex;gap:8px;align-items:baseline;margin-top:2px">
         <span class="sub" style="flex:1;min-width:0;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escS(n.dishes.slice(0, 3).join(", "))}${n.dishes.length > 3 ? ` +${n.dishes.length - 3}` : ""}</span>
@@ -3015,6 +3035,31 @@ function planPage(shop, extras = {}) {
       document.getElementById('planDate').addEventListener('change', function(){
         if (this.value) location.href = '/app/owner/${id}/suite/plan?date=' + this.value + '&meal=${escS(pMeal)}';
       });
+
+      /* Skip an ingredient for today. Kept on the day, not on the recipe —
+         tomorrow's list is unaffected. */
+      document.querySelectorAll('.skipBuy').forEach(function(b){
+        b.addEventListener('click', function(){
+          fetch('/app/owner/${id}/plan/skip.json', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({date:'${escS(pDate)}', meal:'${escS(pMeal)}', key: b.dataset.key}),
+          }).then(function(){ location.reload(); }).catch(function(){});
+        });
+      });
+
+      var addBtn = document.getElementById('addBuy');
+      function addItem(){
+        var n = document.getElementById('addName').value.trim();
+        var q = document.getElementById('addQty').value;
+        if (!n || !q) return;
+        addBtn.disabled = true;
+        fetch('/app/owner/${id}/plan/add.json', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({date:'${escS(pDate)}', meal:'${escS(pMeal)}', name:n, qty:q, unit:document.getElementById('addUnit').value}),
+        }).then(function(){ location.reload(); }).catch(function(){ addBtn.disabled = false; });
+      }
+      addBtn.addEventListener('click', addItem);
+      document.getElementById('addQty').addEventListener('keydown', function(e){ if (e.key === 'Enter') addItem(); });
     </script>`);
 }
 

@@ -3249,6 +3249,18 @@ export async function handleApp(req, res, url) {
       extras.date = pDate;
       extras.meal = pMeal;
       extras.meals = MEALS;
+      // Names for the add box's dropdown: what we hold prices for, plus
+      // whatever this shop already keeps in its store.
+      {
+        const { INGREDIENT_LIBRARY } = await import("./ai-dish.mjs");
+        const mine = await (await col("kitchen_stock"))
+          .find({ shopId: m[1] }, { projection: { name: 1 } }).toArray();
+        const names = new Set([
+          ...Object.keys(INGREDIENT_LIBRARY).map((k) => k.replace(/\b\w/g, (c) => c.toUpperCase())),
+          ...mine.map((x) => String(x.name || "")).filter(Boolean),
+        ]);
+        extras.knownIngredients = [...names].sort();
+      }
 
       const pStrip = Array.from({ length: 7 }, (_, i) => {
         const d = new Date(pDate + "T00:00:00Z");
@@ -3325,11 +3337,26 @@ export async function handleApp(req, res, url) {
           haveBy.set(k, (haveBy.get(k) || 0) + amt.n);
         }
 
-        extras.needed = [...tally.values()].map((x) => {
+        // The boss's own corrections for this day: ingredients skipped, and
+        // things to buy that no recipe knows about.
+        const buyList = pPlan.buyList || {};
+        const skipped = new Set((buyList.skip || []).map(String));
+        for (const extra of buyList.add || []) {
+          const amt = toBaseAmount(extra.qty, extra.unit, extra.name);
+          if (!amt) continue;
+          const key = (libraryKeyFor(extra.name) || String(extra.name).toLowerCase().trim()) + "|" + amt.base;
+          const at = tally.get(key) || { key, name: extra.name, base: amt.base, need: 0, dishes: [], sets: new Set(["Others"]) };
+          at.need += amt.n;
+          if (!at.dishes.includes("added by hand")) at.dishes.push("added by hand");
+          tally.set(key, at);
+        }
+
+        extras.needed = [...tally.values()].filter((x) => !skipped.has(x.key)).map((x) => {
           const need = Math.round(x.need * 10) / 10;
           const have = Math.round((haveBy.get(x.key) || 0) * 10) / 10;
           const short = Math.max(0, need - have);
           return {
+            key: x.key,
             name: x.name, base: x.base, need, have, short,
             buy: short > 0 ? packFor(x.name, x.base, short) : null,
             dishes: x.dishes,
@@ -3499,12 +3526,22 @@ export async function handleApp(req, res, url) {
         // the average is what the kitchen actually spends over a service.
         const avgCost = priced.length ? priced.reduce((n, r) => n + r.cost, 0) / priced.length : null;
         const avgSale = rows.length ? rows.reduce((n, r) => n + r.sale, 0) / rows.length : 0;
+        // The margin must compare like with like. Costing one dish of five
+        // and setting it against the sale price of all five read as a 90%
+        // margin on a set whose other four are unknown. So the margin is
+        // worked out on the dishes we can actually cost, and only when
+        // enough of them are costed to mean anything.
+        const saleOfPriced = priced.length ? priced.reduce((n, r) => n + r.sale, 0) / priced.length : 0;
+        const enough = rows.length > 0 && priced.length >= Math.ceil(rows.length / 2);
         return {
           label: g.label || "", pick,
           rows,
           costed: priced.length, of: rows.length,
           cost: avgCost == null ? null : Math.round(avgCost * pick),
           sale: g.price != null ? Number(g.price) : Math.round(avgSale * pick),
+          // What the margin is measured against — the same dishes as the cost.
+          marginBase: enough ? Math.round((g.price != null ? Number(g.price) / Math.max(1, rows.length) * priced.length / Math.max(1, priced.length) : saleOfPriced) * pick) : null,
+          partial: priced.length > 0 && priced.length < rows.length,
           fixedPrice: g.price != null,
         };
       });
@@ -3638,6 +3675,46 @@ export async function handleApp(req, res, url) {
         ok: true, existed: false, id: String(ins.insertedId), name,
         nameSi: feed?.nameSi || "", price: finalPrice,
       }));
+    return;
+  }
+
+  // The boss skips an ingredient for a day — already have it, not buying it,
+  // cooking it differently. Kept on that day's plan, not on the recipe.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/plan\/skip\.json$/);
+  if (m && req.method === "POST") {
+    let body = {};
+    try { body = JSON.parse((await readBody(req, 800)) || "{}"); } catch { /* bad json */ }
+    const date = String(body.date || "").slice(0, 10);
+    const meal = MEALS.includes(body.meal) ? body.meal : "Lunch";
+    const key = String(body.key || "").trim().slice(0, 80);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !key) {
+      res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: false, error: "bad request" }));
+      return;
+    }
+    await (await col("day_plans")).updateOne({ shopId: m[1], date, meal },
+      body.undo ? { $pull: { "buyList.skip": key } } : { $addToSet: { "buyList.skip": key } }, { upsert: true });
+    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true, key }));
+    return;
+  }
+
+  // Something to buy that no recipe knows about — gas, bags, a sack of rice
+  // for the week. It joins the day's list under Others.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/plan\/add\.json$/);
+  if (m && req.method === "POST") {
+    let body = {};
+    try { body = JSON.parse((await readBody(req, 800)) || "{}"); } catch { /* bad json */ }
+    const date = String(body.date || "").slice(0, 10);
+    const meal = MEALS.includes(body.meal) ? body.meal : "Lunch";
+    const name = String(body.name || "").trim().slice(0, 60);
+    const qty = Math.max(0, Number(body.qty) || 0);
+    const unit = String(body.unit || "g").trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !name || !qty) {
+      res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: false, error: "name and quantity please" }));
+      return;
+    }
+    await (await col("day_plans")).updateOne({ shopId: m[1], date, meal },
+      { $push: { "buyList.add": { name, qty, unit } } }, { upsert: true });
+    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true, name, qty, unit }));
     return;
   }
 
