@@ -2962,11 +2962,9 @@ function planPage(shop, extras = {}) {
         </div>`).join("")}
     </div>
     <div class="sub" style="font-size:10.5px;margin-top:6px">Worked out from the recipes and the portions you set on Portion Plan. "To taste" items are not counted.</div>`
-    : `<div class="card" style="margin-top:14px;padding:14px;text-align:center">
-        <strong style="display:block;font-size:13px">Nothing to work out yet</strong>
-        <p class="sub" style="font-size:12px;margin-top:5px;line-height:1.5">Set how many portions you are cooking on <strong>Portion Plan</strong> for this day and the ingredients you need appear here.<br><span class="si">කී දෙනෙකුට උයනවාද යන්න සඳහන් කළ පසු අවශ්‍ය ද්‍රව්‍ය මෙතැන පෙන්වයි.</span></p>
-        <a class="btn" style="margin-top:10px;padding:10px" href="/app/owner/${id}/suite/costs?date=${escS(pDate)}&meal=${escS(pMeal)}">Open Portion Plan</a>
-      </div>`;
+    // No portions set for this day: say nothing rather than fill the screen
+    // explaining an empty list.
+    : "";
 
   return page(shop, "plan", "Purchase Plan", "මිලදී ගැනීම්", `
     <!-- Header on one line. Three stacked blocks of explanation pushed the
