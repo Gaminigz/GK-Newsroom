@@ -69,6 +69,9 @@ const SET_PRESETS = [
 // `real:` = tile is wired to real Mongo collections (green glow, no padlock).
 // Absence of `real:` = static preview screen — still opens, just hardcoded HTML.
 export const SUITE_TILES = [
+  // The QR a table is ordered from — the first thing a shop hands a customer,
+  // so it opens the board rather than hiding in the header corner.
+  { key: "qr", label: "Table QR", emoji: "▦", real: (id) => `/app/owner/${id}/qr` },
   { key: "dishes", label: "Setup Daily Menu", emoji: "🍛", real: (id) => `/app/owner/${id}/dishes` },
   { key: "pos", label: "POS", emoji: "💳", real: (id) => `/app/owner/${id}/suite/pos` },
   { key: "kitchen", label: "In Kitchen", emoji: "👨‍🍳", real: (id) => `/app/owner/${id}/suite/kitchen` },
@@ -126,9 +129,6 @@ export function ownerHubPage(shop, toast = "") {
         <strong style="font-size:17px;line-height:1.15;display:block">${esc(shop.name)}</strong>
         <div class="sub" style="font-size:11px;line-height:1.15">Owner · ${esc(shop.owner || "")}</div>
       </div>
-      <a href="/app/owner/${id}/qr" style="flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:4px;text-decoration:none">
-        ${hubCircle("▦", 46, true)}
-        <span style="font-size:9.5px;font-weight:700;color:#1a1a1a">Table QR</span></a>
     </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:22px 8px;margin-top:14px">${tiles}</div>`,
   });
