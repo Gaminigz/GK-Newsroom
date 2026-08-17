@@ -1976,6 +1976,19 @@ function costsPage(shop, extras = {}) {
         ${pill}
       </div>
       ${note ? `<div class="sub" style="font-size:10px;margin-top:3px;line-height:1.35">${note}</div>` : ""}
+      ${detail ? `
+      <!-- A kitchen cooks a set in one number: "twenty today". These put that
+           number on every dish at once; any single dish can still be nudged
+           afterwards. -->
+      <div style="display:flex;gap:5px;align-items:center;margin-top:7px;flex-wrap:wrap">
+        <span class="sub" style="font-size:10px">set all</span>
+        ${[5, 10, 15, 20, 25].map((n) => `<button type="button" class="bulkBtn" data-n="${n}"
+          style="border:1px solid #e0d6cc;background:#fff;color:#4a443f;border-radius:99px;width:34px;height:34px;
+          font-size:12px;font-weight:700;cursor:pointer;padding:0">${n}</button>`).join("")}
+        <button type="button" class="bulkBtn" data-n="0"
+          style="border:1px solid #efc4bf;background:#fdecea;color:#b3261e;border-radius:99px;padding:0 11px;height:34px;
+          font-size:11px;font-weight:700;cursor:pointer">clear</button>
+      </div>` : ""}
       ${detail}
     </div>`;
   };
@@ -2187,6 +2200,18 @@ function costsPage(shop, extras = {}) {
     document.querySelectorAll('.portionBox').forEach(function(inp){
       inp.addEventListener('change', function(){ savePortions(inp); });
       inp.addEventListener('input', function(){ paintTotal(inp); });
+    });
+    /* One tap sets every dish on the card — the whole set cooked in the same
+       number — and each dish saves itself as if it had been typed. */
+    document.querySelectorAll('.bulkBtn').forEach(function(b){
+      b.addEventListener('click', function(){
+        var card = b.closest('.card');
+        if (!card) return;
+        card.querySelectorAll('.portionBox').forEach(function(inp){
+          inp.value = b.dataset.n === '0' ? '' : b.dataset.n;
+          savePortions(inp);
+        });
+      });
     });
     document.querySelectorAll('.stepBtn').forEach(function(b){
       b.addEventListener('click', function(){
