@@ -2074,12 +2074,13 @@ function costsPage(shop, extras = {}) {
 
   // Only what can be costed counts towards the average — a dish with no
   // recipe would otherwise drag the shop's margin around for no reason.
-  const costed = [
-    ...sets.filter((s) => s.cost != null && s.marginBase),
-    ...loose.filter((d) => d.cost != null && d.sale),
-  ];
+  // Every dish that has both a recipe and a price, wherever it sits. Counting
+  // whole sets only said "nothing here has both" on a day where a dish plainly
+  // did — it was just inside a set we could not fully cost.
+  const allDishes = [...sets.flatMap((x) => x.rows), ...loose];
+  const costed = allDishes.filter((d) => d.cost != null && d.sale);
   const avg = costed.length
-    ? Math.round(costed.reduce((n, x) => n + marginOf(x.cost, x.marginBase || x.sale), 0) / costed.length)
+    ? Math.round(costed.reduce((n, x) => n + marginOf(x.cost, x.sale), 0) / costed.length)
     : null;
 
   /* What is actually inside the set, line by line. The set's own figure is an
@@ -2149,7 +2150,9 @@ function costsPage(shop, extras = {}) {
 
 
   const setCards = sets.map((s) => row(
-    s.label, `Set menu · pick ${s.pick}`, s.cost, s.sale,
+    // No margin means we could not cost enough of it, so show no cost either
+    // rather than let one dish's figure stand for the whole set.
+    s.label, `Set menu · pick ${s.pick}`, s.marginBase ? s.cost : null, s.sale,
     `${s.costed} of ${s.of} priced from the recipe book`
     + (s.partial ? ` · ≈ margin is for those ${s.costed}` : "")
     + (s.pick > 1 ? ` · cost is the average of the choices × ${s.pick}` : "")
