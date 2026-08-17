@@ -2995,7 +2995,7 @@ function planPage(shop, extras = {}) {
         </span>
         <!-- Skip it for today: already have it, or cooking it another way. -->
         <button type="button" class="skipBuy" data-key="${escS(n.key)}" title="skip this one"
-          style="flex:0 0 auto;border:0;background:none;color:#c9bfb7;font-size:15px;line-height:1;cursor:pointer;padding:0 2px">✕</button>
+          style="flex:0 0 auto;border:0;background:none;color:#b3261e;font-size:16px;font-weight:700;line-height:1;cursor:pointer;padding:0 2px">✕</button>
       </div>
       <div style="display:flex;gap:8px;align-items:baseline;margin-top:2px">
         <span class="sub" style="flex:1;min-width:0;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escS(n.dishes.slice(0, 3).join(", "))}${n.dishes.length > 3 ? ` +${n.dishes.length - 3}` : ""}</span>
