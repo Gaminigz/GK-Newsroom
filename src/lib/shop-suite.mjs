@@ -122,8 +122,13 @@ const TILE_ICONS = {
   kitchen: `<path d="M6 20h12v-1.6H6z"/><path d="M7 18.4v-4.2a4.2 4.2 0 0 1-1.6-7.4A3.6 3.6 0 0 1 12 4.6a3.6 3.6 0 0 1 6.6 2.2A4.2 4.2 0 0 1 17 14.2v4.2"/><path d="M10 14.4v4M14 14.4v4"/>`,
   // Calendar — the day being planned.
   menu: `<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3"/><path d="M7.5 13h3M13.5 13h3M7.5 16.5h3M13.5 16.5h3"/>`,
-  // Scales — portions weighed against what they cost.
-  costs: `<path d="M12 4.5v15M7 19.5h10"/><path d="M5 8.5h14"/><path d="M5 8.5 2.6 14a2.6 2.6 0 0 0 4.8 0z"/><path d="M19 8.5 16.6 14a2.6 2.6 0 0 0 4.8 0z"/><circle cx="12" cy="6.2" r="1.4"/>`,
+  // A stack of plates under steam — how many are we cooking for today.
+  // (It was a pair of scales, which is a shop weighing goods, not a kitchen
+  // counting servings.)
+  costs: `<path d="M9 3.2c-.9 1 -.9 2 0 3M12 2.6c-.9 1 -.9 2 0 3M15 3.2c-.9 1 -.9 2 0 3"/>
+          <path d="M3.2 10.2h17.6"/><path d="M4.8 10.2c0 3 3.2 5.4 7.2 5.4s7.2-2.4 7.2-5.4"/>
+          <path d="M5.6 17c1.7 1 4 1.6 6.4 1.6s4.7-.6 6.4-1.6"/>
+          <path d="M6.8 20.4c1.5.7 3.3 1 5.2 1s3.7-.3 5.2-1"/>`,
   // The shopping list on its clipboard.
   plan: `<rect x="4.5" y="4.5" width="15" height="16" rx="2"/><rect x="9" y="2.5" width="6" height="3.4" rx="1.2"/><path d="M8.5 11h1M8.5 14.5h1M8.5 18h1M12 11h4M12 14.5h4M12 18h3"/>`,
   // Stacked crates.
