@@ -2040,7 +2040,12 @@ function costsPage(shop, extras = {}) {
               style="flex:0 0 auto;width:34px;height:34px;border:0;background:${ORANGE};color:#fff;border-radius:10px;font-size:18px;font-weight:700;line-height:1;cursor:pointer;padding:0">+</button>
             <span id="tot-${esc(r.id)}" style="flex:1;min-width:0;font-weight:700;font-size:12.5px;color:#4a443f">${total == null ? "" : "LKR " + total.toLocaleString()}</span>
             ${r.lines.length ? `<button type="button" class="ingToggle" data-id="${esc(r.id)}"
-              style="flex:0 0 auto;border:0;background:none;font-size:11px;cursor:pointer;color:${ORANGE};font-weight:700;padding:4px 2px;text-decoration:underline">prices</button>` : ""}
+              style="flex:0 0 auto;border:0;background:none;font-size:11px;cursor:pointer;color:${ORANGE};font-weight:700;padding:4px 2px;text-decoration:underline">prices</button>`
+            : `<!-- No recipe for this one, so there is nothing to add up. The
+                    owner types what it costs them instead. -->
+              <span class="sub" style="flex:0 0 auto;font-size:10px">cost</span>
+              <input type="number" inputmode="numeric" min="0" class="costBox" data-id="${esc(r.id)}" value="${r.typed || ""}"
+                placeholder="?" style="margin:0;width:66px;padding:5px 4px;font-size:12.5px;text-align:center;border-radius:8px;${r.typed ? `border-color:${ORANGE};color:${ORANGE};font-weight:700` : ""}">`}
           </div>
           ${ingPanel(r)}`;
   };
@@ -2219,6 +2224,17 @@ function costsPage(shop, extras = {}) {
         if (!inp) return;
         inp.value = Math.max(0, Math.min(9999, (Number(inp.value) || 0) + Number(b.dataset.step)));
         savePortions(inp);
+      });
+    });
+
+    /* A dish the recipe book does not cover — the owner says what it costs. */
+    document.querySelectorAll('.costBox').forEach(function(inp){
+      inp.addEventListener('change', function(){
+        fetch('/app/owner/${id}/costs/dish-cost.json', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({dishId: inp.dataset.id, lkr: inp.value}),
+        }).then(function(r){ return r.json(); }).then(function(){ location.reload(); })
+          .catch(function(){});
       });
     });
 

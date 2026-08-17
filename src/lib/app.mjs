@@ -3261,11 +3261,14 @@ export async function handleApp(req, res, url) {
 
       const dishRow = (d) => {
         const c = costOf(d.name);
+        // What the owner typed wins over the book — they know their kitchen.
+        const typed = Math.max(0, Math.round(Number(d.costLkr) || 0));
         return {
           id: String(d._id),
           name: d.name, nameSi: d.nameSi || "",
           sale: Number(d.price) || 0,
-          cost: c ? c.lkr : null,
+          cost: typed || (c ? c.lkr : null),
+          typed,
           missing: c ? c.missing : [],
           ingredients: c ? c.n : 0,
           lines: c ? c.lines : [],
@@ -3476,6 +3479,26 @@ export async function handleApp(req, res, url) {
       { $set: { shopId: m[1], key, lkr, unit, updatedAt: new Date() } }, { upsert: true });
     res.writeHead(200, { "Content-Type": "application/json" })
       .end(JSON.stringify({ ok: true, key, lkr, unit }));
+    return;
+  }
+
+  // What a dish costs to cook, typed by the owner. For the dishes the recipe
+  // book has never heard of — a shop's own invention, or a name nobody else
+  // uses — there is nothing to add up, so they say it themselves.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/costs\/dish-cost\.json$/);
+  if (m && req.method === "POST") {
+    let body = {};
+    try { body = JSON.parse((await readBody(req, 500)) || "{}"); } catch { /* bad json */ }
+    const dishId = String(body.dishId || "").trim();
+    const lkr = Math.max(0, Math.round(Number(body.lkr) || 0));
+    const _id = await oid(dishId);
+    if (!_id) {
+      res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: false, error: "bad dish" }));
+      return;
+    }
+    await (await col("app_dishes")).updateOne({ _id, shopId: m[1] },
+      lkr ? { $set: { costLkr: lkr } } : { $unset: { costLkr: "" } });
+    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true, dishId, lkr }));
     return;
   }
 
