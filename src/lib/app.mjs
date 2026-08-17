@@ -52,6 +52,36 @@ function esc(s) {
     .replace(/"/g, "&quot;");
 }
 
+/** What a buyer sees for each stage the kitchen already has (pending →
+ *  preparing → done → delivered). One place, so the label and the colour
+ *  never drift apart between the orders list, the order detail page, and
+ *  the progress track. */
+const ORDER_STAGES = ["pending", "preparing", "done", "delivered"];
+const ORDER_STATUS = {
+  pending: { label: "Order received", short: "Received", color: "#946200", bg: "#fdf3d7" },
+  preparing: { label: "In the kitchen", short: "Cooking", color: "#8b3a1f", bg: "#fdf0ec" },
+  done: { label: "Ready for pickup", short: "Ready", color: "#1d7a34", bg: "#e3f4e6" },
+  delivered: { label: "Picked up", short: "Picked up", color: "#4a443f", bg: "#efe9e2" },
+};
+/** Small "Received → Cooking → Ready" strip so a buyer can see how far along
+ *  their order is without reading a single word of jargon. */
+function orderProgress(status) {
+  const at = ORDER_STAGES.indexOf(status);
+  if (at < 0) return "";
+  const steps = ["pending", "preparing", "done"]; // delivered has no "next" to show
+  return `<div style="display:flex;align-items:center;margin-top:10px">
+    ${steps.map((s, i) => {
+      const st = ORDER_STATUS[s];
+      const reached = i <= at || status === "delivered";
+      return `${i > 0 ? `<div style="flex:1;height:2px;background:${reached ? st.color : "#e6ddd3"};margin:0 2px"></div>` : ""}
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:0 0 auto">
+          <div style="width:11px;height:11px;border-radius:99px;background:${reached ? st.color : "#e6ddd3"}"></div>
+          <span style="font-size:9.5px;font-weight:${i === at ? "700" : "500"};color:${i === at ? st.color : "#a89c8d"}">${esc(st.short)}</span>
+        </div>`;
+    }).join("")}
+  </div>`;
+}
+
 function readBody(req, limit = 20_000) {
   return new Promise((resolve, reject) => {
     let buf = "";
@@ -1356,11 +1386,29 @@ async function orderPage(id, asShop = false) {
       <div><strong>${esc(shop?.name ?? "Shop")}</strong><div class="sub" style="font-size:12px;color:#1d7a34">● Online · replies in ~5 min</div></div>
     </div>
     <div class="card" style="margin-top:14px">
-      <div class="row" style="justify-content:space-between"><strong style="color:${ORANGE};font-size:13px">YOUR ORDER</strong><span class="pill ${esc(order.status)}">${esc(order.status)}</span></div>
-      <div style="margin-top:8px">${items}</div>
+      <div class="row" style="justify-content:space-between">
+        <strong style="color:${ORANGE};font-size:13px">YOUR ORDER</strong>
+        <span class="pill" style="background:${(ORDER_STATUS[order.status] || ORDER_STATUS.pending).bg};color:${(ORDER_STATUS[order.status] || ORDER_STATUS.pending).color}">${esc((ORDER_STATUS[order.status] || ORDER_STATUS.pending).label)}</span>
+      </div>
+      ${!asShop ? orderProgress(order.status) : ""}
+      <div style="margin-top:10px">${items}</div>
       <div class="row" style="justify-content:space-between;border-top:1px solid #f0e7de;margin-top:8px;padding-top:8px"><strong>Total</strong><strong style="color:${ORANGE}">${lkr(order.total)}</strong></div>
     </div>
-    ${order.status === "done" ? `<div class="ok">✓ Order completed${order.pickupAt ? ` — picked up ${esc(order.pickupAt)}` : ""}</div>` : order.confirmedAt ? `<div class="ok">✓ Order confirmed for ${esc(order.pickupAt ?? "pickup")}</div>` : ""}
+    ${order.status === "done" ? `<div class="ok">✓ Ready — come and pick it up${order.pickupAt ? ` (${esc(order.pickupAt)})` : ""}</div>`
+      : order.status === "delivered" ? `<div class="ok">✓ Order picked up${order.pickupAt ? ` — ${esc(order.pickupAt)}` : ""}</div>`
+      : order.confirmedAt ? `<div class="ok">✓ Order confirmed for ${esc(order.pickupAt ?? "pickup")}</div>` : ""}
+    ${!asShop && !["done", "delivered"].includes(order.status) ? `
+    <script>
+      // The kitchen updates this order from its own screen — poll quietly so
+      // "In the kitchen" turns into "Ready" without the buyer refreshing.
+      setInterval(function(){
+        fetch(location.pathname, { headers: { "X-Poll": "1" } }).then(function(r){ return r.text(); }).then(function(html){
+          var cur = document.querySelector('.pill').textContent.trim();
+          var next = (html.match(/<span class="pill"[^>]*>([^<]+)<\\/span>/) || [])[1];
+          if (next && next.trim() !== cur) location.reload();
+        }).catch(function(){});
+      }, 15000);
+    </script>` : ""}
     <div style="margin:16px 0">${msgs || `<div class="sub">Say hello — ask about pickup time or extras.</div>`}</div>
     <form method="POST" action="/app/order/${String(order._id)}/message" class="row">
       <input type="hidden" name="from" value="${asShop ? "shop" : "buyer"}">
@@ -1379,14 +1427,18 @@ async function ordersPage(req) {
     : [];
   const shops = new Map((await (await col("shop_owners")).find({}).toArray()).map((s) => [String(s._id), s.name]));
   const rows = list
-    .map(
-      (o) => `<a class="card row" href="/app/order/${String(o._id)}">
-      <div class="thumb">🧾</div>
-      <div style="flex:1"><strong>${esc(shops.get(o.shopId) ?? "Shop")}</strong>
-        <div class="sub" style="font-size:12.5px">${(o.items ?? []).reduce((a, b) => a + b.qty, 0)} items · ${lkr(o.total)}</div></div>
-      <span class="pill ${esc(o.status)}">${esc(o.status)}</span>
-    </a>`,
-    )
+    .map((o) => {
+      const st = ORDER_STATUS[o.status] || ORDER_STATUS.pending;
+      return `<a class="card" href="/app/order/${String(o._id)}" style="display:block">
+      <div class="row">
+        <div class="thumb">🧾</div>
+        <div style="flex:1"><strong>${esc(shops.get(o.shopId) ?? "Shop")}</strong>
+          <div class="sub" style="font-size:12.5px">${(o.items ?? []).reduce((a, b) => a + b.qty, 0)} items · ${lkr(o.total)}</div></div>
+        <span class="pill" style="background:${st.bg};color:${st.color}">${esc(st.label)}</span>
+      </div>
+      ${orderProgress(o.status)}
+    </a>`;
+    })
     .join("");
   return shell({
     title: "My orders — 3una 5aha",
