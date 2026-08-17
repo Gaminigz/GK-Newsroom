@@ -3829,15 +3829,19 @@ export async function handleApp(req, res, url) {
       // The set name stays inside the closed list: a preset, or one of the
       // shop's own three. A heading that is neither takes a free slot; with
       // no slot left the dishes still go on the day, just not in a set.
-      const all = [...SET_PRESET_NAMES, ...customTypes];
+      // "Menu" is the reader's own word for dishes written before any
+      // heading. A shop that once saved a set by that name would otherwise
+      // match every headless block to it and collapse a whole day into one
+      // set — which is exactly what happened. It is never a set name here.
+      const all = [...SET_PRESET_NAMES, ...customTypes].filter((n) => n.toLowerCase() !== "menu");
       const wanted = String(g.setType || g.name || "").trim();
-      let label = matchSetName(all, wanted);
+      let label = wanted.toLowerCase() === "menu" ? "" : matchSetName(all, wanted);
       // A block written with no heading at all — the owner just listed the
       // dishes, the way the rice usually opens a menu — or headed with a name
       // that is not one this shop may use ("Chicken or pork") and no slot left
       // to make it. Name it from what is in it, and only ever with a name this
       // shop is allowed to use. Reported back, never silent.
-      if (!label && g.dishes.length && (wanted === "Menu" || customTypes.length >= CUSTOM_SET_LIMIT)) {
+      if (!label && g.dishes.length) {
         const shelves = g.dishes.map((d) => guessCategory(d.name));
         const top = shelves.slice().sort((a, b) =>
           shelves.filter((x) => x === b).length - shelves.filter((x) => x === a).length)[0];
@@ -3852,19 +3856,25 @@ export async function handleApp(req, res, url) {
           // rice and the meat, is what a Sri Lankan menu calls side dishes.
           "Mixed, Fusion & Street Food": "Side dishes",
         }[top] || "");
-        if (label && wanted && wanted !== "Menu") renamed.push({ from: wanted, to: label });
+        if (label && wanted && wanted.toLowerCase() !== "menu") renamed.push({ from: wanted, to: label });
       }
       // A set name is a name, not a sentence. "For dessert watalappan is
       // available" is the owner talking, and it must not eat one of their
       // three slots — the dishes under it still go on the day.
-      const nameable = wanted.length <= 28 && wanted.split(/\s+/).length <= 4;
-      if (!label && wanted && wanted !== "Menu") {
+      // A dish standing alone in its own block reads exactly like a heading.
+      // "Dolphin Kottu" took one of this shop's three slots that way, so a
+      // name the catalogue knows as a dish can never become a set name.
+      const isADish = !!(await (await col("lanka_dishes"))
+        .findOne({ _id: wanted.toLowerCase() }, { projection: { _id: 1 } }))
+        || g.dishes.some((d) => String(d.name || "").toLowerCase() === wanted.toLowerCase());
+      const nameable = wanted.length <= 28 && wanted.split(/\s+/).length <= 4 && !isADish;
+      if (!label && wanted && wanted.toLowerCase() !== "menu") {
         if (nameable && customTypes.length < CUSTOM_SET_LIMIT) {
           await owners.updateOne({ _id: shopOid }, { $push: { customSetTypes: wanted } });
           customTypes = [...customTypes, wanted];
           newTypes.push(wanted);
           label = wanted;
-        } else if (wanted !== "Menu") {
+        } else {
           // "Menu" is the parser's own name for dishes written before any
           // heading — the owner never wrote it, so don't report it back.
           unplaced.push(wanted);
