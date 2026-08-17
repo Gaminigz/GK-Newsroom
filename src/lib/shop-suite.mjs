@@ -146,17 +146,30 @@ const TILE_ICONS = {
   health: `<path d="M12 20.5s-7.8-4.7-7.8-10a4.4 4.4 0 0 1 7.8-2.8 4.4 4.4 0 0 1 7.8 2.8c0 5.3-7.8 10-7.8 10z"/><path d="M5.6 12.6h3l1.4-2.4 1.9 4 1.4-2.4h4"/>`,
 };
 
-/** One icon, one stroke weight, sized to the circle it sits in. */
+/** A colour per tile, so the board is read by eye before it is read by word.
+ *  Warm for the kitchen, cool for the money, green for what is bought and
+ *  stored, grey-blue for the people. */
+const TILE_COLOUR = {
+  qr: "#1a1a1a", dishes: "#d9542b", pos: "#2f6fd0", kitchen: "#c2410c",
+  menu: "#d9542b", costs: "#7c3aed", plan: "#0f8a6a", stock: "#0f8a6a",
+  purchasing: "#0f8a6a", history: "#8a6d3b", salaries: "#2f6fd0", staff: "#2f6fd0",
+  utilities: "#c79100", books: "#8a6d3b", dashboard: "#7c3aed", health: "#c92a4a",
+};
+
+/** One icon, one stroke weight, filling the circle it sits in. */
 function tileIcon(key, emoji, size) {
   const d = TILE_ICONS[key];
-  if (!d) return `<span style="font-size:${Math.round(size * 0.42)}px">${emoji}</span>`;
-  const px = Math.round(size * 0.46);
-  return `<svg viewBox="0 0 24 24" width="${px}" height="${px}" fill="none" stroke="#1a1a1a"
-    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  if (!d) return `<span style="font-size:${Math.round(size * 0.52)}px">${emoji}</span>`;
+  const px = Math.round(size * 0.64);
+  const c = TILE_COLOUR[key] || "#1a1a1a";
+  return `<svg viewBox="0 0 24 24" width="${px}" height="${px}" fill="none" stroke="${c}" color="${c}"
+    stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 }
 
 function hubCircle(emoji, size, ready, key = "") {
-  return `<span style="position:relative;width:${size}px;height:${size}px;border-radius:99px;background:#fff;
+  // A wash of the tile's own colour: the circle was mostly empty white.
+  const tint = TILE_COLOUR[key] ? `${TILE_COLOUR[key]}14` : "#fff";
+  return `<span style="position:relative;width:${size}px;height:${size}px;border-radius:99px;background:${ready ? tint : "#faf7f4"};
       border:2px solid ${ready ? "#35c98a" : "#ece3da"};
       box-shadow:${ready ? "0 0 0 5px #35c98a2e, 0 4px 16px #35c98a52" : "0 3px 10px #00000014"};
       display:flex;align-items:center;justify-content:center">${tileIcon(key, emoji, size)}${ready ? "" :
