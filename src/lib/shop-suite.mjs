@@ -2956,6 +2956,7 @@ function planPage(shop, extras = {}) {
         </select>
         <button type="button" id="addBuy" style="flex:0 0 auto;border:0;background:${ORANGE};color:#fff;border-radius:10px;width:38px;height:36px;font-size:19px;font-weight:700;line-height:1;cursor:pointer;padding:0">+</button>
       </div>
+      <div class="sub" style="font-size:9.5px;margin-top:3px">Lands in <strong>Added by hand</strong> at the top of the list, for this day only.</div>
       <datalist id="ingList">${(extras.knownIngredients || []).map((n) => `<option value="${escS(n)}">`).join("")}</datalist>
     </div>`;
 
@@ -2979,7 +2980,10 @@ function planPage(shop, extras = {}) {
     g.rows.push(n);
   }
   shelvesN.sort((a, b) => {
-    const rank = (x) => x === "Others" ? 98 : (SET_ORDER.indexOf(x) < 0 ? 90 : SET_ORDER.indexOf(x));
+    // What you typed sits first; the shared odds and ends sit last.
+    const rank = (x) => x === "Added by hand" ? -1
+      : x === "Others" ? 98
+      : (SET_ORDER.indexOf(x) < 0 ? 90 : SET_ORDER.indexOf(x));
     return rank(a.name) - rank(b.name);
   });
 

@@ -3345,9 +3345,13 @@ export async function handleApp(req, res, url) {
           const amt = toBaseAmount(extra.qty, extra.unit, extra.name);
           if (!amt) continue;
           const key = (libraryKeyFor(extra.name) || String(extra.name).toLowerCase().trim()) + "|" + amt.base;
-          const at = tally.get(key) || { key, name: extra.name, base: amt.base, need: 0, dishes: [], sets: new Set(["Others"]) };
+          const at = tally.get(key) || { key, name: extra.name, base: amt.base, need: 0, dishes: [], sets: new Set() };
           at.need += amt.n;
-          if (!at.dishes.includes("added by hand")) at.dishes.push("added by hand");
+          // Its own card at the top, so what you just typed is the first
+          // thing you see rather than something to hunt for under Others.
+          at.byHand = true;
+          at.sets = new Set(["Added by hand"]);
+          if (!at.dishes.includes("you added this")) at.dishes.push("you added this");
           tally.set(key, at);
         }
 
@@ -3363,7 +3367,8 @@ export async function handleApp(req, res, url) {
             // Used by one set: it belongs there. Used across the menu — salt,
             // curry leaves, coconut — it is one of the small things every pot
             // needs, and goes under Others.
-            set: x.sets.size === 1 ? ([...x.sets][0] || "Others") : "Others",
+            byHand: !!x.byHand,
+            set: x.byHand ? "Added by hand" : (x.sets.size === 1 ? ([...x.sets][0] || "Others") : "Others"),
           };
         }).sort((a, b) => b.need - a.need || a.name.localeCompare(b.name));
       }
