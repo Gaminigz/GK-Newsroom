@@ -2840,8 +2840,13 @@ function planPage(shop, extras = {}) {
       <a class="btn" style="margin-top:12px;padding:11px" href="/app/owner/${id}/suite/stock">Open Kitchen Stock</a>
     </div>`;
 
+  // The money figure belongs at the top, where it is read before deciding
+  // anything — not buried under eleven supplier rows.
+  const totalBanner = buyTotal > 0
+    ? `<div class="card row" style="margin-top:12px;padding:11px 14px;background:#191512;border-color:#191512"><strong style="flex:1;font-size:12px;color:#fff;opacity:.8;letter-spacing:.04em">ESTIMATED TOTAL TO BUY · ${storeBuys.length} ITEMS</strong><strong style="font-size:15px;color:#ffb08f">${escS(cur.symbol)} ${buyTotal.toLocaleString()}</strong></div>`
+    : "";
+
   const list = storeBuys.length ? `
-    ${buyTotal > 0 ? `<div class="card row" style="margin-top:10px;padding:11px 14px;background:#191512;border-color:#191512"><strong style="flex:1;font-size:12px;color:#fff;opacity:.8;letter-spacing:.04em">ESTIMATED TOTAL TO BUY · ${storeBuys.length} ITEMS</strong><strong style="font-size:15px;color:#ffb08f">${escS(cur.symbol)} ${buyTotal.toLocaleString()}</strong></div>` : ""}
     <div class="row" style="justify-content:space-between;margin-top:14px">
       <strong style="font-size:14px">From your kitchen store <span class="si">ඔබේ ගබඩාවෙන්</span></strong>
       <span class="sub" style="font-size:12px">${storeBuys.length} item${storeBuys.length === 1 ? "" : "s"}</span>
@@ -2965,9 +2970,10 @@ function planPage(shop, extras = {}) {
 
   return page(shop, "plan", "Purchase Plan", "මිලදී ගැනීම්", `
     <div class="sub" style="font-size:12.5px;margin-top:8px">What the day's cooking needs, and the items you flagged with 🛒 in Kitchen Stock.<br><span class="si">දවසේ උයන්න අවශ්‍ය දේ සහ කුස්සි ගබඩාවේ 🛒 කරන ලද ද්‍රව්‍ය.</span></div>
+    <a href="/app/owner/${id}/market-prices" class="btn ghost" style="margin-top:10px;padding:9px 13px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;width:auto;text-decoration:none;border:1.5px solid ${ORANGE};color:${ORANGE};font-weight:700">📊 Market prices <span class="si" style="font-weight:400;font-size:11px">· වෙළඳ මිල</span></a>
+    ${totalBanner}
     ${dayBar}
     ${needList}
-    <a href="/app/owner/${id}/market-prices" class="btn ghost" style="margin-top:14px;padding:9px 13px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;width:auto;text-decoration:none;border:1.5px solid ${ORANGE};color:${ORANGE};font-weight:700">📊 Market prices <span class="si" style="font-weight:400;font-size:11px">· වෙළඳ මිල</span></a>
     ${list}
     <script>
       document.getElementById('planDate').addEventListener('change', function(){
