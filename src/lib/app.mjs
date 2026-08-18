@@ -1286,16 +1286,18 @@ async function shopPage(id, extras = {}) {
       </svg>
       <span id="chatDot" style="display:none;position:absolute;top:2px;right:2px;width:11px;height:11px;border-radius:99px;background:#fff;border:2px solid ${ORANGE}"></span>
     </button>
-    <div id="chatSheet" style="display:none;position:fixed;inset:0;background:rgba(20,15,10,.45);z-index:9">
-      <!-- Drops from the top, under the shop's name, and never takes more
-           than half the screen: these are two-line questions, not threads. -->
-      <div style="position:absolute;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;
-        max-height:50vh;display:flex;flex-direction:column;
-        background:#faf7f4;border-radius:0 0 22px 22px;padding:calc(env(safe-area-inset-top, 0px) + 14px) 18px 16px;
-        box-shadow:0 8px 24px #00000026">
+    <div id="chatSheet" style="display:none;position:fixed;inset:0;background:rgba(20,15,10,.28);z-index:9">
+      <!-- A speech bubble growing out of the button it belongs to: anchored
+           to the same corner, with a tail pointing down at it. -->
+      <div style="position:absolute;right:14px;bottom:calc(env(safe-area-inset-bottom, 0px) + 148px);
+        width:min(330px, calc(100vw - 28px));max-height:50vh;display:flex;flex-direction:column;
+        background:#faf7f4;border-radius:18px;padding:13px 15px 14px;
+        box-shadow:0 10px 30px #00000033">
+        <span style="position:absolute;right:22px;bottom:-8px;width:18px;height:18px;background:#faf7f4;
+          transform:rotate(45deg);border-radius:3px"></span>
       <div class="row" style="justify-content:space-between;align-items:baseline">
-        <strong style="font-size:15px">Ask the shop <span class="si" style="font-weight:400">ප්‍රශ්නයක් අහන්න</span></strong>
-        <span class="sub" style="font-size:10.5px;color:#1d7a34">● replies in ~5 min</span>
+        <strong style="font-size:13.5px">Ask the shop <span class="si" style="font-weight:400">ප්‍රශ්නයක් අහන්න</span></strong>
+        <span class="sub" style="font-size:9.5px;color:#1d7a34;flex:0 0 auto">● ~5 min</span>
       </div>
       <div id="chatBox" style="flex:1;min-height:60px;overflow-y:auto;margin-top:8px"></div>
       <div style="display:flex;gap:6px;margin-top:8px;flex:0 0 auto">
@@ -1338,9 +1340,9 @@ async function shopPage(id, extras = {}) {
           }).then(function(r){ return r.json(); }).then(function(j){ if (j.ok) draw(j.messages); }).catch(function(){});
         }
         var fab = document.getElementById('chatFab'), sheet = document.getElementById('chatSheet');
-        // The page's back arrow floats above everything, so it landed on top
-        // of the panel's own words. Out of the way while the chat is open.
-        var backEl = document.querySelector('.back');
+        // The panel sits by the button now, so nothing at the top is covered
+        // and the back arrow can stay where it is.
+        var backEl = null;
         // A fixed offset lands on the logo in a browser and on the shop's name
         // on a phone with a notch. Sit under the back arrow, whatever the
         // device puts it, and follow it if the window changes.
