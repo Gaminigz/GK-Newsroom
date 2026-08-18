@@ -1271,11 +1271,28 @@ async function shopPage(id, extras = {}) {
     ${dishRows || `<div class="sub">No dishes published yet.</div>`}
 
     <!-- Ask before ordering. The shop answers from its own screen; this box
-         keeps the thread whether or not anything is bought. -->
-    <div class="card" style="margin-top:16px;padding:12px 13px">
+         keeps the thread whether or not anything is bought.
+
+         It lives in a sheet behind a floating bubble: sitting at the foot of
+         the page meant scrolling past every dish to find it, which is no use
+         to someone whose question is whether to come at all. -->
+    <button type="button" id="chatFab" aria-label="Ask the shop"
+      style="position:fixed;right:14px;bottom:calc(env(safe-area-inset-bottom, 0px) + 78px);z-index:8;
+      width:52px;height:52px;border-radius:99px;border:0;background:${ORANGE};color:#fff;cursor:pointer;
+      box-shadow:0 4px 14px #d9542b55;display:flex;align-items:center;justify-content:center;padding:0">
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20.5 12.5a7.5 7.5 0 0 1-10.9 6.7L4 20.5l1.4-5.3A7.5 7.5 0 1 1 20.5 12.5z"/>
+        <path d="M8.5 11h7M8.5 14h4.5"/>
+      </svg>
+      <span id="chatDot" style="display:none;position:absolute;top:2px;right:2px;width:11px;height:11px;border-radius:99px;background:#fff;border:2px solid ${ORANGE}"></span>
+    </button>
+    <div id="chatSheet" style="display:none;position:fixed;inset:0;background:rgba(20,15,10,.45);z-index:9"
+      onclick="if(event.target===this)this.style.display='none'">
+      <div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;
+        background:#faf7f4;border-radius:22px 22px 0 0;padding:16px 18px calc(env(safe-area-inset-bottom, 0px) + 20px)">
       <div class="row" style="justify-content:space-between;align-items:baseline">
-        <strong style="font-size:13.5px">Ask the shop <span class="si" style="font-weight:400">ප්‍රශ්නයක් අහන්න</span></strong>
-        <span class="sub" style="font-size:10.5px;color:#1d7a34">● usually replies in ~5 min</span>
+        <strong style="font-size:15px">Ask the shop <span class="si" style="font-weight:400">ප්‍රශ්නයක් අහන්න</span></strong>
+        <span class="sub" style="font-size:10.5px;color:#1d7a34">● replies in ~5 min</span>
       </div>
       <div id="chatBox" style="max-height:190px;overflow-y:auto;margin-top:8px"></div>
       <div style="display:flex;gap:6px;margin-top:8px">
@@ -1283,6 +1300,7 @@ async function shopPage(id, extras = {}) {
           style="flex:1;min-width:0;margin:0;padding:9px 11px;font-size:13px;border-radius:99px">
         <button type="button" id="chatGo"
           style="flex:0 0 auto;border:0;background:${ORANGE};color:#fff;border-radius:99px;width:42px;height:38px;font-size:15px;cursor:pointer;padding:0">➤</button>
+      </div>
       </div>
     </div>
     <script>
@@ -1300,7 +1318,14 @@ async function shopPage(id, extras = {}) {
         }
         function load(){
           fetch('/app/shop/${String(shop._id)}/chat.json').then(function(r){ return r.json(); })
-            .then(function(j){ if (j.ok) draw(j.messages); }).catch(function(){});
+            .then(function(j){
+              if (!j.ok) return;
+              draw(j.messages);
+              var last = j.messages[j.messages.length - 1];
+              if (last && last.from === 'shop' && document.getElementById('chatSheet').style.display !== 'block') {
+                document.getElementById('chatDot').style.display = 'block';
+              }
+            }).catch(function(){});
         }
         function send(){
           var t = inp.value.trim(); if (!t) return;
@@ -1309,6 +1334,12 @@ async function shopPage(id, extras = {}) {
             method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text:t}),
           }).then(function(r){ return r.json(); }).then(function(j){ if (j.ok) draw(j.messages); }).catch(function(){});
         }
+        var fab = document.getElementById('chatFab'), sheet = document.getElementById('chatSheet');
+        fab.addEventListener('click', function(){
+          sheet.style.display = 'block';
+          document.getElementById('chatDot').style.display = 'none';
+          load(); setTimeout(function(){ inp.focus(); }, 60);
+        });
         document.getElementById('chatGo').addEventListener('click', send);
         inp.addEventListener('keydown', function(e){ if (e.key === 'Enter') send(); });
         load();
