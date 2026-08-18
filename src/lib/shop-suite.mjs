@@ -2371,47 +2371,61 @@ function stockPage(shop, extras = {}) {
       ? `<span style="width:36px;height:36px;border-radius:10px;background:#f0e7de url('${esc(url)}') center/cover;flex:0 0 auto"></span>`
       : `<span style="width:36px;height:36px;border-radius:10px;background:#f0e7de;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11.5px;flex:0 0 auto">${esc(initials(name))}</span>`;
   };
+  /* One line of controls, always open, saving themselves.
+     It used to be a card of boxes: a pencil to reveal an editor, six bordered
+     inputs in a grid, a tick to commit, and two more boxes under that. A cook
+     adjusting a kilo of onions should not have to open a form and confirm. */
   const stockRow = (s) => {
     const price = Number(s.price) || 0;
-    const lineTotal = price > 0 ? Math.round(price * (Number(s.qty) || 0)) : 0;
+    const qty = Number(s.qty) || 0;
+    const lineTotal = price > 0 ? Math.round(price * qty) : 0;
     const sid = String(s._id);
+    const low = s.minQty != null && s.minQty !== "" && qty <= Number(s.minQty);
+    // Borderless until touched: the value is the thing to read, not its box.
+    const bare = "border:0;background:transparent;padding:2px 3px;margin:0;font-size:12.5px;border-radius:6px";
     return `
-    <div class="card stockrow" data-cat="${esc(s.category)}" style="margin-top:9px;padding:11px 13px">
-      <div class="row">
-        ${thumb(s.name)}
-        <div style="flex:1;min-width:0"><strong style="font-size:13.5px">${esc(s.name)} <span class="sub" style="font-weight:600">${esc(String(s.qty))} ${esc(s.unit)}</span></strong>
-        <div class="sub" style="font-size:11.5px">${esc(s.category)}${s.si ? ` · ${esc(s.si)}` : ""}${s.addedAt ? ` · ${fmtDate(s.addedAt)}` : ""}</div>
-        ${price > 0 ? `<div class="sub" style="font-size:11.5px;color:#946200;margin-top:2px">${esc(cur.symbol)} ${price}/${esc(s.unit)} × ${esc(String(s.qty))} = <strong style="color:#d9542b">${esc(cur.symbol)} ${lineTotal.toLocaleString()}</strong></div>` : ""}</div>
-        <button type="button" class="btn ghost editBtn" data-target="edit-${sid}" style="width:auto;padding:6px 9px;font-size:13px;color:#4a443f" title="Edit">✎</button>
-        <form method="POST" action="/app/owner/${id}/stock/${sid}/buy" style="margin:0" title="${s.buyNext ? "Remove from Purchase Plan" : "Send to Purchase Plan"}">
-          <button class="btn ghost" style="width:auto;padding:6px 9px;font-size:13px;${s.buyNext ? "background:#d9542b;border-color:#d9542b;color:#fff" : "color:#1d7a34"}">🛒</button>
-        </form>
-        <form method="POST" action="/app/owner/${id}/stock/${sid}/remove" class="armForm" style="margin:0">
-          <button class="btn ghost" style="width:auto;padding:6px 10px;font-size:11px;color:#b3261e" title="Delete">✕</button>
-        </form>
-      </div>
-      <form id="edit-${sid}" method="POST" action="/app/owner/${id}/stock/${sid}/edit" class="editForm" style="display:none;margin-top:9px;padding-top:9px;border-top:1px dashed #ece3da">
-        <div style="display:grid;grid-template-columns:32px 1fr 32px 52px 1fr 38px;gap:3px;align-items:center">
-          <button type="button" class="btn ghost stepDown" title="Issue / use stock" style="min-width:0;width:100%;height:34px;padding:0;font-size:16px;font-weight:800;color:#b3261e;border-radius:8px;border:1px solid #f1c1bb">−</button>
-          <input type="number" name="qty" min="0" step="0.1" value="${esc(String(s.qty || ""))}" placeholder="Qty" style="min-width:0;height:34px;padding:0 2px;font-size:12px;text-align:center;font-weight:700;border-radius:8px;border:1px solid #e3d6c2">
-          <button type="button" class="btn ghost stepUp" title="Add to stock" style="min-width:0;width:100%;height:34px;padding:0;font-size:16px;font-weight:800;color:#1d7a34;border-radius:8px;border:1px solid #bfe5c8">+</button>
-          <select name="unit" style="min-width:0;height:34px;padding:0 2px;border-radius:8px;border:1px solid #e3d6c2;background:#fff;font-size:11px;text-align:center;text-align-last:center">
+    <div class="stockrow" data-id="${sid}" data-cat="${esc(s.category)}"
+      style="display:flex;gap:9px;align-items:flex-start;padding:10px 2px;border-bottom:1px solid #f2ece6">
+      ${thumb(s.name)}
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;gap:6px;align-items:baseline">
+          <strong style="flex:1;min-width:0;font-size:13px">${esc(s.name)}</strong>
+          ${low ? `<span style="flex:0 0 auto;font-size:9px;font-weight:800;color:#b3261e;letter-spacing:.03em">LOW</span>` : ""}
+        </div>
+        <div class="sub" style="font-size:10px">${esc(s.category)}${s.si ? ` · ${esc(s.si)}` : ""}${s.addedAt ? ` · ${fmtDate(s.addedAt)}` : ""}</div>
+
+        <div style="display:flex;gap:5px;align-items:center;margin-top:6px;flex-wrap:wrap">
+          <button type="button" class="stStep" data-id="${sid}" data-step="-1"
+            style="flex:0 0 auto;width:30px;height:30px;border:1px solid #e0d6cc;background:#fff;border-radius:9px;font-size:16px;font-weight:700;line-height:1;color:#b3261e;cursor:pointer;padding:0">−</button>
+          <input type="number" class="stQty" data-id="${sid}" min="0" step="0.1" value="${esc(String(s.qty ?? ""))}"
+            style="${bare};width:46px;text-align:center;font-weight:700;font-size:14px;background:#faf7f4">
+          <button type="button" class="stStep" data-id="${sid}" data-step="1"
+            style="flex:0 0 auto;width:30px;height:30px;border:0;background:${ORANGE};color:#fff;border-radius:9px;font-size:16px;font-weight:700;line-height:1;cursor:pointer;padding:0">+</button>
+          <select class="stUnit" data-id="${sid}" style="${bare};width:52px;font-size:11px;color:#6b625a">
             ${units.map((u) => `<option value="${esc(u)}"${s.unit === u ? " selected" : ""}>${esc(u)}</option>`).join("")}
           </select>
-          <input type="number" name="price" min="0" step="0.01" value="${esc(String(s.price || ""))}" placeholder="${esc(cur.symbol)}" style="min-width:0;height:34px;padding:0 4px;font-size:12px;text-align:center;border-radius:8px;border:1px solid #e3d6c2">
-          <button type="submit" class="btn" title="Save" style="min-width:0;width:100%;height:34px;padding:0;font-size:14px;border-radius:8px">✓</button>
+          <span class="sub" style="font-size:10px">${esc(cur.symbol)}</span>
+          <input type="number" class="stPrice" data-id="${sid}" min="0" step="0.01" value="${esc(String(s.price || ""))}" placeholder="price"
+            style="${bare};width:58px;text-align:right;background:#faf7f4">
+          <span class="stTotal" id="sttot-${sid}" style="flex:1;min-width:0;text-align:right;font-size:11.5px;font-weight:700;color:${ORANGE}">${lineTotal ? esc(cur.symbol) + " " + lineTotal.toLocaleString() : ""}</span>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:5px;align-items:center">
-          <div style="position:relative">
-            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:9.5px;font-weight:700;letter-spacing:.04em;color:#b3261e;pointer-events:none">MIN</span>
-            <input type="number" name="minQty" min="0" step="0.1" value="${esc(String(s.minQty ?? ""))}" placeholder="reach → RUNNING LOW" title="When qty falls to this, RUNNING LOW is flagged" style="width:100%;min-width:0;height:32px;padding:0 8px 0 40px;font-size:11.5px;text-align:right;border-radius:8px;border:1px solid #f1c1bb;background:#fff8f5">
-          </div>
-          <div style="position:relative">
-            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:9.5px;font-weight:700;letter-spacing:.04em;color:#1d7a34;pointer-events:none">MAX</span>
-            <input type="number" name="maxQty" min="0" step="0.1" value="${esc(String(s.maxQty ?? ""))}" placeholder="ideal stock level" title="Target stock level after replenishment" style="width:100%;min-width:0;height:32px;padding:0 8px 0 40px;font-size:11.5px;text-align:right;border-radius:8px;border:1px solid #bfe5c8;background:#f4faf5">
-          </div>
+
+        <div style="display:flex;gap:9px;align-items:center;margin-top:5px">
+          <span class="sub" style="font-size:9.5px">min</span>
+          <input type="number" class="stMin" data-id="${sid}" min="0" step="0.1" value="${esc(String(s.minQty ?? ""))}" placeholder="—"
+            style="${bare};width:40px;text-align:center;font-size:11px;color:#b3261e">
+          <span class="sub" style="font-size:9.5px">max</span>
+          <input type="number" class="stMax" data-id="${sid}" min="0" step="0.1" value="${esc(String(s.maxQty ?? ""))}" placeholder="—"
+            style="${bare};width:40px;text-align:center;font-size:11px;color:#1d7a34">
+          <span class="stSaved" id="stsv-${sid}" class="sub" style="flex:1;font-size:9.5px;color:#1d7a34;opacity:0;transition:opacity .2s">saved</span>
+          <form method="POST" action="/app/owner/${id}/stock/${sid}/buy" style="margin:0;flex:0 0 auto">
+            <button style="border:0;background:none;font-size:14px;cursor:pointer;padding:2px;${s.buyNext ? "" : "opacity:.4"}" title="${s.buyNext ? "On the purchase plan" : "Send to purchase plan"}">🛒</button>
+          </form>
+          <form method="POST" action="/app/owner/${id}/stock/${sid}/remove" class="armForm" style="margin:0;flex:0 0 auto">
+            <button style="border:0;background:none;color:#b3261e;font-size:14px;cursor:pointer;padding:2px" title="Remove">✕</button>
+          </form>
         </div>
-      </form>
+      </div>
     </div>`;
   };
 
@@ -2455,6 +2469,52 @@ function stockPage(shop, extras = {}) {
     </form>
 
     <script>
+    /* Every control on a stock row saves itself, 600ms after you stop. No
+       pencil to open an editor, no tick to commit — the row is the form. */
+    var stTimers = {};
+    function stSave(sid){
+      var row = document.querySelector('.stockrow[data-id="' + sid + '"]');
+      if (!row) return;
+      var qty = row.querySelector('.stQty').value;
+      var price = row.querySelector('.stPrice').value;
+      var unit = row.querySelector('.stUnit').value;
+      var body = new URLSearchParams({
+        qty: qty, unit: unit, price: price,
+        minQty: row.querySelector('.stMin').value,
+        maxQty: row.querySelector('.stMax').value,
+      });
+      // The running total is ours to keep current; the server is only storage.
+      var tot = document.getElementById('sttot-' + sid);
+      if (tot) {
+        var n = (Number(qty) || 0) * (Number(price) || 0);
+        tot.textContent = n > 0 ? '${esc(cur.symbol)} ' + Math.round(n).toLocaleString() : '';
+      }
+      clearTimeout(stTimers[sid]);
+      stTimers[sid] = setTimeout(function(){
+        fetch('/app/owner/${id}/stock/' + sid + '/edit', {
+          method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: body,
+        }).then(function(){
+          var f = document.getElementById('stsv-' + sid);
+          if (!f) return;
+          f.style.opacity = '1';
+          setTimeout(function(){ f.style.opacity = '0'; }, 1400);
+        }).catch(function(){ /* the number is still on screen */ });
+      }, 600);
+    }
+    document.querySelectorAll('.stQty, .stPrice, .stMin, .stMax, .stUnit').forEach(function(el){
+      el.addEventListener('change', function(){ stSave(el.dataset.id); });
+      el.addEventListener('input', function(){ stSave(el.dataset.id); });
+    });
+    document.querySelectorAll('.stStep').forEach(function(b){
+      b.addEventListener('click', function(){
+        var row = document.querySelector('.stockrow[data-id="' + b.dataset.id + '"]');
+        var inp = row && row.querySelector('.stQty');
+        if (!inp) return;
+        inp.value = Math.max(0, Math.round(((Number(inp.value) || 0) + Number(b.dataset.step)) * 10) / 10);
+        stSave(b.dataset.id);
+      });
+    });
+
     var CAT_DATA = ${catData};
     function stockTab(cat, btn){
       document.querySelectorAll('.chips .chip').forEach(function(c){ c.classList.remove('on'); });
