@@ -1277,7 +1277,7 @@ async function shopPage(id, extras = {}) {
          the page meant scrolling past every dish to find it, which is no use
          to someone whose question is whether to come at all. -->
     <button type="button" id="chatFab" aria-label="Ask the shop"
-      style="position:fixed;left:14px;top:84px;z-index:8;
+      style="position:fixed;right:14px;bottom:calc(env(safe-area-inset-bottom, 0px) + 86px);z-index:8;
       width:52px;height:52px;border-radius:99px;border:0;background:${ORANGE};color:#fff;cursor:pointer;
       box-shadow:0 4px 14px #d9542b55;display:flex;align-items:center;justify-content:center;padding:0">
       <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -1344,19 +1344,10 @@ async function shopPage(id, extras = {}) {
         // A fixed offset lands on the logo in a browser and on the shop's name
         // on a phone with a notch. Sit under the back arrow, whatever the
         // device puts it, and follow it if the window changes.
-        function placeFab(){
-          // The left is taken: the back arrow sits low on the logo and the
-          // shop's name begins right under it, so a bubble there covers one or
-          // the other. The logo's bottom-right corner is empty on every size.
-          var hero = document.querySelector('.shopHero') || document.querySelector('img');
-          if (!hero) return;
-          var h = hero.getBoundingClientRect();
-          if (h.height < 40) return;
-          fab.style.top = Math.round(Math.max(8, h.bottom - 62)) + 'px';
-          fab.style.left = Math.round(Math.max(8, h.right - 66)) + 'px';
-        }
-        window.addEventListener('resize', placeFab);
-        window.addEventListener('orientationchange', placeFab);
+        /* Three attempts at the top of the page all collided: the back arrow
+           sits low on the logo, the shop's name starts immediately under it,
+           and a measured offset picked the wrong image. The lower right is
+           free at every size and on every device, so that is where it goes. */
         function chatOpen(on){
           sheet.style.display = on ? 'block' : 'none';
           if (backEl) backEl.style.visibility = on ? 'hidden' : '';
@@ -1369,9 +1360,6 @@ async function shopPage(id, extras = {}) {
         sheet.addEventListener('click', function(e){ if (e.target === sheet) chatOpen(false); });
         document.getElementById('chatGo').addEventListener('click', send);
         inp.addEventListener('keydown', function(e){ if (e.key === 'Enter') send(); });
-        placeFab();
-        window.addEventListener('load', placeFab);
-        setTimeout(placeFab, 400);
         load();
         // The shop replies from its own screen; look for it while the page is open.
         setInterval(load, 15000);
