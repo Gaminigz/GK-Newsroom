@@ -1284,7 +1284,7 @@ async function shopPage(id, extras = {}) {
         <path d="M20.5 12.5a7.5 7.5 0 0 1-10.9 6.7L4 20.5l1.4-5.3A7.5 7.5 0 1 1 20.5 12.5z"/>
         <path d="M8.5 11h7M8.5 14h4.5"/>
       </svg>
-      <span id="chatDot" style="display:none;position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:99px;background:#fff;border:2px solid ${ORANGE}"></span>
+      <span id="chatDot" style="display:none;position:absolute;top:2px;right:2px;width:11px;height:11px;border-radius:99px;background:#fff;border:2px solid ${ORANGE}"></span>
     </button>
     <div id="chatSheet" style="display:none;position:fixed;inset:0;background:rgba(20,15,10,.45);z-index:9">
       <!-- Drops from the top, under the shop's name, and never takes more
@@ -1345,10 +1345,15 @@ async function shopPage(id, extras = {}) {
         // on a phone with a notch. Sit under the back arrow, whatever the
         // device puts it, and follow it if the window changes.
         function placeFab(){
-          if (!backEl) return;
-          var r = backEl.getBoundingClientRect();
-          fab.style.top = Math.round(r.bottom + 10) + 'px';
-          fab.style.left = Math.round(r.left) + 'px';
+          // The left is taken: the back arrow sits low on the logo and the
+          // shop's name begins right under it, so a bubble there covers one or
+          // the other. The logo's bottom-right corner is empty on every size.
+          var hero = document.querySelector('.shopHero') || document.querySelector('img');
+          if (!hero) return;
+          var h = hero.getBoundingClientRect();
+          if (h.height < 40) return;
+          fab.style.top = Math.round(Math.max(8, h.bottom - 62)) + 'px';
+          fab.style.left = Math.round(Math.max(8, h.right - 66)) + 'px';
         }
         window.addEventListener('resize', placeFab);
         window.addEventListener('orientationchange', placeFab);
@@ -1365,6 +1370,8 @@ async function shopPage(id, extras = {}) {
         document.getElementById('chatGo').addEventListener('click', send);
         inp.addEventListener('keydown', function(e){ if (e.key === 'Enter') send(); });
         placeFab();
+        window.addEventListener('load', placeFab);
+        setTimeout(placeFab, 400);
         load();
         // The shop replies from its own screen; look for it while the page is open.
         setInterval(load, 15000);
