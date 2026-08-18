@@ -2089,6 +2089,46 @@ export const SPICES: Spice[] = [
     ],
   },
   {
+    // Chop suey the way a Sri Lankan shop cooks it — a stir-fried vegetable
+    // plate in a thickened sauce, sold alongside the rice.
+    id: "vegetable-chop-suey",
+    imgQuery: "Sri Lankan vegetable chop suey",
+    name: "Vegetable Chop Suey",
+    sinhala: "එළවළු චොප්සි",
+    category: "Mixed, Fusion & Street Food",
+    emoji: "🥘",
+    post: "Cabbage, carrot, leeks and beans stir-fried hot and fast, then loosened with a cornflour sauce so it clings to the rice.",
+    postSi: "ගෝවා, කැරට්, ලීක්ස් සහ බෝංචි ඉක්මනින් බැද, ඉරිඟු පිටි සෝස් එකකින් ඝන කරගන්නවා.",
+    ingredients: [
+      { name: "Cabbage", nameSi: "ගෝවා", qty5: "300 g" },
+      { name: "Carrot", nameSi: "කැරට්", qty5: "200 g" },
+      { name: "Leeks", nameSi: "ලීක්ස්", qty5: "150 g" },
+      { name: "Green beans", nameSi: "බෝංචි", qty5: "150 g" },
+      { name: "Onion", nameSi: "ලූණු", qty5: "100 g" },
+      { name: "Soy sauce", nameSi: "සෝයා සෝස්", qty5: "3 tbsp" },
+      { name: "Cooking oil", nameSi: "තෙල්", qty5: "3 tbsp" },
+      { name: "Salt", nameSi: "ලුණු", qty5: "to taste" },
+    ],
+  },
+  {
+    // A fried egg on the plate — the cheapest thing on a Sri Lankan menu and
+    // the one the book never bothered to hold.
+    id: "fried-egg",
+    imgQuery: "Sri Lankan fried egg",
+    name: "Fried Egg",
+    sinhala: "බැදපු බිත්තර",
+    category: "Meat & Seafood Curries",
+    emoji: "🍳",
+    post: "One egg, hot oil, a pinch of salt and pepper. Served on the rice or beside the roti.",
+    postSi: "බිත්තරයක්, රත් වූ තෙල්, ලුණු සහ ගම්මිරිස් ස්වල්පයක්.",
+    ingredients: [
+      { name: "Egg", nameSi: "බිත්තර", qty5: "5 pieces" },
+      { name: "Cooking oil", nameSi: "තෙල්", qty5: "3 tbsp" },
+      { name: "Black pepper powder", nameSi: "ගම්මිරිස් කුඩු", qty5: "to taste" },
+      { name: "Salt", nameSi: "ලුණු", qty5: "to taste" },
+    ],
+  },
+  {
     // A stuffed godhamba roti with a meat filling — sold everywhere at
     // dinner, and the book held only the vegetable one.
     id: "chicken-roti",

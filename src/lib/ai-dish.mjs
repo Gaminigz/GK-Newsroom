@@ -111,6 +111,27 @@ const RECIPE_ALIAS = {
   "string hoppers": "String Hoppers with Curry",
   "watalappan": "Watalappam",
   "carrot salad": "Carrot Sambol",
+  // How these shops actually spell them. "Dewal" is devilled; a cutlet with
+  // no fish named is the fish one; vegetable rice is the mixed fried rice.
+  "chicken dewal": "Devilled Chicken",
+  "chicken dewel": "Devilled Chicken",
+  "chicken devil": "Devilled Chicken",
+  "pork dewal": "Devilled Pork",
+  "prawn dewal": "Devilled Prawns",
+  "cuttlefish dewal": "Devilled Cuttlefish",
+  "cutlet": "Fish Cutlet",
+  "cutlets": "Fish Cutlet",
+  "fish cutlet": "Fish Cutlet",
+  "vegetable cutlet": "Vegetable Cutlets",
+  "vegetable choupsey": "Vegetable Chop Suey",
+  "vegetables choupsey": "Vegetable Chop Suey",
+  "choupsey": "Vegetable Chop Suey",
+  "chopsuey": "Vegetable Chop Suey",
+  "chop suey": "Vegetable Chop Suey",
+  "vegetables rice": "Mixed Fried Rice",
+  "vegetable rice": "Mixed Fried Rice",
+  "veg rice": "Mixed Fried Rice",
+  "vegetable fried rice": "Mixed Fried Rice",
   "carrot": "Carrot Sambol",
   "long bean temperate": "Green Bean Curry",
   "long bean": "Green Bean Curry",
@@ -230,6 +251,9 @@ export const INGREDIENT_LIBRARY = {
   "oil": { lkr: 95, unit: "100ml" },
   "red lentils": { lkr: 36, unit: "100g" },
   "red chilli": { lkr: 190, unit: "100g" },
+  "soy sauce": { lkr: 85, unit: "100ml" },
+  "capsicum": { lkr: 90, unit: "100g" },
+  "tomato sauce": { lkr: 70, unit: "100ml" },
   "chilli flakes": { lkr: 210, unit: "100g" },
   "gotukola": { lkr: 60, unit: "100g" },
   "oyster mushroom": { lkr: 180, unit: "100g" },
@@ -361,7 +385,7 @@ export function libraryKeyFor(name) {
     // potatoes", "Eggs (hard-boiled)", "Vegetable oil for frying". The price
     // library holds the thing itself, so the preparation comes off first.
     .replace(/\b(boiled|hard-?boiled|mashed|canned|tinned|chopped|grated|shredded|sliced|minced|crushed|ground|roasted|fried|cooked|dried|fresh|raw|peeled|deseeded|thick|thin|for frying|for tempering)\b/g, " ")
-    .replace(/\bchilies?\b|\bchilis?\b/g, "chilli")
+    .replace(/\bchilie?s?\b|\bchilis?\b|\bchillies\b/g, "chilli")
     .replace(/\byoghurt\b/g, "yogurt")
     .replace(/\s+/g, " ");
   if (INGREDIENT_LIBRARY[s.trim()]) return s.trim();
