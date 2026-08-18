@@ -74,6 +74,7 @@ export const SUITE_TILES = [
   { key: "qr", label: "Table QR", emoji: "▦", real: (id) => `/app/owner/${id}/qr` },
   { key: "dishes", label: "Shop Daily Menu", emoji: "🍛", real: (id) => `/app/owner/${id}/dishes` },
   { key: "pos", label: "POS", emoji: "💳", real: (id) => `/app/owner/${id}/suite/pos` },
+  { key: "chats", label: "Messages", emoji: "💬", real: (id) => `/app/owner/${id}/chats` },
   { key: "kitchen", label: "In Kitchen", emoji: "👨‍🍳", real: (id) => `/app/owner/${id}/suite/kitchen` },
   { key: "menu", label: "Plan Menu", emoji: "🍱", real: (id) => `/app/owner/${id}/suite/menu` },
   { key: "costs", label: "Portion Plan", emoji: "🧮", real: (id) => `/app/owner/${id}/suite/costs` },
@@ -137,6 +138,8 @@ const TILE_ICONS = {
   purchasing: `<path d="M2.5 4h2.2l2.4 10.6h10.2"/><path d="M6.4 7h14l-1.7 6.2H7.8"/><circle cx="9.5" cy="19" r="1.6"/><circle cx="17" cy="19" r="1.6"/>`,
   // Filed bills.
   history: `<rect x="3" y="6.5" width="18" height="13.5" rx="2"/><path d="M3 10.5h18"/><path d="M8.5 4.5h7l1.2 2h-9.4z"/><path d="M10 14.5h4"/>`,
+  // Two speech bubbles in conversation.
+  chats: `<path d="M3 6.6a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v4.8a2 2 0 0 1-2 2H8l-5 3.4v-3.4a2 2 0 0 1 0-.1z"/><path d="M9 16.6v.8a2 2 0 0 0 2 2h5l5 3.2v-3.4a2 2 0 0 0 0-.1v-4.5a2 2 0 0 0-2-2h-1.5"/>`,
   // A note passed about pay.
   salaries: `<path d="M20.5 13.5a3 3 0 0 1-3 3H9l-4.5 3.5v-3.5a3 3 0 0 1-1-2.2v-6a3 3 0 0 1 3-3h11a3 3 0 0 1 3 3z"/><path d="M12 7.8v6M10.2 9.4h2.6a1.3 1.3 0 0 1 0 2.6h-1.6a1.3 1.3 0 0 0 0 2.6h2.6"/>`,
   // Two people.
@@ -3231,6 +3234,68 @@ function planPage(shop, extras = {}) {
       }
       addBtn.addEventListener('click', addItem);
       document.getElementById('addQty').addEventListener('keydown', function(e){ if (e.key === 'Enter') addItem(); });
+    </script>`);
+}
+
+/** The shop's side: every conversation a customer has started, newest first.
+ *  Same thread the buyer sees on the shop page — this is the other end. */
+export function chatsPage(shop, extras = {}) {
+  const id = String(shop._id);
+  const threads = extras.threads || [];
+  const escC = (x) => String(x).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const when = (d) => {
+    const dt = new Date(d);
+    return `${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")} ${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;
+  };
+  const card = (t) => {
+    const msgs = (t.messages || []).slice(-12);
+    const last = msgs[msgs.length - 1];
+    return `
+    <div class="card" style="margin-top:9px;padding:11px 13px">
+      <div class="row" style="justify-content:space-between;align-items:baseline">
+        <strong style="font-size:13px">${escC(t.who || "customer")}</strong>
+        <span class="sub" style="font-size:10px">${t.updatedAt ? escC(when(t.updatedAt)) : ""}${t.unreadForShop ? ` · <span style="color:${ORANGE};font-weight:800">NEW</span>` : ""}</span>
+      </div>
+      <div style="max-height:170px;overflow-y:auto;margin-top:7px">
+        ${msgs.map((m) => {
+          const mine = m.from === "shop";
+          return `<div style="display:flex;justify-content:${mine ? "flex-end" : "flex-start"};margin:3px 0">
+            <span style="max-width:78%;padding:6px 10px;border-radius:13px;font-size:12px;line-height:1.35;${mine ? `background:${ORANGE};color:#fff` : "background:#f0e7de"}">${escC(m.text)}</span>
+          </div>`;
+        }).join("")}
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <input type="text" class="rpIn" data-who="${escC(t.who)}" maxlength="500" placeholder="Reply…"
+          style="flex:1;min-width:0;margin:0;padding:8px 11px;font-size:12.5px;border-radius:99px">
+        <button type="button" class="rpGo" data-who="${escC(t.who)}"
+          style="flex:0 0 auto;border:0;background:${ORANGE};color:#fff;border-radius:99px;width:40px;height:36px;font-size:14px;cursor:pointer;padding:0">➤</button>
+      </div>
+    </div>`;
+  };
+  return page(shop, "chats", "Messages", "පණිවිඩ", `
+    <div class="sub" style="font-size:11.5px;margin-top:8px">Questions customers asked on your shop page, before or without ordering.<br><span class="si">ගනුදෙනුකරුවන් ඇසූ ප්‍රශ්න.</span></div>
+    ${threads.length ? threads.map(card).join("") : `<div class="card" style="margin-top:14px;padding:16px;text-align:center">
+      <strong style="display:block;font-size:13px">No messages yet</strong>
+      <p class="sub" style="font-size:12px;margin-top:5px">When a customer asks something on your shop page it appears here, and your reply goes straight back to them.</p></div>`}
+    <script>
+      function rpSend(who, inp){
+        var t = inp.value.trim(); if (!t) return;
+        inp.value = '';
+        fetch('/app/owner/${id}/chats/reply', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({who: who, text: t}),
+        }).then(function(){ location.reload(); }).catch(function(){});
+      }
+      document.querySelectorAll('.rpGo').forEach(function(b){
+        b.addEventListener('click', function(){
+          rpSend(b.dataset.who, document.querySelector('.rpIn[data-who="' + b.dataset.who + '"]'));
+        });
+      });
+      document.querySelectorAll('.rpIn').forEach(function(i){
+        i.addEventListener('keydown', function(e){ if (e.key === 'Enter') rpSend(i.dataset.who, i); });
+      });
+      // A customer waiting for an answer should not need the shop to refresh.
+      setTimeout(function(){ location.reload(); }, 30000);
     </script>`);
 }
 

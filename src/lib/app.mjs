@@ -1270,6 +1270,53 @@ async function shopPage(id, extras = {}) {
     <strong style="display:block;margin:14px 0 10px">Popular dishes</strong>
     ${dishRows || `<div class="sub">No dishes published yet.</div>`}
 
+    <!-- Ask before ordering. The shop answers from its own screen; this box
+         keeps the thread whether or not anything is bought. -->
+    <div class="card" style="margin-top:16px;padding:12px 13px">
+      <div class="row" style="justify-content:space-between;align-items:baseline">
+        <strong style="font-size:13.5px">Ask the shop <span class="si" style="font-weight:400">ප්‍රශ්නයක් අහන්න</span></strong>
+        <span class="sub" style="font-size:10.5px;color:#1d7a34">● usually replies in ~5 min</span>
+      </div>
+      <div id="chatBox" style="max-height:190px;overflow-y:auto;margin-top:8px"></div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <input type="text" id="chatIn" maxlength="500" placeholder="Is kottu still available?"
+          style="flex:1;min-width:0;margin:0;padding:9px 11px;font-size:13px;border-radius:99px">
+        <button type="button" id="chatGo"
+          style="flex:0 0 auto;border:0;background:${ORANGE};color:#fff;border-radius:99px;width:42px;height:38px;font-size:15px;cursor:pointer;padding:0">➤</button>
+      </div>
+    </div>
+    <script>
+      (function(){
+        var box = document.getElementById('chatBox'), inp = document.getElementById('chatIn');
+        function draw(msgs){
+          box.innerHTML = msgs.length ? msgs.map(function(m){
+            var mine = m.from === 'buyer';
+            return '<div style="display:flex;justify-content:' + (mine ? 'flex-end' : 'flex-start') + ';margin:3px 0">'
+              + '<span style="max-width:78%;padding:7px 11px;border-radius:14px;font-size:12.5px;line-height:1.35;'
+              + (mine ? 'background:${ORANGE};color:#fff' : 'background:#f0e7de;color:#1a1a1a') + '">'
+              + m.text.replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }) + '</span></div>';
+          }).join('') : '<div class="sub" style="font-size:11.5px">No messages yet — ask about pickup time, spice level, or what is left.</div>';
+          box.scrollTop = box.scrollHeight;
+        }
+        function load(){
+          fetch('/app/shop/${String(shop._id)}/chat.json').then(function(r){ return r.json(); })
+            .then(function(j){ if (j.ok) draw(j.messages); }).catch(function(){});
+        }
+        function send(){
+          var t = inp.value.trim(); if (!t) return;
+          inp.value = '';
+          fetch('/app/shop/${String(shop._id)}/chat.json', {
+            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text:t}),
+          }).then(function(r){ return r.json(); }).then(function(j){ if (j.ok) draw(j.messages); }).catch(function(){});
+        }
+        document.getElementById('chatGo').addEventListener('click', send);
+        inp.addEventListener('keydown', function(e){ if (e.key === 'Enter') send(); });
+        load();
+        // The shop replies from its own screen; look for it while the page is open.
+        setInterval(load, 15000);
+      })();
+    </script>
+
     <div class="sub" style="text-align:center;margin:16px 0">
       <a href="#" onclick="return favShop('${String(shop._id)}', this)" style="text-decoration:underline;font-weight:700" id="favLink">☆ Add to favourites</a>
       &nbsp;·&nbsp; <a href="#" onclick="return window.nativeShare ? nativeShare('${esc(shop.name)} on 3una 5aha', 'https://web-production-2b43c.up.railway.app/app/shop/${String(shop._id)}') : true" style="text-decoration:underline">↗ Share</a>
@@ -3759,6 +3806,71 @@ export async function handleApp(req, res, url) {
     await (await col("day_plans")).updateOne({ shopId: m[1], date, meal },
       { $push: { "buyList.add": { name, qty, unit } } }, { upsert: true });
     res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true, name, qty, unit }));
+    return;
+  }
+
+  /* Ask the shop a question without ordering first.
+   *
+   * One thread per shop per visitor, kept in `shop_chats`. The visitor is the
+   * phone they have already given, or a cookie we set the first time — a
+   * buyer browsing at a bus stop has no account and should not need one to
+   * ask whether there is still kottu left. */
+  m = path.match(/^\/app\/shop\/([a-f0-9]{24})\/chat\.json$/);
+  if (m) {
+    const c = cookies(req);
+    let who = c.app_phone ? decodeURIComponent(c.app_phone) : (c.app_visitor || "");
+    const headers = { "Content-Type": "application/json" };
+    if (!who) {
+      // No identity yet: mint one so their side of the thread survives a reload.
+      who = "v" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+      headers["Set-Cookie"] = `app_visitor=${who}; Path=/app; Max-Age=31536000; SameSite=Lax`;
+    }
+    const chats = await col("shop_chats");
+    if (req.method === "POST") {
+      let body = {};
+      try { body = JSON.parse((await readBody(req, 2000)) || "{}"); } catch { /* bad json */ }
+      const text = String(body.text || "").trim().slice(0, 500);
+      if (!text) { res.writeHead(400, headers).end(JSON.stringify({ ok: false })); return; }
+      await chats.updateOne({ shopId: m[1], who },
+        {
+          $push: { messages: { from: "buyer", text, at: new Date() } },
+          $set: { updatedAt: new Date(), unreadForShop: true },
+          $setOnInsert: { shopId: m[1], who, startedAt: new Date() },
+        }, { upsert: true });
+    }
+    const doc = await chats.findOne({ shopId: m[1], who });
+    res.writeHead(200, headers).end(JSON.stringify({
+      ok: true,
+      messages: (doc?.messages || []).slice(-40).map((x) => ({ from: x.from, text: x.text, at: x.at })),
+    }));
+    return;
+  }
+
+  // The shop's side: every thread, newest first, and a reply box.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/chats$/);
+  if (m) {
+    const shop = await shopById(m[1]);
+    if (!shop) { res.writeHead(404).end("not found"); return; }
+    const threads = await (await col("shop_chats"))
+      .find({ shopId: m[1] }).sort({ updatedAt: -1 }).limit(50).toArray();
+    const { chatsPage } = await import("./shop-suite.mjs");
+    html(res, chatsPage(shop, { threads }));
+    return;
+  }
+
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/chats\/reply$/);
+  if (m && req.method === "POST") {
+    let body = {};
+    try { body = JSON.parse((await readBody(req, 2000)) || "{}"); } catch { /* bad json */ }
+    const who = String(body.who || "").trim().slice(0, 60);
+    const text = String(body.text || "").trim().slice(0, 500);
+    if (!who || !text) { res.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: false })); return; }
+    await (await col("shop_chats")).updateOne({ shopId: m[1], who },
+      {
+        $push: { messages: { from: "shop", text, at: new Date() } },
+        $set: { updatedAt: new Date(), unreadForShop: false },
+      });
+    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
     return;
   }
 
