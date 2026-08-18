@@ -1277,14 +1277,14 @@ async function shopPage(id, extras = {}) {
          the page meant scrolling past every dish to find it, which is no use
          to someone whose question is whether to come at all. -->
     <button type="button" id="chatFab" aria-label="Ask the shop"
-      style="position:fixed;right:14px;bottom:calc(env(safe-area-inset-bottom, 0px) + 78px);z-index:8;
+      style="position:fixed;left:14px;top:calc(env(safe-area-inset-top, 0px) + 84px);z-index:8;
       width:52px;height:52px;border-radius:99px;border:0;background:${ORANGE};color:#fff;cursor:pointer;
       box-shadow:0 4px 14px #d9542b55;display:flex;align-items:center;justify-content:center;padding:0">
       <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
         <path d="M20.5 12.5a7.5 7.5 0 0 1-10.9 6.7L4 20.5l1.4-5.3A7.5 7.5 0 1 1 20.5 12.5z"/>
         <path d="M8.5 11h7M8.5 14h4.5"/>
       </svg>
-      <span id="chatDot" style="display:none;position:absolute;top:2px;right:2px;width:11px;height:11px;border-radius:99px;background:#fff;border:2px solid ${ORANGE}"></span>
+      <span id="chatDot" style="display:none;position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:99px;background:#fff;border:2px solid ${ORANGE}"></span>
     </button>
     <div id="chatSheet" style="display:none;position:fixed;inset:0;background:rgba(20,15,10,.45);z-index:9">
       <!-- Drops from the top, under the shop's name, and never takes more
