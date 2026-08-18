@@ -3652,6 +3652,11 @@ export async function handleApp(req, res, url) {
       const supId = url.searchParams.get("sup");
       if (supId && /^[a-f0-9]{24}$/i.test(supId)) {
         extras.selectedSupplierId = supId;
+        // The bills already photographed for this supplier, newest first, so
+        // the shot you just took is on screen instead of only a badge count.
+        extras.supplierBills = await (await col("supplier_bills"))
+          .find({ shopId: m[1], supplierId: supId })
+          .sort({ uploadedAt: -1 }).limit(24).toArray();
       }
     }
     const pageHtml = shop ? suitePage(shop, m[2], extras) : null;
@@ -4490,6 +4495,9 @@ export async function handleApp(req, res, url) {
     }
     await (await col("supplier_bills")).insertOne({
       shopId: m[1], supplierId: m[2], image, uploadedAt: new Date(),
+      // Nothing has read it yet. Whatever does the reading — here or the
+      // newsroom — writes `text` and `total` back onto this document.
+      needsOcr: true, text: "", total: null,
     });
     res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
     return;

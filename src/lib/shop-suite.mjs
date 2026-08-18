@@ -2674,6 +2674,11 @@ function purchasingPage(shop, extras = {}) {
   const selectedSupplier = selectedSupplierId ? suppliers.find((s) => String(s._id) === selectedSupplierId) : null;
   const selItems = selectedSupplier ? (itemsBySupplier[selectedSupplierId] || []) : [];
   const selTotal = selItems.reduce((n, it) => n + (Number(it.buyQty) || 0) * (Number(it.price) || 0), 0);
+  const bills = extras.supplierBills || [];
+  const fmtDate = (d) => {
+    const dt = new Date(d);
+    return `${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")}`;
+  };
   const selectedItemsBlock = selectedSupplier ? (() => {
     const accent = supAccent(selectedSupplier);
     return `
@@ -2696,6 +2701,25 @@ function purchasingPage(shop, extras = {}) {
           ${selTotal > 0 ? `<div class="row" style="justify-content:space-between;margin-top:5px;padding-top:5px;border-top:1px solid ${accent}55;font-size:12px"><strong style="letter-spacing:.04em">TOTAL</strong><strong style="color:#d9542b">${escP(cur.symbol)} ${selTotal.toLocaleString()}</strong></div>` : ""}
         </div>`
       }
+      ${bills.length ? `
+      <!-- The bills themselves. A photograph you cannot see afterwards is a
+           photograph you cannot check. -->
+      <div style="margin-top:9px;padding-top:8px;border-top:1px solid ${accent}55">
+        <div class="sub" style="font-weight:700;font-size:10px;letter-spacing:.04em;color:${accent}">${bills.length} BILL${bills.length === 1 ? "" : "S"}</div>
+        <div style="display:flex;gap:6px;overflow-x:auto;padding:6px 0 2px;-webkit-overflow-scrolling:touch">
+          ${bills.map((b) => `
+            <a href="${escP(b.image)}" target="_blank" style="flex:0 0 auto;text-decoration:none;display:block;width:64px">
+              <img src="${escP(b.image)}" alt="bill" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid ${accent}55;display:block">
+              <span class="sub" style="display:block;font-size:8.5px;text-align:center;margin-top:2px">${escP(fmtDate(b.uploadedAt))}</span>
+            </a>`).join("")}
+        </div>
+        ${bills.some((b) => b.text) ? bills.filter((b) => b.text).map((b) => `
+          <div style="margin-top:6px;background:#fff;border-radius:8px;padding:6px 8px">
+            <div class="sub" style="font-size:8.5px;letter-spacing:.04em">READ FROM ${escP(fmtDate(b.uploadedAt))}${b.total ? ` · TOTAL ${escP(cur.symbol)} ${Number(b.total).toLocaleString()}` : ""}</div>
+            <div style="font-size:10.5px;line-height:1.35;white-space:pre-wrap;margin-top:3px;max-height:120px;overflow:auto">${escP(b.text)}</div>
+          </div>`).join("")
+        : `<div class="sub" style="font-size:10px;line-height:1.35">Photographed, not yet read. Nothing here reads a bill's text yet — see the note below.</div>`}
+      </div>` : ""}
     </div>`;
   })() : "";
   return page(shop, "purchasing", "Buying &amp; bills", "මිලදී ගැනීම් සහ බිල්", `
