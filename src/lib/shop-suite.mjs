@@ -2649,9 +2649,17 @@ function purchasingPage(shop, extras = {}) {
         <div class="row" style="gap:6px;flex:0 0 auto;align-items:center">
           ${count > 0 ? `<span style="font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:99px;background:${on ? "#ffb08f" : "#fdf3d7"};color:${on ? "#191512" : "#946200"}">${count}</span>` : ""}
           ${s.mapsUrl ? `<a href="${escP(s.mapsUrl)}" target="_blank" onclick="event.stopPropagation()" style="font-size:13px;text-decoration:none;opacity:${on ? ".9" : "1"}" title="Open in Maps">📍</a>` : ""}
-          <label onclick="event.stopPropagation()" style="cursor:pointer;position:relative;font-size:13px;opacity:${on ? ".9" : "1"};line-height:1" title="Add a bill photo (camera or library)">
-            🧾${billCount > 0 ? `<span style="position:absolute;top:-4px;right:-8px;background:${accent};color:#fff;font-size:9px;font-weight:800;border-radius:99px;padding:1px 5px;min-width:14px;text-align:center">${billCount}</span>` : ""}
-            <input type="file" accept="image/*" class="billIn" data-supplier="${sid}" style="display:none" onclick="event.stopPropagation()">
+          <!-- Tap it and the phone's camera opens on the back lens: point at
+               the bill, shoot, and it files itself under this supplier.
+               The capture attribute is what opens the camera rather than the
+               photo library. -->
+          <label onclick="event.stopPropagation()" style="cursor:pointer;position:relative;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9px;background:${on ? "#2e2a26" : "#fff"};border:1px solid ${on ? "#3a332f" : "#e3d6c2"};line-height:1" title="Photograph a bill for this supplier">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="${on ? "#ffb08f" : accent}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3.5 8.5h3.2l1.4-2.2h7.8l1.4 2.2h3.2a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H3.5A1.5 1.5 0 0 1 2 18.5v-8A1.5 1.5 0 0 1 3.5 8.5z"/>
+              <circle cx="12" cy="14" r="3.4"/>
+            </svg>
+            ${billCount > 0 ? `<span style="position:absolute;top:-5px;right:-6px;background:${accent};color:#fff;font-size:9px;font-weight:800;border-radius:99px;padding:1px 5px;min-width:14px;text-align:center">${billCount}</span>` : ""}
+            <input type="file" accept="image/*" capture="environment" class="billIn" data-supplier="${sid}" style="display:none" onclick="event.stopPropagation()">
           </label>
           <form method="POST" action="/app/owner/${id}/suppliers/${sid}/remove" class="armForm" onsubmit="event.stopPropagation()" style="margin:0" onclick="event.stopPropagation()">
             <button class="btn ghost" style="width:auto;padding:2px 6px;font-size:10px;color:${on ? "#ffb08f" : "#b3261e"};background:transparent;border:0" title="Remove">✕</button>
@@ -2762,8 +2770,8 @@ function purchasingPage(shop, extras = {}) {
               var fd = new FormData();
               fd.append('image', data);
               fetch('/app/owner/${id}/suppliers/'+sid+'/bills', {method:'POST', body: new URLSearchParams(fd)})
-                .then(function(r){ if(r.ok) location.reload(); else alert('Upload failed'); })
-                .catch(function(){ alert('Upload failed — check connection'); });
+                .then(function(r){ if(r.ok) location.reload(); else alert('Could not save that bill — try again'); })
+                .catch(function(){ alert('Could not save that bill — check the connection'); });
               URL.revokeObjectURL(img.src);
             };
             img.src = URL.createObjectURL(f);
