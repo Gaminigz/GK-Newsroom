@@ -1288,14 +1288,18 @@ async function shopPage(id, extras = {}) {
     </button>
     <div id="chatSheet" style="display:none;position:fixed;inset:0;background:rgba(20,15,10,.45);z-index:9"
       onclick="if(event.target===this)this.style.display='none'">
-      <div style="position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;
-        background:#faf7f4;border-radius:22px 22px 0 0;padding:16px 18px calc(env(safe-area-inset-bottom, 0px) + 20px)">
+      <!-- Drops from the top, under the shop's name, and never takes more
+           than half the screen: these are two-line questions, not threads. -->
+      <div style="position:absolute;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;
+        max-height:50vh;display:flex;flex-direction:column;
+        background:#faf7f4;border-radius:0 0 22px 22px;padding:calc(env(safe-area-inset-top, 0px) + 14px) 18px 16px;
+        box-shadow:0 8px 24px #00000026">
       <div class="row" style="justify-content:space-between;align-items:baseline">
         <strong style="font-size:15px">Ask the shop <span class="si" style="font-weight:400">ප්‍රශ්නයක් අහන්න</span></strong>
         <span class="sub" style="font-size:10.5px;color:#1d7a34">● replies in ~5 min</span>
       </div>
-      <div id="chatBox" style="max-height:190px;overflow-y:auto;margin-top:8px"></div>
-      <div style="display:flex;gap:6px;margin-top:8px">
+      <div id="chatBox" style="flex:1;min-height:60px;overflow-y:auto;margin-top:8px"></div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex:0 0 auto">
         <input type="text" id="chatIn" maxlength="500" placeholder="Is kottu still available?"
           style="flex:1;min-width:0;margin:0;padding:9px 11px;font-size:13px;border-radius:99px">
         <button type="button" id="chatGo"
