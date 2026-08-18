@@ -1277,7 +1277,7 @@ async function shopPage(id, extras = {}) {
          the page meant scrolling past every dish to find it, which is no use
          to someone whose question is whether to come at all. -->
     <button type="button" id="chatFab" aria-label="Ask the shop"
-      style="position:fixed;left:14px;top:calc(env(safe-area-inset-top, 0px) + 84px);z-index:8;
+      style="position:fixed;left:14px;top:84px;z-index:8;
       width:52px;height:52px;border-radius:99px;border:0;background:${ORANGE};color:#fff;cursor:pointer;
       box-shadow:0 4px 14px #d9542b55;display:flex;align-items:center;justify-content:center;padding:0">
       <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -1341,6 +1341,17 @@ async function shopPage(id, extras = {}) {
         // The page's back arrow floats above everything, so it landed on top
         // of the panel's own words. Out of the way while the chat is open.
         var backEl = document.querySelector('.back');
+        // A fixed offset lands on the logo in a browser and on the shop's name
+        // on a phone with a notch. Sit under the back arrow, whatever the
+        // device puts it, and follow it if the window changes.
+        function placeFab(){
+          if (!backEl) return;
+          var r = backEl.getBoundingClientRect();
+          fab.style.top = Math.round(r.bottom + 10) + 'px';
+          fab.style.left = Math.round(r.left) + 'px';
+        }
+        window.addEventListener('resize', placeFab);
+        window.addEventListener('orientationchange', placeFab);
         function chatOpen(on){
           sheet.style.display = on ? 'block' : 'none';
           if (backEl) backEl.style.visibility = on ? 'hidden' : '';
@@ -1353,6 +1364,7 @@ async function shopPage(id, extras = {}) {
         sheet.addEventListener('click', function(e){ if (e.target === sheet) chatOpen(false); });
         document.getElementById('chatGo').addEventListener('click', send);
         inp.addEventListener('keydown', function(e){ if (e.key === 'Enter') send(); });
+        placeFab();
         load();
         // The shop replies from its own screen; look for it while the page is open.
         setInterval(load, 15000);
