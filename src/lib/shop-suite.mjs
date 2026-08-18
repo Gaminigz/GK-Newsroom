@@ -82,13 +82,14 @@ export const SUITE_TILES = [
   { key: "stock", label: "Kitchen stock", emoji: "📦", real: (id) => `/app/owner/${id}/suite/stock` },
   { key: "purchasing", label: "Buying & bills", emoji: "🛒", real: (id) => `/app/owner/${id}/suite/purchasing` },
   { key: "history", label: "Bill History", emoji: "🗂️", real: (id) => `/app/owner/${id}/suite/history` },
-  { key: "bank", label: "Bank setup", emoji: "🏦", real: (id) => `/app/owner/${id}/suite/bank` },
   { key: "salaries", label: "Staff salaries entries", emoji: "💬" },
   { key: "staff", label: "Staff Pay", emoji: "👥" },
   { key: "utilities", label: "Utilities Pay", emoji: "💡" },
   { key: "books", label: "Shop accounting", emoji: "📚" },
   { key: "dashboard", label: "Dashboard", emoji: "📊" },
   { key: "health", label: "Business health", emoji: "❤️" },
+  // Set once when the shop opens and then left alone, so it sits at the end.
+  { key: "bank", label: "Bank setup", emoji: "🏦", real: (id) => `/app/owner/${id}/suite/bank` },
 ];
 
 /** The set types as plain data, for the native Plan Menu screen. */
