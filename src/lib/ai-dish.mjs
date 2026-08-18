@@ -137,6 +137,10 @@ function looseKey(name) {
   return String(name || "").toLowerCase()
     .replace(/\([^)]*\)/g, "")
     .replace(/\b(curry|curries|salad|dish|fresh|homemade)\b/g, "")
+    // A shop writes "Chicken rolls" and "Vegetables roti"; the book says
+    // "Chicken Roll" and "Vegetable Roti". One trailing s should not cost a
+    // dish its recipe.
+    .replace(/\b([a-z]{4,}?)s\b/g, "$1")
     .replace(/[^a-z0-9]/g, "");
 }
 const CATALOGUE_BY_LOOSE = new Map(
@@ -221,6 +225,32 @@ export const INGREDIENT_LIBRARY = {
   // Coconut & dairy
   "coconut (scraped)": { lkr: 35, unit: "100g" },
   "coconut milk": { lkr: 30, unit: "100ml" },
+  // Frying oil by any of its names, plus the odds a snack recipe needs.
+  "cooking oil": { lkr: 95, unit: "100ml" },
+  "oil": { lkr: 95, unit: "100ml" },
+  "red lentils": { lkr: 36, unit: "100g" },
+  "red chilli": { lkr: 190, unit: "100g" },
+  "chilli flakes": { lkr: 210, unit: "100g" },
+  "gotukola": { lkr: 60, unit: "100g" },
+  "oyster mushroom": { lkr: 180, unit: "100g" },
+  "mushroom": { lkr: 180, unit: "100g" },
+  "ash plantain": { lkr: 45, unit: "100g" },
+  "lentils": { lkr: 36, unit: "100g" },
+  "parippu": { lkr: 36, unit: "100g" },
+  "beetroot": { lkr: 32, unit: "100g" },
+  "nutmeg": { lkr: 260, unit: "10g" },
+  "kithul jaggery": { lkr: 120, unit: "100g" },
+  "jaggery": { lkr: 110, unit: "100g" },
+  "mackerel": { lkr: 190, unit: "100g" },
+  "tuna": { lkr: 150, unit: "100g" },
+  "vegetable oil": { lkr: 95, unit: "100ml" },
+  "sunflower oil": { lkr: 110, unit: "100ml" },
+  "breadcrumbs": { lkr: 45, unit: "100g" },
+  "bread crumbs": { lkr: 45, unit: "100g" },
+  "canned fish": { lkr: 190, unit: "100g" },
+  "pancake wrappers": { lkr: 60, unit: "100g" },
+  // Water costs the kitchen nothing worth counting, but it is not unknown.
+  "water": { lkr: 0, unit: "100ml" },
   "coconut oil": { lkr: 55, unit: "100ml" },
   "curd": { lkr: 45, unit: "100ml" },
   // Spices (per 10g since they're used in small amounts)
@@ -322,13 +352,24 @@ export async function generateRecipe(dishName, mongoCollection) {
  *  so the cut and the preparation don't cost us the price. */
 const LIB_KEYS = Object.keys(INGREDIENT_LIBRARY).sort((a, b) => b.length - a.length);
 export function libraryKeyFor(name) {
-  const s = String(name || "").toLowerCase().replace(/\([^)]*\)/g, " ");
+  const s = String(name || "").toLowerCase()
+    .replace(/\([^)]*\)/g, " ")
+    // "Goraka or lime", "Canned mackerel or tuna" — price the first one named.
+    .replace(/\s+or\s+.*$/, "")
+    .replace(/\/.*$/, "")
+    // Recipes name the ingredient in the state the cook needs it: "Boiled
+    // potatoes", "Eggs (hard-boiled)", "Vegetable oil for frying". The price
+    // library holds the thing itself, so the preparation comes off first.
+    .replace(/\b(boiled|hard-?boiled|mashed|canned|tinned|chopped|grated|shredded|sliced|minced|crushed|ground|roasted|fried|cooked|dried|fresh|raw|peeled|deseeded|thick|thin|for frying|for tempering)\b/g, " ")
+    .replace(/\bchilies?\b|\bchilis?\b/g, "chilli")
+    .replace(/\byoghurt\b/g, "yogurt")
+    .replace(/\s+/g, " ");
   if (INGREDIENT_LIBRARY[s.trim()]) return s.trim();
   const head = s.split(/[,/]/)[0].trim();
   if (INGREDIENT_LIBRARY[head]) return head;
   for (const k of LIB_KEYS) {
     const bare = k.replace(/\s*\([^)]*\)/, "").trim();
-    if (bare.length >= 3 && new RegExp("\\b" + bare.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "s?\\b").test(s)) return k;
+    if (bare.length >= 3 && new RegExp("\\b" + bare.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(e?s)?\\b").test(s)) return k;
   }
   return "";
 }
@@ -357,7 +398,7 @@ export function priceIngredient(name, quantity, unit, own = null) {
   else if (/^ml$|^millilit/.test(u)) ml = q;
   else if (SPOON[u] != null) grams = q * SPOON[u];
   else if (EACH[u] != null) grams = q * EACH[u];
-  else if (/piece|pcs?$|whole|large|medium|small|nos?$|^$/.test(u)) pieces = q;
+  else if (/piece|pcs?$|whole|large|medium|small|nos?$|units?$|eggs?$|^$/.test(u)) pieces = q;
 
   const per = entry.unit;
   if (grams != null) {
@@ -450,7 +491,7 @@ export function toBaseAmount(quantity, unit, name = "") {
   const liquid = /milk|oil|ghee|water|juice|vinegar|stock|cream|sauce|syrup/i.test(String(name));
   if (SPOON[u] != null) return { n: q * SPOON[u], base: liquid ? "ml" : "g" };
   if (EACH[u] != null) return { n: q * EACH[u], base: "g" };
-  if (/piece|pcs?$|whole|large|medium|small|nos?$|^$/.test(u)) return { n: q, base: "piece" };
+  if (/piece|pcs?$|whole|large|medium|small|nos?$|units?$|eggs?$|^$/.test(u)) return { n: q, base: "piece" };
   return null;
 }
 

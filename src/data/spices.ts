@@ -2089,6 +2089,48 @@ export const SPICES: Spice[] = [
     ],
   },
   {
+    // A stuffed godhamba roti with a meat filling — sold everywhere at
+    // dinner, and the book held only the vegetable one.
+    id: "chicken-roti",
+    imgQuery: "Sri Lankan chicken stuffed godhamba roti",
+    name: "Chicken Roti",
+    sinhala: "කුකුල් මස් රොටී",
+    category: "Bread, Buns & Beer Snacks",
+    emoji: "🫓",
+    post: "Godhamba roti wrapped around a spiced chicken and potato filling, folded into a parcel and griddled until the outside blisters.",
+    postSi: "ගොදම්බ රොටියක් තුළ කුළුබඩු දැමූ කුකුල් මස් හා අල පිරවුමක් ඔතා, තැටියේ බැදගන්නවා.",
+    ingredients: [
+      { name: "Wheat flour", nameSi: "පිටි", qty5: "500 g" },
+      { name: "Chicken", nameSi: "කුකුල් මස්", qty5: "400 g" },
+      { name: "Boiled potatoes", nameSi: "තම්බාගත් අල", qty5: "300 g" },
+      { name: "Onion", nameSi: "ලූණු", qty5: "150 g" },
+      { name: "Green chili", nameSi: "අමු මිරිස්", qty5: "3 pieces" },
+      { name: "Roasted curry powder", nameSi: "බැදපු තුනපහ", qty5: "2 tsp" },
+      { name: "Coconut oil", nameSi: "පොල් තෙල්", qty5: "4 tbsp" },
+      { name: "Salt", nameSi: "ලුණු", qty5: "to taste" },
+    ],
+  },
+  {
+    id: "beef-roti",
+    imgQuery: "Sri Lankan beef stuffed godhamba roti",
+    name: "Beef Roti",
+    sinhala: "හරක් මස් රොටී",
+    category: "Bread, Buns & Beer Snacks",
+    emoji: "🫓",
+    post: "The same folded godhamba parcel with a peppery beef filling — a heavier roti, usually priced above the chicken one.",
+    postSi: "එම ගොදම්බ රොටිය, ගම්මිරිස් දැමූ හරක් මස් පිරවුමක් සමඟ.",
+    ingredients: [
+      { name: "Wheat flour", nameSi: "පිටි", qty5: "500 g" },
+      { name: "Beef", nameSi: "හරක් මස්", qty5: "400 g" },
+      { name: "Boiled potatoes", nameSi: "තම්බාගත් අල", qty5: "250 g" },
+      { name: "Onion", nameSi: "ලූණු", qty5: "150 g" },
+      { name: "Black pepper powder", nameSi: "ගම්මිරිස් කුඩු", qty5: "1 tsp" },
+      { name: "Roasted curry powder", nameSi: "බැදපු තුනපහ", qty5: "2 tsp" },
+      { name: "Coconut oil", nameSi: "පොල් තෙල්", qty5: "4 tbsp" },
+      { name: "Salt", nameSi: "ලුණු", qty5: "to taste" },
+    ],
+  },
+  {
     // Plain boiled rice — the base of nearly every Sri Lankan lunch, and the
     // one thing the book was missing. Without it every white rice matched
     // Ghee Rice and arrived costed with cashews, raisins and ghee.
