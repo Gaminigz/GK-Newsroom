@@ -1286,8 +1286,7 @@ async function shopPage(id, extras = {}) {
       </svg>
       <span id="chatDot" style="display:none;position:absolute;top:2px;right:2px;width:11px;height:11px;border-radius:99px;background:#fff;border:2px solid ${ORANGE}"></span>
     </button>
-    <div id="chatSheet" style="display:none;position:fixed;inset:0;background:rgba(20,15,10,.45);z-index:9"
-      onclick="if(event.target===this)this.style.display='none'">
+    <div id="chatSheet" style="display:none;position:fixed;inset:0;background:rgba(20,15,10,.45);z-index:9">
       <!-- Drops from the top, under the shop's name, and never takes more
            than half the screen: these are two-line questions, not threads. -->
       <div style="position:absolute;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:480px;
@@ -1339,11 +1338,19 @@ async function shopPage(id, extras = {}) {
           }).then(function(r){ return r.json(); }).then(function(j){ if (j.ok) draw(j.messages); }).catch(function(){});
         }
         var fab = document.getElementById('chatFab'), sheet = document.getElementById('chatSheet');
+        // The page's back arrow floats above everything, so it landed on top
+        // of the panel's own words. Out of the way while the chat is open.
+        var backEl = document.querySelector('.back');
+        function chatOpen(on){
+          sheet.style.display = on ? 'block' : 'none';
+          if (backEl) backEl.style.visibility = on ? 'hidden' : '';
+        }
         fab.addEventListener('click', function(){
-          sheet.style.display = 'block';
+          chatOpen(true);
           document.getElementById('chatDot').style.display = 'none';
           load(); setTimeout(function(){ inp.focus(); }, 60);
         });
+        sheet.addEventListener('click', function(e){ if (e.target === sheet) chatOpen(false); });
         document.getElementById('chatGo').addEventListener('click', send);
         inp.addEventListener('keydown', function(e){ if (e.key === 'Enter') send(); });
         load();
