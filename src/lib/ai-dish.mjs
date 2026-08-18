@@ -422,7 +422,8 @@ export function priceIngredient(name, quantity, unit, own = null) {
   else if (/^ml$|^millilit/.test(u)) ml = q;
   else if (SPOON[u] != null) grams = q * SPOON[u];
   else if (EACH[u] != null) grams = q * EACH[u];
-  else if (/piece|pcs?$|whole|large|medium|small|nos?$|units?$|eggs?$|^$/.test(u)) pieces = q;
+  // "3 items", "5 units", "2 nos", "1 medium" — all just a count.
+  else if (/piece|pcs?$|whole|large|medium|small|nos?$|units?$|items?$|eggs?$|^$/.test(u)) pieces = q;
 
   const per = entry.unit;
   if (grams != null) {
