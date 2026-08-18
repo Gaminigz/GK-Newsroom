@@ -1277,7 +1277,7 @@ async function shopPage(id, extras = {}) {
          the page meant scrolling past every dish to find it, which is no use
          to someone whose question is whether to come at all. -->
     <button type="button" id="chatFab" aria-label="Ask the shop"
-      style="position:fixed;right:14px;bottom:calc(env(safe-area-inset-bottom, 0px) + 86px);z-index:8;
+      style="position:fixed;right:14px;top:100px;z-index:8;
       width:52px;height:52px;border-radius:99px;border:0;background:${ORANGE};color:#fff;cursor:pointer;
       box-shadow:0 4px 14px #d9542b55;display:flex;align-items:center;justify-content:center;padding:0">
       <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -1289,11 +1289,11 @@ async function shopPage(id, extras = {}) {
     <div id="chatSheet" style="display:none;position:fixed;inset:0;background:rgba(20,15,10,.28);z-index:9">
       <!-- A speech bubble growing out of the button it belongs to: anchored
            to the same corner, with a tail pointing down at it. -->
-      <div style="position:absolute;right:14px;bottom:calc(env(safe-area-inset-bottom, 0px) + 148px);
+      <div id="chatPop" style="position:absolute;right:14px;top:0;
         width:min(330px, calc(100vw - 28px));max-height:50vh;display:flex;flex-direction:column;
         background:#faf7f4;border-radius:18px;padding:13px 15px 14px;
         box-shadow:0 10px 30px #00000033">
-        <span style="position:absolute;right:22px;bottom:-8px;width:18px;height:18px;background:#faf7f4;
+        <span style="position:absolute;right:22px;top:-8px;width:18px;height:18px;background:#faf7f4;
           transform:rotate(45deg);border-radius:3px"></span>
       <div class="row" style="justify-content:space-between;align-items:baseline">
         <strong style="font-size:13.5px">Ask the shop <span class="si" style="font-weight:400">ප්‍රශ්නයක් අහන්න</span></strong>
@@ -1346,15 +1346,28 @@ async function shopPage(id, extras = {}) {
         // A fixed offset lands on the logo in a browser and on the shop's name
         // on a phone with a notch. Sit under the back arrow, whatever the
         // device puts it, and follow it if the window changes.
-        /* Three attempts at the top of the page all collided: the back arrow
-           sits low on the logo, the shop's name starts immediately under it,
-           and a measured offset picked the wrong image. The lower right is
-           free at every size and on every device, so that is where it goes. */
+        /* On the logo, right-hand side. The left is taken by the back arrow
+           and the name starts directly beneath it, so the bubble is measured
+           off the shop's name — the one element always on the page — and set
+           just above it, which is the logo's lower right on any device. */
+        function placeFab(){
+          var h1 = document.querySelector('h1');
+          if (!h1) return;
+          var t = h1.getBoundingClientRect().top - 62;
+          fab.style.top = Math.round(Math.max(52, t)) + 'px';
+        }
+        placeFab();
+        window.addEventListener('load', placeFab);
+        window.addEventListener('resize', placeFab);
+        window.addEventListener('orientationchange', placeFab);
+        setTimeout(placeFab, 300);
         function chatOpen(on){
           sheet.style.display = on ? 'block' : 'none';
           if (backEl) backEl.style.visibility = on ? 'hidden' : '';
         }
         fab.addEventListener('click', function(){
+          var f = fab.getBoundingClientRect();
+          document.getElementById('chatPop').style.top = Math.round(f.bottom + 10) + 'px';
           chatOpen(true);
           document.getElementById('chatDot').style.display = 'none';
           load(); setTimeout(function(){ inp.focus(); }, 60);
