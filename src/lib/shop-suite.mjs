@@ -82,6 +82,7 @@ export const SUITE_TILES = [
   { key: "stock", label: "Kitchen stock", emoji: "📦", real: (id) => `/app/owner/${id}/suite/stock` },
   { key: "purchasing", label: "Buying & bills", emoji: "🛒", real: (id) => `/app/owner/${id}/suite/purchasing` },
   { key: "history", label: "Bill History", emoji: "🗂️", real: (id) => `/app/owner/${id}/suite/history` },
+  { key: "bank", label: "Bank setup", emoji: "🏦", real: (id) => `/app/owner/${id}/suite/bank` },
   { key: "salaries", label: "Staff salaries entries", emoji: "💬" },
   { key: "staff", label: "Staff Pay", emoji: "👥" },
   { key: "utilities", label: "Utilities Pay", emoji: "💡" },
@@ -140,6 +141,8 @@ const TILE_ICONS = {
   history: `<rect x="3" y="6.5" width="18" height="13.5" rx="2"/><path d="M3 10.5h18"/><path d="M8.5 4.5h7l1.2 2h-9.4z"/><path d="M10 14.5h4"/>`,
   // Two speech bubbles in conversation.
   chats: `<path d="M3 6.6a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v4.8a2 2 0 0 1-2 2H8l-5 3.4v-3.4a2 2 0 0 1 0-.1z"/><path d="M9 16.6v.8a2 2 0 0 0 2 2h5l5 3.2v-3.4a2 2 0 0 0 0-.1v-4.5a2 2 0 0 0-2-2h-1.5"/>`,
+  // A bank: pediment, columns, floor.
+  bank: `<path d="M3.5 9.5 12 4.2l8.5 5.3"/><path d="M3.5 9.5h17"/><path d="M6.2 12.5v5M10 12.5v5M14 12.5v5M17.8 12.5v5"/><path d="M3.5 20.3h17"/>`,
   // A note passed about pay.
   salaries: `<path d="M20.5 13.5a3 3 0 0 1-3 3H9l-4.5 3.5v-3.5a3 3 0 0 1-1-2.2v-6a3 3 0 0 1 3-3h11a3 3 0 0 1 3 3z"/><path d="M12 7.8v6M10.2 9.4h2.6a1.3 1.3 0 0 1 0 2.6h-1.6a1.3 1.3 0 0 0 0 2.6h2.6"/>`,
   // Two people.
@@ -3239,6 +3242,47 @@ function planPage(shop, extras = {}) {
 
 /** The shop's side: every conversation a customer has started, newest first.
  *  Same thread the buyer sees on the shop page — this is the other end. */
+/** Where the shop's money lands. The owner types their own payout account;
+ *  the number is shown back masked so a shoulder in a busy kitchen cannot
+ *  read it off the screen. */
+export function bankPage(shop, extras = {}) {
+  const id = String(shop._id);
+  const b = extras.bank || {};
+  const escB = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const last4 = String(b.accountNo || "").replace(/\s/g, "").slice(-4);
+  const masked = last4 ? "•".repeat(Math.max(0, String(b.accountNo).replace(/\s/g, "").length - 4)) + last4 : "";
+  return page(shop, "bank", "Bank setup", "බැංකු විස්තර", `
+    <div class="sub" style="font-size:11.5px;margin-top:8px;line-height:1.45">The account your takings are paid into. Only you and the 3una 5aha team see it.<br><span class="si">ඔබේ ආදායම බැර වන ගිණුම.</span></div>
+
+    ${b.accountNo ? `<div class="card" style="margin-top:12px;padding:12px 14px;background:#f0f7f5;border-color:#bfe0d9">
+      <div class="sub" style="font-size:9.5px;letter-spacing:.05em;color:#0f766e;font-weight:800">ON FILE</div>
+      <strong style="display:block;font-size:14px;margin-top:3px">${escB(b.bankName)}${b.branch ? ` · ${escB(b.branch)}` : ""}</strong>
+      <div style="font-size:13px;font-variant-numeric:tabular-nums;margin-top:2px">${escB(masked)}</div>
+      <div class="sub" style="font-size:11px">${escB(b.accountName || "")}</div>
+      ${b.updatedAt ? `<div class="sub" style="font-size:9.5px;margin-top:4px">updated ${escB(String(b.updatedAt).slice(0, 10))}</div>` : ""}
+    </div>` : ""}
+
+    <form method="POST" action="/app/owner/${id}/bank" class="card" style="margin-top:12px;padding:14px">
+      <label style="margin-top:0">BANK <span class="si" style="font-weight:400">බැංකුව</span></label>
+      <input type="text" name="bankName" required value="${escB(b.bankName)}" placeholder="Commercial Bank / ACLEDA" style="height:38px;font-size:13.5px">
+
+      <label>BRANCH <span class="si" style="font-weight:400">ශාඛාව</span></label>
+      <input type="text" name="branch" value="${escB(b.branch)}" placeholder="Wellawatte" style="height:38px;font-size:13.5px">
+
+      <label>ACCOUNT NAME <span class="si" style="font-weight:400">ගිණුමේ නම</span></label>
+      <input type="text" name="accountName" value="${escB(b.accountName)}" placeholder="As printed on the passbook" style="height:38px;font-size:13.5px">
+
+      <label>ACCOUNT NUMBER <span class="si" style="font-weight:400">ගිණුම් අංකය</span></label>
+      <input type="text" name="accountNo" inputmode="numeric" autocomplete="off" value="" placeholder="${b.accountNo ? "leave blank to keep " + escB(masked) : "8001234567"}" style="height:38px;font-size:13.5px;font-variant-numeric:tabular-nums">
+
+      <label>PAYOUT NOTE <span style="font-weight:400">— anything the team should know</span></label>
+      <input type="text" name="note" value="${escB(b.note)}" placeholder="Pay out weekly on Mondays" style="height:38px;font-size:13px">
+
+      <button class="btn" style="margin-top:14px">Save bank details</button>
+      <div class="sub" style="font-size:10px;margin-top:8px;line-height:1.4">Typed by you, stored with your shop, and shown back masked. Change it any time — leaving the number blank keeps the one already on file.</div>
+    </form>`);
+}
+
 export function chatsPage(shop, extras = {}) {
   const id = String(shop._id);
   const threads = extras.threads || [];
@@ -3498,6 +3542,7 @@ const PAGES = {
   purchasing: purchasingPage, plan: planPage, books: booksPage,
   history: billHistoryPage, pos: posPage, kitchen: kitchenPage,
   salaries: salariesPage, staff: staffPage, utilities: utilitiesPage, health: healthPage,
+  bank: bankPage,
 };
 
 /** Render a suite page, or null if the key is unknown. `extras` carries

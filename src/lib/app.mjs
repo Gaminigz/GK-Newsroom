@@ -3359,6 +3359,9 @@ export async function handleApp(req, res, url) {
       };
     }
     // Purchase Planner also needs the dish catalogue for its dish picker.
+    if (shop && m[2] === "bank") {
+      extras.bank = shop.bank || {};
+    }
     if (shop && m[2] === "plan") {
       extras.presetDishes = await loadPresetDishes(await col("lanka_dishes"));
       extras.currency = currencyOf(shop);
@@ -3832,6 +3835,30 @@ export async function handleApp(req, res, url) {
         ok: true, existed: false, id: String(ins.insertedId), name,
         nameSi: feed?.nameSi || "", price: finalPrice,
       }));
+    return;
+  }
+
+  // The shop's payout account. Typed by the owner, kept on their own shop
+  // record. A blank number means "keep the one already on file" — so saving
+  // a change of branch does not require re-typing the account.
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/bank$/);
+  if (m && req.method === "POST") {
+    const form = await readForm(req, 4000);
+    const shopOid = await oid(m[1]);
+    if (shopOid) {
+      const clean = (k, n) => String(form.get(k) || "").trim().slice(0, n);
+      const set = {
+        "bank.bankName": clean("bankName", 60),
+        "bank.branch": clean("branch", 60),
+        "bank.accountName": clean("accountName", 80),
+        "bank.note": clean("note", 120),
+        "bank.updatedAt": new Date(),
+      };
+      const acc = clean("accountNo", 34).replace(/[^0-9\- ]/g, "");
+      if (acc) set["bank.accountNo"] = acc;
+      await (await col("shop_owners")).updateOne({ _id: shopOid }, { $set: set });
+    }
+    redirect(res, `/app/owner/${m[1]}/suite/bank?msg=${encodeURIComponent("Saved")}`);
     return;
   }
 
