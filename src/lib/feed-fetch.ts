@@ -208,6 +208,14 @@ export async function fetchAiFeed(opts?: {
 
   await archiveItems(enriched);
 
+  // Cambodia startup-ecosystem Telegram posts (Startup Cambodia, Cambodia
+  // 4.0, Techo Startup Center) — fetched separately (cambodia-startup-fetch.ts,
+  // its own daily pipeline stage) and archived straight to Mongo, not via
+  // RSS. Pull the most recent ones in here so they appear in the main
+  // chronological feed rather than needing their own section.
+  const startupItems = await fetchCambodiaStartupItems();
+  const allNews = [...enriched, ...startupItems].sort((a, b) => b.publishedAt - a.publishedAt).slice(0, totalLimit + startupItems.length);
+
   // Interleave curated series (History + Timeline) from Mongo so the feed
   // is never just today's news. We pick a small random slice each render
   // — same story doesn't dominate two visits in a row.
@@ -226,9 +234,45 @@ export async function fetchAiFeed(opts?: {
   }
   const spotlight = [...spotlightIdx].sort((a, b) => a - b).map((i) => timeline[i]);
   const restTimeline = timeline.filter((_, i) => !spotlightIdx.has(i));
-  const mixed = interleave(enriched, spotlight).concat(restTimeline).concat(history);
+  const mixed = interleave(allNews, spotlight).concat(restTimeline).concat(history);
 
   return { items: mixed, errors };
+}
+
+/**
+ * Pulls the most recent Cambodia startup-ecosystem Telegram posts
+ * (origin:"telegram-startup" in ai_feed_items) so they show up in the main
+ * feed. Returns [] on any failure — never blocks live news.
+ */
+async function fetchCambodiaStartupItems(): Promise<FeedItem[]> {
+  if (!process.env.MONGO_URL) return [];
+  try {
+    const { getDb } = await import("./mongo");
+    const db = await getDb();
+    const col = db.collection("ai_feed_items");
+    const docs = await col
+      .find({ origin: "telegram-startup" })
+      .sort({ publishedAt: -1 })
+      .limit(15)
+      .toArray();
+    return docs.map((d) => ({
+      source: d.source,
+      sourceTag: d.sourceTag,
+      title: d.title,
+      url: d.url,
+      summary: d.summary,
+      image: d.image,
+      publishedAt: d.publishedAt,
+      rewritten: d.rewritten,
+      originalTitle: d.originalTitle,
+      brands: d.brands ?? [],
+      countries: d.countries ?? [],
+      topics: d.topics ?? [],
+    }));
+  } catch (err) {
+    console.error("[ai-feed] fetchCambodiaStartupItems failed:", err instanceof Error ? err.message : err);
+    return [];
+  }
 }
 
 /**

@@ -13,6 +13,7 @@
     "fetch": "tsx src/scripts/run-fetch.mjs",
     "ai-countries": "tsx src/scripts/run-ai-countries.mjs",
     "telegram": "tsx src/scripts/run-telegram.mjs",
+    "cambodia-startup": "tsx src/scripts/run-cambodia-startup.mjs",
     "brands": "tsx src/scripts/run-brand-scout.mjs",
     "garment-press": "tsx src/scripts/run-garment-press.mjs",
     "brands-page": "tsx src/scripts/serve-brands.mjs",
