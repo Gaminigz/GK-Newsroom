@@ -3249,6 +3249,7 @@ function planPage(shop, extras = {}) {
 export function bankPage(shop, extras = {}) {
   const id = String(shop._id);
   const b = extras.bank || {};
+  const pw = extras.payway || {};
   const escB = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const last4 = String(b.accountNo || "").replace(/\s/g, "").slice(-4);
   const masked = last4 ? "•".repeat(Math.max(0, String(b.accountNo).replace(/\s/g, "").length - 4)) + last4 : "";
@@ -3278,6 +3279,31 @@ export function bankPage(shop, extras = {}) {
 
       <label>PAYOUT NOTE <span style="font-weight:400">— anything the team should know</span></label>
       <input type="text" name="note" value="${escB(b.note)}" placeholder="Pay out weekly on Mondays" style="height:38px;font-size:13px">
+
+      <!-- ABA PayWay. These two keys are what make the KHQR at checkout pay
+           into THIS shop's ABA account — each shop signs with its own
+           merchant profile, the app holds no central key over anyone's
+           money. The API key is write-only here: blank keeps what is on
+           file, and it is never echoed back into the page. -->
+      <div style="margin-top:18px;padding-top:14px;border-top:1px dashed #e3d6c2">
+        <div class="row" style="justify-content:space-between;align-items:baseline">
+          <strong style="font-size:13px">ABA PayWay · KHQR at checkout</strong>
+          ${pw.merchantId ? `<span class="pill" style="background:#e8f6ec;color:#1d7a34;font-size:10px">CONNECTED · ${escB(pw.env === "production" ? "LIVE" : "SANDBOX")}</span>` : `<span class="pill" style="background:#fdf3d7;color:#946200;font-size:10px">NOT SET</span>`}
+        </div>
+        <div class="sub" style="font-size:10.5px;margin-top:3px;line-height:1.4">From your PayWay portal. Buyers then get a KHQR after booking — payable from any Cambodian bank app — and the money lands in the account above.</div>
+
+        <label>MERCHANT ID</label>
+        <input type="text" name="paywayMerchantId" autocomplete="off" value="${escB(pw.merchantId)}" placeholder="ec00xxxx" style="height:38px;font-size:13.5px">
+
+        <label>API KEY <span style="font-weight:400">— ${pw.apiKey ? "on file · leave blank to keep it" : "from the PayWay welcome email"}</span></label>
+        <input type="password" name="paywayApiKey" autocomplete="new-password" value="" placeholder="${pw.apiKey ? "••••••••••••" : "paste the key"}" style="height:38px;font-size:13.5px">
+
+        <label>ENVIRONMENT</label>
+        <select name="paywayEnv" style="height:38px;font-size:13px;width:100%">
+          <option value="sandbox"${pw.env !== "production" ? " selected" : ""}>Sandbox — test money</option>
+          <option value="production"${pw.env === "production" ? " selected" : ""}>Production — real money</option>
+        </select>
+      </div>
 
       <button class="btn" style="margin-top:14px">Save bank details</button>
       <div class="sub" style="font-size:10px;margin-top:8px;line-height:1.4">Typed by you, stored with your shop, and shown back masked. Change it any time — leaving the number blank keeps the one already on file.</div>

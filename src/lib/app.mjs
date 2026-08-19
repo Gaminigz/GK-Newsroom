@@ -1488,6 +1488,8 @@ async function orderPage(id, asShop = false) {
     .map((m) => `<div class="bubble ${m.from === "buyer" ? "buyer" : "shop"}">${esc(m.text)}</div>`)
     .join("");
 
+  const canPay = !!(shop?.payway?.merchantId && shop?.payway?.apiKey) && !order.paidAt;
+  const usdDue = ((Number(order.total) || 0) * LKR_TO.USD).toFixed(2);
   return shell({
     title: `Order — ${shop?.name ?? ""}`,
     noBack: true,
@@ -1507,6 +1509,44 @@ async function orderPage(id, asShop = false) {
       <div style="margin-top:10px">${items}</div>
       <div class="row" style="justify-content:space-between;border-top:1px solid #f0e7de;margin-top:8px;padding-top:8px"><strong>Total</strong><strong style="color:${ORANGE}">${lkr(order.total)}</strong></div>
     </div>
+    ${order.paidAt ? `<div class="ok">✓ Paid${order.payInfo?.via ? ` by ${esc(order.payInfo.via)}` : ""} — US$${usdDue}</div>` : ""}
+    ${canPay && !asShop ? `
+    <!-- Booked first, paid second: the kitchen already has the order, this
+         card settles the money. One KHQR per order, payable from any
+         Cambodian bank app; the page hears the webhook and flips to Paid. -->
+    <div class="card" style="margin-top:12px;padding:13px 14px" id="payCard">
+      <div class="row" style="justify-content:space-between;align-items:baseline">
+        <strong style="font-size:13.5px">Pay by KHQR</strong>
+        <strong style="color:${ORANGE}">US$${usdDue}</strong>
+      </div>
+      <div id="payBox" style="text-align:center;margin-top:8px">
+        <button type="button" id="payGo" class="btn" style="padding:11px">Show payment QR</button>
+      </div>
+      <div class="sub" id="payMsg" style="font-size:10.5px;margin-top:6px;text-align:center">Scan with ABA, Bakong or any KHQR bank app.</div>
+    </div>
+    <script>
+      (function(){
+        var box = document.getElementById('payBox'), msg = document.getElementById('payMsg');
+        var polling = null;
+        function poll(){
+          fetch('/app/order/${String(order._id)}/paystatus.json').then(function(r){ return r.json(); })
+            .then(function(j){ if (j.paid) { clearInterval(polling); location.reload(); } }).catch(function(){});
+        }
+        document.getElementById('payGo').addEventListener('click', function(){
+          msg.textContent = 'Getting your QR…';
+          fetch('/app/order/${String(order._id)}/payway-qr.json', { method: 'POST' })
+            .then(function(r){ return r.json(); })
+            .then(function(j){
+              if (!j.ok) { msg.textContent = j.error || 'Could not create the QR — try again.'; return; }
+              box.innerHTML = (j.qrImg ? '<img src="' + j.qrImg + '" alt="KHQR" style="width:230px;max-width:80%;border-radius:12px">' : '')
+                + (j.deeplink ? '<a href="' + j.deeplink + '" style="display:block;margin-top:8px;font-weight:700;color:${ORANGE}">Open ABA Mobile →</a>' : '')
+                + (!j.qrImg && j.qrUrl ? '<a href="' + j.qrUrl + '" target="_blank" style="display:block;margin-top:8px;font-weight:700;color:${ORANGE}">Open payment QR →</a>' : '');
+              msg.textContent = 'US$' + j.usd + ' · waiting for payment…';
+              polling = setInterval(poll, 5000);
+            }).catch(function(){ msg.textContent = 'Network problem — try again.'; });
+        });
+      })();
+    </script>` : ""}
     ${order.status === "done" ? `<div class="ok">✓ Packed and on its way${order.pickupAt ? ` — ${esc(order.pickupAt)}` : ""}</div>`
       : order.status === "delivered" ? `<div class="ok">✓ Delivered${order.pickupAt ? ` — ${esc(order.pickupAt)}` : ""}</div>`
       : order.confirmedAt ? `<div class="ok">✓ Order confirmed for ${esc(order.pickupAt ?? "pickup")}</div>` : ""}
@@ -3361,6 +3401,7 @@ export async function handleApp(req, res, url) {
     // Purchase Planner also needs the dish catalogue for its dish picker.
     if (shop && m[2] === "bank") {
       extras.bank = shop.bank || {};
+      extras.payway = shop.payway || {};
     }
     if (shop && m[2] === "plan") {
       extras.presetDishes = await loadPresetDishes(await col("lanka_dishes"));
@@ -3838,6 +3879,110 @@ export async function handleApp(req, res, url) {
     return;
   }
 
+  /* ---------------- ABA PayWay: pay the order by KHQR after booking.
+   *
+   * The order goes to the kitchen the moment it is booked, exactly as before —
+   * payment rides alongside it and a gateway outage can never starve the
+   * stove. Three doors:
+   *   POST /app/order/:id/payway-qr.json   make (or reuse) the KHQR
+   *   POST /app/payway/webhook             PayWay tells us it was paid
+   *   GET  /app/order/:id/paystatus.json   the order page asks "paid yet?"
+   */
+  m = path.match(/^\/app\/order\/([a-f0-9]{24})\/payway-qr\.json$/);
+  if (m && req.method === "POST") {
+    const json = (code, obj) => res.writeHead(code, { "Content-Type": "application/json" }).end(JSON.stringify(obj));
+    const _id = await oid(m[1]);
+    const order = _id && await (await col("app_orders")).findOne({ _id });
+    if (!order) { json(404, { ok: false, error: "no such order" }); return; }
+    if (order.paidAt) { json(200, { ok: true, paid: true }); return; }
+    const shop = await shopById(order.shopId);
+    const pw = shop?.payway || {};
+    if (!pw.merchantId || !pw.apiKey) { json(400, { ok: false, error: "This shop has not set up PayWay yet." }); return; }
+
+    // Reuse a QR younger than its lifetime — a KHQR can be paid more than
+    // once, so handing out a fresh one per tap would multiply the ways to
+    // double-pay a single order.
+    if (order.payway?.qr && order.payway.createdAt && Date.now() - new Date(order.payway.createdAt).getTime() < 14 * 60_000) {
+      json(200, { ok: true, qrImg: order.payway.qrImg || "", deeplink: order.payway.deeplink, qrUrl: order.payway.qrUrl, usd: order.payway.usd, tranId: order.payway.tranId });
+      return;
+    }
+
+    const { paywayCreateQr } = await import("./payway.mjs");
+    // tran_id has a 20-char ceiling, so the Mongo _id cannot be it. Order
+    // number plus seconds-since-epoch is short, unique, and legible in the
+    // PayWay portal next to the kitchen's own numbering.
+    const tranId = order.payway?.tranId || `TS${order.orderNo || 0}T${Math.floor(Date.now() / 1000).toString(36).toUpperCase()}`;
+    const usd = ((Number(order.total) || 0) * LKR_TO.USD).toFixed(2);
+    const out = await paywayCreateQr({
+      merchantId: pw.merchantId, apiKey: pw.apiKey, env: pw.env,
+      tranId, amountUsd: usd,
+      buyerName: order.buyer || "", buyerPhone: order.phone || "",
+      itemsList: (order.items || []).map((i) => ({ name: i.name, quantity: i.qty, price: Number(((Number(i.price) || 0) * LKR_TO.USD).toFixed(2)) })),
+      callbackUrl: `${PUBLIC_BASE}/app/payway/webhook`,
+    });
+    if (!out.ok) { json(502, { ok: false, error: out.error }); return; }
+    // The same qrcode library that prints the Table QR draws the KHQR — the
+    // buyer sees our page end to end, no PayWay iframe.
+    const qrImg = out.qr ? await QRCode.toDataURL(out.qr, { width: 480, margin: 1 }).catch(() => "") : "";
+    await (await col("app_orders")).updateOne({ _id }, { $set: {
+      payway: { tranId, usd, qr: out.qr, qrImg, deeplink: out.deeplink, qrUrl: out.qrUrl, env: pw.env || "sandbox", createdAt: new Date() },
+    } });
+    json(200, { ok: true, qrImg, deeplink: out.deeplink, qrUrl: out.qrUrl, usd, tranId });
+    return;
+  }
+
+  if (path === "/app/payway/webhook" && req.method === "POST") {
+    const raw = await readBody(req, 20_000);
+    let body = {};
+    try { body = JSON.parse(raw); } catch { for (const [k, v] of new URLSearchParams(raw)) body[k] = v; }
+    const ref = String(body.merchant_ref || body.tran_id || body.transaction_id || "").trim();
+    const approved = body.payment_status === "APPROVED" || Number(body.payment_status_code) === 0;
+    if (ref && approved) {
+      // Idempotent on purpose: ABA documents that a KHQR can be paid more
+      // than once, so a second APPROVED for a paid order must change nothing.
+      await (await col("app_orders")).updateOne(
+        { "payway.tranId": ref, paidAt: { $exists: false } },
+        { $set: { paidAt: new Date(), payInfo: {
+          via: String(body.payment_type || "KHQR"), bankRef: String(body.bank_ref || ""),
+          apv: String(body.apv || ""), payer: String(body.payer_account || ""),
+          amount: Number(body.payment_amount) || 0, currency: String(body.payment_currency || "USD"),
+        } } },
+      );
+    }
+    // Always 200 — an erroring webhook just makes PayWay retry into the void.
+    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  m = path.match(/^\/app\/order\/([a-f0-9]{24})\/paystatus\.json$/);
+  if (m) {
+    const json = (obj) => res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(obj));
+    const _id = await oid(m[1]);
+    const orders = await col("app_orders");
+    let order = _id && await orders.findOne({ _id });
+    if (!order) { json({ ok: false }); return; }
+    // Webhook first; if it has not spoken and the QR is out, ask PayWay
+    // directly — throttled, because the page polls every few seconds.
+    if (!order.paidAt && order.payway?.tranId) {
+      const last = order.payway.lastCheckAt ? new Date(order.payway.lastCheckAt).getTime() : 0;
+      if (Date.now() - last > 8000) {
+        await orders.updateOne({ _id }, { $set: { "payway.lastCheckAt": new Date() } });
+        const shop = await shopById(order.shopId);
+        if (shop?.payway?.apiKey) {
+          const { paywayCheck } = await import("./payway.mjs");
+          const chk = await paywayCheck({ merchantId: shop.payway.merchantId, apiKey: shop.payway.apiKey, env: shop.payway.env, tranId: order.payway.tranId }).catch(() => null);
+          if (chk?.paid) {
+            await orders.updateOne({ _id, paidAt: { $exists: false } },
+              { $set: { paidAt: new Date(), payInfo: { via: "KHQR", checked: true } } });
+            order = await orders.findOne({ _id });
+          }
+        }
+      }
+    }
+    json({ ok: true, paid: !!order.paidAt });
+    return;
+  }
+
   // The shop's payout account. Typed by the owner, kept on their own shop
   // record. A blank number means "keep the one already on file" — so saving
   // a change of branch does not require re-typing the account.
@@ -3856,6 +4001,13 @@ export async function handleApp(req, res, url) {
       };
       const acc = clean("accountNo", 34).replace(/[^0-9\- ]/g, "");
       if (acc) set["bank.accountNo"] = acc;
+      // PayWay: merchant id and environment always follow the form; the API
+      // key only when typed — blank means keep the one on file, so fixing a
+      // typo in the branch never forces the key to be re-pasted.
+      set["payway.merchantId"] = clean("paywayMerchantId", 30);
+      set["payway.env"] = form.get("paywayEnv") === "production" ? "production" : "sandbox";
+      const pk = String(form.get("paywayApiKey") || "").trim().slice(0, 120);
+      if (pk) set["payway.apiKey"] = pk;
       await (await col("shop_owners")).updateOne({ _id: shopOid }, { $set: set });
     }
     redirect(res, `/app/owner/${m[1]}/suite/bank?msg=${encodeURIComponent("Saved")}`);
