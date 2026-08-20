@@ -112,3 +112,27 @@ export async function paywayCheck({ merchantId, apiKey, env, tranId }) {
   const codeRaw = j.data?.payment_status_code ?? j.payment_status_code;
   return { ok: true, paid: status === "APPROVED" || codeRaw === 0, status, raw: j };
 }
+
+
+/**
+ * The hosted flow — ABA's own secure checkout page, where the payer picks
+ * Card, ABA Pay or KHQR and pays inside ABA's window. We send a signed form;
+ * everything after that (card fields, 3DS, the success screen) is ABA's.
+ * When they finish, ABA walks the payer back to continue_success_url and
+ * rings the same webhook as the inline QR.
+ */
+export function paywayHostedFields({ merchantId, apiKey, env, tranId, amountUsd, buyerName, buyerPhone, callbackUrl, continueUrl }) {
+  const fields = {
+    req_time: reqTime(),
+    merchant_id: merchantId,
+    tran_id: tranId,
+    amount: amountUsd,
+    firstname: buyerName || "",
+    phone: buyerPhone || "",
+    return_url: Buffer.from(callbackUrl).toString("base64"),
+    continue_success_url: continueUrl,
+    currency: "USD",
+  };
+  fields.hash = paywaySign(fields, apiKey);
+  return { action: `${PAYWAY_BASE[env] || PAYWAY_BASE.sandbox}api/payment-gateway/v1/payments/purchase`, fields };
+}

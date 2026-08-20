@@ -1509,7 +1509,17 @@ async function orderPage(id, asShop = false) {
       <div style="margin-top:10px">${items}</div>
       <div class="row" style="justify-content:space-between;border-top:1px solid #f0e7de;margin-top:8px;padding-top:8px"><strong>Total</strong><strong style="color:${ORANGE}">${lkr(order.total)}</strong></div>
     </div>
-    ${order.paidAt ? `<div class="ok">✓ Paid${order.payInfo?.via ? ` by ${esc(order.payInfo.via)}` : ""} — US$${usdDue}</div>` : ""}
+    ${order.paidAt ? `
+    <!-- The receipt, the way the flow document ends: what was paid, how, and
+         a reference the buyer can quote if anything ever needs chasing. -->
+    <div class="card" style="margin-top:12px;padding:16px;text-align:center;background:#f2faf4;border-color:#bfe5c8">
+      <div style="width:44px;height:44px;border-radius:99px;background:#1d7a34;color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;margin:0 auto">✓</div>
+      <div style="font-size:10px;font-weight:800;letter-spacing:.08em;color:#1d7a34;margin-top:8px">PAYMENT RECEIVED</div>
+      <strong style="display:block;font-size:16px;margin-top:2px">US$${usdDue} · LKR ${(Number(order.total) || 0).toLocaleString()}</strong>
+      <div class="sub" style="font-size:11px;margin-top:3px">${esc(order.payInfo?.via || "ABA PayWay")}${order.payInfo?.payer ? ` · ${esc(order.payInfo.payer)}` : ""}</div>
+      ${order.payInfo?.bankRef ? `<div class="sub" style="font-size:10.5px;margin-top:5px">Ref <strong style="font-variant-numeric:tabular-nums">${esc(order.payInfo.bankRef)}</strong>${order.payInfo?.apv ? ` · APV ${esc(order.payInfo.apv)}` : ""}</div>` : ""}
+      <div class="sub" style="font-size:10px;margin-top:2px">Order #${esc(String(order.orderNo || ""))} · keep this for your records</div>
+    </div>` : ""}
     ${canPay && !asShop ? `
     <!-- Booked first, paid second: the kitchen already has the order, this
          card settles the money. One KHQR per order, payable from any
@@ -1519,10 +1529,16 @@ async function orderPage(id, asShop = false) {
         <strong style="font-size:13.5px">Pay by KHQR</strong>
         <strong style="color:${ORANGE}">US$${usdDue}</strong>
       </div>
+      <!-- Two ways to pay, like the flow document says: the KHQR inline for
+           anyone with a Cambodian bank app, or ABA's own secure page for a
+           card. Both settle into the same webhook. -->
       <div id="payBox" style="text-align:center;margin-top:8px">
-        <button type="button" id="payGo" class="btn" style="padding:11px">Show payment QR</button>
+        <div style="display:flex;gap:8px">
+          <button type="button" id="payGo" class="btn" style="flex:1;padding:11px">Scan KHQR</button>
+          <a href="/app/order/${String(order._id)}/pay" class="btn ghost" style="flex:1;padding:11px;text-align:center;text-decoration:none;border:1.5px solid ${ORANGE};color:${ORANGE};font-weight:700;border-radius:14px">💳 Card</a>
+        </div>
       </div>
-      <div class="sub" id="payMsg" style="font-size:10.5px;margin-top:6px;text-align:center">Scan with ABA, Bakong or any KHQR bank app.</div>
+      <div class="sub" id="payMsg" style="font-size:10.5px;margin-top:6px;text-align:center">KHQR works with ABA, Bakong or any bank app · Card opens ABA's secure page.</div>
     </div>
     <script>
       (function(){
@@ -1531,6 +1547,14 @@ async function orderPage(id, asShop = false) {
         function poll(){
           fetch('/app/order/${String(order._id)}/paystatus.json').then(function(r){ return r.json(); })
             .then(function(j){ if (j.paid) { clearInterval(polling); location.reload(); } }).catch(function(){});
+        }
+        // Back from ABA's success screen: hold on "Confirming payment" and
+        // poll hard until the webhook or check-transaction says APPROVED.
+        if (location.search.indexOf('confirming=1') !== -1) {
+          box.innerHTML = '<div style="width:34px;height:34px;border:3px solid #f0e0d8;border-top-color:${ORANGE};border-radius:99px;margin:10px auto;animation:sp 1s linear infinite"></div><style>@keyframes sp{to{transform:rotate(360deg)}}</style><strong style="font-size:13px;color:${ORANGE}">CONFIRMING PAYMENT</strong>';
+          msg.textContent = 'Hold on a moment — we are verifying your transaction.';
+          polling = setInterval(poll, 3000);
+          poll();
         }
         document.getElementById('payGo').addEventListener('click', function(){
           msg.textContent = 'Getting your QR…';
@@ -3931,6 +3955,42 @@ export async function handleApp(req, res, url) {
     return;
   }
 
+  /* The card path: an auto-submitting form that walks the buyer into ABA's
+   * hosted checkout (Card, ABA Pay or KHQR, 3DS, their success screen).
+   * ABA then returns them to the order page with ?confirming=1, where we
+   * hold on "Confirming payment" until the webhook or check says APPROVED. */
+  m = path.match(/^\/app\/order\/([a-f0-9]{24})\/pay$/);
+  if (m) {
+    const _id = await oid(m[1]);
+    const order = _id && await (await col("app_orders")).findOne({ _id });
+    const shop = order && await shopById(order.shopId);
+    const pw = shop?.payway || {};
+    if (!order || !pw.merchantId || !pw.apiKey) { redirect(res, `/app/order/${m[1]}`); return; }
+    if (order.paidAt) { redirect(res, `/app/order/${m[1]}`); return; }
+    // Its own tran_id, kept apart from the QR's — two open intents on one
+    // order are fine, the webhook credits whichever clears first.
+    const cardTranId = order.payway?.cardTranId || `TC${order.orderNo || 0}T${Math.floor(Date.now() / 1000).toString(36).toUpperCase()}`;
+    await (await col("app_orders")).updateOne({ _id }, { $set: { "payway.cardTranId": cardTranId } });
+    const { paywayHostedFields } = await import("./payway.mjs");
+    const usd = ((Number(order.total) || 0) * LKR_TO.USD).toFixed(2);
+    const { action, fields } = paywayHostedFields({
+      merchantId: pw.merchantId, apiKey: pw.apiKey, env: pw.env,
+      tranId: cardTranId, amountUsd: usd,
+      buyerName: order.buyer || "", buyerPhone: order.phone || "",
+      callbackUrl: `${PUBLIC_BASE}/app/payway/webhook`,
+      continueUrl: `${PUBLIC_BASE}/app/order/${m[1]}?confirming=1`,
+    });
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(`<!doctype html>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<body style="font-family:system-ui;background:#faf7f4;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+<form id="aba" method="POST" action="${action}">
+${Object.entries(fields).map(([k, v]) => `<input type="hidden" name="${k}" value="${esc(String(v))}">`).join("\n")}
+</form>
+<div style="text-align:center;color:#4a443f"><div style="font-size:26px">🔒</div>Taking you to ABA PayWay…</div>
+<script>document.getElementById('aba').submit()</script>`);
+    return;
+  }
+
   if (path === "/app/payway/webhook" && req.method === "POST") {
     const raw = await readBody(req, 20_000);
     let body = {};
@@ -3942,7 +4002,7 @@ export async function handleApp(req, res, url) {
       // body unsigned, so anyone who guessed a tran_id could otherwise mark
       // an order paid. The webhook is only the doorbell — the money is
       // confirmed by asking PayWay directly, signed with the shop's own key.
-      const order = await (await col("app_orders")).findOne({ "payway.tranId": ref, paidAt: { $exists: false } });
+      const order = await (await col("app_orders")).findOne({ $or: [{ "payway.tranId": ref }, { "payway.cardTranId": ref }], paidAt: { $exists: false } });
       const shop = order && await shopById(order.shopId);
       if (order && shop?.payway?.apiKey) {
         const { paywayCheck } = await import("./payway.mjs");
@@ -3975,18 +4035,22 @@ export async function handleApp(req, res, url) {
     if (!order) { json({ ok: false }); return; }
     // Webhook first; if it has not spoken and the QR is out, ask PayWay
     // directly — throttled, because the page polls every few seconds.
-    if (!order.paidAt && order.payway?.tranId) {
+    const intents = [order.payway?.tranId, order.payway?.cardTranId].filter(Boolean);
+    if (!order.paidAt && intents.length) {
       const last = order.payway.lastCheckAt ? new Date(order.payway.lastCheckAt).getTime() : 0;
       if (Date.now() - last > 8000) {
         await orders.updateOne({ _id }, { $set: { "payway.lastCheckAt": new Date() } });
         const shop = await shopById(order.shopId);
         if (shop?.payway?.apiKey) {
           const { paywayCheck } = await import("./payway.mjs");
-          const chk = await paywayCheck({ merchantId: shop.payway.merchantId, apiKey: shop.payway.apiKey, env: shop.payway.env, tranId: order.payway.tranId }).catch(() => null);
-          if (chk?.paid) {
-            await orders.updateOne({ _id, paidAt: { $exists: false } },
-              { $set: { paidAt: new Date(), payInfo: { via: "KHQR", checked: true } } });
-            order = await orders.findOne({ _id });
+          for (const t of intents) {
+            const chk = await paywayCheck({ merchantId: shop.payway.merchantId, apiKey: shop.payway.apiKey, env: shop.payway.env, tranId: t }).catch(() => null);
+            if (chk?.paid) {
+              await orders.updateOne({ _id, paidAt: { $exists: false } },
+                { $set: { paidAt: new Date(), payInfo: { via: "ABA PayWay", checked: true } } });
+              order = await orders.findOne({ _id });
+              break;
+            }
           }
         }
       }
