@@ -3984,11 +3984,14 @@ export async function handleApp(req, res, url) {
     // their iframe, which shows Card / ABA Pay / KHQR, runs 3DS, and walks
     // the payer back to continue_success_url. A raw POST of the same form
     // returns JSON, not the page: the popup only opens through the plugin.
-    const base = (pw.env === "production" ? "https://checkout.payway.com.kh/" : "https://checkout-sandbox.payway.com.kh/");
+    // The plugin is served from the production host only — it is a loader
+    // for ABA's popup code. Which environment the MONEY goes through is
+    // decided by the form's action URL, not by where the plugin came from.
+    const pluginBase = "https://checkout.payway.com.kh/";
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(`<!doctype html>
 <html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pay — ABA PayWay</title>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="${base}plugins/checkout2-0.js"></script></head>
+<script src="${pluginBase}plugins/checkout2-0.js"></script></head>
 <body style="font-family:system-ui;background:#faf7f4;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
 <form method="POST" target="aba_webservice" action="${action}" id="aba_merchant_request">
 ${Object.entries(fields).map(([k, v]) => `<input type="hidden" name="${k}" value="${esc(String(v))}">`).join("\n")}
@@ -3999,7 +4002,19 @@ ${Object.entries(fields).map(([k, v]) => `<input type="hidden" name="${k}" value
   <button onclick="AbaPayway.checkout()" style="margin-top:14px;border:0;background:#d9542b;color:#fff;border-radius:99px;padding:11px 22px;font-size:14px;font-weight:700;cursor:pointer">Open payment window</button>
   <div style="margin-top:10px"><a href="/app/order/${m[1]}" style="color:#8a827b;font-size:12px">‹ Back to the order</a></div>
 </div>
-<script>window.addEventListener('load', function(){ try { AbaPayway.checkout(); } catch (e) { /* the button remains */ } });</script>
+<script>
+// The loader pulls checkout.prod.js a second late — wait for AbaPayway to
+// exist, open once, and leave the button as the fallback.
+var opened = false;
+var t = setInterval(function(){
+  if (opened) { clearInterval(t); return; }
+  if (window.AbaPayway && typeof AbaPayway.checkout === 'function') {
+    opened = true; clearInterval(t);
+    try { AbaPayway.checkout(); } catch (e) { /* the button remains */ }
+  }
+}, 400);
+setTimeout(function(){ clearInterval(t); }, 15000);
+</script>
 </body></html>`);
     return;
   }
