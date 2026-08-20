@@ -3980,14 +3980,27 @@ export async function handleApp(req, res, url) {
       callbackUrl: `${PUBLIC_BASE}/app/payway/webhook`,
       continueUrl: `${PUBLIC_BASE}/app/order/${m[1]}?confirming=1`,
     });
+    // ABA's own checkout popup — their plugin posts the signed form into
+    // their iframe, which shows Card / ABA Pay / KHQR, runs 3DS, and walks
+    // the payer back to continue_success_url. A raw POST of the same form
+    // returns JSON, not the page: the popup only opens through the plugin.
+    const base = (pw.env === "production" ? "https://checkout.payway.com.kh/" : "https://checkout-sandbox.payway.com.kh/");
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(`<!doctype html>
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pay — ABA PayWay</title>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="${base}plugins/checkout2-0.js"></script></head>
 <body style="font-family:system-ui;background:#faf7f4;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
-<form id="aba" method="POST" action="${action}">
+<form method="POST" target="aba_webservice" action="${action}" id="aba_merchant_request">
 ${Object.entries(fields).map(([k, v]) => `<input type="hidden" name="${k}" value="${esc(String(v))}">`).join("\n")}
 </form>
-<div style="text-align:center;color:#4a443f"><div style="font-size:26px">🔒</div>Taking you to ABA PayWay…</div>
-<script>document.getElementById('aba').submit()</script>`);
+<div style="text-align:center;color:#4a443f">
+  <div style="font-size:26px">🔒</div>
+  <div style="margin-top:6px">Opening ABA PayWay…</div>
+  <button onclick="AbaPayway.checkout()" style="margin-top:14px;border:0;background:#d9542b;color:#fff;border-radius:99px;padding:11px 22px;font-size:14px;font-weight:700;cursor:pointer">Open payment window</button>
+  <div style="margin-top:10px"><a href="/app/order/${m[1]}" style="color:#8a827b;font-size:12px">‹ Back to the order</a></div>
+</div>
+<script>window.addEventListener('load', function(){ try { AbaPayway.checkout(); } catch (e) { /* the button remains */ } });</script>
+</body></html>`);
     return;
   }
 
