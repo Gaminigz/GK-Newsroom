@@ -3303,6 +3303,15 @@ export function bankPage(shop, extras = {}) {
           <option value="sandbox"${pw.env !== "production" ? " selected" : ""}>Sandbox — test money</option>
           <option value="production"${pw.env === "production" ? " selected" : ""}>Production — real money</option>
         </select>
+
+        <!-- KHQR comes with every PayWay merchant; the hosted card checkout
+             is a product ABA switches on per profile. Until they do, the
+             card button would open a spinner that never ends — so it stays
+             hidden until the owner ticks this after ABA confirms. -->
+        <label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:12px;text-transform:none;letter-spacing:0">
+          <input type="checkbox" name="paywayCards" value="1"${pw.cardEnabled ? " checked" : ""} style="width:18px;height:18px;margin:0">
+          <span>ABA has enabled <strong>card checkout</strong> on this merchant — show the Card button to buyers</span>
+        </label>
       </div>
 
       <button class="btn" style="margin-top:14px">Save bank details</button>

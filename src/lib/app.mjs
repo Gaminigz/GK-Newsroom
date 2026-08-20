@@ -1535,10 +1535,10 @@ async function orderPage(id, asShop = false) {
       <div id="payBox" style="text-align:center;margin-top:8px">
         <div style="display:flex;gap:8px">
           <button type="button" id="payGo" class="btn" style="flex:1;padding:11px">Scan KHQR</button>
-          <a href="/app/order/${String(order._id)}/pay" class="btn ghost" style="flex:1;padding:11px;text-align:center;text-decoration:none;border:1.5px solid ${ORANGE};color:${ORANGE};font-weight:700;border-radius:14px">💳 Card</a>
+          ${shop?.payway?.cardEnabled ? `<a href="/app/order/${String(order._id)}/pay" class="btn ghost" style="flex:1;padding:11px;text-align:center;text-decoration:none;border:1.5px solid ${ORANGE};color:${ORANGE};font-weight:700;border-radius:14px">💳 Card</a>` : ""}
         </div>
       </div>
-      <div class="sub" id="payMsg" style="font-size:10.5px;margin-top:6px;text-align:center">KHQR works with ABA, Bakong or any bank app · Card opens ABA's secure page.</div>
+      <div class="sub" id="payMsg" style="font-size:10.5px;margin-top:6px;text-align:center">KHQR works with ABA, Bakong or any bank app.${shop?.payway?.cardEnabled ? " Card opens ABA's secure page." : ""}</div>
     </div>
     <script>
       (function(){
@@ -4017,6 +4017,17 @@ var t = setInterval(function(){
   }
 }, 400);
 setTimeout(function(){ clearInterval(t); }, 15000);
+// If ABA's modal has not produced a checkout after 12s, this profile has no
+// hosted card product — say so instead of spinning.
+setTimeout(function(){
+  var overlay = document.querySelector('#aba_main_modal, .aba-modal, iframe[name=aba_webservice]');
+  if (overlay && !document.body.textContent.includes('CVV')) {
+    document.body.insertAdjacentHTML('beforeend',
+      '<div style="position:fixed;inset:auto 0 0 0;background:#fff;padding:16px;text-align:center;z-index:99999;border-top:1px solid #e3d6c2">' +
+      'Card checkout is not enabled on this merchant profile yet — pay by KHQR instead. ' +
+      '<a href="/app/order/${m[1]}" style="font-weight:700;color:#d9542b">‹ Back to the order</a></div>');
+  }
+}, 12000);
 </script>
 </body></html>`);
     return;
@@ -4115,6 +4126,7 @@ setTimeout(function(){ clearInterval(t); }, 15000);
       set["payway.env"] = form.get("paywayEnv") === "production" ? "production" : "sandbox";
       const pk = String(form.get("paywayApiKey") || "").trim().slice(0, 120);
       if (pk) set["payway.apiKey"] = pk;
+      set["payway.cardEnabled"] = form.get("paywayCards") === "1";
       await (await col("shop_owners")).updateOne({ _id: shopOid }, { $set: set });
     }
     redirect(res, `/app/owner/${m[1]}/suite/bank?msg=${encodeURIComponent("Saved")}`);
