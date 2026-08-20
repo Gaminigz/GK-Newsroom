@@ -4008,7 +4008,10 @@ ${Object.entries(fields).map(([k, v]) => `<input type="hidden" name="${k}" value
 var opened = false;
 var t = setInterval(function(){
   if (opened) { clearInterval(t); return; }
-  if (window.AbaPayway && typeof AbaPayway.checkout === 'function') {
+  // AbaPayway is a const in a classic script: a global binding, but NOT a
+  // window property — window.AbaPayway is undefined forever. Test the bare
+  // name.
+  if (typeof AbaPayway !== 'undefined' && typeof AbaPayway.checkout === 'function') {
     opened = true; clearInterval(t);
     try { AbaPayway.checkout(); } catch (e) { /* the button remains */ }
   }
