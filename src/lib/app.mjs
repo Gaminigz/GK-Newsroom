@@ -3938,16 +3938,28 @@ export async function handleApp(req, res, url) {
     const ref = String(body.merchant_ref || body.tran_id || body.transaction_id || "").trim();
     const approved = body.payment_status === "APPROVED" || Number(body.payment_status_code) === 0;
     if (ref && approved) {
-      // Idempotent on purpose: ABA documents that a KHQR can be paid more
-      // than once, so a second APPROVED for a paid order must change nothing.
-      await (await col("app_orders")).updateOne(
-        { "payway.tranId": ref, paidAt: { $exists: false } },
-        { $set: { paidAt: new Date(), payInfo: {
-          via: String(body.payment_type || "KHQR"), bankRef: String(body.bank_ref || ""),
-          apv: String(body.apv || ""), payer: String(body.payer_account || ""),
-          amount: Number(body.payment_amount) || 0, currency: String(body.payment_currency || "USD"),
-        } } },
-      );
+      // Never take the webhook's word for it. The endpoint is public and the
+      // body unsigned, so anyone who guessed a tran_id could otherwise mark
+      // an order paid. The webhook is only the doorbell — the money is
+      // confirmed by asking PayWay directly, signed with the shop's own key.
+      const order = await (await col("app_orders")).findOne({ "payway.tranId": ref, paidAt: { $exists: false } });
+      const shop = order && await shopById(order.shopId);
+      if (order && shop?.payway?.apiKey) {
+        const { paywayCheck } = await import("./payway.mjs");
+        const chk = await paywayCheck({ merchantId: shop.payway.merchantId, apiKey: shop.payway.apiKey, env: shop.payway.env, tranId: ref }).catch(() => null);
+        if (chk?.paid) {
+          // Idempotent: ABA documents that a KHQR can be paid more than once,
+          // so a second APPROVED for a paid order must change nothing.
+          await (await col("app_orders")).updateOne(
+            { _id: order._id, paidAt: { $exists: false } },
+            { $set: { paidAt: new Date(), payInfo: {
+              via: String(body.payment_type || "KHQR"), bankRef: String(body.bank_ref || ""),
+              apv: String(body.apv || ""), payer: String(body.payer_account || ""),
+              amount: Number(body.payment_amount) || 0, currency: String(body.payment_currency || "USD"),
+            } } },
+          );
+        }
+      }
     }
     // Always 200 — an erroring webhook just makes PayWay retry into the void.
     res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
