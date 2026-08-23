@@ -258,10 +258,26 @@ function mealsFor(windowStr) {
   return hit.length ? hit : [...MEALS];
 }
 
+/** The shop's wall clock. The server runs UTC; a menu is served on local time.
+ *  At 3 PM in Phnom Penh the buyer wants lunch, but UTC says 8 AM and the
+ *  breakfast plan — so the lunch menu went missing for most of the day. Day
+ *  and meal are both read here so they can never disagree with each other. */
+const SHOP_TZ = "Asia/Phnom_Penh";
+function shopClock(d = new Date()) {
+  const p = new Intl.DateTimeFormat("en-CA", {
+    timeZone: SHOP_TZ, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", hour12: false,
+  }).formatToParts(d).reduce((a, x) => (a[x.type] = x.value, a), {});
+  return { date: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour) % 24 };
+}
+
+/** Today where the shop is, not where the server is. */
+function todayLocal(d = new Date()) { return shopClock(d).date; }
+
 /** Which meal is being served right now — breakfast to 11, lunch to 16,
  *  dinner after. Decides which day plan the buyer is offered. */
 function mealNow(d = new Date()) {
-  const h = d.getHours();
+  const h = shopClock(d).hour;
   if (h < 11) return "Breakfast";
   if (h < 16) return "Lunch";
   return "Dinner";
@@ -1214,7 +1230,7 @@ async function shopPage(id, extras = {}) {
   // Same rule as the app: a QR scanned at the table shows what the shop
   // arranged for the meal on now, and below it the dishes served at that meal,
   // which the shop may still accept or reject.
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const nowMeal = mealNow();
   const dayPlan = await (await col("day_plans")).findOne({ shopId: String(shop._id), date: today, meal: nowMeal });
   const onDay = new Set((dayPlan?.dishIds || []).map(String));
@@ -1795,7 +1811,7 @@ async function ownerDash(id, toast = "") {
   const shop = await shopById(id);
   if (!shop) return null;
   const orders = await (await col("app_orders")).find({ shopId: String(shop._id) }).sort({ createdAt: -1 }).limit(15).toArray();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const todays = orders.filter((o) => o.createdAt?.toISOString?.().slice(0, 10) === today);
   const revenue = todays.reduce((a, o) => a + (o.total ?? 0), 0);
   const chats = orders.filter((o) => (o.messages ?? []).some((m) => m.from === "buyer")).length;
@@ -2601,7 +2617,7 @@ export async function handleApp(req, res, url) {
     });
     // Today's package, if the shop planned one for the meal that's on now.
     // The buyer picks inside each group; the main they choose sets the price.
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocal();
     const nowMeal = mealNow();
     const priced = new Set(dishes.map((d) => String(d._id)));
     // Prefer the meal on now, but fall back to any plan saved for today —
@@ -2683,7 +2699,7 @@ export async function handleApp(req, res, url) {
       return;
     }
     const { SET_PRESETS_JSON, CUSTOM_SET_LIMIT, posCategoryFor } = await import("./shop-suite.mjs");
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocal();
     const qDate = String(url.searchParams.get("date") || "").slice(0, 10);
     const date = /^\d{4}-\d{2}-\d{2}$/.test(qDate) ? qDate : today;
     const qMeal = String(url.searchParams.get("meal") || "");
@@ -3382,7 +3398,7 @@ export async function handleApp(req, res, url) {
           || String(a.name || "").localeCompare(String(b.name || "")));
       // The day plan being edited — one per (shop, date, meal). Defaults to
       // today + Lunch; ?date= and ?meal= switch which plan is loaded.
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayLocal();
       const qDate = String(url.searchParams.get("date") || "").slice(0, 10);
       extras.planDate = /^\d{4}-\d{2}-\d{2}$/.test(qDate) ? qDate : today;
       const qMeal = String(url.searchParams.get("meal") || "");
@@ -3435,7 +3451,7 @@ export async function handleApp(req, res, url) {
       // decided by what it is cooking, so the shopping list is worked out
       // from that day's portions rather than sitting in its own world.
       const pDate = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get("date") || "")
-        ? url.searchParams.get("date") : new Date().toISOString().slice(0, 10);
+        ? url.searchParams.get("date") : todayLocal();
       const pMeal = MEALS.includes(url.searchParams.get("meal")) ? url.searchParams.get("meal") : "Lunch";
       extras.date = pDate;
       extras.meal = pMeal;
@@ -3591,7 +3607,7 @@ export async function handleApp(req, res, url) {
     if (shop && m[2] === "costs") {
       const { catalogueRecipe, priceIngredient, libraryKeyFor, INGREDIENT_LIBRARY } = await import("./ai-dish.mjs");
       const { guessCategory } = await import("./menu-paste.mjs");
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayLocal();
       const qDate = String(url.searchParams.get("date") || "").slice(0, 10);
       const date = /^\d{4}-\d{2}-\d{2}$/.test(qDate) ? qDate : today;
       const qMeal = String(url.searchParams.get("meal") || "");
@@ -4321,7 +4337,7 @@ setTimeout(function(){
     // The page sends the date it is showing. Nothing is written to the day
     // here — the page saves that — so this only stamps the diagnostic log.
     const qDate = String(body.date || "").slice(0, 10);
-    const date = /^\d{4}-\d{2}-\d{2}$/.test(qDate) ? qDate : new Date().toISOString().slice(0, 10);
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(qDate) ? qDate : todayLocal();
     if (!text) {
       res.writeHead(400, { "Content-Type": "application/json" })
         .end(JSON.stringify({ ok: false, error: "paste your menu text first" }));
