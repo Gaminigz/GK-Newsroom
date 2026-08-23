@@ -19,3 +19,14 @@ document.getElementById('telegram').addEventListener('click', () => {
 document.getElementById('maps').addEventListener('click', () => {
   openOrFocus('https://www.google.com/maps*', 'https://www.google.com/maps');
 });
+
+document.getElementById('reload').addEventListener('click', async () => {
+  // Reload the extension from disk, then refresh any open watched tabs so
+  // fresh content scripts (once there are any) inject cleanly.
+  const tabs = await chrome.tabs.query({
+    url: ['https://web.whatsapp.com/*', 'https://web.telegram.org/*', 'https://www.google.com/maps*'],
+  });
+  await chrome.storage.local.set({ reloadTabs: tabs.map((t) => t.id) });
+  chrome.runtime.reload();
+  window.close();
+});

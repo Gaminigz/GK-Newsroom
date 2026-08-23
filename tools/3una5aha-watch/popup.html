@@ -13,6 +13,8 @@
   .ver { color: #8b949e; font-size: 10px; font-family: ui-monospace, monospace; }
   button { width: 100%; margin: 0 0 6px; padding: 10px; border: 1px solid #e3b341; border-radius: 9px; font-weight: 800; font-size: 12px; letter-spacing: .02em; cursor: pointer; background: transparent; color: #e3b341; }
   button:hover { background: rgba(227,179,65,.12); }
+  button.ghost { border-color: #30363d; color: #8b949e; margin-top: 8px; }
+  button.ghost:hover { background: rgba(255,255,255,.06); }
   .foot { margin-top: 6px; font-size: 10px; color: #8b949e; line-height: 1.4; text-align: center; }
 </style>
 </head>
@@ -24,6 +26,7 @@
   <button id="whatsapp">Open WhatsApp Web</button>
   <button id="telegram">Open Telegram Web</button>
   <button id="maps">Open Google Maps</button>
+  <button id="reload" class="ghost">Reload Agent</button>
   <div class="foot">Starter build — quick links only. The actual watch/fill behavior isn't decided yet.</div>
 <script src="popup.js"></script>
 </body>
