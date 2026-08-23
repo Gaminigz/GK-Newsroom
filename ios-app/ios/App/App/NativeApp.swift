@@ -28,10 +28,64 @@ enum API {
     }
 }
 
+// MARK: - Where the phone is
+
+/// The country the buyer is standing in, as an ISO code.
+///
+/// The shop list follows the traveller: in Phnom Penh this resolves to `KH`
+/// and Home shows Cambodian shops; fly to Hanoi and the same build resolves
+/// `VN` with nothing for the user to change. Country-level only — a kilometre
+/// of accuracy is plenty, and it keeps the fix cheap.
+@MainActor
+final class CountryLocator: NSObject, ObservableObject, CLLocationManagerDelegate {
+    @Published var country: String?
+
+    private let manager = CLLocationManager()
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyKilometer
+    }
+
+    func start() {
+        switch manager.authorizationStatus {
+        case .notDetermined:
+            manager.requestWhenInUseAuthorization()
+        case .authorizedWhenInUse, .authorizedAlways:
+            manager.requestLocation()
+        default:
+            break               // denied or restricted — the list stays worldwide
+        }
+    }
+
+    nonisolated func locationManagerDidChangeAuthorization(_ m: CLLocationManager) {
+        let status = m.authorizationStatus
+        guard status == .authorizedWhenInUse || status == .authorizedAlways else { return }
+        Task { @MainActor in m.requestLocation() }
+    }
+
+    nonisolated func locationManager(_ m: CLLocationManager, didUpdateLocations locs: [CLLocation]) {
+        guard let loc = locs.last else { return }
+        Task { @MainActor in
+            let marks = try? await CLGeocoder().reverseGeocodeLocation(loc)
+            if let code = marks?.first?.isoCountryCode { self.country = code }
+        }
+    }
+
+    // A failed fix is not an error the buyer needs to see; Home simply stays
+    // unfiltered rather than showing an empty screen.
+    nonisolated func locationManager(_ m: CLLocationManager, didFailWithError error: Error) {}
+}
+
 // MARK: - Models
 
 struct HomeResponse: Codable {
     let city: String?
+    let country: String?
+    /// True when we know the country but have no shops there yet, so the list
+    /// below is worldwide rather than nearby.
+    let outsideCountry: Bool?
     let flash: [FlashItem]
     let shops: [ShopSummary]
 }
@@ -270,6 +324,7 @@ struct HomeView: View {
     @State private var home: HomeResponse?
     @State private var query = ""
     @State private var loading = true
+    @StateObject private var locator = CountryLocator()
 
     var body: some View {
         List {
@@ -313,13 +368,21 @@ struct HomeView: View {
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $query, prompt: "Search dishes, shops…")
         .onChange(of: query) { _ in Task { await load() } }
+        // The fix arrives after the first load, so reload once we know the country.
+        .onChange(of: locator.country) { _ in Task { await load() } }
         .refreshable { await load() }
-        .task { await load() }
+        .task {
+            locator.start()
+            await load()
+        }
     }
 
     func load() async {
+        var params: [String: String] = [:]
+        if !query.isEmpty { params["q"] = query }
+        if let code = locator.country { params["country"] = code }
         do {
-            home = try await Net.getQuery("/app/api/home", query: query.isEmpty ? [:] : ["q": query], as: HomeResponse.self)
+            home = try await Net.getQuery("/app/api/home", query: params, as: HomeResponse.self)
         } catch { home = nil }
         loading = false
     }

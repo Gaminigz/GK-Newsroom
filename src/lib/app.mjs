@@ -430,6 +430,30 @@ async function resolveCoords(mapsUrl, city, country) {
   return null;
 }
 
+/* Coordinates → ISO country, so a traveller sees the shops in the country
+ * they are standing in. Phnom Penh gives KH; fly to Hanoi and the same call
+ * gives VN. Cached on a coarse grid — country borders are nowhere near half
+ * a degree apart for our purposes, and it keeps us well inside Nominatim's
+ * one-call-per-second etiquette. */
+const countryCache = new Map();
+
+async function countryFromCoords(lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const key = `${lat.toFixed(1)},${lng.toFixed(1)}`;
+  if (countryCache.has(key)) return countryCache.get(key);
+  try {
+    const r = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&zoom=3&lat=${lat}&lng=${lng}`.replace("&lng=", "&lon="),
+      { headers: { "User-Agent": "3una5aha/0.1 (gk.smart@ggmt.sg)" } });
+    const j = await r.json();
+    const cc = (j?.address?.country_code || "").toUpperCase() || null;
+    countryCache.set(key, cc);
+    return cc;
+  } catch {
+    return null;                      // no lookup → caller shows everything
+  }
+}
+
 /** Dishes a buyer may see. A dish pulled in from the shared list starts at
  *  price 0 until the owner prices it — those must never reach the storefront,
  *  or they show as "US$0.00" and are orderable for nothing. Owner-side screens
@@ -1043,12 +1067,27 @@ async function homePage(req, url) {
     const u = await (await col("app_users")).findOne({ phone: decodeURIComponent(c.app_phone) });
     if (u && !u.verified) { unverified = true; verifyKind = "phone"; }
   }
-  const shops = await activeShops();
-  const specials = await (await col("app_dishes"))
+  const allShops = await activeShops();
+  // Same country rule as the native app: the phone's coordinates decide which
+  // country's shops you see. app_geo is written by the geo capture below.
+  const geo = String(c.app_geo || "").split(",");
+  const here = geo.length === 2
+    ? await countryFromCoords(Number(geo[0]), Number(geo[1])) : null;
+  const nearby = here
+    ? allShops.filter((s) => String(s.country || "").toUpperCase() === here)
+    : allShops;
+  // Never an empty app — a country with no shops yet falls back to worldwide.
+  const outsideCountry = Boolean(here) && nearby.length === 0;
+  const shops = outsideCountry ? allShops : nearby;
+
+  const inScope = new Set(shops.map((s) => String(s._id)));
+  const specials = (await (await col("app_dishes"))
     .find({ special: true })
     .sort({ createdAt: -1 })
-    .limit(8)
-    .toArray();
+    .limit(40)
+    .toArray())
+    .filter((d) => inScope.has(String(d.shopId)))
+    .slice(0, 8);
   const shopName = new Map(shops.map((s) => [String(s._id), s.name]));
 
   // Search: filter shops by name/city and surface matching dishes.
@@ -1217,11 +1256,13 @@ async function homePage(req, url) {
       <a class="btn" href="/app/register" style="margin-top:14px;display:inline-block;width:auto;padding:12px 22px">List your kitchen — free</a>
     </div>`)}</div>
     <script>
-      // Geo capture: remembers coordinates so deals/restaurants can be
-      // sorted by real distance (Google Maps wiring lands with native GPS).
+      // Geo capture: the coordinates decide which country's shops this page
+      // lists, so the first fix has to be followed by one reload — without it
+      // the cookie only takes effect on the buyer's next visit.
       if (!document.cookie.includes("app_geo=") && navigator.geolocation) {
         navigator.geolocation.getCurrentPosition((pos) => {
           document.cookie = "app_geo=" + pos.coords.latitude.toFixed(3) + "," + pos.coords.longitude.toFixed(3) + "; path=/app; max-age=86400; SameSite=Lax";
+          location.reload();
         }, () => {}, { timeout: 8000 });
       }
     </script>`,
@@ -2571,8 +2612,28 @@ export async function handleApp(req, res, url) {
   if (path === "/app/api/home") {
     const q = (url.searchParams.get("q") || "").trim().slice(0, 60);
     const city = url.searchParams.get("city") || "";
-    const shops = await activeShops();
-    const specials = await (await col("app_dishes")).find({ special: true }).sort({ createdAt: -1 }).limit(8).toArray();
+    // Where the phone actually is. The client may send a country outright
+    // (iOS resolves it on-device) or just coordinates, which we resolve here.
+    let country = (url.searchParams.get("country") || "").trim().toUpperCase().slice(0, 2);
+    if (!country) {
+      country = await countryFromCoords(
+        Number(url.searchParams.get("lat")), Number(url.searchParams.get("lng"))) || "";
+    }
+    const allShops = await activeShops();
+    // Only the shops in that country — but never show an empty app. A country
+    // we have no shops in falls back to everything, flagged so the client can
+    // say why it is showing food that is not nearby.
+    const inCountry = country
+      ? allShops.filter((s) => String(s.country || "").toUpperCase() === country)
+      : allShops;
+    const outsideCountry = country ? inCountry.length === 0 : false;
+    const shops = outsideCountry ? allShops : inCountry;
+    // Specials follow the same country scope as the shop list, or a traveller
+    // in Phnom Penh gets a "today special" from a shop they cannot reach.
+    const inScope = new Set(shops.map((s) => String(s._id)));
+    const specials = (await (await col("app_dishes"))
+      .find({ special: true }).sort({ createdAt: -1 }).limit(40).toArray())
+      .filter((d) => inScope.has(String(d.shopId))).slice(0, 8);
     const shopName = new Map(shops.map((s) => [String(s._id), s.name]));
     const shopCity = new Map(shops.map((s) => [String(s._id), s.city ?? ""]));
     const myCity = city.toLowerCase();
@@ -2609,7 +2670,10 @@ export async function handleApp(req, res, url) {
     }));
 
     res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-    res.end(JSON.stringify({ city: city || null, flash, shops: shopList }));
+    res.end(JSON.stringify({
+      city: city || null, country: country || null, outsideCountry,
+      flash, shops: shopList,
+    }));
     return;
   }
 
