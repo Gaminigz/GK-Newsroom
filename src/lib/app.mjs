@@ -1742,14 +1742,22 @@ async function orderPage(id, asShop = false) {
             .then(function(r){ return r.json(); })
             .then(function(j){
               if (!j.ok) { msg.textContent = j.error || 'Could not create the QR — try again.'; return; }
-              box.innerHTML = (j.qrImg ? '<img src="' + j.qrImg + '" alt="KHQR" style="width:230px;max-width:80%;border-radius:12px">' : '')
-                + (j.deeplink ? '<a href="' + j.deeplink + '" style="display:block;margin-top:8px;font-weight:700;color:${ORANGE}">Open ABA Mobile →</a>' : '')
+              // The payer is holding the phone the QR is on, so they cannot
+              // scan it. Give them every door: tap the code itself, an Android
+              // intent that names ABA's package, and saving the image so ABA's
+              // own "scan from photo" can read it — the one that always works.
+              var androidish = /Android/i.test(navigator.userAgent);
+              var open1 = androidish && j.intent ? j.intent : j.deeplink;
+              box.innerHTML =
+                (j.qrImg ? '<a href="' + (open1 || '#') + '" id="qrTap"><img src="' + j.qrImg + '" alt="KHQR" style="width:230px;max-width:80%;border-radius:12px"></a>' : '')
+                + (open1 ? '<a href="' + open1 + '" id="abaOpen" class="btn" style="display:block;margin-top:10px;padding:11px;text-decoration:none">Open ABA Mobile →</a>' : '')
+                + (j.qrImg ? '<a href="' + j.qrImg + '" download="pay-' + (j.usd || '') + '.png" style="display:inline-block;margin-top:8px;font-size:11.5px;color:#6b625a;text-decoration:underline">Save the QR, then scan it from your photos</a>' : '')
                 + (!j.qrImg && j.qrUrl ? '<a href="' + j.qrUrl + '" target="_blank" style="display:block;margin-top:8px;font-weight:700;color:${ORANGE}">Open payment QR →</a>' : '');
               ${viaSticker ? `
               // Nobody will tell us this cleared, so the buyer says so and the
               // shop checks its own ABA app. Never claim money we cannot see.
               box.insertAdjacentHTML('beforeend', '<button type="button" id="paidGo" class="btn ghost" style="margin-top:10px;padding:9px 14px;border:1.5px solid #1d7a34;color:#1d7a34;font-weight:700;border-radius:99px">I have paid</button>');
-              msg.textContent = 'US$' + j.usd + ' · the amount is already in the code — just confirm in your bank app.';
+              msg.innerHTML = 'US$' + j.usd + ' is already inside the code — nothing to type.<br>Paying on this phone? Save the QR and scan it from your photos in ABA.';
               document.getElementById('paidGo').addEventListener('click', function(){
                 fetch('/app/order/${String(order._id)}/claim-paid', { method: 'POST' })
                   .then(function(){ msg.textContent = 'Thank you — the shop is checking and will confirm.'; document.getElementById('paidGo').disabled = true; })
@@ -4215,7 +4223,7 @@ export async function handleApp(req, res, url) {
     if (order.paidAt) { json(200, { ok: true, paid: true }); return; }
     const shop = await shopById(order.shopId);
     if (!shop?.khqr?.payload) { json(400, { ok: false, error: "This shop has not added its KHQR yet." }); return; }
-    const { khqrWithAmount, abaDeeplink } = await import("./khqr.mjs");
+    const { khqrWithAmount, abaLinks } = await import("./khqr.mjs");
     const usd = ((Number(order.total) || 0) * LKR_TO.USD).toFixed(2);
     const built = khqrWithAmount(shop.khqr.payload, {
       amount: usd, currency: "USD", reference: `35A-${order.orderNo || 0}`,
@@ -4223,7 +4231,8 @@ export async function handleApp(req, res, url) {
     if (!built.ok) { json(400, { ok: false, error: built.error }); return; }
     const qrImg = await QRCode.toDataURL(built.payload, { width: 480, margin: 1 }).catch(() => "");
     await (await col("app_orders")).updateOne({ _id }, { $set: { shopQr: { usd, ref: `35A-${order.orderNo || 0}`, createdAt: new Date() } } });
-    json(200, { ok: true, qrImg, deeplink: abaDeeplink(built.payload), usd, merchant: shop.khqr.merchantName || "" });
+    const links = abaLinks(built.payload);
+    json(200, { ok: true, qrImg, deeplink: links.scheme, intent: links.intent, payload: built.payload, usd, merchant: shop.khqr.merchantName || "" });
     return;
   }
 

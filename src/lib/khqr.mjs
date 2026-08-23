@@ -144,9 +144,33 @@ export function khqrWithAmount(staticPayload, { amount, currency = "USD", refere
   return { ok: true, payload: body + crc16(body), amount: amt, currency };
 }
 
-/** The link that opens ABA Mobile straight onto this payment. */
+/**
+ * Ways to hand this code to the bank app on the payer's own phone.
+ *
+ * The awkward truth of single-device payment: the QR is on the screen the
+ * payer is holding, so they cannot scan it. Three doors, because which one
+ * works depends on the phone and on what ABA has registered:
+ *
+ *  - `intent`  Android's proper form, naming ABA's package outright, with a
+ *              Play Store fallback if the app is absent. Chrome on Android
+ *              often ignores a bare custom scheme; it honours this.
+ *  - `scheme`  the plain custom scheme, which is what iOS uses.
+ *  - the image itself, saved to the gallery, so the payer can open ABA and
+ *    use its own "scan from photo" — the path that always works.
+ */
+export function abaLinks(payload) {
+  const q = encodeURIComponent(payload);
+  const scheme = `abamobilebank://ababank.com?type=payway&qrcode=${q}`;
+  const play = encodeURIComponent("https://play.google.com/store/apps/details?id=com.paygo24.ibank");
+  return {
+    scheme,
+    intent: `intent://ababank.com?type=payway&qrcode=${q}#Intent;scheme=abamobilebank;package=com.paygo24.ibank;S.browser_fallback_url=${play};end`,
+  };
+}
+
+/** Kept for callers that only want the plain scheme. */
 export function abaDeeplink(payload) {
-  return `abamobilebank://ababank.com?type=payway&qrcode=${encodeURIComponent(payload)}`;
+  return abaLinks(payload).scheme;
 }
 
 /**
