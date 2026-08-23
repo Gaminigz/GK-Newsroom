@@ -437,6 +437,34 @@ async function resolveCoords(mapsUrl, city, country) {
  * one-call-per-second etiquette. */
 const countryCache = new Map();
 
+/** The neighbourhood a phone is standing in — Sangkat / commune level.
+ *  A traveller rarely knows the name of the district they woke up in, so the
+ *  header says where they are rather than asking them to tell it. Country
+ *  lookup runs at zoom 3; this needs zoom 14, so it is its own call and its
+ *  own cache, keyed finer (~100 m) than the country one. */
+const placeCache = new Map();
+async function placeFromCoords(lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+  if (placeCache.has(key)) return placeCache.get(key);
+  try {
+    const r = await fetch(
+      // accept-language=en: the raw name comes back in the local script —
+      // សង្កាត់បឹងកេងកងទី ១ tells a Sri Lankan traveller nothing.
+      `https://nominatim.openstreetmap.org/reverse?format=json&accept-language=en&zoom=14&lat=${lat}&lon=${lng}`,
+      { headers: { "User-Agent": "3una5aha/0.1 (gk.smart@ggmt.sg)", "Accept-Language": "en" } });
+    const a = (await r.json())?.address || {};
+    // Sangkat first, then progressively coarser — never the country, which
+    // would tell a traveller nothing they did not already know.
+    const name = a.suburb || a.quarter || a.neighbourhood || a.city_district
+      || a.village || a.town || a.city || a.county || null;
+    placeCache.set(key, name);
+    return name;
+  } catch {
+    return null;                      // no lookup → caller falls back
+  }
+}
+
 async function countryFromCoords(lat, lng) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   const key = `${lat.toFixed(1)},${lng.toFixed(1)}`;
@@ -1058,7 +1086,11 @@ function supportPage() {
 async function homePage(req, url) {
   const c = cookies(req);
   const q = (url?.searchParams.get("q") || "").trim().slice(0, 60);
-  const city = c.app_city || (c.app_geo ? "Near you" : "Set location");
+  const coords = String(c.app_geo || "").split(",").map(Number);
+  const placeHere = coords.length === 2
+    ? await placeFromCoords(coords[0], coords[1]) : null;
+  // A city the buyer picked themselves outranks the lookup — they chose it.
+  const city = c.app_city || placeHere || (c.app_geo ? "Near you" : "Set location");
   let unverified = false, verifyKind = "";
   if (c.app_email) {
     const u = await (await col("app_users")).findOne({ email: decodeURIComponent(c.app_email) });
