@@ -442,6 +442,30 @@ const countryCache = new Map();
  *  header says where they are rather than asking them to tell it. Country
  *  lookup runs at zoom 3; this needs zoom 14, so it is its own call and its
  *  own cache, keyed finer (~100 m) than the country one. */
+/** How far a shop is from the phone, and how long a delivery rider needs.
+ *
+ * Deliberately not a routing API call: the number is an estimate whatever we
+ * do, and routing would add a per-shop network round trip on every home-screen
+ * load plus a rate limit and an outage to handle. Straight-line distance times
+ * a detour factor is within a couple of minutes of routed time over these
+ * distances, and costs nothing.
+ *
+ * ROAD_FACTOR 1.3 — Phnom Penh's grid means roads run about 30% longer than
+ * the crow flies. MOTO_KMH 22 — a moto in city traffic, near what Grab quotes here.
+ * PREP_MIN 10 — the kitchen has to cook it; a 400 m shop is not a 1-minute
+ * delivery, and quoting one would make the app look like it is lying.
+ */
+const ROAD_FACTOR = 1.3, MOTO_KMH = 22, PREP_MIN = 10;
+function travelFrom(lat, lng, shop) {
+  if (![lat, lng, shop?.lat, shop?.lng].every(Number.isFinite)) return null;
+  const R = 6371, rad = (d) => (d * Math.PI) / 180;
+  const dLat = rad(shop.lat - lat), dLng = rad(shop.lng - lng);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(rad(lat)) * Math.cos(rad(shop.lat)) * Math.sin(dLng / 2) ** 2;
+  const km = 2 * R * Math.asin(Math.sqrt(a)) * ROAD_FACTOR;
+  return { km: Math.round(km * 10) / 10, mins: Math.max(15, Math.round(PREP_MIN + (km / MOTO_KMH) * 60)) };
+}
+
 const placeCache = new Map();
 async function placeFromCoords(lat, lng) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
@@ -1164,7 +1188,10 @@ async function homePage(req, url) {
         <div style="flex:1">
           <strong>${esc(s.name)}</strong> ${deal ? `<span class="pill deal">${esc(deal.discount)}</span>` : ""}
           <div class="sub" style="font-size:12.5px">★ 4.${(String(s._id).charCodeAt(10) % 5) + 4} · ${esc(s.city)} · ${dishes.length || s.listings || 0} dishes</div>
-          <div class="sub" style="font-size:12.5px;color:#1d7a34">${s.open === false ? "Closed now" : "Open now"}</div>
+          <div class="sub" style="font-size:12.5px;color:#1d7a34">${s.open === false ? "Closed now" : "Open now"}${(() => {
+            const t = travelFrom(coords[0], coords[1], s);
+            return t ? `<span style="color:#8a827b"> · ${t.km} km · ~${t.mins} min</span>` : "";
+          })()}</div>
         </div><span style="color:#c9bfb7">›</span>
       </a>`;
       }),
@@ -1587,7 +1614,11 @@ async function orderPage(id, asShop = false) {
     .map((m) => `<div class="bubble ${m.from === "buyer" ? "buyer" : "shop"}">${esc(m.text)}</div>`)
     .join("");
 
-  const canPay = !!(shop?.payway?.merchantId && shop?.payway?.apiKey) && !order.paidAt;
+  // Two ways a shop can take money. PayWay tells us when it clears; the
+  // shop's own sticker does not, so that one ends in a confirmation instead.
+  const viaPayway = !!(shop?.payway?.merchantId && shop?.payway?.apiKey);
+  const viaSticker = !viaPayway && !!shop?.khqr?.payload;
+  const canPay = (viaPayway || viaSticker) && !order.paidAt;
   const usdDue = ((Number(order.total) || 0) * LKR_TO.USD).toFixed(2);
   return shell({
     title: `Order — ${shop?.name ?? ""}`,
@@ -1633,11 +1664,11 @@ async function orderPage(id, asShop = false) {
            card. Both settle into the same webhook. -->
       <div id="payBox" style="text-align:center;margin-top:8px">
         <div style="display:flex;gap:8px">
-          <button type="button" id="payGo" class="btn" style="flex:1;padding:11px">Scan KHQR</button>
+          <button type="button" id="payGo" class="btn" style="flex:1;padding:11px">${viaSticker ? "Pay now" : "Scan KHQR"}</button>
           ${shop?.payway?.cardEnabled ? `<a href="/app/order/${String(order._id)}/pay" class="btn ghost" style="flex:1;padding:11px;text-align:center;text-decoration:none;border:1.5px solid ${ORANGE};color:${ORANGE};font-weight:700;border-radius:14px">💳 Card</a>` : ""}
         </div>
       </div>
-      <div class="sub" id="payMsg" style="font-size:10.5px;margin-top:6px;text-align:center">KHQR works with ABA, Bakong or any bank app.${shop?.payway?.cardEnabled ? " Card opens ABA's secure page." : ""}</div>
+      <div class="sub" id="payMsg" style="font-size:10.5px;margin-top:6px;text-align:center">${viaSticker ? "Pays " + esc(shop?.khqr?.merchantName || "the shop") + " directly — the amount is filled in for you." : "KHQR works with ABA, Bakong or any bank app."}${shop?.payway?.cardEnabled ? " Card opens ABA's secure page." : ""}</div>
     </div>
     <script>
       (function(){
@@ -1657,15 +1688,25 @@ async function orderPage(id, asShop = false) {
         }
         document.getElementById('payGo').addEventListener('click', function(){
           msg.textContent = 'Getting your QR…';
-          fetch('/app/order/${String(order._id)}/payway-qr.json', { method: 'POST' })
+          fetch('${viaSticker ? "/app/order/" + String(order._id) + "/shopqr.json" : "/app/order/" + String(order._id) + "/payway-qr.json"}', { method: 'POST' })
             .then(function(r){ return r.json(); })
             .then(function(j){
               if (!j.ok) { msg.textContent = j.error || 'Could not create the QR — try again.'; return; }
               box.innerHTML = (j.qrImg ? '<img src="' + j.qrImg + '" alt="KHQR" style="width:230px;max-width:80%;border-radius:12px">' : '')
                 + (j.deeplink ? '<a href="' + j.deeplink + '" style="display:block;margin-top:8px;font-weight:700;color:${ORANGE}">Open ABA Mobile →</a>' : '')
                 + (!j.qrImg && j.qrUrl ? '<a href="' + j.qrUrl + '" target="_blank" style="display:block;margin-top:8px;font-weight:700;color:${ORANGE}">Open payment QR →</a>' : '');
+              ${viaSticker ? `
+              // Nobody will tell us this cleared, so the buyer says so and the
+              // shop checks its own ABA app. Never claim money we cannot see.
+              box.insertAdjacentHTML('beforeend', '<button type="button" id="paidGo" class="btn ghost" style="margin-top:10px;padding:9px 14px;border:1.5px solid #1d7a34;color:#1d7a34;font-weight:700;border-radius:99px">I have paid</button>');
+              msg.textContent = 'US$' + j.usd + ' · the amount is already in the code — just confirm in your bank app.';
+              document.getElementById('paidGo').addEventListener('click', function(){
+                fetch('/app/order/${String(order._id)}/claim-paid', { method: 'POST' })
+                  .then(function(){ msg.textContent = 'Thank you — the shop is checking and will confirm.'; document.getElementById('paidGo').disabled = true; })
+                  .catch(function(){});
+              });` : `
               msg.textContent = 'US$' + j.usd + ' · waiting for payment…';
-              polling = setInterval(poll, 5000);
+              polling = setInterval(poll, 5000);`}
             }).catch(function(){ msg.textContent = 'Network problem — try again.'; });
         });
       })();
@@ -2646,6 +2687,8 @@ export async function handleApp(req, res, url) {
     const city = url.searchParams.get("city") || "";
     // Where the phone actually is. The client may send a country outright
     // (iOS resolves it on-device) or just coordinates, which we resolve here.
+    const hereLat = Number(url.searchParams.get("lat"));
+    const hereLng = Number(url.searchParams.get("lng"));
     let country = (url.searchParams.get("country") || "").trim().toUpperCase().slice(0, 2);
     if (!country) {
       country = await countryFromCoords(
@@ -2691,6 +2734,10 @@ export async function handleApp(req, res, url) {
       return {
         id: String(s._id), name: s.name, city: s.city ?? "", logo: s.logo ?? "",
         rating: 4 + ((String(s._id).charCodeAt(10) % 5) + 4) / 10,
+        // null when either side has no coordinates — the client must not
+        // print "0 km" for a shop whose location nobody has set yet.
+        distanceKm: travelFrom(hereLat, hereLng, s)?.km ?? null,
+        etaMins: travelFrom(hereLat, hereLng, s)?.mins ?? null,
         dishes: dishes.length || s.listings || 0, open: s.open !== false,
         deal: deal ? deal.discount : "",
         lat: Number.isFinite(s.lat) ? s.lat : null,
@@ -3548,6 +3595,7 @@ export async function handleApp(req, res, url) {
     if (shop && m[2] === "bank") {
       extras.bank = shop.bank || {};
       extras.payway = shop.payway || {};
+      extras.khqr = shop.khqr || {};
     }
     if (shop && m[2] === "plan") {
       extras.presetDishes = await loadPresetDishes(await col("lanka_dishes"));
@@ -4022,6 +4070,81 @@ export async function handleApp(req, res, url) {
         ok: true, existed: false, id: String(ins.insertedId), name,
         nameSi: feed?.nameSi || "", price: finalPrice,
       }));
+    return;
+  }
+
+  /* The shop photographs the KHQR sticker on its own counter. We decode it,
+   * keep the payload, and throw the picture away — from then on every order
+   * can be issued as that same code with the amount already in it, the way a
+   * POS terminal does it. No merchant account, no gateway, no waiting. */
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/khqr$/);
+  if (m && req.method === "POST") {
+    const json = (code, obj) => res.writeHead(code, { "Content-Type": "application/json" }).end(JSON.stringify(obj));
+    let body = {};
+    try { body = JSON.parse((await readBody(req, 6_000_000)) || "{}"); } catch { /* bad json */ }
+    const dataUrl = String(body.image || "");
+    const b64 = dataUrl.startsWith("data:image/") ? dataUrl.split(",")[1] : "";
+    if (!b64) { json(400, { ok: false, error: "No image received." }); return; }
+    const { decodeQrImage, readKhqr } = await import("./khqr.mjs");
+    const dec = await decodeQrImage(Buffer.from(b64, "base64")).catch((e) => ({ ok: false, error: String(e.message || e) }));
+    if (!dec.ok) { json(200, { ok: false, error: dec.error }); return; }
+    const info = readKhqr(dec.payload);
+    if (!info.ok) { json(200, { ok: false, error: info.error }); return; }
+    if (info.country && info.country !== "KH") { json(200, { ok: false, error: `That QR is registered in ${info.country}, not Cambodia.` }); return; }
+    const shopOid = await oid(m[1]);
+    await (await col("shop_owners")).updateOne({ _id: shopOid }, { $set: { khqr: {
+      payload: dec.payload, merchantName: info.merchantName, bankName: info.bankName,
+      city: info.city, bakongId: info.bakongId, static: info.static, addedAt: new Date(),
+    } } });
+    json(200, { ok: true, merchantName: info.merchantName, bankName: info.bankName });
+    return;
+  }
+
+  /* Issue this order as the shop's own KHQR with the amount baked in — the
+   * POS experience, without a POS. The buyer taps once and ABA Mobile opens
+   * on the payment; nobody types a figure and nobody mistypes one. */
+  m = path.match(/^\/app\/order\/([a-f0-9]{24})\/shopqr\.json$/);
+  if (m && req.method === "POST") {
+    const json = (code, obj) => res.writeHead(code, { "Content-Type": "application/json" }).end(JSON.stringify(obj));
+    const _id = await oid(m[1]);
+    const order = _id && await (await col("app_orders")).findOne({ _id });
+    if (!order) { json(404, { ok: false, error: "no such order" }); return; }
+    if (order.paidAt) { json(200, { ok: true, paid: true }); return; }
+    const shop = await shopById(order.shopId);
+    if (!shop?.khqr?.payload) { json(400, { ok: false, error: "This shop has not added its KHQR yet." }); return; }
+    const { khqrWithAmount, abaDeeplink } = await import("./khqr.mjs");
+    const usd = ((Number(order.total) || 0) * LKR_TO.USD).toFixed(2);
+    const built = khqrWithAmount(shop.khqr.payload, {
+      amount: usd, currency: "USD", reference: `35A-${order.orderNo || 0}`,
+    });
+    if (!built.ok) { json(400, { ok: false, error: built.error }); return; }
+    const qrImg = await QRCode.toDataURL(built.payload, { width: 480, margin: 1 }).catch(() => "");
+    await (await col("app_orders")).updateOne({ _id }, { $set: { shopQr: { usd, ref: `35A-${order.orderNo || 0}`, createdAt: new Date() } } });
+    json(200, { ok: true, qrImg, deeplink: abaDeeplink(built.payload), usd, merchant: shop.khqr.merchantName || "" });
+    return;
+  }
+
+  /* Nobody tells us this one cleared, so the buyer says they have paid and
+   * the shop confirms against its own ABA app. Two people, one truth. */
+  m = path.match(/^\/app\/order\/([a-f0-9]{24})\/claim-paid$/);
+  if (m && req.method === "POST") {
+    const _id = await oid(m[1]);
+    if (_id) {
+      await (await col("app_orders")).updateOne({ _id, paidAt: { $exists: false } },
+        { $set: { payClaimedAt: new Date() } });
+    }
+    res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  m = path.match(/^\/app\/owner\/([a-f0-9]{24})\/order\/([a-f0-9]{24})\/confirm-paid$/);
+  if (m && req.method === "POST") {
+    const _id = await oid(m[2]);
+    if (_id) {
+      await (await col("app_orders")).updateOne({ _id, shopId: m[1], paidAt: { $exists: false } },
+        { $set: { paidAt: new Date(), payInfo: { via: "KHQR", confirmedByShop: true } } });
+    }
+    redirect(res, req.headers.referer || `/app/owner/${m[1]}/suite/kitchen`);
     return;
   }
 
