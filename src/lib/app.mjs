@@ -455,6 +455,18 @@ const countryCache = new Map();
  * PREP_MIN 10 — the kitchen has to cook it; a 400 m shop is not a 1-minute
  * delivery, and quoting one would make the app look like it is lying.
  */
+/** A shop that exists but cannot take an order yet.
+ *
+ * Registering a shop and being open for business are different things: a
+ * record created from a WhatsApp contact has no owner signed in and nothing
+ * on the menu, yet the card cheerfully said "Open now" in green. A traveller
+ * tapping that found an empty shop. Say "Under registration" instead, in
+ * orange, until there is someone to answer and something to sell.
+ */
+function pendingRegistration(shop, dishCount) {
+  return !shop?.email || !shop?.owner || !dishCount;
+}
+
 const ROAD_FACTOR = 1.3, MOTO_KMH = 22, PREP_MIN = 10;
 function travelFrom(lat, lng, shop) {
   if (![lat, lng, shop?.lat, shop?.lng].every(Number.isFinite)) return null;
@@ -1188,7 +1200,9 @@ async function homePage(req, url) {
         <div style="flex:1">
           <strong>${esc(s.name)}</strong> ${deal ? `<span class="pill deal">${esc(deal.discount)}</span>` : ""}
           <div class="sub" style="font-size:12.5px">★ 4.${(String(s._id).charCodeAt(10) % 5) + 4} · ${esc(s.city)} · ${dishes.length || s.listings || 0} dishes</div>
-          <div class="sub" style="font-size:12.5px;color:#1d7a34">${s.open === false ? "Closed now" : "Open now"}${(() => {
+          <div class="sub" style="font-size:12.5px;color:${pendingRegistration(s, dishes.length) ? ORANGE : "#1d7a34"}">${
+            pendingRegistration(s, dishes.length) ? "Under registration"
+              : (s.open === false ? "Closed now" : "Open now")}${(() => {
             const t = travelFrom(coords[0], coords[1], s);
             return t ? `<span style="color:#8a827b"> · ${t.km} km · ~${t.mins} min</span>` : "";
           })()}</div>
@@ -1381,7 +1395,10 @@ async function shopPage(id, extras = {}) {
       <span class="sub" style="font-size:11px;color:#ffb08f;text-align:right;line-height:1.3">Pick items · tap<br>SEND TO KITCHEN</span>
     </div>` : ""}
     <h1 style="margin-top:12px">${esc(shop.name)} <span class="si">කෑම</span></h1>
-    <div class="sub">★ 4.8 · ${esc(shop.city)}, ${esc(shop.country)} · ${shop.open === false ? "closed now" : "open now"}</div>
+    <div class="sub">★ 4.8 · ${esc(shop.city)}, ${esc(shop.country)} · ${
+      pendingRegistration(shop, allDishes.length)
+        ? `<span style="color:${ORANGE};font-weight:700">under registration</span>`
+        : (shop.open === false ? "closed now" : "open now")}</div>
     ${special ? `
     <div class="card" style="margin-top:14px">
       <span class="pill today">${esc((special.promoTag || "Today special").toUpperCase())}</span> <strong style="font-size:13.5px">Today's special package <span class="si">අද විශේෂ</span></strong>
@@ -2736,6 +2753,7 @@ export async function handleApp(req, res, url) {
         rating: 4 + ((String(s._id).charCodeAt(10) % 5) + 4) / 10,
         // null when either side has no coordinates — the client must not
         // print "0 km" for a shop whose location nobody has set yet.
+        pending: pendingRegistration(s, dishes.length),
         distanceKm: travelFrom(hereLat, hereLng, s)?.km ?? null,
         etaMins: travelFrom(hereLat, hereLng, s)?.mins ?? null,
         dishes: dishes.length || s.listings || 0, open: s.open !== false,
