@@ -590,6 +590,14 @@ function kitchenPage(shop, extras = {}) {
         ${timerRow}
         <div style="font-size:9.5px;color:#c9bfb7;letter-spacing:.05em;margin-bottom:4px">${totalPortions} portion${totalPortions === 1 ? "" : "s"}</div>
         ${lines}
+        ${o.paidAt ? `<div style="margin-top:7px;font-size:10px;font-weight:800;color:#7ee0a0;letter-spacing:.04em">✓ PAID</div>`
+          : o.payClaimedAt ? `
+          <!-- The buyer says they have paid and the bank tells us nothing, so
+               the kitchen checks its own ABA app and settles it here. -->
+          <form method="POST" action="/app/owner/${id}/order/${String(o._id)}/confirm-paid" style="margin-top:7px">
+            <div style="font-size:9.5px;color:#ffd79a;letter-spacing:.03em;margin-bottom:4px">BUYER SAYS PAID — check ABA</div>
+            <button class="btn" style="width:100%;padding:7px 4px;font-size:11px;font-weight:700;background:#1d7a34;border-color:#1d7a34">Confirm payment received</button>
+          </form>` : ""}
         <button type="button" class="kAdvance btn" data-oid="${String(o._id)}" data-to="${st.next}" style="width:100%;padding:8px 4px;font-size:11.5px;font-weight:700;margin-top:8px">${st.nextLabel}</button>
       </div>
     </div>`;
@@ -3250,6 +3258,7 @@ export function bankPage(shop, extras = {}) {
   const id = String(shop._id);
   const b = extras.bank || {};
   const pw = extras.payway || {};
+  const kq = extras.khqr || {};
   const escB = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const last4 = String(b.accountNo || "").replace(/\s/g, "").slice(-4);
   const masked = last4 ? "•".repeat(Math.max(0, String(b.accountNo).replace(/\s/g, "").length - 4)) + last4 : "";
@@ -3304,6 +3313,29 @@ export function bankPage(shop, extras = {}) {
           <option value="production"${pw.env === "production" ? " selected" : ""}>Production — real money</option>
         </select>
 
+      </div>
+
+      <!-- The shop's own printed KHQR sticker. No merchant account, no
+           integration, no waiting on ABA: photograph the code on the counter
+           and every order gets that same code with its amount already in it. -->
+      <div style="margin-top:16px;padding-top:14px;border-top:1px dashed #e3d6c2">
+        <div class="row" style="justify-content:space-between;align-items:baseline">
+          <strong style="font-size:13px">Your own KHQR sticker</strong>
+          ${kq.payload ? `<span class="pill" style="background:#e8f6ec;color:#1d7a34;font-size:10px">ON FILE</span>` : `<span class="pill" style="background:#f0e7de;color:#6b625a;font-size:10px">OPTIONAL</span>`}
+        </div>
+        <div class="sub" style="font-size:10.5px;margin-top:3px;line-height:1.4">Works without any ABA setup. Buyers get your code with the exact amount filled in — but you confirm each payment yourself, because the bank tells us nothing.</div>
+        ${kq.payload ? `<div class="sub" style="font-size:11px;margin-top:6px">${escB(kq.merchantName || "merchant")}${kq.bankName ? ` · ${escB(kq.bankName)}` : ""}${kq.city ? ` · ${escB(kq.city)}` : ""}</div>` : ""}
+        <div style="display:flex;gap:6px;align-items:center;margin-top:8px">
+          <label style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;border:1.5px dashed ${ORANGE};color:${ORANGE};border-radius:12px;padding:10px;font-size:12.5px;font-weight:700">
+            📷 ${kq.payload ? "Replace the photo" : "Photograph your KHQR"}
+            <input type="file" accept="image/*" id="khqrIn" style="display:none">
+          </label>
+        </div>
+        <div class="sub" id="khqrMsg" style="font-size:10.5px;margin-top:6px;line-height:1.4"></div>
+      </div>
+
+      <div style="display:none">
+
         <!-- KHQR comes with every PayWay merchant; the hosted card checkout
              is a product ABA switches on per profile. Until they do, the
              card button would open a spinner that never ends — so it stays
@@ -3314,7 +3346,39 @@ export function bankPage(shop, extras = {}) {
         </label>
       </div>
 
+      </div>
+
       <button class="btn" style="margin-top:14px">Save bank details</button>
+    </form>
+    <script>
+      // Photograph the sticker, shrink it, send it up. The server decodes the
+      // QR and keeps only the payload — never the picture.
+      (function(){
+        var inp = document.getElementById('khqrIn'), msg = document.getElementById('khqrMsg');
+        if (!inp) return;
+        inp.addEventListener('change', function(e){
+          var f = e.target.files[0]; if (!f) return;
+          msg.textContent = 'Reading your QR…'; msg.style.color = '';
+          var img = new Image();
+          img.onload = function(){
+            var c = document.createElement('canvas');
+            var sc = Math.min(1, 1400 / Math.max(img.width, img.height));
+            c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+            c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+            fetch('/app/owner/${id}/khqr', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image: c.toDataURL('image/jpeg', 0.85) }),
+            }).then(function(r){ return r.json(); }).then(function(j){
+              if (j.ok) { msg.style.color = '#1d7a34'; msg.textContent = 'Read: ' + (j.merchantName || 'merchant') + (j.bankName ? ' · ' + j.bankName : '') + ' — saved.'; setTimeout(function(){ location.reload(); }, 900); }
+              else { msg.style.color = '#b3261e'; msg.textContent = j.error || 'Could not read that image.'; }
+            }).catch(function(){ msg.style.color = '#b3261e'; msg.textContent = 'Upload failed — check the connection.'; });
+            URL.revokeObjectURL(img.src);
+          };
+          img.src = URL.createObjectURL(f);
+        });
+      })();
+    </script>
+    <form style="display:none">
       <div class="sub" style="font-size:10px;margin-top:8px;line-height:1.4">Typed by you, stored with your shop, and shown back masked. Change it any time — leaving the number blank keeps the one already on file.</div>
     </form>`);
 }
