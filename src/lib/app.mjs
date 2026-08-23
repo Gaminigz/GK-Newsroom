@@ -252,9 +252,9 @@ function mealsFor(windowStr) {
   const end = to24(m[3], m[4], m[2]);
   const start = to24(m[1], m[2], m[4]);
   const overlaps = (a, b) => start < b && end > a;
-  if (overlaps(5, 11)) hit.push("Breakfast");
-  if (overlaps(11, 16)) hit.push("Lunch");
-  if (overlaps(16, 23)) hit.push("Dinner");
+  if (overlaps(5, LUNCH_FROM)) hit.push("Breakfast");
+  if (overlaps(LUNCH_FROM, LUNCH_TO)) hit.push("Lunch");
+  if (overlaps(LUNCH_TO, 23)) hit.push("Dinner");
   return hit.length ? hit : [...MEALS];
 }
 
@@ -266,20 +266,30 @@ const SHOP_TZ = "Asia/Phnom_Penh";
 function shopClock(d = new Date()) {
   const p = new Intl.DateTimeFormat("en-CA", {
     timeZone: SHOP_TZ, year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", hour12: false,
+    hour: "2-digit", minute: "2-digit", hour12: false,
   }).formatToParts(d).reduce((a, x) => (a[x.type] = x.value, a), {});
-  return { date: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour) % 24 };
+  return {
+    date: `${p.year}-${p.month}-${p.day}`,
+    hour: (Number(p.hour) % 24) + Number(p.minute) / 60,
+  };
 }
+
+/** The shop's own serving hours: breakfast until 10:30, lunch 10:30 to 13:30,
+ *  everything after is dinner. Kept here as numbers rather than written into
+ *  mealNow and mealsFor separately — the two disagreeing is what put a lunch
+ *  dish on a menu the buyer could not order it from. */
+const LUNCH_FROM = 10.5;
+const LUNCH_TO = 13.5;
 
 /** Today where the shop is, not where the server is. */
 function todayLocal(d = new Date()) { return shopClock(d).date; }
 
-/** Which meal is being served right now — breakfast to 11, lunch to 16,
- *  dinner after. Decides which day plan the buyer is offered. */
+/** Which meal is being served right now. Decides which day plan the buyer
+ *  is offered. */
 function mealNow(d = new Date()) {
   const h = shopClock(d).hour;
-  if (h < 11) return "Breakfast";
-  if (h < 16) return "Lunch";
+  if (h < LUNCH_FROM) return "Breakfast";
+  if (h < LUNCH_TO) return "Lunch";
   return "Dinner";
 }
 
