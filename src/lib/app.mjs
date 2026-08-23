@@ -455,6 +455,46 @@ const countryCache = new Map();
  * PREP_MIN 10 — the kitchen has to cook it; a 400 m shop is not a 1-minute
  * delivery, and quoting one would make the app look like it is lying.
  */
+/** What a shop leads with on the specials rail.
+ *
+ * The rail only ever showed dishes someone had ticked "special". Four of five
+ * shops had ticked nothing, so the rail was empty and the top of the app dead.
+ * A shop that planned a menu today is running something — lead with that.
+ * Order of preference: the flagged special, then the first dish of the day's
+ * first set (the set menu), then anything else on the day, then the shop's
+ * own menu. Only a shop with no priced dish at all contributes nothing.
+ */
+async function leadDishes(shops, todayStr, meal) {
+  const ids = shops.map((s) => String(s._id));
+  if (!ids.length) return [];
+  const [flagged, plans] = await Promise.all([
+    (await col("app_dishes")).find({ special: true, shopId: { $in: ids } })
+      .sort({ createdAt: -1 }).toArray(),
+    (await col("day_plans")).find({ shopId: { $in: ids }, date: todayStr, meal }).toArray(),
+  ]);
+  const planOf = new Map(plans.map((p) => [String(p.shopId), p]));
+  const hasFlag = new Set(flagged.map((d) => String(d.shopId)));
+  const out = [...flagged];
+  for (const s of shops) {
+    const sid = String(s._id);
+    if (hasFlag.has(sid)) continue;
+    const own = await dishesFor(s._id);            // priced dishes only
+    const byId = new Map(own.map((d) => [String(d._id), d]));
+    const plan = planOf.get(sid);
+    let pick = null;
+    if (plan) {
+      for (const g of plan.groups || []) {
+        pick = (g.choices || []).map((c) => byId.get(String(c.dishId))).find(Boolean);
+        if (pick) break;
+      }
+      if (!pick) pick = (plan.dishIds || []).map((i) => byId.get(String(i))).find(Boolean);
+    }
+    if (!pick) pick = own[0];
+    if (pick) out.push(pick);
+  }
+  return out.slice(0, 8);
+}
+
 /** A shop that exists but cannot take an order yet.
  *
  * Registering a shop and being open for business are different things: a
@@ -1148,14 +1188,7 @@ async function homePage(req, url) {
   const outsideCountry = Boolean(here) && nearby.length === 0;
   const shops = outsideCountry ? allShops : nearby;
 
-  const inScope = new Set(shops.map((s) => String(s._id)));
-  const specials = (await (await col("app_dishes"))
-    .find({ special: true })
-    .sort({ createdAt: -1 })
-    .limit(40)
-    .toArray())
-    .filter((d) => inScope.has(String(d.shopId)))
-    .slice(0, 8);
+  const specials = await leadDishes(shops, todayLocal(), mealNow());
   const shopName = new Map(shops.map((s) => [String(s._id), s.name]));
 
   // Search: filter shops by name/city and surface matching dishes.
@@ -2722,10 +2755,7 @@ export async function handleApp(req, res, url) {
     const shops = outsideCountry ? allShops : inCountry;
     // Specials follow the same country scope as the shop list, or a traveller
     // in Phnom Penh gets a "today special" from a shop they cannot reach.
-    const inScope = new Set(shops.map((s) => String(s._id)));
-    const specials = (await (await col("app_dishes"))
-      .find({ special: true }).sort({ createdAt: -1 }).limit(40).toArray())
-      .filter((d) => inScope.has(String(d.shopId))).slice(0, 8);
+    const specials = await leadDishes(shops, todayLocal(), mealNow());
     const shopName = new Map(shops.map((s) => [String(s._id), s.name]));
     const shopCity = new Map(shops.map((s) => [String(s._id), s.city ?? ""]));
     const myCity = city.toLowerCase();
@@ -3360,6 +3390,61 @@ export async function handleApp(req, res, url) {
       .filter((i) => i && i.name && Number(i.qty) > 0)
       .map((i) => ({ name: String(i.name).slice(0, 80), qty: Math.min(Number(i.qty), 50), price: Number(i.price) || 0 }));
     if (!items.length) { redirect(res, "/app/home"); return; }
+
+    // Stock. `portions` is how many the kitchen has that day, and until now
+    // nothing read it at order time — the only ceiling was 50 a line, and a
+    // buyer could order fifty of a beer the bar has five of. Orders already
+    // placed today count against it whatever their review state: a pending
+    // order has reserved the food, and releasing it only when the shop
+    // accepts would oversell everything in the gap.
+    const orderShopId = String(form.get("shopId") || "");
+    if (orderShopId) {
+      const stockDishes = await (await col("app_dishes"))
+        .find({ shopId: orderShopId, portions: { $gt: 0 } })
+        .project({ name: 1, portions: 1 }).toArray();
+      if (stockDishes.length) {
+        // Local midnight, not UTC — a day here starts seven hours before the
+        // server's, and counting from the wrong one either wipes the tally
+        // mid-evening or carries yesterday's orders into the morning.
+        const dayStart = new Date(`${todayLocal()}T00:00:00+07:00`);
+        const placed = await (await col("app_orders")).find({
+          shopId: orderShopId,
+          createdAt: { $gte: dayStart },
+          status: { $nin: ["rejected", "cancelled"] },
+        }).project({ items: 1 }).toArray();
+        const soldByName = new Map();
+        for (const o of placed) {
+          for (const it of o.items || []) {
+            const k = String(it.name || "").toLowerCase();
+            soldByName.set(k, (soldByName.get(k) || 0) + (Number(it.qty) || 0));
+          }
+        }
+        const short = [];
+        for (const want of items) {
+          const dish = stockDishes.find((d) => d.name.toLowerCase() === want.name.toLowerCase());
+          if (!dish) continue;                       // not stock-tracked
+          const left = Math.max(0, dish.portions - (soldByName.get(want.name.toLowerCase()) || 0));
+          if (want.qty > left) short.push({ name: dish.name, left });
+        }
+        if (short.length) {
+          html(res, shell({
+            title: "Sold out — 3una 5aha",
+            body: `<div style="padding-top:8vh;text-align:center">
+              <div style="font-size:46px">🍽️</div>
+              <h1 style="margin-top:8px;font-size:22px">Not enough left today</h1>
+              <div class="card" style="margin:18px auto;max-width:340px;text-align:left;padding:14px 16px">
+                ${short.map((x) => `<div style="margin:6px 0"><strong>${esc(x.name)}</strong>
+                  <span class="sub"> — ${x.left === 0 ? "sold out" : `only ${x.left} left`}</span></div>`).join("")}
+              </div>
+              <p class="sub" style="max-width:320px;margin:0 auto 22px">The kitchen cooks a set number each day. Change the amount and order again.</p>
+              <a class="btn" href="/app/shop/${esc(orderShopId)}">Back to the shop</a>
+            </div>`,
+          }), 409);
+          return;
+        }
+      }
+    }
+
     const rawT = String(form.get("tableN") || "").trim();
     const tableN = /^\d{1,2}$/.test(rawT) ? Math.max(1, Math.min(25, Number(rawT))) : 0;
     const phone = String(form.get("phone") || "").slice(0, 24);
