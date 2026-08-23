@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { width: 240px; padding: 14px; }
+  .hd { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .badge { width: 22px; height: 22px; border-radius: 6px; overflow: hidden; }
+  .badge img { width: 100%; height: 100%; object-fit: cover; }
+  .title { font-weight: 800; font-size: 12px; }
+  .ver { color: #8b949e; font-size: 10px; font-family: ui-monospace, monospace; }
+  button { width: 100%; margin: 0 0 6px; padding: 10px; border: 1px solid #e3b341; border-radius: 9px; font-weight: 800; font-size: 12px; letter-spacing: .02em; cursor: pointer; background: transparent; color: #e3b341; }
+  button:hover { background: rgba(227,179,65,.12); }
+  .foot { margin-top: 6px; font-size: 10px; color: #8b949e; line-height: 1.4; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="hd">
+    <span class="badge"><img src="icons/icon-32.png" alt=""></span>
+    <div><div class="title">3una 5aha Shop Watch</div><div class="ver" id="ver">v—</div></div>
+  </div>
+  <button id="whatsapp">Open WhatsApp Web</button>
+  <button id="telegram">Open Telegram Web</button>
+  <button id="maps">Open Google Maps</button>
+  <div class="foot">Starter build — quick links only. The actual watch/fill behavior isn't decided yet.</div>
+<script src="popup.js"></script>
+</body>
+</html>
