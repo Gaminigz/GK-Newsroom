@@ -2751,8 +2751,12 @@ export async function handleApp(req, res, url) {
     const city = url.searchParams.get("city") || "";
     // Where the phone actually is. The client may send a country outright
     // (iOS resolves it on-device) or just coordinates, which we resolve here.
-    const hereLat = Number(url.searchParams.get("lat"));
-    const hereLng = Number(url.searchParams.get("lng"));
+    // A missing param must stay NaN. Number(null) is 0, and 0,0 is a real
+    // coordinate off West Africa that passes isFinite — every Phnom Penh shop
+    // came back 15,000 km away with a 28-day ETA.
+    const coord = (v) => (v === null || v.trim() === "" ? NaN : Number(v));
+    const hereLat = coord(url.searchParams.get("lat"));
+    const hereLng = coord(url.searchParams.get("lng"));
     let country = (url.searchParams.get("country") || "").trim().toUpperCase().slice(0, 2);
     if (!country) {
       country = await countryFromCoords(
