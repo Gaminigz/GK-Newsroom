@@ -57,6 +57,18 @@ first real run (`npm run gov` on a machine with network) and fix any that
 404 or extract nothing. Logos load client-side from Wikimedia Commons with
 initials-badge fallback.
 
+**Cloud↔Mac bus (2026-07-09):** cloud/mobile sessions never need the user to
+copy-paste. Queue Mac-only work by appending a `— PENDING` task to
+`DESKTOP-TASKS.md` and pushing. The Mac runs `src/scripts/desktop-agent.sh`
+as a LaunchAgent (`RunAtLoad` + 30-min `StartInterval`), which pulls, runs
+Claude Code headless over the queue, writes results back into that file and
+pushes. One-time on the Mac: `bash src/scripts/desktop-agent.sh --install` — which
+also turns Remote Control on at every boot (`remoteControlAtStartup: true`
+in `~/.claude/settings.json` plus a KeepAlive LaunchAgent running
+`claude remote-control`), so phone/cloud sessions can reach the Mac with
+no window open. Check with `--status`, force a tick with `--run-now`,
+remove both with `--uninstall`.
+
 Follow-ups still open:
 1. **Verify first cron run writes to Mongo** — after 5 AM ICT check
    `gk_newsroom.ai_feed_items` for today-dated docs and `ai_feed_podcast`
