@@ -503,8 +503,14 @@ async function leadDishes(shops, todayStr, meal) {
  * tapping that found an empty shop. Say "Under registration" instead, in
  * orange, until there is someone to answer and something to sell.
  */
+/** A shop needs a menu, not a single dish, before it claims to be trading.
+ *  Every shop that signed up on 23 Aug added exactly one dish while setting
+ *  up, which cleared a plain `!dishCount` test and put "Open now" on a card
+ *  a buyer could not order from. */
+const MIN_MENU = 3;
+
 function pendingRegistration(shop, dishCount) {
-  return !shop?.email || !shop?.owner || !dishCount;
+  return !shop?.email || !shop?.owner || (dishCount || 0) < MIN_MENU;
 }
 
 const ROAD_FACTOR = 1.3, MOTO_KMH = 22, PREP_MIN = 10;

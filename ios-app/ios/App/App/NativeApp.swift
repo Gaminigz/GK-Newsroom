@@ -118,6 +118,14 @@ struct ShopSummary: Codable, Identifiable {
     let frontPhoto: String?
     let photo2: String?
     let photo3: String?
+    /// Listed but not yet trading — no owner signed in, or nothing on the
+    /// menu. Such a shop must not claim to be open; see `pendingRegistration`
+    /// on the server, which is the single source of this flag.
+    let pending: Bool?
+    /// Road distance and door-to-door estimate from the buyer, when we know
+    /// where both ends are.
+    let distanceKm: Double?
+    let etaMins: Int?
 }
 
 struct ShopDetailResponse: Codable {
@@ -455,9 +463,23 @@ struct ShopRow: View {
                 }
                 Text("★ \(String(format: "%.1f", shop.rating)) · \(shop.city) · \(shop.dishes) dishes")
                     .font(.caption).foregroundColor(.secondary)
-                Text(shop.open ? "Open now" : "Closed now")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(shop.open ? .green : .red)
+                // A shop still registering cannot take an order, so it says so
+                // instead of "Open now" — the same rule the web cards use.
+                HStack(spacing: 4) {
+                    if shop.pending == true {
+                        Text("Under registration")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(Color.brandOrange)
+                    } else {
+                        Text(shop.open ? "Open now" : "Closed now")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(shop.open ? .green : .red)
+                        if let km = shop.distanceKm, let mins = shop.etaMins {
+                            Text("· \(String(format: "%.1f", km)) km · ~\(mins) min")
+                                .font(.caption).foregroundColor(.secondary)
+                        }
+                    }
+                }
             }
         }
     }
