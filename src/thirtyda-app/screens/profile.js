@@ -89,7 +89,9 @@ screen('/person/:id', async ({ params, root }) => {
     return;
   }
   const stops = [];
-  root.append(topBar({ left: 'back', right: t('pf_title') }));
+  // PROFILE opens my own profile (language, photos, sign out).
+  const mine = el('button', { type: 'button', class: 'label ink topbar-link', on: { click: () => go('/me') } }, t('pf_title'));
+  root.append(topBar({ left: 'back', right: mine }));
   const body = el('div', { class: 'profile-body' }, el('p', { class: 'loading' }, t('core_loading')));
   root.append(body);
 

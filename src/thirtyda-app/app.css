@@ -218,6 +218,7 @@ a { color: inherit; }
 .topbar-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .topbar-h { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 16px; font-weight: 800; line-height: 1.25; }
 .topbar-right { margin-left: auto; flex: none; display: flex; align-items: center; gap: 8px; }
+.topbar-link { padding: 10px 2px; border: 0; background: none; font-size: 12px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .brandbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; margin-bottom: 8px; }
 .brandbar .brand { font-size: 22px; color: var(--navy); }
 .dark .brandbar .brand { color: #fff; }
