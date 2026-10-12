@@ -27,7 +27,7 @@ screen('/opening', ({ root }) => {
           'aria-pressed': String(code === state.lang),
           on: { click: () => pick(code) },
         }, LANG_NATIVE[code]))),
-      el('p', { class: 'opening-foot' }, icon('translate', 16), t('op_translate'))),
+      el('p', { class: 'opening-foot' }, icon('translate', 19), t('op_translate'))),
   );
 });
 
