@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · 30+DA Super admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..900&family=JetBrains+Mono:wght@400..600&display=swap">
+  <link rel="stylesheet" href="/30da/admin/app.css">
+</head>
+<body>
+  <main class="signin">
+    <section class="signin-brand">
+      <div class="brand-row">
+        <span class="wordmark">30+DA</span>
+        <span class="pill">Super admin</span>
+      </div>
+      <div>
+        <h1>Keep 30+DA safe and calm.</h1>
+        <p>See who is using the app right now, read flagged chats, and block people who break the rules.</p>
+      </div>
+      <div class="logged-note">
+        <svg width="11" height="12" viewBox="0 0 11 12" fill="none" aria-hidden="true"><path d="M5.5 1 1.5 2.5v3.2c0 2.4 1.7 4.4 4 5.1 2.3-.7 4-2.7 4-5.1V2.5L5.5 1Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+        EVERY ADMIN ACTION IS LOGGED
+      </div>
+    </section>
+
+    <section class="signin-form-wrap">
+      <form class="signin-form" id="form" novalidate>
+        <h2>Sign in</h2>
+        <p class="sub">Super admin only.</p>
+        <p class="form-error" id="error" role="alert" hidden></p>
+
+        <label class="field">
+          <span class="label">Super admin code</span>
+          <span class="input-wrap">
+            <input class="input code" id="code" name="code" type="password" autocomplete="current-password" required autofocus>
+            <button class="link show-btn" id="show" type="button" aria-controls="code">Show</button>
+          </span>
+        </label>
+
+        <button class="btn-primary" id="submit" type="submit">
+          Sign in
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true"><path d="M1.5 6.5h9.5M7 2.5l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </form>
+    </section>
+  </main>
+  <script src="/30da/admin/signin.js"></script>
+</body>
+</html>
