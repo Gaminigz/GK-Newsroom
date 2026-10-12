@@ -10,6 +10,40 @@ export const SPEECH_LOCALE = { en: 'en-US', km: 'km-KH', zh: 'zh-CN', ko: 'ko-KR
 
 export const CHAT_MIN = 20, CHAT_MAX = 30;
 
+// ---- Photo slots: unlocked by level, seen per person.
+// Level 1 → 1 photo (the main face photo), Level 2 → 1 more (2), Level 3 → 2 more (4). A person's level
+// for uploading is the highest level they have OPENED with anyone. Who sees photo i is decided per pair:
+// slot 1 is for every signed-in person (Nearby only ever shows it); slot i needs the level the viewer and
+// the owner have opened together to reach PHOTO_SLOT_LEVELS[i].
+export const PHOTO_MAX = 4;
+export const PHOTO_SLOT_LEVELS = Object.freeze([1, 2, 3, 3]);
+
+/** How many photo slots a person at `level` may fill: 1 → 1, 2 → 2, 3 → 4. */
+export function photoSlotsFor(level) {
+  const n = Number(level);
+  return n >= 3 ? 4 : n >= 2 ? 2 : 1;
+}
+
+/** The level that unlocks the photo at 0-based `index` (1, 2, 3, 3); past the end → 3; not an index → null. */
+export function photoSlotLevel(index) {
+  const i = typeof index === 'number' || (typeof index === 'string' && index.trim()) ? Number(index) : NaN;
+  if (!Number.isInteger(i) || i < 0) return null;
+  return PHOTO_SLOT_LEVELS[Math.min(i, PHOTO_MAX - 1)];
+}
+
+/** The level a pair has opened, for photos: l2_open / l3_wait → 2, l3_open → 3, anything else → 1. */
+export function stageOpenLevel(stage) {
+  if (stage === 'l3_open') return 3;
+  if (stage === 'l2_open' || stage === 'l3_wait') return 2;
+  return 1;
+}
+
+/** May a viewer who has opened `openLevel` with the owner see the owner's photo at `index`? (Owner: always.) */
+export function photoVisible(index, openLevel) {
+  const need = photoSlotLevel(index);
+  return need !== null && (need === 1 || (Number(openLevel) || 1) >= need);
+}
+
 const QUESTION_LIMITS = { 1: [4, 80], 2: [4, 100] };
 const ANSWER_LIMITS = [2, 120];
 

@@ -1,8 +1,9 @@
-// Screen 4 · Profile view — verified chips, big photo, hearts, "You and Sophea · Level n/3" and one
-// primary action driven by pair.next (ask / answer / wait / chat). Level 3 also shows the extra photos.
+// Screen 4 · Profile view — verified chips, big photo, hearts, "You and Sophea · Level n/3", the photos this
+// viewer may see (slot 2 from Level 2, slots 3–4 from Level 3; the rest as locked placeholders) and one
+// primary action driven by pair.next (ask / answer / wait / chat).
 import {
   screen, el, icon, t, go, api, toast, modal, state, topBar, levelBar, avatar, countdown, pronoun, fmtKm,
-  pairRoute, stageLevel, registerStrings,
+  pairRoute, stageLevel, registerStrings, morePhotosPrompt, stageOpenLevel, roleLabel,
 } from '../core.js';
 
 function viewPhoto(url, name) {
@@ -20,6 +21,24 @@ function verifiedChips(v = {}) {
       on ? icon('check', 13) : null, label,
       el('span', { class: 'visually-hidden' }, on ? t('pf_verified') : t('pf_not_verified')));
   }));
+}
+
+/** The photos this viewer can see (tap → large) and the locked ones as "Level n" placeholders. */
+function photoStrip(person) {
+  const visible = person.photos || [];
+  const locked = person.lockedPhotos || [];
+  if (visible.length < 2 && !locked.length) return null; // only the main photo: it is already shown above
+  const name = person.name;
+  return el('div', { class: 'photo-strip' },
+    el('span', { class: 'label' }, t('pf_photos')),
+    el('ul', { class: 'thumbs' },
+      visible.map((url, i) => el('li', {}, el('button', {
+        type: 'button', class: 'thumb', 'aria-label': t('pf_photo_n', { n: i + 1 }), on: { click: () => viewPhoto(url, name) },
+      }, el('img', { src: url, alt: '' })))),
+      locked.map((x) => el('li', { class: 'thumb locked' },
+        icon('lock', 15),
+        el('span', { class: 'label', 'aria-hidden': 'true' }, t('pf_slot_level', { n: x.level })),
+        el('span', { class: 'visually-hidden' }, t('pf_slot_locked', { slot: x.slot, n: x.level }))))));
 }
 
 const heartCard = (kind, count, label) => el('div', { class: ['heart-card', kind] },
@@ -90,8 +109,7 @@ screen('/person/:id', async ({ params, root }) => {
   }
   const stops = [];
   // PROFILE opens my own profile (language, photos, sign out).
-  const mine = el('button', { type: 'button', class: 'label ink topbar-link', on: { click: () => go('/me') } }, t('pf_title'));
-  root.append(topBar({ left: 'back', right: mine }));
+  root.append(topBar({ left: 'back', right: t('pf_title') }));
   const body = el('div', { class: 'profile-body' }, el('p', { class: 'loading' }, t('core_loading')));
   root.append(body);
 
@@ -111,7 +129,6 @@ screen('/person/:id', async ({ params, root }) => {
   const name = person.name;
   const level = pair?.level || 1;
   const chatOpen = pair?.stage === 'l3_open';
-  const extra = (person.photos || []).slice(1);
   const reload = () => go(`/person/${encodeURIComponent(person.id)}`, { replace: true });
 
   // Native replaceChildren() would print "null", so optional parts are filtered out.
@@ -122,18 +139,17 @@ screen('/person/:id', async ({ params, root }) => {
         ? el('button', { type: 'button', 'aria-label': t('pf_view_photo'), on: { click: () => viewPhoto(person.photo, name) } }, avatar(person.photo, 170))
         : avatar(null, 170)),
     el('h1', { class: 'display profile-name' }, name),
+    person.role ? el('p', { class: 'profile-role' }, roleLabel(person.role)) : null,
     person.km != null ? el('p', { class: 'profile-km' }, t('pf_km_away', { km: fmtKm(person.km) })) : null,
-    extra.length
-      ? el('div', { class: 'thumbs' }, extra.map((url) => el('button', {
-        type: 'button', class: 'thumb', 'aria-label': t('pf_view_photo'), on: { click: () => viewPhoto(url, name) },
-      }, el('img', { src: url, alt: '' }))))
-      : null,
     el('div', { class: 'heart-cards' },
       heartCard('red', person.hearts?.red, t('pf_red_hearts')),
       heartCard('orange', person.hearts?.orange, t('pf_orange_hearts'))),
     el('div', { class: 'level-row' },
       el('span', { class: 'label ink' }, t('pf_you_and', { name, n: level })),
       levelBar(level)),
+    photoStrip(person),
+    // A level that opened with this person also opened photo slots in my own profile.
+    morePhotosPrompt(stageOpenLevel(pair?.stage)),
     el('div', { class: 'profile-actions' },
       actionButton(person, pair, { reload, stops }),
       chatOpen ? null : el('div', { class: 'btn btn-dashed', role: 'note' }, icon('lock', 16), el('span', {}, t('pf_chat_opens'))),
@@ -154,6 +170,10 @@ registerStrings({
     pf_verified: 'verified',
     pf_not_verified: 'not verified',
     pf_view_photo: 'View photo',
+    pf_photos: 'Photos',
+    pf_photo_n: 'Photo {n}',
+    pf_slot_level: 'Level {n}',
+    pf_slot_locked: 'Photo {slot} opens at Level {n}',
     pf_km_away: '{km} away',
     pf_red_hearts: 'Red hearts',
     pf_orange_hearts: 'Orange hearts',
@@ -180,6 +200,10 @@ registerStrings({
     pf_verified: 'បានផ្ទៀងផ្ទាត់',
     pf_not_verified: 'មិនទាន់ផ្ទៀងផ្ទាត់',
     pf_view_photo: 'មើលរូបថត',
+    pf_photos: 'រូបថត',
+    pf_photo_n: 'រូបថតទី {n}',
+    pf_slot_level: 'កម្រិត {n}',
+    pf_slot_locked: 'រូបថតទី {slot} បើកនៅកម្រិត {n}',
     pf_km_away: 'ចម្ងាយ {km}',
     pf_red_hearts: 'បេះដូងក្រហម',
     pf_orange_hearts: 'បេះដូងទឹកក្រូច',
@@ -206,6 +230,10 @@ registerStrings({
     pf_verified: '已验证',
     pf_not_verified: '未验证',
     pf_view_photo: '查看照片',
+    pf_photos: '照片',
+    pf_photo_n: '第 {n} 张照片',
+    pf_slot_level: '等级 {n}',
+    pf_slot_locked: '第 {slot} 张照片在等级 {n} 开放',
     pf_km_away: '距离 {km}',
     pf_red_hearts: '红心',
     pf_orange_hearts: '橙心',
@@ -232,6 +260,10 @@ registerStrings({
     pf_verified: '인증됨',
     pf_not_verified: '인증 안 됨',
     pf_view_photo: '사진 보기',
+    pf_photos: '사진',
+    pf_photo_n: '사진 {n}',
+    pf_slot_level: '레벨 {n}',
+    pf_slot_locked: '{slot}번째 사진은 레벨 {n}에서 보여요',
     pf_km_away: '{km} 거리',
     pf_red_hearts: '빨간 하트',
     pf_orange_hearts: '주황 하트',
@@ -258,6 +290,10 @@ registerStrings({
     pf_verified: '確認済み',
     pf_not_verified: '未確認',
     pf_view_photo: '写真を見る',
+    pf_photos: '写真',
+    pf_photo_n: '写真{n}',
+    pf_slot_level: 'レベル{n}',
+    pf_slot_locked: '写真{slot}はレベル{n}で表示',
     pf_km_away: 'ここから{km}',
     pf_red_hearts: '赤いハート',
     pf_orange_hearts: 'オレンジのハート',

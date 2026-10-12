@@ -1,12 +1,11 @@
-// me · My profile (not in the design; same visual language): face photo + up to 2 extra photos,
-// app name, language, role, phone verification, hearts, sign out.
+// me · My profile (not in the design; same visual language): the 4 photo slots (main face photo, then
+// slots that unlock at Level 2 and Level 3), app name, language, role, phone verification, hearts, sign out.
 import {
-  screen, el, icon, t, go, api, toast, state, setLang, setMe, topBar, heartPills, roleLabel, resizeImage,
-  registerStrings, LANGS, LANG_NATIVE, ROLES, findContactDetails, charCount,
+  screen, el, icon, t, go, api, toast, modal, state, setLang, setMe, topBar, heartPills, roleLabel, resizeImage,
+  registerStrings, LANGS, LANG_NATIVE, ROLES, findContactDetails, charCount, PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor,
 } from '../core.js';
 import { phoneVerifier, blankPhone } from './create-profile.js';
 
-const MAX_PHOTOS = 3;
 let phoneModel = blankPhone(); // keeps a half-finished phone check across re-renders
 
 function nameProblem(value) {
@@ -19,9 +18,19 @@ function nameProblem(value) {
 
 const errText = (err) => (err.status === 0 ? t('err_network') : t('err_generic'));
 
+/** { max, allowed, levels } from MeView.photoSlots (worked out from the level if an old server leaves it out). */
+function slotsOf(me) {
+  const s = me?.photoSlots || {};
+  return {
+    max: s.max || PHOTO_MAX,
+    allowed: s.allowed || photoSlotsFor(me?.level),
+    levels: Array.isArray(s.levels) && s.levels.length ? s.levels : PHOTO_SLOT_LEVELS,
+  };
+}
+
 screen('/me', async ({ root }) => {
   root.classList.add('me');
-  root.append(topBar({ left: 'back', title: t('me_title') }));
+  root.append(topBar({ left: 'back', title: t('me_title'), me: false }));
   const body = el('div', { class: 'me-stack' }, el('p', { class: 'loading' }, t('core_loading')));
   root.append(body);
 
@@ -36,26 +45,71 @@ screen('/me', async ({ root }) => {
   let phone = null;
 
   // --- photos
+  // MeView.photos is slot-aligned: photos[i] is slot i+1 (null = empty). A photo never changes slots,
+  // so the level it is seen at never changes either.
   const file = el('input', { type: 'file', accept: 'image/*', class: 'visually-hidden', tabindex: '-1', 'aria-hidden': 'true' });
-  const slots = el('div', { class: 'photo-slots' });
+  const slots = el('ul', { class: 'photo-slots' });
+  const slotCount = el('span', { class: 'label' });
+  const keptNote = el('p', { class: 'help kept-note', hidden: true }, icon('lock', 13), el('span', {}, t('me_kept_note')));
   let busy = false;
+  let target = 0; // the slot the file picker fills
+  // Filled (photo; Main = replace, others = remove ×) · open and empty (+ Add photo) · locked (dashed,
+  // lock, "Unlocks at Level n"). A filled slot past what the level allows is "kept": lock in its tag.
   function paintPhotos() {
     const urls = state.me.photos || [];
-    slots.replaceChildren(...Array.from({ length: MAX_PHOTOS }, (_, i) => {
+    const { max, allowed, levels } = slotsOf(state.me);
+    const levelOf = (i) => levels[Math.min(i, levels.length - 1)];
+    const filled = urls.filter(Boolean).length;
+    const kept = urls.some((u, i) => u && i >= allowed);
+    const open = Math.min(allowed, max);
+    slotCount.textContent = kept ? t('me_slots_kept', { count: filled, n: open, max }) : t('me_slots_open', { n: open, max });
+    keptNote.hidden = !kept;
+    slots.replaceChildren(...Array.from({ length: Math.max(max, urls.length) }, (_, i) => {
       const url = urls[i];
-      if (!url) {
-        return el('button', {
-          type: 'button', class: ['photo-slot', 'empty', busy && 'busy'], disabled: busy, 'aria-label': t('me_add_photo'),
-          on: { click: () => file.click() },
-        }, icon('plus', 22));
+      if (url) {
+        const isKept = i >= allowed;
+        const action = i === 0
+          ? el('button', {
+            type: 'button', class: 'slot-remove slot-replace', disabled: busy, 'aria-label': t('me_replace_main'),
+            on: { click: () => pick(0) },
+          }, icon('camera', 14))
+          : el('button', {
+            type: 'button', class: 'slot-remove', disabled: busy, 'aria-label': t('me_remove_photo_n', { n: i + 1 }),
+            on: { click: () => removePhoto(i, isKept ? levelOf(i) : 0) },
+          }, icon('close', 14));
+        return el('li', { class: ['photo-slot', 'filled', isKept && 'kept', busy && 'busy'] },
+          el('img', { src: url, alt: i === 0 ? t('me_main') : t('me_photo_n', { n: i + 1 }) }),
+          el('span', { class: 'slot-tag' }, isKept ? icon('lock', 9) : null,
+            el('span', {}, i === 0 ? t('me_main') : t('me_slot_level', { n: levelOf(i) }))),
+          isKept ? el('span', { class: 'visually-hidden' }, t('me_kept_slot', { n: levelOf(i) })) : null,
+          action);
       }
-      return el('div', { class: ['photo-slot', busy && 'busy'] },
-        el('img', { src: url, alt: i === 0 ? t('me_face') : '' }),
-        i === 0 ? el('span', { class: 'slot-tag' }, t('me_face')) : null,
-        urls.length > 1
-          ? el('button', { type: 'button', class: 'slot-remove', disabled: busy, 'aria-label': t('me_remove_photo'), on: { click: () => removePhoto(i) } }, icon('close', 14))
-          : null);
+      if (i < allowed) {
+        // The main photo comes first: with slot 1 empty, any + fills slot 1.
+        return el('li', { class: 'photo-slot-cell' }, el('button', {
+          type: 'button', class: ['photo-slot', 'add', busy && 'busy'], disabled: busy,
+          'aria-label': `${t('me_add_photo')} · ${i === 0 ? t('me_main') : t('me_photo_n', { n: i + 1 })}`,
+          on: { click: () => pick(urls[0] ? i : 0) },
+        }, icon('plus', 20), el('span', { class: 'slot-text' }, t('me_add_photo')),
+        // Which level this slot is seen at, so the owner knows who will see the photo.
+        el('span', { class: 'slot-sub', 'aria-hidden': 'true' }, i === 0 ? t('me_main') : t('me_slot_level', { n: levelOf(i) }))));
+      }
+      return el('li', { class: 'photo-slot locked' },
+        icon('lock', 17),
+        el('span', { class: 'slot-text' }, t('me_unlocks_at', { n: levelOf(i) })),
+        el('span', { class: 'visually-hidden' }, t('me_photo_n', { n: i + 1 })));
     }));
+  }
+  function pick(i) {
+    if (busy) return;
+    target = i;
+    file.click();
+  }
+  async function refreshMe() {
+    try {
+      const r = await api.get('/me');
+      if (r.user) setMe(r.user);
+    } catch { /* keep what we have */ }
   }
   file.addEventListener('change', async () => {
     const f = file.files?.[0];
@@ -71,24 +125,63 @@ screen('/me', async ({ root }) => {
         toast(t('me_photo_error'));
         return;
       }
-      const r = await api.post('/me/photos', { photo });
+      // Into the slot that was tapped (replacing the photo there, for Main).
+      const r = await api.put(`/me/photos/${target}`, { photo });
       setMe(r.user);
     } catch (err) {
-      toast(err.code === 'too_many_photos' ? t('me_photos_full') : err.data?.field === 'photo' ? t('me_photo_error') : errText(err));
+      if (err.code === 'photo_locked') {
+        toast(t('me_photo_locked', { slot: err.data?.slot ?? target + 1, n: err.data?.needLevel ?? 2 }));
+        await refreshMe(); // the level may have moved since this screen was drawn
+      } else if (err.code === 'too_many_photos') {
+        toast(t('me_photos_full', { max: err.data?.max ?? PHOTO_MAX }));
+      } else if (err.code === 'main_first') {
+        toast(t('me_main_first'));
+        await refreshMe();
+      } else if (err.code === 'photo_changed') {
+        toast(t('me_photo_changed'));
+        await refreshMe();
+      } else {
+        toast(err.data?.field === 'photo' ? t('me_photo_error') : errText(err));
+      }
     } finally {
       busy = false;
       paintPhotos();
     }
   });
-  async function removePhoto(i) {
+  /** A kept photo (past what the level allows) cannot be put back until that level: ask first. */
+  function confirmKept(n, level) {
+    return new Promise((resolve) => {
+      let done = false;
+      const remove = el('button', { type: 'button', class: 'btn btn-danger' }, t('me_remove'));
+      const keep = el('button', { type: 'button', class: 'btn btn-primary' }, t('me_keep'));
+      const dlg = modal(el('div', { class: 'dialog-body', role: 'alertdialog', 'aria-labelledby': 'me-kept-title' },
+        el('span', { class: 'dialog-icon' }, icon('lock', 22)),
+        el('h2', { class: 'dialog-title', id: 'me-kept-title' }, t('me_remove_kept_title', { n })),
+        el('p', {}, t('me_remove_kept_body', { n: level })),
+        el('div', { class: 'dialog-actions' }, keep, remove)), { label: t('me_remove_kept_title', { n }) });
+      const finish = (yes) => {
+        if (done) return;
+        done = true;
+        resolve(yes);
+        dlg.close();
+      };
+      remove.addEventListener('click', () => finish(true));
+      keep.addEventListener('click', () => finish(false));
+      dlg.node.addEventListener('close', () => finish(false));
+    });
+  }
+  async function removePhoto(i, keptLevel) {
     if (busy) return;
+    if (keptLevel && !(await confirmKept(i + 1, keptLevel))) return;
     busy = true;
     paintPhotos();
     try {
+      // The slot is left empty: the other photos stay in their slots (and at their levels).
       const r = await api.del(`/me/photos/${i}`);
       setMe(r.user);
     } catch (err) {
-      toast(err.code === 'last_photo' ? t('me_last_photo') : errText(err));
+      toast(err.code === 'last_photo' ? t('me_last_photo') : err.code === 'main_photo' ? t('me_main_replace_only') : errText(err));
+      if (err.code === 'not_found') await refreshMe();
     } finally {
       busy = false;
       paintPhotos();
@@ -208,7 +301,9 @@ screen('/me', async ({ root }) => {
   const section = (labelText, ...kids) => el('section', { class: 'section' }, labelText ? el('span', { class: 'label ink' }, labelText) : null, kids);
 
   body.replaceChildren(
-    section(t('me_photos'), slots, el('p', { class: 'help' }, t('me_photos_note')), file),
+    el('section', { class: 'section' },
+      el('div', { class: 'section-head' }, el('span', { class: 'label ink' }, t('me_photos')), slotCount),
+      slots, keptNote, el('p', { class: 'help' }, t('me_photos_note')), file),
     el('section', { class: 'section' },
       el('div', { class: 'field-head' }, el('label', { class: 'label ink', for: 'me-name' }, t('me_app_name')),
         el('span', { class: 'tag tag-filled' }, icon('eye', 11), t('me_tag_shown'))),
@@ -228,13 +323,29 @@ registerStrings({
   en: {
     me_title: 'My profile',
     me_photos: 'Photos',
-    me_photos_note: 'Your first photo is your face. Extra photos are shown only at Level 3.',
-    me_face: 'Face',
+    me_photos_note: 'Nearby sees only your main photo. Photo 2 is shown when you reach Level 2 with someone, photos 3–4 at Level 3. Each photo stays in its slot.',
+    me_main: 'Main',
+    me_photo_n: 'Photo {n}',
+    me_remove_photo_n: 'Remove photo {n}',
+    me_unlocks_at: 'Unlocks at Level {n}',
+    me_slot_level: 'Level {n}',
+    me_slots_open: '{n} of {max} unlocked',
+    me_photo_locked: 'Photo {slot} unlocks at Level {n}.',
+    me_photos_full: 'You can have {max} photos.',
     me_add_photo: 'Add photo',
-    me_remove_photo: 'Remove photo',
     me_photo_error: 'This photo could not be used. Try another one.',
-    me_photos_full: 'You can have 3 photos.',
     me_last_photo: 'Keep at least one photo of your face.',
+    me_slots_kept: '{count} photos · {n} of {max} unlocked',
+    me_kept_note: 'Photos with a lock were added before your level allowed them. If you remove one, you can add a photo there again only at that level.',
+    me_kept_slot: 'Kept from before: this slot opens again at Level {n}',
+    me_remove_kept_title: 'Remove photo {n}?',
+    me_remove_kept_body: 'This slot opens at Level {n}. Until you reach Level {n} with someone, you can’t add a photo here again.',
+    me_remove: 'Remove',
+    me_keep: 'Keep it',
+    me_replace_main: 'Replace main photo',
+    me_main_replace_only: 'Your main photo can be replaced, not removed.',
+    me_main_first: 'Add your main photo first.',
+    me_photo_changed: 'Your photos changed. Try again.',
     me_app_name: 'App name',
     me_tag_shown: 'Shown',
     me_name_length: 'Use 2 to 24 characters.',
@@ -255,13 +366,29 @@ registerStrings({
   km: {
     me_title: 'ប្រវត្តិរូបរបស់ខ្ញុំ',
     me_photos: 'រូបថត',
-    me_photos_note: 'រូបទីមួយគឺជារូបមុខរបស់អ្នក។ រូបបន្ថែមបង្ហាញតែនៅកម្រិត 3 ប៉ុណ្ណោះ។',
-    me_face: 'មុខ',
+    me_photos_note: 'ក្នុង «នៅជិត» គេឃើញតែរូបថតមេរបស់អ្នកប៉ុណ្ណោះ។ រូបថតទី 2 បង្ហាញនៅពេលអ្នកដល់កម្រិត 2 ជាមួយនរណាម្នាក់ ហើយរូបថតទី 3–4 នៅកម្រិត 3។ រូបថតនីមួយៗនៅតែក្នុងប្រអប់របស់វា។',
+    me_main: 'មេ',
+    me_photo_n: 'រូបថតទី {n}',
+    me_remove_photo_n: 'លុបរូបថតទី {n}',
+    me_unlocks_at: 'បើកនៅកម្រិត {n}',
+    me_slot_level: 'កម្រិត {n}',
+    me_slots_open: 'បានបើក {n} ក្នុងចំណោម {max}',
+    me_photo_locked: 'រូបថតទី {slot} នឹងបើកនៅកម្រិត {n}។',
+    me_photos_full: 'អ្នកអាចមានរូបថតបាន {max} សន្លឹក។',
     me_add_photo: 'បន្ថែមរូបថត',
-    me_remove_photo: 'លុបរូបថត',
     me_photo_error: 'មិនអាចប្រើរូបថតនេះបានទេ។ សូមសាកល្បងរូបផ្សេង។',
-    me_photos_full: 'អ្នកអាចមានរូបថតបាន 3 សន្លឹក។',
     me_last_photo: 'សូមទុករូបថតមុខយ៉ាងហោចណាស់មួយសន្លឹក។',
+    me_slots_kept: 'រូបថត {count} · បានបើក {n} ក្នុងចំណោម {max}',
+    me_kept_note: 'រូបថតដែលមានសោ ត្រូវបានបន្ថែមមុនពេលកម្រិតរបស់អ្នកអនុញ្ញាត។ បើអ្នកលុបវា អ្នកអាចបន្ថែមរូបថតនៅទីនោះម្តងទៀតបាន លុះត្រាតែដល់កម្រិតនោះ។',
+    me_kept_slot: 'រក្សាទុកពីមុន៖ ប្រអប់នេះបើកម្តងទៀតនៅកម្រិត {n}',
+    me_remove_kept_title: 'លុបរូបថតទី {n}?',
+    me_remove_kept_body: 'ប្រអប់នេះបើកនៅកម្រិត {n}។ រហូតដល់អ្នកដល់កម្រិត {n} ជាមួយនរណាម្នាក់ អ្នកមិនអាចបន្ថែមរូបថតនៅទីនេះម្តងទៀតបានទេ។',
+    me_remove: 'លុប',
+    me_keep: 'ទុកវា',
+    me_replace_main: 'ប្តូររូបថតមេ',
+    me_main_replace_only: 'រូបថតមេអាចប្តូរបាន ប៉ុន្តែមិនអាចលុបបានទេ។',
+    me_main_first: 'សូមបន្ថែមរូបថតមេជាមុនសិន។',
+    me_photo_changed: 'រូបថតរបស់អ្នកបានផ្លាស់ប្តូរ។ សូមព្យាយាមម្តងទៀត។',
     me_app_name: 'ឈ្មោះក្នុងកម្មវិធី',
     me_tag_shown: 'បង្ហាញ',
     me_name_length: 'សូមប្រើពី 2 ដល់ 24 តួអក្សរ។',
@@ -282,13 +409,29 @@ registerStrings({
   zh: {
     me_title: '我的资料',
     me_photos: '照片',
-    me_photos_note: '第一张是你的正脸照。其他照片只在等级 3 显示。',
-    me_face: '正脸',
+    me_photos_note: '在“附近”里，别人只能看到你的主照片。和某人到达等级 2 时显示第 2 张，等级 3 时显示第 3–4 张。每张照片都固定在自己的位置。',
+    me_main: '主照片',
+    me_photo_n: '第 {n} 张照片',
+    me_remove_photo_n: '删除第 {n} 张照片',
+    me_unlocks_at: '等级 {n} 解锁',
+    me_slot_level: '等级 {n}',
+    me_slots_open: '已解锁 {n}/{max}',
+    me_photo_locked: '第 {slot} 张照片在等级 {n} 解锁。',
+    me_photos_full: '最多可以放 {max} 张照片。',
     me_add_photo: '添加照片',
-    me_remove_photo: '删除照片',
     me_photo_error: '这张照片无法使用，请换一张。',
-    me_photos_full: '最多可以放 3 张照片。',
     me_last_photo: '请至少保留一张正脸照。',
+    me_slots_kept: '{count} 张照片 · 已解锁 {n}/{max}',
+    me_kept_note: '带锁的照片是在你的等级允许之前添加的。如果删除，要到达那个等级后才能在那里再放照片。',
+    me_kept_slot: '之前保留的照片：这个位置在等级 {n} 重新开放',
+    me_remove_kept_title: '删除第 {n} 张照片？',
+    me_remove_kept_body: '这个位置在等级 {n} 开放。在你和某人到达等级 {n} 之前，不能再在这里添加照片。',
+    me_remove: '删除',
+    me_keep: '保留',
+    me_replace_main: '更换主照片',
+    me_main_replace_only: '主照片可以更换，但不能删除。',
+    me_main_first: '请先添加主照片。',
+    me_photo_changed: '你的照片已有变化，请再试一次。',
     me_app_name: '应用昵称',
     me_tag_shown: '公开',
     me_name_length: '请使用 2 到 24 个字符。',
@@ -309,13 +452,29 @@ registerStrings({
   ko: {
     me_title: '내 프로필',
     me_photos: '사진',
-    me_photos_note: '첫 번째 사진은 얼굴 사진이에요. 추가 사진은 레벨 3에서만 보여요.',
-    me_face: '얼굴',
+    me_photos_note: '‘근처’에서는 대표 사진만 보여요. 누군가와 레벨 2가 되면 사진 2가, 레벨 3에서는 사진 3–4가 보여요. 사진은 각자 자리에 그대로 있어요.',
+    me_main: '대표',
+    me_photo_n: '사진 {n}',
+    me_remove_photo_n: '사진 {n} 삭제',
+    me_unlocks_at: '레벨 {n}에서 열려요',
+    me_slot_level: '레벨 {n}',
+    me_slots_open: '{max}칸 중 {n}칸 열림',
+    me_photo_locked: '{slot}번째 사진은 레벨 {n}에서 올릴 수 있어요.',
+    me_photos_full: '사진은 {max}장까지 올릴 수 있어요.',
     me_add_photo: '사진 추가',
-    me_remove_photo: '사진 삭제',
     me_photo_error: '이 사진은 사용할 수 없어요. 다른 사진을 골라 주세요.',
-    me_photos_full: '사진은 3장까지 올릴 수 있어요.',
     me_last_photo: '얼굴 사진은 최소 1장 있어야 해요.',
+    me_slots_kept: '사진 {count}장 · {max}칸 중 {n}칸 열림',
+    me_kept_note: '자물쇠가 있는 사진은 레벨이 허용되기 전에 올린 사진이에요. 삭제하면 그 레벨이 되어야 그 자리에 다시 올릴 수 있어요.',
+    me_kept_slot: '예전에 올린 사진: 이 자리는 레벨 {n}에서 다시 열려요',
+    me_remove_kept_title: '{n}번째 사진을 삭제할까요?',
+    me_remove_kept_body: '이 자리는 레벨 {n}에서 열려요. 누군가와 레벨 {n}에 도달하기 전에는 여기에 사진을 다시 올릴 수 없어요.',
+    me_remove: '삭제',
+    me_keep: '그대로 두기',
+    me_replace_main: '대표 사진 바꾸기',
+    me_main_replace_only: '대표 사진은 바꿀 수는 있지만 삭제할 수는 없어요.',
+    me_main_first: '대표 사진을 먼저 올려 주세요.',
+    me_photo_changed: '사진이 바뀌었어요. 다시 시도해 주세요.',
     me_app_name: '앱 이름',
     me_tag_shown: '공개',
     me_name_length: '2~24자로 입력해 주세요.',
@@ -336,13 +495,29 @@ registerStrings({
   ja: {
     me_title: 'マイプロフィール',
     me_photos: '写真',
-    me_photos_note: '1枚目は顔写真です。追加の写真はレベル3でのみ表示されます。',
-    me_face: '顔写真',
+    me_photos_note: '「近く」ではメイン写真だけが表示されます。誰かとレベル2になると写真2が、レベル3で写真3〜4が表示されます。写真はそれぞれの枠に固定されます。',
+    me_main: 'メイン',
+    me_photo_n: '写真{n}',
+    me_remove_photo_n: '写真{n}を削除',
+    me_unlocks_at: 'レベル{n}で\u200b解除', // zero-width space: wraps as レベル2で / 解除, never inside 解除
+    me_slot_level: 'レベル{n}',
+    me_slots_open: '{max}枠中{n}枠が利用可能',
+    me_photo_locked: '写真{slot}はレベル{n}で追加できます。',
+    me_photos_full: '写真は{max}枚までです。',
     me_add_photo: '写真を追加',
-    me_remove_photo: '写真を削除',
     me_photo_error: 'この写真は使えません。別の写真をお試しください。',
-    me_photos_full: '写真は3枚までです。',
     me_last_photo: '顔写真は少なくとも1枚必要です。',
+    me_slots_kept: '写真{count}枚 · {max}枠中{n}枠が利用可能',
+    me_kept_note: '鍵マークの写真は、レベルで解除される前に追加されたものです。削除すると、そのレベルになるまでその枠に写真を追加できません。',
+    me_kept_slot: '以前から残っている写真：この枠はレベル{n}で再び使えます',
+    me_remove_kept_title: '写真{n}を削除しますか？',
+    me_remove_kept_body: 'この枠はレベル{n}で解除されます。誰かとレベル{n}になるまで、ここに写真を追加し直すことはできません。',
+    me_remove: '削除',
+    me_keep: '残す',
+    me_replace_main: 'メイン写真を変更',
+    me_main_replace_only: 'メイン写真は変更できますが、削除はできません。',
+    me_main_first: '先にメイン写真を追加してください。',
+    me_photo_changed: '写真が変更されました。もう一度お試しください。',
     me_app_name: 'アプリ名',
     me_tag_shown: '表示',
     me_name_length: '2〜24文字で入力してください。',

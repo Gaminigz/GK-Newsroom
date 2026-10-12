@@ -2,7 +2,7 @@
 // and the 3-column grid of faces with heart pills.
 import {
   screen, el, icon, t, go, api, toast, state, bus, store, avatar, heartPills, fmtKm, pairRoute, actionLabel,
-  heartbeat, updateLocation, registerStrings,
+  heartbeat, updateLocation, registerStrings, roleLabel,
 } from '../core.js';
 
 const KM_KEY = 'thirtyda_km';
@@ -146,6 +146,7 @@ screen('/nearby', ({ root }) => {
   const tile = (p) => el('button', { type: 'button', class: 'person', on: { click: () => go(`/person/${encodeURIComponent(p.id)}`) } },
     el('span', { class: 'face' }, avatar(p.photo || null, '100%'), heartPills(p.hearts, 'sm')),
     el('span', { class: 'person-name' }, p.name),
+    p.role ? el('span', { class: 'person-role' }, roleLabel(p.role)) : null,
     el('span', { class: 'person-km' }, fmtKm(p.km)));
 
   function paintPeople() {

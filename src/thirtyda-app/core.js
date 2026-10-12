@@ -1,6 +1,6 @@
 // 30+DA client core: state, API client, hash router, i18n, safe DOM builder and the small
 // widgets every screen shares. Screen modules (owners C, D, E) import only from here.
-import { LANGS, LANG_CODES } from './shared/rules.js';
+import { LANGS, LANG_CODES, photoSlotsFor } from './shared/rules.js';
 import { ROLES } from './shared/questions.js';
 
 export * from './shared/rules.js';
@@ -142,6 +142,7 @@ export const api = {
   get: (path, opts) => request('GET', path, undefined, opts),
   post: (path, body = {}, opts) => request('POST', path, body, opts),
   patch: (path, body = {}, opts) => request('PATCH', path, body, opts),
+  put: (path, body = {}, opts) => request('PUT', path, body, opts),
   del: (path, opts) => request('DELETE', path, undefined, opts),
 };
 
@@ -358,7 +359,14 @@ export function icon(name, size = 18) {
 }
 
 /** Header row: round back/close button, title + mono sub, right slot (string → mono label). */
-export function topBar({ left = 'back', title = null, sub = null, right = null, onLeft = null } = {}) {
+/** My round photo, top right of every screen → my profile (language, photos, sign out). */
+export function meButton(size = 34) {
+  if (!state.me) return null;
+  return el('button', { type: 'button', class: 'me-btn', 'aria-label': t('core_my_profile'), on: { click: () => go('/me') } },
+    avatar(state.me.photos?.[0] || null, size));
+}
+
+export function topBar({ left = 'back', title = null, sub = null, right = null, onLeft = null, me = true } = {}) {
   const kind = left === 'close' ? 'close' : 'back';
   const leftBtn = left
     ? el('button', {
@@ -372,7 +380,7 @@ export function topBar({ left = 'back', title = null, sub = null, right = null, 
     el('div', { class: 'topbar-title' },
       title != null ? el('div', { class: 'topbar-h' }, title) : null,
       sub != null ? el('div', { class: 'label' }, sub) : null),
-    right != null ? el('div', { class: 'topbar-right' }, label(right)) : null);
+    right != null || me ? el('div', { class: 'topbar-right' }, right != null ? label(right) : null, me ? meButton() : null) : null);
 }
 
 /** Three small segments, `level` of them filled. */
@@ -547,6 +555,24 @@ export function actionLabel(pair) {
   }
 }
 
+/**
+ * "You can now add 1 more photo" (or N) → #/me, for a pair that has opened `openLevel` (2 or 3): shown
+ * while slots that level unlocked are still empty in my profile; null otherwise. (A pair that opened a
+ * level means I have reached it too, so the slots are really mine to fill.)
+ */
+export function morePhotosPrompt(openLevel) {
+  const lvl = Number(openLevel) || 1;
+  if (lvl < 2 || !state.me) return null;
+  // MeView.photos is slot-aligned (null = empty slot): count the empty slots this level has unlocked.
+  const photos = state.me.photos || [];
+  const free = Array.from({ length: photoSlotsFor(lvl) }, (_, i) => !photos[i]).filter(Boolean).length;
+  if (free <= 0) return null;
+  return el('button', { type: 'button', class: 'photo-prompt', on: { click: () => go('/me') } },
+    el('span', { class: 'photo-prompt-icon', 'aria-hidden': 'true' }, icon('camera', 16)),
+    el('span', { class: 'grow' }, t(free === 1 ? 'core_more_photo' : 'core_more_photos', { n: free })),
+    el('span', { class: 'photo-prompt-go' }, t('core_add_photo'), icon('arrow', 14)));
+}
+
 /** ROLES entry text in the UI language. */
 export function roleLabel(key) {
   const r = ROLES.find((x) => x.key === key);
@@ -631,6 +657,7 @@ registerStrings({
   en: {
     core_km: '{n} km',
     core_back: 'Back',
+    core_my_profile: 'My profile',
     core_close: 'Close',
     core_retry: 'Try again',
     core_loading: 'Loading…',
@@ -645,10 +672,14 @@ registerStrings({
     act_level_soon: 'Level {n} opens soon',
     act_chat: 'Chat with {name}',
     act_waiting: 'Waiting for {name}',
+    core_more_photo: 'You can now add 1 more photo',
+    core_more_photos: 'You can now add {n} more photos',
+    core_add_photo: 'Add photo',
   },
   km: {
     core_km: '{n} គ.ម',
     core_back: 'ត្រឡប់ក្រោយ',
+    core_my_profile: 'ប្រវត្តិរូបរបស់ខ្ញុំ',
     core_close: 'បិទ',
     core_retry: 'ព្យាយាមម្ដងទៀត',
     core_loading: 'កំពុងផ្ទុក…',
@@ -663,10 +694,14 @@ registerStrings({
     act_level_soon: 'កម្រិត {n} នឹងបើកឆាប់ៗ',
     act_chat: 'ជជែកជាមួយ {name}',
     act_waiting: 'កំពុងរង់ចាំ {name}',
+    core_more_photo: 'ឥឡូវនេះ អ្នកអាចបន្ថែមរូបថត 1 សន្លឹកទៀត',
+    core_more_photos: 'ឥឡូវនេះ អ្នកអាចបន្ថែមរូបថត {n} សន្លឹកទៀត',
+    core_add_photo: 'បន្ថែមរូបថត',
   },
   zh: {
     core_km: '{n} 公里',
     core_back: '返回',
+    core_my_profile: '我的资料',
     core_close: '关闭',
     core_retry: '重试',
     core_loading: '加载中…',
@@ -681,10 +716,14 @@ registerStrings({
     act_level_soon: '等级 {n} 即将开启',
     act_chat: '和 {name} 聊天',
     act_waiting: '等待 {name} 回应',
+    core_more_photo: '现在你可以再添加 1 张照片',
+    core_more_photos: '现在你可以再添加 {n} 张照片',
+    core_add_photo: '添加照片',
   },
   ko: {
     core_km: '{n}km',
     core_back: '뒤로',
+    core_my_profile: '내 프로필',
     core_close: '닫기',
     core_retry: '다시 시도',
     core_loading: '불러오는 중…',
@@ -699,10 +738,14 @@ registerStrings({
     act_level_soon: '레벨 {n} 곧 열림',
     act_chat: '{name}님과 채팅',
     act_waiting: '{name}님을 기다리는 중',
+    core_more_photo: '이제 사진을 1장 더 올릴 수 있어요',
+    core_more_photos: '이제 사진을 {n}장 더 올릴 수 있어요',
+    core_add_photo: '사진 추가',
   },
   ja: {
     core_km: '{n}km',
     core_back: '戻る',
+    core_my_profile: 'マイプロフィール',
     core_close: '閉じる',
     core_retry: 'もう一度',
     core_loading: '読み込み中…',
@@ -717,5 +760,8 @@ registerStrings({
     act_level_soon: 'まもなくレベル{n}',
     act_chat: '{name}さんとチャット',
     act_waiting: '{name}さんを待っています',
+    core_more_photo: '写真をあと1枚追加できるようになりました',
+    core_more_photos: '写真をあと{n}枚追加できるようになりました',
+    core_add_photo: '写真を追加',
   },
 });

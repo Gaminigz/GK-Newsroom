@@ -3,12 +3,26 @@
 import {
   screen, el, icon, t, go, api, toast, modal, state, setLang, setMe, registerStrings,
   resizeImage, updateLocation, roleLabel, LANGS, LANG_CODES, LANG_NATIVE, ROLES, findContactDetails, charCount,
+  PHOTO_SLOT_LEVELS,
 } from '../core.js';
 
 const COUNTRY_CODES = [
   '+855', '+66', '+84', '+856', '+95', '+60', '+65', '+63', '+62', '+86', '+852', '+886', '+82', '+81',
   '+91', '+61', '+64', '+1', '+44', '+33', '+49',
 ];
+
+// ---------------------------------------------------------------- photo slots
+
+/** Slots 2–4, still locked for a new profile: small circles with a lock and the level that opens them. */
+function lockedSlots() {
+  const later = PHOTO_SLOT_LEVELS.slice(1);
+  return el('div', { class: 'slot-minis-wrap' },
+    el('ul', { class: 'slot-minis' }, later.map((level, i) => el('li', { class: 'slot-mini' },
+      el('span', { class: 'slot-mini-dot', 'aria-hidden': 'true' }, icon('lock', 14)),
+      el('span', { class: 'label' }, t('cp_slot_level', { n: level })),
+      el('span', { class: 'visually-hidden' }, t('cp_slot_aria', { slot: i + 2, n: level }))))),
+    el('p', { class: 'help' }, t('cp_more_photos')));
+}
 
 // ---------------------------------------------------------------- phone verifier (also used on #/me)
 
@@ -415,7 +429,10 @@ screen('/create', ({ root }) => {
   root.append(
     el('div', { class: 'form' },
       field(t('cp_photo'), null, {},
-        el('div', { class: 'photo-row' }, pick, el('p', { class: 'photo-hint' }, t('cp_photo_hint'))),
+        el('div', { class: 'photo-row' }, pick,
+          el('div', { class: 'photo-side' },
+            el('p', { class: 'photo-hint' }, t('cp_photo_hint')),
+            lockedSlots())),
         photoErr, file),
       field(t('cp_app_name'), tag(t('cp_tag_shown'), 'eye', true), { forId: 'cp-name' }, nameInput, nameErr),
       field(t('cp_real_name'), tag(t('cp_tag_not_shown'), 'eye-off', false), { forId: 'cp-real' }, realInput),
@@ -442,6 +459,9 @@ registerStrings({
     cp_photo_add: 'Add a photo of your face',
     cp_photo_change: 'Change photo',
     cp_photo_error: 'This photo could not be used. Try another one.',
+    cp_slot_level: 'Level {n}',
+    cp_slot_aria: 'Photo {slot}: locked until Level {n}',
+    cp_more_photos: 'More photos unlock at Level 2 and Level 3.',
     cp_app_name: 'App name',
     cp_tag_shown: 'Shown',
     cp_app_name_ph: 'The name others see',
@@ -492,6 +512,9 @@ registerStrings({
     cp_photo_add: 'បន្ថែមរូបថតមុខរបស់អ្នក',
     cp_photo_change: 'ប្ដូររូបថត',
     cp_photo_error: 'មិនអាចប្រើរូបថតនេះបានទេ។ សូមសាកល្បងរូបផ្សេង។',
+    cp_slot_level: 'កម្រិត {n}',
+    cp_slot_aria: 'រូបថតទី {slot}៖ ចាក់សោរហូតដល់កម្រិត {n}',
+    cp_more_photos: 'រូបថតបន្ថែមនឹងបើកនៅកម្រិត 2 និងកម្រិត 3។',
     cp_app_name: 'ឈ្មោះក្នុងកម្មវិធី',
     cp_tag_shown: 'បង្ហាញ',
     cp_app_name_ph: 'ឈ្មោះដែលអ្នកដទៃឃើញ',
@@ -542,6 +565,9 @@ registerStrings({
     cp_photo_add: '添加正脸照片',
     cp_photo_change: '更换照片',
     cp_photo_error: '这张照片无法使用，请换一张。',
+    cp_slot_level: '等级 {n}',
+    cp_slot_aria: '第 {slot} 张照片：等级 {n} 解锁',
+    cp_more_photos: '更多照片在等级 2 和等级 3 解锁。',
     cp_app_name: '应用昵称',
     cp_tag_shown: '公开',
     cp_app_name_ph: '别人看到的名字',
@@ -592,6 +618,9 @@ registerStrings({
     cp_photo_add: '얼굴 사진 추가',
     cp_photo_change: '사진 바꾸기',
     cp_photo_error: '이 사진은 사용할 수 없어요. 다른 사진을 골라 주세요.',
+    cp_slot_level: '레벨 {n}',
+    cp_slot_aria: '사진 {slot}: 레벨 {n}에서 열려요',
+    cp_more_photos: '사진은 레벨 2와 레벨 3에서 더 올릴 수 있어요.',
     cp_app_name: '앱 이름',
     cp_tag_shown: '공개',
     cp_app_name_ph: '다른 사람에게 보이는 이름',
@@ -642,6 +671,9 @@ registerStrings({
     cp_photo_add: '顔写真を追加',
     cp_photo_change: '写真を変更',
     cp_photo_error: 'この写真は使えません。別の写真をお試しください。',
+    cp_slot_level: 'レベル{n}',
+    cp_slot_aria: '写真{slot}：レベル{n}で解除',
+    cp_more_photos: '写真はレベル2とレベル3でさらに追加できます。',
     cp_app_name: 'アプリ名',
     cp_tag_shown: '表示',
     cp_app_name_ph: '相手に表示される名前',

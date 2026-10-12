@@ -1,8 +1,10 @@
 // Screens 7 + 10 · Wait for Level 2 / Level 3 — navy top half with the three level steps and a live
 // countdown to the server's l2OpensAt / l3OpensAt; white bottom with the Level 1 recap (or what
 // changes at Level 3), the answers that came back, and "Remind me". At zero the level opens in place.
+// Each level also opens photo slots (Level 2: 1 more photo each, Level 3: 2 more); once it is open, a
+// prompt links to #/me while those slots are still empty.
 import {
-  screen, el, icon, t, go, api, toast, state, countdown, pairRoute, errorText, registerStrings,
+  screen, el, icon, t, go, api, toast, state, countdown, pairRoute, errorText, registerStrings, morePhotosPrompt, meButton,
 } from '../core.js';
 import { enc, personPath, levelParam, redirected, myLang } from './level-ask.js';
 
@@ -135,7 +137,7 @@ screen('/wait/:pairId/:level', async ({ params, root }) => {
         el('div', { class: 'row', style: { '--gap': '12px' } },
           el('button', { type: 'button', class: 'icon-btn', 'aria-label': t('core_close'), on: { click: () => go(personPath(pair)) } }, icon('close', 18)),
           el('span', { class: 'wordmark brand' }, '30+DA')),
-        el('span', { class: 'label ink' }, t('lw_done', { n: level - 1 }))),
+        el('div', { class: 'topbar-right' }, el('span', { class: 'label ink' }, t('lw_done', { n: level - 1 })), meButton())),
       steps(level, phase),
       el('div', { class: 'stack', style: { '--gap': '10px', alignItems: 'center', textAlign: 'center', marginTop: '30px' } },
         open
@@ -159,7 +161,8 @@ screen('/wait/:pairId/:level', async ({ params, root }) => {
         ? el('p', { class: 'lock-note' }, icon('lock', 14), el('span', {}, t('lw_phone_needed')),
           el('button', { type: 'button', class: 'link', on: { click: () => go('/me') } }, t('lw_verify')))
         : null;
-      action.replaceChildren(...[start, phoneNote].filter(Boolean));
+      // The level just opened: the photo slots it unlocked are mine to fill now.
+      action.replaceChildren(...[start, phoneNote, morePhotosPrompt(level)].filter(Boolean));
       return;
     }
     // The same button node is kept so keyboard focus survives the toggle.
@@ -257,12 +260,14 @@ screen('/wait/:pairId/:level', async ({ params, root }) => {
             el('span', { class: 'label' }, t('lw_recap_1')),
             el('strong', { style: { fontSize: '16px' } }, answered >= total ? t('lw_all_answered') : t('lw_some_answered', { a: answered, total }))),
           el('span', { class: 'pill pill-navy' }, icon('check', 14), `${answered}/${total}`)),
+        el('p', { class: 'unlock-line' }, icon('image', 16), el('span', {}, t('lw_unlock_photo_2'))),
         answersFold(recap, pair.role === 'a' ? t('lw_their_answers', { name }) : t('lw_your_answers', { name })));
     })()
     : el('section', { class: 'card' },
       el('span', { class: 'label' }, t('lw_changes')),
       el('ul', { class: 'check-list', style: { marginTop: '12px' } },
         el('li', { class: 'yes' }, icon('check', 18), el('span', {}, t('lw_change_chat', { name }))),
+        el('li', { class: 'yes' }, icon('check', 18), el('span', {}, t('lw_change_photos'))),
         el('li', { class: 'no' }, icon('close', 18), el('span', {}, t('lw_change_contact'))),
         el('li', { class: 'no' }, icon('close', 18), el('span', {}, t('lw_change_media')))));
 
@@ -303,8 +308,10 @@ registerStrings({
     lw_some_answered: '{a} of {total} questions answered',
     lw_changes: 'What changes at Level 3',
     lw_change_chat: 'Text chat with {name} opens',
+    lw_change_photos: 'You can each add 2 more photos to your profile',
+    lw_unlock_photo_2: 'Level 2 unlocks 1 more photo for each of you',
     lw_change_contact: 'Phone numbers and chat handles are still not allowed',
-    lw_change_media: 'No photos, voice or video. We strongly advise keeping it to text.',
+    lw_change_media: 'No photos, voice or video in chat. We strongly advise keeping it to text.',
     lw_level2_answers: 'Level 2 answers',
     lw_remind_hours: 'Remind me in {n} hours',
     lw_remind_hour: 'Remind me in 1 hour',
@@ -341,8 +348,10 @@ registerStrings({
     lw_some_answered: 'បានឆ្លើយ {a} ក្នុងចំណោម {total} សំណួរ',
     lw_changes: 'អ្វីដែលផ្លាស់ប្ដូរនៅកម្រិត 3',
     lw_change_chat: 'ការជជែកជាអក្សរជាមួយ {name} នឹងបើក',
+    lw_change_photos: 'អ្នកទាំងពីរអាចបន្ថែមរូបថត 2 សន្លឹកទៀតទៅប្រវត្តិរូប',
+    lw_unlock_photo_2: 'កម្រិត 2 បើកឲ្យអ្នកម្នាក់ៗបន្ថែមរូបថត 1 សន្លឹកទៀត',
     lw_change_contact: 'លេខទូរស័ព្ទ និងឈ្មោះគណនីជជែក នៅតែមិនត្រូវបានអនុញ្ញាត',
-    lw_change_media: 'គ្មានរូបថត សំឡេង ឬវីដេអូទេ។ យើងសូមណែនាំយ៉ាងមុតមាំឲ្យប្រើតែអក្សរប៉ុណ្ណោះ។',
+    lw_change_media: 'ក្នុងការជជែក គ្មានរូបថត សំឡេង ឬវីដេអូទេ។ យើងសូមណែនាំយ៉ាងមុតមាំឲ្យប្រើតែអក្សរប៉ុណ្ណោះ។',
     lw_level2_answers: 'ចម្លើយកម្រិត 2',
     lw_remind_hours: 'រំលឹកខ្ញុំក្នុងរយៈពេល {n} ម៉ោង',
     lw_remind_hour: 'រំលឹកខ្ញុំក្នុងរយៈពេល 1 ម៉ោង',
@@ -379,8 +388,10 @@ registerStrings({
     lw_some_answered: '已回答 {a}/{total} 个问题',
     lw_changes: '等级 3 有什么不同',
     lw_change_chat: '开启和 {name} 的文字聊天',
+    lw_change_photos: '你们各自可以在资料里再添加 2 张照片',
+    lw_unlock_photo_2: '等级 2 让你们各自多解锁 1 张照片',
     lw_change_contact: '仍然不能留电话号码或聊天账号',
-    lw_change_media: '不能发照片、语音或视频。我们强烈建议只用文字交流。',
+    lw_change_media: '聊天中不能发照片、语音或视频。我们强烈建议只用文字交流。',
     lw_level2_answers: '等级 2 的回答',
     lw_remind_hours: '{n} 小时后提醒我',
     lw_remind_hour: '1 小时后提醒我',
@@ -417,8 +428,10 @@ registerStrings({
     lw_some_answered: '질문 {total}개 중 {a}개에 답했어요',
     lw_changes: '레벨 3에서 달라지는 점',
     lw_change_chat: '{name}님과 텍스트 채팅이 열려요',
+    lw_change_photos: '각자 프로필에 사진을 2장 더 올릴 수 있어요',
+    lw_unlock_photo_2: '레벨 2에서는 각자 사진을 1장 더 올릴 수 있어요',
     lw_change_contact: '전화번호와 채팅 아이디는 여전히 안 돼요',
-    lw_change_media: '사진, 음성, 영상은 안 돼요. 텍스트로만 대화하기를 강력히 권해요.',
+    lw_change_media: '채팅에서는 사진, 음성, 영상을 보낼 수 없어요. 텍스트로만 대화하기를 강력히 권해요.',
     lw_level2_answers: '레벨 2 답변',
     lw_remind_hours: '{n}시간 후에 알려 주세요',
     lw_remind_hour: '1시간 후에 알려 주세요',
@@ -455,8 +468,10 @@ registerStrings({
     lw_some_answered: '{total}問中{a}問に回答済み',
     lw_changes: 'レベル3で変わること',
     lw_change_chat: '{name}さんとのテキストチャットが開きます',
+    lw_change_photos: 'それぞれプロフィールに写真をあと2枚追加できます',
+    lw_unlock_photo_2: 'レベル2で、それぞれ写真をあと1枚追加できます',
     lw_change_contact: '電話番号やチャットIDは引き続き禁止です',
-    lw_change_media: '写真・音声・ビデオは使えません。テキストだけでのやりとりを強くおすすめします。',
+    lw_change_media: 'チャットでは写真・音声・ビデオは使えません。テキストだけでのやりとりを強くおすすめします。',
     lw_level2_answers: 'レベル2の回答',
     lw_remind_hours: '{n}時間後に知らせる',
     lw_remind_hour: '1時間後に知らせる',

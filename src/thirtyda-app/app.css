@@ -218,7 +218,6 @@ a { color: inherit; }
 .topbar-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .topbar-h { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 16px; font-weight: 800; line-height: 1.25; }
 .topbar-right { margin-left: auto; flex: none; display: flex; align-items: center; gap: 8px; }
-.topbar-link { padding: 10px 2px; border: 0; background: none; font-size: 12px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .brandbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; margin-bottom: 8px; }
 .brandbar .brand { font-size: 22px; color: var(--navy); }
 .dark .brandbar .brand { color: #fff; }
@@ -404,6 +403,9 @@ a { color: inherit; }
 .check-list .icon { flex: none; margin-top: 1px; }
 .check-list .yes .icon { color: var(--green); }
 .check-list .no .icon { color: var(--red); }
+/* One line inside a card under a hairline, e.g. "Level 2 unlocks 1 more photo for each of you". */
+.unlock-line { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft); font-size: 13.5px; font-weight: 600; line-height: 1.4; }
+.unlock-line .icon { flex: none; color: var(--navy); }
 .banner { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: var(--radius); background: var(--field); font-size: 12.5px; font-weight: 600; }
 .banner .icon { flex: none; }
 
@@ -647,6 +649,15 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
   box-shadow: 0 0 0 3px #fff;
 }
 .photo-hint { font-size: 14px; line-height: 1.45; color: var(--muted); }
+/* Slots 2–4 shown locked under the hint: photos unlock by level (1 → 1, 2 → 2, 3 → 4). */
+.photo-side { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.slot-minis-wrap { display: flex; flex-direction: column; gap: 6px; }
+.slot-minis { display: flex; gap: 12px; }
+.slot-mini { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.slot-mini-dot { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; border: 1.5px dashed var(--line); background: #f7f9fc; color: var(--muted-2); }
+.slot-mini .label { font-size: 9px; white-space: nowrap; }
+:lang(km) .slot-mini .label { font-size: 10px; }
+.slot-minis-wrap .help { font-size: 12px; line-height: 1.4; }
 .phone-row { display: grid; grid-template-columns: 94px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
 .phone-row .select { padding: 0 26px 0 10px; background-position: right 6px center; font-family: var(--mono); font-size: 14px; }
 .phone-row .send-code { min-height: 46px; white-space: nowrap; }
@@ -671,7 +682,8 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 }
 
 /* ---------- 3 · Nearby ---------- */
-.me-btn { border-radius: 50%; box-shadow: 0 0 0 1.5px var(--navy); }
+.me-btn { flex: none; padding: 0; border: 0; background: none; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--navy); cursor: pointer; }
+.dark .me-btn { box-shadow: 0 0 0 1.5px #fff; }
 .gps-card { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: var(--radius-lg); background: var(--navy); color: #fff; }
 .gps-pin { flex: none; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: rgb(255 255 255 / 0.12); }
 .gps-card.off .gps-pin { color: var(--on-dark-muted); }
@@ -722,6 +734,7 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .face .hearts { position: absolute; left: 50%; bottom: -10px; transform: translateX(-50%); }
 .person:active .face .avatar { transform: scale(0.97); }
 .person-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 800; }
+.person-role { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; color: var(--ink); }
 .person-km { font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em; color: var(--muted); }
 .person.skeleton .avatar { animation: shimmer 1.4s ease-in-out infinite; }
 .person.skeleton .bar { display: block; width: 60%; height: 10px; margin-top: 4px; border-radius: 4px; background: var(--field); }
@@ -736,10 +749,22 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .profile-photo { display: flex; justify-content: center; margin-top: 22px; }
 .profile-photo > button { border-radius: 50%; }
 .profile-name { margin-top: 14px; text-align: center; font-size: 30px; overflow-wrap: anywhere; }
+.profile-role { margin-top: 4px; text-align: center; font-size: 16px; font-weight: 600; color: var(--ink); }
 .profile-km { margin-top: 4px; text-align: center; font-size: 14px; color: var(--muted); }
 .thumbs { display: flex; justify-content: center; gap: 8px; margin-top: 14px; }
 .thumb { width: 64px; height: 64px; border-radius: 12px; overflow: hidden; background: var(--field); }
 .thumb img { width: 100%; height: 100%; object-fit: cover; }
+/* The photos this viewer may see, then the locked slots ("Level 2" / "Level 3") — counts only, no image. */
+.photo-strip { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.photo-strip .thumbs { justify-content: flex-start; margin-top: 0; }
+.photo-strip .thumb { display: block; }
+.thumb.locked { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 1.5px dashed var(--line); background: #f7f9fc; color: var(--muted-2); }
+.thumb.locked .label { font-size: 9px; white-space: nowrap; }
+/* "You can now add 1 more photo" → #/me, after a level opened (person screen, wait screen). */
+.photo-prompt { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: var(--radius); background: var(--field); color: var(--ink); font-size: 13px; font-weight: 600; line-height: 1.35; text-align: left; }
+.photo-prompt-icon { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--navy); color: #fff; }
+.photo-prompt-go { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 800; color: var(--navy); white-space: nowrap; }
+.profile .photo-prompt { margin-top: 14px; }
 .heart-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 22px; }
 .heart-card { display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: var(--radius-lg); border: 1px solid var(--line); }
 .heart-card .big { font-family: var(--display); font-weight: 900; font-stretch: 112%; font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; }
@@ -750,13 +775,32 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 
 /* ---------- me · My profile ---------- */
 .me-stack { display: flex; flex-direction: column; gap: 26px; }
-.photo-slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+/* Four photo slots: filled · open (+ Add photo) · locked until Level 2 / Level 3. */
+.photo-slots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .photo-slot { position: relative; aspect-ratio: 1 / 1; border-radius: 14px; overflow: hidden; background: var(--field); }
 .photo-slot > img { width: 100%; height: 100%; object-fit: cover; }
-.photo-slot.empty { display: grid; place-items: center; border: 1.5px dashed #9aa5b8; background: #f7f9fc; color: var(--muted); }
+.photo-slot-cell { display: flex; }
+.photo-slot-cell > .photo-slot { flex: 1; min-width: 0; }
+.photo-slot.add, .photo-slot.locked { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 6px; text-align: center; }
+.photo-slot.add { border: 1.5px dashed var(--navy); background: #fff; color: var(--navy); }
+.photo-slot.add:active:not(:disabled) { background: #f4f6fa; }
+.photo-slot.locked { border: 1.5px dashed var(--line); background: #f7f9fc; color: var(--muted-2); }
+.slot-text { font-size: 11px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.photo-slot.locked .slot-text { font-weight: 600; color: var(--muted); }
 .photo-slot.busy { opacity: 0.55; }
-.slot-remove { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: rgb(11 28 63 / 0.78); color: #fff; }
-.slot-tag { position: absolute; left: 6px; bottom: 6px; padding: 2px 6px; border-radius: 4px; background: rgb(255 255 255 / 0.92); color: var(--navy); font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.slot-remove { position: absolute; top: 5px; right: 5px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: rgb(11 28 63 / 0.78); color: #fff; }
+.slot-tag { position: absolute; left: 5px; bottom: 5px; max-width: calc(100% - 10px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 5px; border-radius: 4px; background: rgb(255 255 255 / 0.92); color: var(--navy); font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+:lang(km) .slot-tag { letter-spacing: 0.02em; }
+.slot-tag .icon { display: inline-block; margin-right: 3px; vertical-align: -1px; }
+.slot-sub { font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+:lang(km) .slot-sub { letter-spacing: 0.02em; }
+/* Kept: a photo from before the level rule, in a slot this level has not unlocked (lock in the tag). */
+.photo-slot.kept .slot-tag { background: var(--navy); color: #fff; }
+.kept-note { display: flex; align-items: flex-start; gap: 6px; margin-top: -2px; }
+.kept-note .icon { flex: none; margin-top: 2px; }
+/* Japanese: wrap only at the marked point (レベル2で / 解除), never inside a word. */
+:lang(ja) .photo-slot .slot-text { word-break: keep-all; }
 .inline-row { display: flex; gap: 8px; }
 .inline-row .input { flex: 1; min-width: 0; }
 .inline-row .btn { width: auto; flex: none; }

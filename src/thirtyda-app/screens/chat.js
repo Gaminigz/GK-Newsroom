@@ -4,7 +4,7 @@
 // the server, which also keeps every stopped attempt for the admin.
 import {
   screen, el, icon, t, go, api, toast, modal, state, topBar, avatar, langPair, pairRoute, errorText,
-  registerStrings, checkChatMessage, CHAT_MIN, CHAT_MAX, SPEECH_LOCALE,
+  registerStrings, checkChatMessage, CHAT_MIN, CHAT_MAX, SPEECH_LOCALE, PHOTO_MAX,
 } from '../core.js';
 
 const POLL_MS = 3000;
@@ -29,9 +29,14 @@ const SpeechRec = typeof window === 'undefined'
 const RULES = [
   '.screen.chat { height: 100dvh; min-height: 0; padding-bottom: 0; overflow: hidden; }',
   '.chat > .topbar { flex: none; gap: 10px; margin-bottom: 10px; }',
-  '.chat-photos { display: flex; gap: 4px; flex: none; }',
+  '.chat-photos { display: flex; flex: none; }',
   '.chat-photo { display: block; flex: none; width: 34px; height: 34px; border-radius: 10px; overflow: hidden; }',
   '.chat-photo > .avatar { width: 100%; }',
+  // Two or more photos: one overlapping stack (photo 1 in front), one tap opens them all, so the name
+  // keeps its room (4 photos take 76px, not 129px).
+  '.chat-stack { position: relative; display: flex; flex: none; padding: 0; border-radius: 10px; }',
+  '.chat-stack > .chat-photo { position: relative; box-shadow: 0 0 0 2px #fff; }',
+  '.chat-stack > .chat-photo + .chat-photo { margin-left: -20px; }',
   '.chat-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
   '.chat-lang { gap: 5px; padding: 0 10px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em; white-space: nowrap; }',
   '.chat > .banner { flex: none; }',
@@ -239,7 +244,8 @@ function mountChat(root, { pair, data, gate }) {
   const name = other.name || '';
   const myLang = state.me?.lang || state.lang;
   const theirLang = other.lang || 'en';
-  const photos = (data?.other?.photos?.length ? data.other.photos : [pair.other?.photo]).filter(Boolean).slice(0, 3);
+  // The server sends only the photos I may see (all of them at Level 3): up to 4.
+  const photos = (data?.other?.photos?.length ? data.other.photos : [pair.other?.photo]).filter(Boolean).slice(0, PHOTO_MAX);
 
   const msgs = []; // sorted by `at`
   const byId = new Map();
@@ -261,12 +267,20 @@ function mountChat(root, { pair, data, gate }) {
 
   // --- header: back, the partner's photos, name + LEVEL 3, translation chip
   function header() {
-    const photoBtns = photos.length
-      ? photos.map((url, i) => el('button', {
-        type: 'button', class: 'chat-photo', 'aria-label': t('chat_photo_n', { name, n: i + 1 }),
-        on: { click: () => viewPhotos(photos, i, name) },
-      }, square(url)))
-      : [el('span', { class: 'chat-photo' }, square(null))];
+    let photoBtns;
+    if (photos.length > 1) {
+      photoBtns = [el('button', {
+        type: 'button', class: 'chat-stack', 'aria-label': t('chat_photos_of', { name, n: photos.length }),
+        on: { click: () => viewPhotos(photos, 0, name) },
+      }, photos.map((url, i) => el('span', { class: 'chat-photo', style: { zIndex: String(photos.length - i) } }, square(url))))];
+    } else {
+      photoBtns = photos.length
+        ? [el('button', {
+          type: 'button', class: 'chat-photo', 'aria-label': t('chat_photo_n', { name, n: 1 }),
+          on: { click: () => viewPhotos(photos, 0, name) },
+        }, square(photos[0]))]
+        : [el('span', { class: 'chat-photo' }, square(null))];
+    }
     const pairCode = langPair(myLang, theirLang);
     const chip = el('button', {
       type: 'button', class: 'chip chip-sm chip-outline chat-lang', 'aria-label': t('chat_lang_aria', { pair: pairCode }),
@@ -816,6 +830,7 @@ registerStrings({
     chat_reported_tag: 'Reported',
     chat_cancel: 'Cancel',
     chat_photo_n: 'Photo {n} of {name}',
+    chat_photos_of: '{name}’s photos ({n})',
     chat_lang_aria: 'Translation {pair}',
     chat_lang_note: 'You write in {mine}, {name} in {theirs}. We translate for you.',
     chat_lang_same: 'You and {name} both write in {mine}.',
@@ -869,6 +884,7 @@ registerStrings({
     chat_reported_tag: 'បានរាយការណ៍',
     chat_cancel: 'បោះបង់',
     chat_photo_n: 'រូបថតទី {n} របស់ {name}',
+    chat_photos_of: 'រូបថតរបស់ {name} ({n})',
     chat_lang_aria: 'ការបកប្រែ {pair}',
     chat_lang_note: 'អ្នកសរសេរជាភាសា{mine} ហើយ {name} សរសេរជាភាសា{theirs}។ យើងនឹងបកប្រែជូនអ្នក។',
     chat_lang_same: 'អ្នក និង {name} សរសេរជាភាសា{mine} ដូចគ្នា។',
@@ -922,6 +938,7 @@ registerStrings({
     chat_reported_tag: '已举报',
     chat_cancel: '取消',
     chat_photo_n: '{name} 的第 {n} 张照片',
+    chat_photos_of: '{name} 的照片（{n} 张）',
     chat_lang_aria: '翻译 {pair}',
     chat_lang_note: '你用{mine}，{name} 用{theirs}。我们会为你翻译。',
     chat_lang_same: '你和 {name} 都用{mine}。',
@@ -975,6 +992,7 @@ registerStrings({
     chat_reported_tag: '신고됨',
     chat_cancel: '취소',
     chat_photo_n: '{name}님의 사진 {n}',
+    chat_photos_of: '{name}님의 사진 ({n}장)',
     chat_lang_aria: '번역 {pair}',
     chat_lang_note: '나는 {mine}, {name}님은 {theirs}로 써요. 번역은 저희가 해 드려요.',
     chat_lang_same: '나와 {name}님 모두 {mine}로 써요.',
@@ -1028,6 +1046,7 @@ registerStrings({
     chat_reported_tag: '報告済み',
     chat_cancel: 'キャンセル',
     chat_photo_n: '{name}さんの写真 {n}',
+    chat_photos_of: '{name}さんの写真（{n}枚）',
     chat_lang_aria: '翻訳 {pair}',
     chat_lang_note: 'あなたは{mine}、{name}さんは{theirs}で書きます。翻訳はおまかせください。',
     chat_lang_same: 'あなたと{name}さんはどちらも{mine}です。',

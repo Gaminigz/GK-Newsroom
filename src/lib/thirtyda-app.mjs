@@ -26,7 +26,7 @@ import { areaFor, haversineKm } from "./thirtyda-geo.mjs";
 import { clientIp } from "./thirtyda-net.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
-  checkWrittenAnswer,
+  checkWrittenAnswer, PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
 } from "../thirtyda-app/shared/rules.js";
 import {
   SYSTEM_QUESTIONS, LEVEL_RULES, L1_ANSWERS, ROLES, questionText, answerText,
@@ -41,8 +41,7 @@ const DEV_AUTH = process.env.THIRTYDA_DEV_AUTH === "1";
 const WAIT_MINUTES = Number.parseFloat(process.env.THIRTYDA_WAIT_MINUTES ?? "");
 const WAIT_MS = (Number.isFinite(WAIT_MINUTES) && WAIT_MINUTES >= 0 ? WAIT_MINUTES : 1440) * 60e3;
 const BODY_MAX = 1024 * 1024;
-const PHOTO_MAX = 600 * 1024;
-const MAX_PHOTOS = 3;
+const PHOTO_BYTES_MAX = 600 * 1024;
 const OTP_WINDOW_MS = 15 * 60e3; // code lifetime and send-rate window
 const OTP_RESEND_S = 30;
 const OTP_SENDS = 3;
@@ -84,6 +83,12 @@ const MIME = {
   webmanifest: "application/manifest+json",
 };
 const STATIC_RE = /^\/30da\/((?:screens\/|shared\/)?[A-Za-z0-9][\w.-]*\.(js|css|svg|png|ico|webmanifest))$/;
+// /30da/board — every screen of the app on one page (src/thirtyda-app/board/).
+const BOARD_RE = /^\/30da\/board\/([A-Za-z0-9][\w.-]*\.(html|js|css|png))$/;
+// The board page holds same-origin frames of the app (board/frame.html), and only that demo frame
+// may be framed — by this origin. Every other page keeps frame-ancestors 'none' + DENY.
+const CSP_BOARD = CSP.replace("frame-ancestors 'none'", "frame-src 'self'; frame-ancestors 'none'");
+const CSP_FRAME = CSP.replace("frame-ancestors 'none'", "frame-ancestors 'self'");
 
 // ---------------------------------------------------------------- db
 
@@ -223,7 +228,13 @@ async function serveStatic(req, res, rel) {
   const ext = rel.split(".").pop();
   const etag = `"${crypto.createHash("sha1").update(buf).digest("base64url")}"`;
   const headers = { ...BASE_HEADERS, "Content-Type": MIME[ext], "Cache-Control": "no-cache", ETag: etag };
-  if (ext === "html") Object.assign(headers, { "Content-Security-Policy": CSP, "X-Frame-Options": "DENY" });
+  if (ext === "html") {
+    const demoFrame = rel === "board/frame.html";
+    Object.assign(headers, {
+      "Content-Security-Policy": demoFrame ? CSP_FRAME : rel === "board/index.html" ? CSP_BOARD : CSP,
+      "X-Frame-Options": demoFrame ? "SAMEORIGIN" : "DENY",
+    });
+  }
   if (req.headers["if-none-match"] === etag) {
     res.writeHead(304, headers).end();
     return;
@@ -273,6 +284,25 @@ async function startSession(ctx, fields) {
 
 // ---------------------------------------------------------------- views
 
+/**
+ * A person's photo slots as stored: `photos[i]` is the photo in slot i+1, or null for an empty slot.
+ * Slots never move: removing a photo leaves its slot empty, so every photo keeps the level its owner
+ * put it at (slot 1 = main face photo for everyone, slot 2 = Level 2, slots 3–4 = Level 3).
+ */
+const slotsOf = (u) => (Array.isArray(u?.photos) ? u.photos.slice(0, PHOTO_MAX) : []);
+const filledCount = (u) => slotsOf(u).filter(Boolean).length;
+/** The lowest empty slot index below `limit`, or -1. */
+function emptySlot(photos, limit) {
+  for (let i = 0; i < Math.min(limit, PHOTO_MAX); i++) if (!photos[i]) return i;
+  return -1;
+}
+/** Slot-aligned photo urls ([url|null]), without trailing empty slots. */
+function slotUrls(u) {
+  const urls = slotsOf(u).map((id) => photoUrl(id ?? null));
+  while (urls.length && !urls.at(-1)) urls.pop();
+  return urls;
+}
+
 function meView(u) {
   return {
     id: u._id,
@@ -283,13 +313,33 @@ function meView(u) {
     lang: u.lang ?? "en",
     phone: u.phone ?? null,
     verified: { phone: Boolean(u.verified?.phone), gmail: Boolean(u.verified?.gmail), facebook: Boolean(u.verified?.facebook) },
-    photos: (u.photos || []).map(photoUrl),
+    // Slot-aligned: photos[i] is slot i+1's url, or null for an empty slot (trailing empty slots left out).
+    photos: slotUrls(u),
+    // Slots unlock by level (1 → 1, 2 → 2, 3 → 4). Photos kept from before the rule stay even past `allowed`.
+    photoSlots: { max: PHOTO_MAX, allowed: photoSlotsFor(u.level ?? 1), levels: [...PHOTO_SLOT_LEVELS], filled: filledCount(u) },
     area: u.area ?? "",
     city: u.city ?? "",
     hearts: heartsOf(u),
     level: u.level ?? 1,
     blocked: Boolean(u.blocked),
   };
+}
+
+/**
+ * The owner's photos one viewer may see (slot order, empty slots skipped), and the ones still locked
+ * for them (slot + level only — never an id or url). Visibility is bound to the slot, never to a
+ * position in a list. A blocked owner shows nothing to anyone else.
+ */
+function photosFor(owner, { isOwner = false, openLevel = 1 } = {}) {
+  const photos = [];
+  const lockedPhotos = [];
+  if (!isOwner && owner?.blocked) return { photos, lockedPhotos };
+  slotsOf(owner).forEach((id, i) => {
+    if (!id) return;
+    if (isOwner || photoVisible(i, openLevel)) photos.push(photoUrl(id));
+    else lockedPhotos.push({ slot: i + 1, level: photoSlotLevel(i) });
+  });
+  return { photos, lockedPhotos };
 }
 
 const unseenNotices = (u) => (u.notices || []).filter((n) => !n.seenAt);
@@ -344,7 +394,7 @@ function pairView(pair, me, other, sets) {
     level: pair.level ?? level,
     role,
     other: other
-      ? { id: other._id, name: other.name, gender: other.gender ?? null, lang: other.lang ?? "en", photo: photoUrl(other.photos?.[0]) }
+      ? { id: other._id, name: other.name, gender: other.gender ?? null, lang: other.lang ?? "en", photo: other.blocked ? null : photoUrl(other.photos?.[0]) }
       : { id: otherId, name: "", gender: null, lang: "en", photo: null },
     l2OpensAt: pair.l2OpensAt ?? null,
     l3OpensAt: pair.l3OpensAt ?? null,
@@ -381,6 +431,32 @@ async function settle(d, pair) {
     d.collection(C.chats).updateOne({ _id: pair._id }, { $max: { level: to.level } }),
   ]);
   return settle(d, moved);
+}
+
+/**
+ * users.level = the highest level `me` has OPENED with anyone (l2_open / l3_wait → 2, l3_open → 3,
+ * else 1). Pairs whose timer has run out are settled first, so a level that just opened counts at
+ * once. The stored field (the admin's column) is corrected when it disagrees. Returns `me`.
+ */
+async function syncLevel(d, me) {
+  const pairs = d.collection(C.pairs);
+  const due = await pairs.find({ members: me._id, stage: { $in: ["l2_wait", "l3_wait"] } }).toArray();
+  await Promise.all(due.map((p) => settle(d, p)));
+  const open = await pairs
+    .find({ members: me._id, stage: { $in: ["l2_open", "l3_wait", "l3_open"] } }, { projection: { stage: 1 } })
+    .toArray();
+  const level = open.reduce((m, p) => Math.max(m, stageOpenLevel(p.stage)), 1);
+  if (me.level !== level) {
+    await d.collection(C.users).updateOne({ _id: me._id }, { $set: { level } });
+    me.level = level;
+  }
+  return me;
+}
+
+/** The level two people have opened together, for photos (1 without a pair). Settles the pair first. */
+async function openLevelBetween(d, viewerId, ownerId) {
+  const pair = await d.collection(C.pairs).findOne({ members: { $all: [viewerId, ownerId] } });
+  return pair ? stageOpenLevel((await settle(d, pair)).stage) : 1;
 }
 
 const SET_SUMMARY = { pairId: 1, level: 1, from: 1, to: 1, completedAt: 1, "answers.n": 1 };
@@ -574,7 +650,7 @@ function decodePhoto(dataUrl) {
   if (!m) throw invalid("Add a photo (JPEG, PNG or WebP).", { field: "photo" });
   const buf = Buffer.from(m[2], "base64");
   if (!buf.length) throw invalid("Add a photo.", { field: "photo" });
-  if (buf.length > PHOTO_MAX) throw fail(413, "photo_too_large", "That photo is too big. Try a smaller one.", { field: "photo" });
+  if (buf.length > PHOTO_BYTES_MAX) throw fail(413, "photo_too_large", "That photo is too big. Try a smaller one.", { field: "photo" });
   return buf;
 }
 
@@ -793,7 +869,10 @@ async function getMe(ctx) {
       session: { phone: session.phone ?? null, phoneVerified: Boolean(session.phoneVerified), verified: session.verified ?? { gmail: false, facebook: false } },
     };
   }
-  await d.collection(C.users).updateOne({ _id: me._id }, { $set: { lastSeenAt: new Date() } });
+  await Promise.all([
+    d.collection(C.users).updateOne({ _id: me._id }, { $set: { lastSeenAt: new Date() } }),
+    syncLevel(d, me),
+  ]);
   return { user: meView(me), notices: unseenNotices(me) };
 }
 
@@ -808,30 +887,127 @@ async function patchMe(ctx) {
   return { user: meView({ ...me, ...set }) };
 }
 
+/**
+ * Why a photo cannot go in slot `index` (default: the lowest empty slot): all 4 slots used (409), or
+ * that slot is still locked for this person's level (403).
+ */
+function photoRefusal(u, index = emptySlot(slotsOf(u), PHOTO_MAX)) {
+  if (index < 0) return fail(409, "too_many_photos", `You can have ${PHOTO_MAX} photos.`, { max: PHOTO_MAX });
+  const needLevel = photoSlotLevel(index);
+  return fail(403, "photo_locked", `Photo ${index + 1} unlocks at Level ${needLevel}.`, {
+    needLevel, slot: index + 1, allowed: photoSlotsFor(u?.level ?? 1),
+  });
+}
+
+/**
+ * Matches while slot `i` is empty. (`{"photos.1": null}` alone misses a slot past the end of the
+ * array, so an explicit null and a missing element are both checked.)
+ */
+const emptySlotFilter = (i) => ({ $or: [{ [`photos.${i}`]: { $type: "null" } }, { [`photos.${i}`]: { $exists: false } }] });
+
+/** Older profiles may lack the array; slot updates by index need one. */
+async function ensurePhotoArray(users, me) {
+  if (Array.isArray(me.photos)) return;
+  await users.updateOne({ _id: me._id, photos: { $not: { $type: "array" } } }, { $set: { photos: [] } });
+  me.photos = [];
+}
+
+/** Drop empty slots at the end of the list (one atomic update; a slot filled meanwhile stays). */
+function trimPhotoSlots(users, id) {
+  return users.updateOne({ _id: id, photos: { $type: "array" } }, [{
+    $set: {
+      photos: {
+        $reduce: {
+          input: { $reverseArray: "$photos" },
+          initialValue: [],
+          in: { $cond: [{ $and: [{ $eq: [{ $size: "$$value" }, 0] }, { $eq: ["$$this", null] }] }, [], { $concatArrays: [["$$this"], "$$value"] }] },
+        },
+      },
+    },
+  }]);
+}
+
+/**
+ * POST /me/photos — into the lowest empty slot this person's level has unlocked. Each slot is claimed
+ * with one conditional update (it must still be empty), so parallel uploads never pass the limit.
+ */
 async function addPhoto(ctx) {
-  const { d, body, me } = ctx;
-  if ((me.photos || []).length >= MAX_PHOTOS) throw fail(409, "too_many_photos", "You can have 3 photos.");
+  const { d, body } = ctx;
+  const users = d.collection(C.users);
+  let me = await syncLevel(d, ctx.me);
+  await ensurePhotoArray(users, me);
+  const allowed = photoSlotsFor(me.level);
+  let slot = emptySlot(slotsOf(me), allowed);
+  if (slot < 0) throw photoRefusal(me);
   const photoId = await storePhoto(body.photo);
-  const r = await d.collection(C.users).updateOne(
-    { _id: me._id, [`photos.${MAX_PHOTOS - 1}`]: { $exists: false } }, { $push: { photos: photoId } },
+  for (let tries = 0; tries < PHOTO_MAX && slot >= 0; tries++) {
+    const r = await users.updateOne(
+      { _id: me._id, photos: { $type: "array" }, ...emptySlotFilter(slot) }, { $set: { [`photos.${slot}`]: photoId } },
+    );
+    if (r.modifiedCount) return { user: meView(await users.findOne({ _id: me._id })) };
+    me = { ...me, ...(await users.findOne({ _id: me._id }, { projection: { photos: 1 } })) };
+    slot = emptySlot(slotsOf(me), allowed);
+  }
+  await deletePhoto(photoId);
+  throw photoRefusal(me);
+}
+
+/**
+ * PUT /me/photos/:index — put a photo in that slot: fills an empty slot or replaces the photo in it
+ * (the way to change the main photo, which cannot be removed). The slot must be unlocked for this
+ * person's level; slot 1 is always theirs. Photos never change slots, so neither do their viewers.
+ */
+async function putPhoto(ctx) {
+  const { d, body, params } = ctx;
+  const users = d.collection(C.users);
+  const me = await syncLevel(d, ctx.me);
+  await ensurePhotoArray(users, me);
+  const index = Number(params[0]);
+  if (index >= photoSlotsFor(me.level)) throw photoRefusal(me, index);
+  const photos = slotsOf(me);
+  if (index > 0 && !photos[0]) throw fail(409, "main_first", "Add your main photo first.");
+  const old = photos[index] ?? null;
+  const photoId = await storePhoto(body.photo);
+  const r = await users.updateOne(
+    { _id: me._id, photos: { $type: "array" }, ...(old ? { [`photos.${index}`]: old } : emptySlotFilter(index)) },
+    { $set: { [`photos.${index}`]: photoId } },
   );
   if (!r.modifiedCount) {
     await deletePhoto(photoId);
-    throw fail(409, "too_many_photos", "You can have 3 photos.");
+    throw fail(409, "photo_changed", "Your photos changed. Try again.");
   }
-  return { user: meView(await d.collection(C.users).findOne({ _id: me._id })) };
+  if (old) await deletePhoto(old);
+  return { user: meView(await users.findOne({ _id: me._id })) };
 }
 
+/**
+ * DELETE /me/photos/:index — empties that slot; the other photos stay where they are (a Level 3 photo
+ * never slides into the Level 2 slot). The main photo (slot 1) can be replaced, not removed.
+ */
 async function removePhoto(ctx) {
   const { d, me, params } = ctx;
-  const photos = me.photos || [];
+  const users = d.collection(C.users);
   const index = Number(params[0]);
-  if (index >= photos.length) throw fail(404, "not_found", "No such photo.");
-  if (photos.length <= 1) throw fail(409, "last_photo", "Keep at least one photo of your face.");
+  const photos = slotsOf(me);
   const id = photos[index];
-  await d.collection(C.users).updateOne({ _id: me._id }, { $pull: { photos: id } });
+  if (!id) throw fail(404, "not_found", "No such photo.");
+  if (index === 0) {
+    throw filledCount(me) > 1
+      ? fail(409, "main_photo", "Your main photo can be replaced, not removed.")
+      : fail(409, "last_photo", "Keep at least one photo of your face.");
+  }
+  // Only while that exact photo is in that slot and a main photo remains.
+  const r = await users.updateOne(
+    { _id: me._id, [`photos.${index}`]: id, "photos.0": { $type: "string" } }, { $set: { [`photos.${index}`]: null } },
+  );
+  if (!r.modifiedCount) {
+    const now = await users.findOne({ _id: me._id }, { projection: { photos: 1 } });
+    if (slotsOf(now)[index] !== id) throw fail(404, "not_found", "No such photo.");
+    throw fail(409, "last_photo", "Keep at least one photo of your face.");
+  }
+  await trimPhotoSlots(users, me._id);
   await deletePhoto(id);
-  return { user: meView(await d.collection(C.users).findOne({ _id: me._id })) };
+  return { user: meView(await users.findOne({ _id: me._id })) };
 }
 
 /** A random direction and 300–500 m, made once per person: [km east, km north]. */
@@ -895,6 +1071,7 @@ async function heartbeat(ctx) {
   await d.collection(C.users).updateOne({ _id: me._id }, { $set: { lastSeenAt: new Date() } });
   const pairs = await d.collection(C.pairs).find({ members: me._id }).sort({ updatedAt: -1 }).limit(100).toArray();
   const views = await viewsFor(d, me, pairs.filter((p) => !hiddenFrom(p, me)));
+  await syncLevel(d, me); // keeps users.level (the admin's column, the photo slots) on the pairs
   const actions = views.filter((v) =>
     ["ask", "answer", "ask_answer"].includes(v.next) || (v.next === "chat" && v.lastFrom === "them"));
   return { actions, notices: unseenNotices(me) };
@@ -912,14 +1089,14 @@ async function getPhoto(ctx) {
   const { d, me, params, res } = ctx;
   const id = params[0];
   if (!isPhotoId(id)) throw fail(404, "not_found", "No such photo.");
-  const owner = await d.collection(C.users).findOne({ photos: id }, { projection: { photos: 1 } });
-  if (!owner) throw fail(404, "not_found", "No such photo.");
-  let allowed = owner._id === me._id || owner.photos[0] === id;
-  if (!allowed) {
-    // Extra photos are for Level 3 only.
-    const pair = await d.collection(C.pairs).findOne({ members: { $all: [me._id, owner._id] } });
-    allowed = Boolean(pair) && (await settle(d, pair)).stage === "l3_open";
-  }
+  const owner = await d.collection(C.users).findOne({ photos: id }, { projection: { photos: 1, blocked: 1 } });
+  // A blocked person has vanished: their photos go with them (as GET /people and Nearby already do).
+  if (!owner || (owner.blocked && owner._id !== me._id)) throw fail(404, "not_found", "No such photo.");
+  // Per person, bound to the slot: the owner sees all; anyone sees slot 1; slot 2 needs Level 2
+  // opened together, slots 3–4 Level 3. Slots never move, so a photo keeps its level.
+  const index = slotsOf(owner).indexOf(id);
+  let allowed = owner._id === me._id || photoVisible(index, 1);
+  if (!allowed) allowed = photoVisible(index, await openLevelBetween(d, me._id, owner._id));
   const buf = allowed ? await readPhoto(id) : null;
   if (!buf) throw fail(404, "not_found", "No such photo.");
   res.writeHead(200, {
@@ -951,12 +1128,13 @@ async function nearby(ctx) {
       },
     },
     { $limit: 300 },
-    { $project: { name: 1, gender: 1, hearts: 1, dist: 1, photo: { $arrayElemAt: ["$photos", 0] } } },
+    { $project: { name: 1, gender: 1, role: 1, hearts: 1, dist: 1, photo: { $arrayElemAt: ["$photos", 0] } } },
   ]).toArray();
   const people = rows.map((u) => ({
     id: u._id,
     name: u.name,
     gender: u.gender ?? null,
+    role: u.role ?? null,
     km: Math.max(0.1, round1(u.dist / 1000)),
     hearts: heartsOf(u),
     photo: photoUrl(u.photo),
@@ -979,19 +1157,22 @@ async function person(ctx) {
   if (pair && hiddenFrom(pair, me)) pair = null;
   const view = pair && u._id !== me._id ? await viewOf(d, me, pair) : null;
   const photo = photoUrl(u.photos?.[0]);
-  const all = view?.stage === "l3_open" || u._id === me._id;
+  // What this viewer may see of u's photos (viewOf settled the pair), plus how many are still locked.
+  const { photos, lockedPhotos } = photosFor(u, { isOwner: u._id === me._id, openLevel: stageOpenLevel(view?.stage) });
   return {
     person: {
       id: u._id,
       name: u.name,
       gender: u.gender ?? null,
+      role: u.role ?? null,
       lang: u.lang ?? "en",
       km: kmBetween(me, u, Boolean(view)),
       area: u.area ?? "",
       hearts: heartsOf(u),
       verified: { phone: Boolean(u.verified?.phone), gmail: Boolean(u.verified?.gmail), facebook: Boolean(u.verified?.facebook) },
       photo,
-      photos: all ? (u.photos || []).map(photoUrl) : photo ? [photo] : [],
+      photos,
+      lockedPhotos,
     },
     pair: view,
   };
@@ -1283,7 +1464,8 @@ async function listMessages(ctx) {
   await backfillMessages(d, pair._id, msgs, lang);
   return {
     other: other
-      ? { id: other._id, name: other.name, lang: other.lang ?? "en", photos: (other.photos || []).map(photoUrl) }
+      // A blocked partner's photos are gone (the pair is frozen; GET /people says 404).
+      ? { id: other._id, name: other.name, lang: other.lang ?? "en", photos: photosFor(other, { openLevel: stageOpenLevel(pair.stage) }).photos }
       : null,
     messages: msgs.map((m) => ({
       id: m.id,
@@ -1381,7 +1563,8 @@ const ROUTES = [
   ["GET", /^\/me$/, getMe, { auth: "none", blockedOk: true }],
   ["PATCH", /^\/me$/, patchMe],
   ["POST", /^\/me\/photos$/, addPhoto],
-  ["DELETE", /^\/me\/photos\/([0-2])$/, removePhoto],
+  ["PUT", /^\/me\/photos\/([0-3])$/, putPhoto],
+  ["DELETE", /^\/me\/photos\/([0-3])$/, removePhoto],
   ["POST", /^\/me\/location$/, setLocation],
   ["POST", /^\/me\/heartbeat$/, heartbeat],
   ["POST", /^\/notices\/([\w-]{1,64})\/seen$/, noticeSeen],
@@ -1446,6 +1629,9 @@ export async function handleThirtyDaApp(req, res, url) {
       return;
     }
     if (path === `${BASE}/` || path === `${BASE}/index.html`) return serveStatic(req, res, "index.html");
+    if (path === `${BASE}/board` || path === `${BASE}/board/`) return serveStatic(req, res, "board/index.html");
+    const bm = path.match(BOARD_RE);
+    if (bm) return serveStatic(req, res, `board/${bm[1]}`);
     const m = path.match(STATIC_RE);
     if (m) return serveStatic(req, res, m[1]);
   }

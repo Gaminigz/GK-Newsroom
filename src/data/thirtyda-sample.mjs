@@ -3,7 +3,7 @@
 // Only `npm run 30da:seed` reads this (and it refuses a non-dev database):
 // the live app and the admin never create fake users.
 
-import { LANGS, LANG_ENGLISH } from "../thirtyda-app/shared/rules.js";
+import { LANGS, LANG_ENGLISH, stageOpenLevel } from "../thirtyda-app/shared/rules.js";
 import { SYSTEM_QUESTIONS, questionText, answerText } from "../thirtyda-app/shared/questions.js";
 
 const CENTER = { lat: 11.549, lng: 104.928 }; // BKK1
@@ -11,7 +11,8 @@ const KM_LAT = 1 / 110.574;
 const KM_LNG = 1 / (111.32 * Math.cos((CENTER.lat * Math.PI) / 180));
 
 // [id, name, realName, gender, lang, role, area, red, orange, [km north, km east], seen, verified, level, blocked]
-// verified: p = phone, g = Gmail, f = Facebook.
+// verified: p = phone, g = Gmail, f = Facebook. `level` is only the design's hint: buildDemo() sets each
+// person's level from the demo pairs (the highest level opened with anyone), as the app does.
 const PEOPLE = [
   ['U-10231', 'Sophea', 'Chan Sophea', 'woman', 'km', 'sales', 'BKK1', 128, 34, [0.4, 0.1], 'online', 'pg', 3],
   ['U-10232', 'Dara', 'Lim Dara', 'man', 'en', 'own_business', 'Toul Kork', 56, 12, [2.6, -1.6], 'online', 'pf', 3],
@@ -161,6 +162,10 @@ export function buildDemo(now = Date.now()) {
     pair('P-4', 'U-10507', 'U-10812', 'l1_ask', 1, { updated: 41, created: 45 }),
     pair('P-5', 'U-10231', 'U-10232', 'l3_open', 3, { l2: 6460, l3: 4460, updated: 4460, created: 8100 }),
   ];
+  // users.level follows the pairs exactly: l2_open / l3_wait → 2, l3_open → 3, else 1 (photo slots unlock by it).
+  for (const u of users) {
+    u.level = pairs.filter((p) => p.members.includes(u._id)).reduce((m, p) => Math.max(m, stageOpenLevel(p.stage)), 1);
+  }
 
   // Chat log lines: [from, minutesAgo, kind, level, line, hit?, flagId?]. A hit means the app stopped it.
   const line = ([from, min, kind, level, t, hit = null, flagId = null]) => {

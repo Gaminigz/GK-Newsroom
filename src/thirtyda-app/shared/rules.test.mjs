@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   LANGS, LANG_CODES, LANG_NATIVE, LANG_ENGLISH, SPEECH_LOCALE,
   findContactDetails, findContactDetailsAcross, CHAT_MIN, CHAT_MAX, charCount, checkChatMessage, checkWrittenQuestion,
-  checkWrittenAnswer,
+  checkWrittenAnswer, PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
 } from './rules.js';
 
 const REASON = {
@@ -32,6 +32,54 @@ function assertClean(text) {
   const r = findContactDetails(text);
   assert.deepEqual(r, { ok: true, hits: [], reason: null }, `should not flag: ${JSON.stringify(text)} → ${JSON.stringify(r.hits)}`);
 }
+
+test('photo slots unlock by level: 1 → 1, 2 → 2, 3 → 4 (max 4)', () => {
+  assert.equal(PHOTO_MAX, 4);
+  assert.deepEqual([...PHOTO_SLOT_LEVELS], [1, 2, 3, 3]);
+  assert.equal(PHOTO_SLOT_LEVELS.length, PHOTO_MAX);
+  assert.ok(Object.isFrozen(PHOTO_SLOT_LEVELS));
+  assert.equal(photoSlotsFor(1), 1);
+  assert.equal(photoSlotsFor(2), 2);
+  assert.equal(photoSlotsFor(3), 4);
+  assert.equal(photoSlotsFor('2'), 2);
+  for (const bad of [undefined, null, 0, -1, NaN, 'x']) assert.equal(photoSlotsFor(bad), 1, String(bad));
+  assert.equal(photoSlotsFor(9), PHOTO_MAX);
+  // Every slot below the allowance is unlocked at or below that level.
+  for (const level of [1, 2, 3]) {
+    const n = photoSlotsFor(level);
+    for (let i = 0; i < PHOTO_MAX; i++) assert.equal(photoSlotLevel(i) <= level, i < n, `level ${level} slot ${i + 1}`);
+  }
+});
+
+test('photoSlotLevel: 0-based index → unlocking level', () => {
+  assert.deepEqual([0, 1, 2, 3].map(photoSlotLevel), [1, 2, 3, 3]);
+  assert.equal(photoSlotLevel(4), 3); // a photo past the end is never easier to see
+  assert.equal(photoSlotLevel('1'), 2);
+  for (const bad of [-1, 1.5, NaN, null, undefined, 'a']) assert.equal(photoSlotLevel(bad), null, String(bad));
+});
+
+test('stageOpenLevel: what a pair has opened, for photos', () => {
+  for (const s of ['l1_ask', 'l1_answer', 'l2_wait', undefined, null, 'nope']) assert.equal(stageOpenLevel(s), 1, String(s));
+  assert.equal(stageOpenLevel('l2_open'), 2);
+  assert.equal(stageOpenLevel('l3_wait'), 2);
+  assert.equal(stageOpenLevel('l3_open'), 3);
+});
+
+test('photoVisible: slot 1 for everyone, slot 2 at Level 2, slots 3–4 at Level 3', () => {
+  const seen = (openLevel) => [0, 1, 2, 3].map((i) => photoVisible(i, openLevel));
+  assert.deepEqual(seen(1), [true, false, false, false]);
+  assert.deepEqual(seen(2), [true, true, false, false]);
+  assert.deepEqual(seen(3), [true, true, true, true]);
+  assert.deepEqual(seen(undefined), [true, false, false, false]);
+  assert.equal(photoVisible(4, 3), true);
+  assert.equal(photoVisible(4, 2), false);
+  assert.equal(photoVisible(-1, 3), false);
+  // The pair stage drives it end to end.
+  assert.equal(photoVisible(1, stageOpenLevel('l2_wait')), false);
+  assert.equal(photoVisible(1, stageOpenLevel('l2_open')), true);
+  assert.equal(photoVisible(2, stageOpenLevel('l3_wait')), false);
+  assert.equal(photoVisible(3, stageOpenLevel('l3_open')), true);
+});
 
 test('language tables cover all five languages', () => {
   assert.deepEqual(LANGS, ['en', 'km', 'zh', 'ko', 'ja']);
