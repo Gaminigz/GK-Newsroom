@@ -21,17 +21,21 @@ async function refresh() {
     view.data = await api('/30da/admin/api/overview');
     render();
   } catch (e) {
-    if (e.message !== 'signed out') $('updated').textContent = 'Sample data · offline, retrying';
+    if (e.message !== 'signed out') $('updated').textContent = 'Live · offline, retrying';
   }
 }
 
+// Returns the server's answer (or null after showing the error).
 async function act(path, body = {}) {
   try {
-    view.data = await api(path, body);
+    const data = await api(path, body);
+    view.data = data;
     if (view.tab === 'log' && view.chatFor) await loadChat(view.chatFor);
     render();
+    return data;
   } catch (e) {
     toast(e.message);
+    return null;
   }
 }
 
@@ -69,7 +73,7 @@ const avatar = `<span class="avatar" aria-hidden="true"><svg width="14" height="
 function render() {
   const d = view.data;
   if (!d) return;
-  $('updated').textContent = `Sample data · updated ${ago(d.updatedAt)}`;
+  $('updated').textContent = `Live · updated ${ago(d.updatedAt)}`;
   $('s-online').textContent = d.stats.online;
   $('s-l3').textContent = d.stats.level3Chats;
   $('s-flags').textContent = d.stats.openFlags;
@@ -204,8 +208,11 @@ document.addEventListener('click', async (e) => {
 
   if (ds.filter) { view.filter = ds.filter; render(); }
   else if (ds.block) {
-    await act(`/30da/admin/api/users/${ds.block}/block`, { flagId: ds.flag || null });
-    toast(`${name(ds.block)} is blocked.`, () => act(`/30da/admin/api/users/${ds.block}/unblock`, { undo: true }));
+    const r = await act(`/30da/admin/api/users/${ds.block}/block`, { flagId: ds.flag || null });
+    if (!r) return;
+    // Undo would lift a block that was already there before this click, so it is only offered for a new one.
+    if (r.alreadyBlocked) toast(`${name(ds.block)} was already blocked. The flag is closed.`);
+    else toast(`${name(ds.block)} is blocked.`, () => act(`/30da/admin/api/users/${ds.block}/unblock`, { undo: true }));
   } else if (ds.unblock) {
     await act(`/30da/admin/api/users/${ds.unblock}/unblock`);
     toast(`${name(ds.unblock)} is unblocked.`);

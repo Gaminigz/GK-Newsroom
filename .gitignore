@@ -11,3 +11,6 @@ build/
 # runtime scratchpad from yt-routine.sh
 /tmp/yai-newsroom/
 scratchpad/
+
+# 30+DA local photo store (dev)
+.data/

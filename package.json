@@ -31,6 +31,8 @@
     "genfood": "tsx --env-file=.env src/scripts/gen-food-content.mjs",
     "photo": "tsx src/scripts/render-brief-photo.mjs",
     "web": "tsx src/scripts/serve-web.mjs",
+    "30da:seed": "tsx src/scripts/thirtyda-seed.mjs",
+    "30da:test": "node --test src/thirtyda-app/shared/*.test.mjs",
     "video": "tsx src/scripts/render-brief-video.mjs",
     "ping": "tsx -e \"import { pingDb, closeDb } from './src/lib/mongo.ts'; pingDb().then(r=>console.log(r)).finally(()=>closeDb())\"",
     "typecheck": "tsc --noEmit"

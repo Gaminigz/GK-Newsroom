@@ -13,19 +13,24 @@
  * Auth: one access code from the THIRTYDA_ADMIN_CODE env var — NO default,
  * NEVER in the repo (public). Unset means sign-in fails closed.
  * Every admin action is written to `thirtyda_audit`.
- * Data lives in `thirtyda_*` collections; sample data is seeded on first use.
+ * Data lives in the `thirtyda_*` collections the app (src/lib/thirtyda-app.mjs)
+ * writes. Nothing is seeded here: demo data only comes from
+ * `npm run 30da:seed`, which refuses to touch a non-dev database.
  */
 
 import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { getDb } from "./mongo.ts";
-import { makeState } from "../data/thirtyda-sample.mjs";
+import { clientIp } from "./thirtyda-net.mjs";
 
 const BASE = "/30da/admin";
 const CODE = process.env.THIRTYDA_ADMIN_CODE || "";
 const COOKIE = "thirtyda_admin";
+const WARNING_TEXT =
+  "We stopped a message that broke the 30+DA rules. Contact details are never allowed. Next time the account is blocked.";
 const SESSION_HOURS = 8;
-const MAX_ATTEMPTS = 5;
+const MAX_ATTEMPTS = 5; // wrong codes per IP per window
+const MAX_FAILURES = 20; // wrong codes from everyone together per window: caps guessing from rotating IPs
 const WINDOW_MS = 15 * 60 * 1000;
 
 const SECURITY_HEADERS = {
@@ -41,15 +46,9 @@ let ready = null;
 async function db() {
   const d = await getDb();
   if (!ready) {
-    ready = (async () => {
-      await d.collection("thirtyda_admin_sessions").createIndex({ expires: 1 }, { expireAfterSeconds: 0 });
-      if (!(await d.collection("thirtyda_users").countDocuments({}, { limit: 1 }))) {
-        const s = makeState();
-        await d.collection("thirtyda_users").insertMany(s.users.map((u) => ({ _id: u.id, ...u })));
-        await d.collection("thirtyda_chats").insertMany(s.chats.map((c) => ({ _id: c.id, ...c })));
-        await d.collection("thirtyda_flags").insertMany(s.flags.map((f) => ({ _id: f.id, ...f })));
-      }
-    })().catch((e) => { ready = null; throw e; });
+    ready = d.collection("thirtyda_admin_sessions")
+      .createIndex({ expires: 1 }, { expireAfterSeconds: 0 })
+      .catch((e) => { ready = null; throw e; });
   }
   await ready;
   return d;
@@ -57,6 +56,13 @@ async function db() {
 
 const LEVEL_NAMES = { 1: "question", 2: "answer", 3: "chat" };
 const strip = ({ _id, ...doc }) => doc;
+
+/** Live presence from the app's heartbeat; older (sample) rows keep their stored value. */
+function presenceOf(u, now = Date.now()) {
+  if (!u.lastSeenAt) return u.presence || "offline";
+  const age = now - new Date(u.lastSeenAt).getTime();
+  return age < 2 * 60e3 ? "online" : age < 15 * 60e3 ? "idle" : "offline";
+}
 
 async function load() {
   const d = await db();
@@ -67,7 +73,8 @@ async function load() {
 }
 
 async function overview() {
-  const { users, chats, flags } = await load();
+  const { users: rows, chats, flags } = await load();
+  const users = rows.map((u) => ({ ...u, presence: presenceOf(u) }));
   const byId = new Map(users.map((u) => [u.id, u]));
   const open = flags.filter((f) => f.status === "open").sort((a, b) => b.at.localeCompare(a.at));
   const live = users.filter((u) => !u.blocked);
@@ -79,19 +86,21 @@ async function overview() {
       openFlags: open.length,
       blocked: users.length - live.length,
     },
-    users: users.map(({ blockResolved, ...u }) => ({
+    users: users.map(({ blockResolved, location, locOffset, locMoves, locAt, notices, ...u }) => ({
       ...u,
       openFlags: open.filter((f) => f.from === u.id).length,
     })),
     flags: open.map((f) => {
       const chat = chats.find((c) => c.id === f.chatId);
       const msg = chat?.messages.find((m) => m.flagId === f.id) ?? {};
+      // The level the message was written at, not where the pair is now.
+      const level = msg.level ?? chat?.level;
       return {
         ...f,
         fromName: byId.get(f.from)?.name ?? f.from,
         toName: byId.get(f.to)?.name ?? f.to,
-        level: chat?.level,
-        levelName: LEVEL_NAMES[chat?.level],
+        level,
+        levelName: LEVEL_NAMES[level],
         message: { text: msg.text ?? "", english: msg.english ?? null, hit: msg.hit ?? null },
       };
     }),
@@ -132,16 +141,14 @@ function checkCode(code) {
   return crypto.timingSafeEqual(a, b);
 }
 
-const attempts = new Map(); // ip -> [timestamps]
+const attempts = new Map(); // ip -> [timestamps of wrong codes]
+let failures = []; // every wrong code, any IP
 function rateLimited(ip) {
   const now = Date.now();
   const list = (attempts.get(ip) || []).filter((t) => now - t < WINDOW_MS);
   attempts.set(ip, list);
-  return list.length >= MAX_ATTEMPTS;
-}
-
-function clientIp(req) {
-  return String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.socket.remoteAddress || "unknown";
+  failures = failures.filter((t) => now - t < WINDOW_MS);
+  return list.length >= MAX_ATTEMPTS || failures.length >= MAX_FAILURES;
 }
 
 function tokenOf(req) {
@@ -200,6 +207,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
     const { code = "" } = await readJson(req);
     if (!checkCode(code)) {
       attempts.get(ip).push(Date.now());
+      failures.push(Date.now());
       await audit(req, "signin_failed");
       return json(res, 401, { error: "That code is not right." });
     }
@@ -256,17 +264,23 @@ export async function handleThirtyDaAdmin(req, res, url) {
     const u = await users.findOne({ _id: m[1] });
     if (!u) return json(res, 404, { error: "No such user." });
     const { flagId = null, undo = false } = await readJson(req);
-    if (m[2] === "block" && !u.blocked) {
-      // Blocking settles every open flag this user raised; undo reopens exactly those.
+    const alreadyBlocked = m[2] === "block" && Boolean(u.blocked);
+    if (m[2] === "block") {
+      // Blocking settles every open flag this user raised; undo reopens exactly those. A flag
+      // raised after the block (e.g. a report on an older message) settles too, but then the
+      // block itself is not new, so there is nothing to undo.
       const settled = (await flags.find({ from: u.id, status: "open" }).toArray()).map((f) => f._id);
       await flags.updateMany({ _id: { $in: settled } }, { $set: { status: "blocked" } });
-      await users.updateOne({ _id: u._id }, { $set: { blocked: true, blockResolved: settled } });
+      await users.updateOne(
+        { _id: u._id },
+        alreadyBlocked ? { $addToSet: { blockResolved: { $each: settled } } } : { $set: { blocked: true, blockResolved: settled } },
+      );
     } else if (m[2] === "unblock" && u.blocked) {
       if (undo) await flags.updateMany({ _id: { $in: u.blockResolved || [] } }, { $set: { status: "open" } });
       await users.updateOne({ _id: u._id }, { $set: { blocked: false, blockResolved: [] } });
     }
-    await audit(req, m[2] === "block" ? "block_user" : undo ? "undo_block" : "unblock_user", { user: u.id, flagId });
-    return json(res, 200, await overview());
+    await audit(req, m[2] === "block" ? (alreadyBlocked ? "block_user_again" : "block_user") : undo ? "undo_block" : "unblock_user", { user: u.id, flagId });
+    return json(res, 200, { ...(await overview()), alreadyBlocked });
   }
 
   m = sub.match(/^\/api\/flags\/(f\d+)\/(warn|dismiss)$/);
@@ -277,6 +291,21 @@ export async function handleThirtyDaAdmin(req, res, url) {
     if (!f) return json(res, 404, { error: "This flag is already closed." });
     // A warning keeps the flag in the queue so it can still be blocked or dismissed.
     await flags.updateOne({ _id: f._id }, { $set: m[2] === "warn" ? { warned: true } : { status: "dismissed" } });
+    if (m[2] === "warn" && !f.warned) {
+      // The app shows unseen notices as a dialog the user has to acknowledge.
+      await d.collection("thirtyda_users").updateOne({ _id: f.from }, {
+        $push: {
+          notices: {
+            id: `N-${crypto.randomBytes(6).toString("hex")}`,
+            kind: "warning",
+            flagId: f.id,
+            text: WARNING_TEXT,
+            at: new Date().toISOString(),
+            seenAt: null,
+          },
+        },
+      });
+    }
     await audit(req, m[2] === "warn" ? "send_warning" : "dismiss_flag", { flag: f.id, user: f.from });
     return json(res, 200, await overview());
   }

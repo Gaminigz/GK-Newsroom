@@ -37,6 +37,7 @@ import { handleGarments } from "../lib/garment-directory.mjs";
 import { handleAssociations } from "../lib/garment-associations.mjs";
 import { handleApp } from "../lib/app.mjs";
 import { handleThirtyDaAdmin } from "../lib/thirtyda-admin.mjs";
+import { handleThirtyDaApp } from "../lib/thirtyda-app.mjs";
 import { getSpiceAudio, listSpiceEpisodes } from "../lib/spice-podcast.ts";
 import { getGovAudio, listGovEpisodes } from "../lib/gov-podcast.ts";
 import { SPICES } from "../data/spices.ts";
@@ -1308,6 +1309,12 @@ const server = http.createServer(async (req, res) => {
     // 30+DA super admin web (code-only sign-in, users & chat monitor).
     if (path === "/30da/admin" || path.startsWith("/30da/admin/")) {
       await handleThirtyDaAdmin(req, res, url);
+      return;
+    }
+
+    // 30+DA dating app (web build; Android/iOS shells come later).
+    if (path === "/30da" || path.startsWith("/30da/")) {
+      await handleThirtyDaApp(req, res, url);
       return;
     }
 
