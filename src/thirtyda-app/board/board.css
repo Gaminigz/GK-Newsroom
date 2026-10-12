@@ -1,0 +1,225 @@
+/* 30+DA design board (/30da/board): a dark page with the 12 app screens side by side, each a live
+   frame of the real app (board/frame.html?s=N) scaled into a phone bezel, with its design note under it. */
+:root {
+  --bg: #1c1c1c;
+  --ink: #f3f3f1;
+  --muted: #a3a3a0;
+  --line: #3a3a3a;
+  --note: #cfdcf0;
+  --note-ink: #0b1c3f;
+  --note-muted: #4a5874;
+  --navy: #0b1c3f;
+  --phone-w: 390px;
+  --phone-h: 844px;
+  --scale: 0.62;
+  --gutter: 32px;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --body: 'Archivo', system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); }
+body { font-family: var(--body); -webkit-font-smoothing: antialiased; min-height: 100vh; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid #8fb0ff; outline-offset: 2px; }
+
+/* ---------- header ---------- */
+.board-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 32px;
+  padding: 22px var(--gutter) 4px;
+}
+.head-main { flex: 1 1 640px; min-width: 0; max-width: 1240px; }
+.eyebrow {
+  margin: 0 0 8px;
+  font: 500 11px/1.3 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+h1 {
+  margin: 0;
+  font-weight: 900;
+  font-stretch: 112%;
+  font-size: clamp(22px, 2.1vw, 30px);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+h1 .steps { white-space: normal; }
+h1 .arrow { color: var(--muted); font-weight: 500; }
+.lede { margin: 10px 0 0; max-width: 760px; font-size: 14px; line-height: 1.55; color: var(--muted); }
+.lede strong { color: var(--ink); font-weight: 700; }
+.head-side { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+.admin-link {
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font: 600 12px var(--mono);
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.admin-link:hover { border-color: var(--ink); }
+
+/* ---------- jump row ---------- */
+.jump { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 14px var(--gutter) 0; }
+.jump-group { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; }
+.jump-name { margin-right: 4px; font: 500 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.jump button {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font: 600 11px var(--mono);
+  cursor: pointer;
+}
+.jump button:hover { border-color: var(--ink); background: #262626; }
+
+/* ---------- the flow: phases → columns ---------- */
+.flow {
+  display: flex;
+  align-items: flex-start;
+  gap: 40px;
+  overflow-x: auto;
+  padding: 18px var(--gutter) 40px;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: var(--gutter);
+  scrollbar-color: #4a4a4a transparent;
+}
+.flow:focus-visible { outline-offset: -4px; }
+.phase { flex: none; display: flex; flex-direction: column; gap: 14px; }
+.phase-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font: 600 11px var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.phase-label::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.phase-cols { display: flex; align-items: flex-start; gap: 24px; }
+
+.col {
+  flex: none;
+  width: calc(var(--phone-w) * var(--scale) + 22px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scroll-snap-align: start;
+}
+.col-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; min-height: 54px; }
+.col-title { margin: 0; font: 700 11.5px/1.4 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; }
+.col-who { margin: 4px 0 0; font-size: 12px; line-height: 1.4; color: var(--muted); } /* fixed: a Khmer fallback font would make the line taller */
+.col-actions { flex: none; display: flex; gap: 6px; }
+.play {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #141414;
+  font: 700 10.5px var(--mono);
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.play:hover { background: #fff; }
+.reset {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.reset:hover { border-color: var(--ink); }
+
+/* ---------- phone ---------- */
+.bezel {
+  align-self: flex-start;
+  padding: 10px;
+  border-radius: 40px;
+  background: #0b0b0b;
+  border: 1px solid #3d3d3d;
+  box-shadow: 0 18px 44px rgb(0 0 0 / 0.5), inset 0 0 0 2px #1f1f1f;
+}
+.screen-wrap {
+  position: relative;
+  width: calc(var(--phone-w) * var(--scale));
+  height: calc(var(--phone-h) * var(--scale));
+  border-radius: 30px;
+  overflow: hidden;
+  background: var(--navy);
+  isolation: isolate;
+}
+.screen-wrap iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--phone-w);
+  height: var(--phone-h);
+  border: 0;
+  background: var(--navy);
+  transform: scale(var(--scale));
+  transform-origin: 0 0;
+}
+.screen-wrap .booting {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  font-stretch: 125%;
+  font-size: 28px;
+  letter-spacing: -0.02em;
+  color: #fff;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+.screen-wrap.ready .booting { opacity: 0; }
+
+/* ---------- note card ---------- */
+.note {
+  border-radius: 12px;
+  padding: 12px 14px 13px 12px;
+  background: var(--note);
+  color: var(--note-ink);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.note ul { margin: 0; padding-left: 16px; }
+.note li + li { margin-top: 5px; }
+.note li::marker { color: var(--note-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-wrap .booting { transition: none; }
+}
+
+/* ---------- phones: one column, scrolling down ---------- */
+@media (max-width: 720px) {
+  :root { --gutter: 16px; }
+  .board-head { padding-top: 22px; }
+  .head-side { align-items: flex-start; }
+  .flow { flex-direction: column; align-items: stretch; overflow-x: visible; gap: 34px; padding-top: 18px; }
+  .phase-cols { flex-direction: column; align-items: center; gap: 34px; }
+  .col { width: 100%; max-width: 380px; }
+  .bezel { align-self: center; }
+}
