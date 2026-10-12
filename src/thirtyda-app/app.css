@@ -682,6 +682,13 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 }
 
 /* ---------- 3 · Nearby ---------- */
+/* Level ask: a question's 5 choices drop open right under its row. */
+.select[aria-expanded="true"] svg { transform: rotate(180deg); }
+.droplist { display: flex; flex-direction: column; margin-top: 6px; overflow: hidden; border: 1px solid #cfd6e2; border-radius: 10px; background: #fff; box-shadow: 0 8px 20px rgb(11 28 63 / 0.08); }
+.droplist-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 48px; padding: 12px 14px; border: 0; border-top: 1px solid #eef1f6; background: #fff; font: inherit; font-size: 15px; font-weight: 600; line-height: 1.35; text-align: left; color: var(--ink); cursor: pointer; }
+.droplist-item:first-child { border-top: 0; }
+.droplist-item:hover { background: #f4f6fa; }
+.droplist-item.selected { background: #eef2f8; }
 .ask-actions { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
 .me-btn { flex: none; padding: 0; border: 0; background: none; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--navy); cursor: pointer; }
 .dark .me-btn { box-shadow: 0 0 0 1.5px #fff; }

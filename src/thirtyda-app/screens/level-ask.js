@@ -157,40 +157,58 @@ screen('/ask/:pairId/:level', async ({ params, root }) => {
     el('span', { class: 'num', 'aria-hidden': 'true' }, String(n)),
     el('div', { class: 'qrow-main' }, ...kids));
 
-  // --- pick rows: a field-fill trigger that opens a sheet with that question's own 5 choices
+  // --- pick rows: a field-fill trigger that drops that question's own 5 choices right under it
   const pickRows = draft.picks.map((_, i) => {
     const face = el('span', {});
     const trigger = el('button', {
-      type: 'button', class: 'select', 'aria-haspopup': 'dialog', style: PICK_STYLE, on: { click: () => openPicker(i) },
+      type: 'button', class: 'select', 'aria-haspopup': 'listbox', 'aria-expanded': 'false', style: PICK_STYLE, on: { click: () => openPicker(i) },
     }, el('span', { class: 'visually-hidden' }, `${t('la_question_n', { n: i + 1 })}: `), face);
     return { face, trigger, node: qrow(i + 1, trigger) };
   });
 
+  // One drop list open at a time, directly under the question that was tapped.
+  let openIndex = -1;
+  function closePicker() {
+    if (openIndex < 0) return;
+    const row = pickRows[openIndex];
+    row.panel?.remove();
+    row.panel = null;
+    row.trigger.setAttribute('aria-expanded', 'false');
+    openIndex = -1;
+  }
+
   function openPicker(i) {
     if (busy) return;
+    const wasOpen = openIndex === i;
+    closePicker();
+    if (wasOpen) return;
     const options = slots[i] || [];
     const current = draft.picks[i];
-    const title = t('la_question_n', { n: i + 1 });
-    const sheet = modal(el('div', { class: 'sheet-body' },
-      el('h2', { class: 'sheet-title' }, title),
-      el('p', { class: 'label', style: { margin: '-4px 0 6px' } }, t('la_choose_one', { n: options.length })),
-      el('div', { class: 'menu', role: 'listbox', 'aria-label': title }, options.map((q) => {
+    const panel = el('div', { class: 'droplist', role: 'listbox', 'aria-label': t('la_question_n', { n: i + 1 }) },
+      options.map((q) => {
         const selected = q.key === current;
         return el('button', {
-          type: 'button', class: ['menu-item', selected && 'selected'], role: 'option', 'aria-selected': String(selected),
-          style: { minHeight: '52px', padding: '12px 4px', lineHeight: '1.35' },
+          type: 'button', class: ['droplist-item', selected && 'selected'], role: 'option', 'aria-selected': String(selected),
           on: {
             click: () => {
               draft.picks[i] = q.key;
-              sheet.close();
+              closePicker();
               paint();
+              pickRows[i].trigger.focus();
+            },
+            keydown: (e) => {
+              if (e.key !== 'Escape') return;
+              closePicker();
               pickRows[i].trigger.focus();
             },
           },
         }, el('span', {}, q.text), selected ? icon('check', 18) : null);
-      }))),
-    { sheet: true, label: title });
-    sheet.node.querySelector('.menu-item.selected')?.scrollIntoView({ block: 'center' });
+      }));
+    pickRows[i].trigger.after(panel);
+    pickRows[i].trigger.setAttribute('aria-expanded', 'true');
+    pickRows[i].panel = panel;
+    openIndex = i;
+    (panel.querySelector('.selected') || panel.firstChild)?.focus({ preventScroll: true });
   }
 
   // --- write rows: outline inputs with a live rule check
