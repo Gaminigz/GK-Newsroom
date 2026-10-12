@@ -584,9 +584,9 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
    ===================================================================== */
 
 /* ---------- 1 · Opening ---------- */
-.opening { justify-content: space-between; gap: 36px; padding: 28px 24px calc(24px + env(safe-area-inset-bottom)); }
-.opening-top { margin-top: 5vh; }
-.opening-headline { max-width: 12ch; font-family: var(--display); font-weight: 900; font-stretch: 112%; font-size: 30px; line-height: 1.06; letter-spacing: -0.01em; }
+/* One centred group as in the design: headline, mark, rule, tagline, then the languages right under it. */
+.opening { justify-content: center; gap: 44px; padding: 28px 24px calc(24px + env(safe-area-inset-bottom)); }
+.opening-headline { max-width: 13.5ch; font-family: var(--display); font-weight: 900; font-stretch: 104%; font-size: 32px; line-height: 1.06; letter-spacing: -0.01em; }
 :lang(km) .opening-headline, :lang(ja) .opening-headline, :lang(zh) .opening-headline, :lang(ko) .opening-headline { max-width: 14em; }
 :lang(km) .opening-headline { font-size: 26px; line-height: 1.45; }
 .opening-mark { display: flex; margin-top: 30px; padding-bottom: 4px; overflow: hidden; font-size: 76px; }
@@ -594,16 +594,19 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .opening-rule { height: 3px; margin-top: 14px; border-radius: 2px; overflow: hidden; background: rgb(255 255 255 / 0.16); }
 /* The bar starts once the last of the five letters has landed (4 × 90 + 150 + 600 ms). */
 .opening-rule > span { display: block; height: 100%; background: #fff; transform-origin: left center; animation: fill-bar 0.7s cubic-bezier(0.6, 0, 0.2, 1) 1.1s both; }
-.opening-tagline { margin-top: 16px; font-size: 17px; font-weight: 500; color: var(--on-dark-soft); }
-.opening-langs { display: flex; flex-direction: column; gap: 12px; }
+.opening-tagline { margin-top: 18px; font-size: 16px; font-weight: 600; color: #fff; }
+.opening-langs { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.opening-langs .label { font-size: 12px; line-height: 1.7; color: var(--on-dark-soft); }
 .lang-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
 .lang-grid > * { grid-column: span 2; }
 .lang-grid > :nth-child(n + 4) { grid-column: span 3; }
 .lang-grid .btn { min-height: 48px; font-size: 16px; padding: 0 8px; }
-.opening-foot { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; color: var(--on-dark-soft); }
+/* Opening: 3 equal buttons, then the last 2 at the same width, centred under them. */
+.opening .lang-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; width: 100%; }
+.opening .lang-grid .btn { flex: 0 0 calc((100% - 16px) / 3); min-height: 44px; border-radius: 12px; font-size: 14px; }
+.opening-foot { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 4px; font-size: 17px; color: var(--on-dark-soft); }
 @media (max-height: 700px) {
-  .opening { gap: 24px; }
-  .opening-top { margin-top: 0; }
+  .opening { gap: 28px; }
   .opening-mark { font-size: 64px; margin-top: 20px; }
 }
 @media (prefers-reduced-motion: reduce) {
