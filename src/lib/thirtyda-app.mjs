@@ -14,7 +14,8 @@
  * recomputed lazily from its timestamps, so no timers run on the server.
  *
  * Collections: thirtyda_users, thirtyda_user_sessions, thirtyda_otps,
- * thirtyda_pairs, thirtyda_sets, thirtyda_chats, thirtyda_flags, thirtyda_counters.
+ * thirtyda_pairs, thirtyda_sets, thirtyda_chats, thirtyda_flags, thirtyda_counters; reads the
+ * admin's question choices from thirtyda_questions (src/lib/thirtyda-questions.mjs).
  */
 
 import crypto from "node:crypto";
@@ -29,8 +30,9 @@ import {
   checkWrittenAnswer, PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
 } from "../thirtyda-app/shared/rules.js";
 import {
-  SYSTEM_QUESTIONS, LEVEL_RULES, L1_ANSWERS, ROLES, questionText, answerText,
+  LEVEL_RULES, L1_ANSWERS, l1Answers, ROLES, questionText, answerText,
 } from "../thirtyda-app/shared/questions.js";
+import { questionConfig, slotsView, flatView } from "./thirtyda-questions.mjs";
 
 const BASE = "/30da";
 const API = "/30da/api";
@@ -1227,14 +1229,14 @@ async function getPair(ctx) {
   return { pair: await viewOf(ctx.d, ctx.me, pair) };
 }
 
+// The admin's choices: Question N of the set is picked from slot N's own 5 (thirtyda_questions).
+// `system` is the same choices as one flat list, choice 1 of every slot first (older clients).
 async function questions(ctx) {
   const level = levelParam(ctx.url.searchParams.get("level"));
   const lang = ctx.me.lang ?? "en";
   const { pick, write } = LEVEL_RULES[level];
-  return {
-    level, pick, write,
-    system: SYSTEM_QUESTIONS[level].map((q) => ({ key: q.key, text: questionText(level, q.key, lang) ?? q.text.en })),
-  };
+  const slots = slotsView((await questionConfig(ctx.d, level)).slots, lang);
+  return { level, pick, write, slots, system: flatView(slots) };
 }
 
 const bankTranslations = (fn) => Object.fromEntries(LANGS.map((l) => [l, fn(l)]));
@@ -1257,13 +1259,16 @@ async function sendSet(ctx) {
 
   const { pick, write } = LEVEL_RULES[level];
   if (list.length !== pick + write) throw invalid(`Send exactly ${pick + write} questions.`, { index: Math.min(list.length, pick + write - 1) });
-  const keys = new Set();
+  // The k-th picked question must be one of the 5 choices the admin set for Question k (slot k).
+  const { slots } = await questionConfig(d, level);
+  const chosen = new Map(); // index in the list → { slot (1-based), choice }
   let picked = 0;
   list.forEach((q, i) => {
     if (q?.source === "system") {
-      if (!SYSTEM_QUESTIONS[level].some((x) => x.key === q.key)) throw invalid("Pick a question from the list.", { index: i });
-      if (keys.has(q.key)) throw invalid("That question is already in your list.", { index: i });
-      keys.add(q.key);
+      if (picked >= pick) throw invalid(`Pick ${pick} questions and write ${write}.`, { index: i });
+      const choice = slots[picked].find((c) => c.key === q.key);
+      if (!choice) throw invalid(`Pick question ${picked + 1} from its own list.`, { index: i, slot: picked + 1 });
+      chosen.set(i, { slot: picked + 1, choice });
       picked++;
     } else if (q?.source === "written") {
       const r = checkWrittenQuestion(String(q.text ?? "").trim(), level);
@@ -1277,9 +1282,11 @@ async function sendSet(ctx) {
   const lang = me.lang ?? "en";
   const qs = await Promise.all(list.map(async (q, i) => {
     if (q.source === "system") {
+      // The full 5-language text goes into the set, so a later admin edit never rewrites it.
+      const { slot, choice } = chosen.get(i);
       return {
-        n: i + 1, source: "system", key: q.key, text: questionText(level, q.key, lang), lang,
-        translations: bankTranslations((l) => questionText(level, q.key, l)),
+        n: i + 1, source: "system", key: q.key, slot, text: choice.text[lang] || choice.text.en, lang,
+        translations: Object.fromEntries(LANGS.map((l) => [l, choice.text[l] || choice.text.en])),
       };
     }
     const text = String(q.text).trim();
@@ -1327,8 +1334,11 @@ async function sendSet(ctx) {
 
 function questionView(q, level, lang) {
   if (q.source === "system") {
+    // The text stored with the set when it was sent (admin edits since then never show here);
+    // a set without stored translations falls back to the built-in bank by key.
+    const text = (q.lang === lang ? q.text : null) || q.translations?.[lang] || questionText(level, q.key, lang) || q.text;
     return {
-      n: q.n, source: "system", key: q.key, text: questionText(level, q.key, lang) ?? q.text,
+      n: q.n, source: "system", key: q.key, text,
       original: q.text, originalLang: q.lang, translated: q.lang !== lang,
     };
   }
@@ -1393,7 +1403,10 @@ async function sendAnswers(ctx) {
     if (!set.questions.some((q) => q.n === n) || seen.has(n)) throw invalid("Answer each question once.", { index: i });
     seen.add(n);
     if (level === 1) {
-      if (!L1_ANSWERS.some((x) => x.key === a.key)) throw invalid("Pick one of the answers.", { index: i });
+      const source = set.questions.find((q) => q.n === n)?.source;
+      if (!l1Answers(source).some((x) => x.key === a.key)) {
+        throw invalid(source === "written" ? "Answer the written question with Yes or No." : "Pick one of the answers.", { index: i });
+      }
     } else {
       const r = checkWrittenAnswer(String(a.text ?? "").trim());
       if (!r.ok) throw invalid(ERROR_TEXT[r.error] || "Check this answer.", { index: i, reason: r.error });

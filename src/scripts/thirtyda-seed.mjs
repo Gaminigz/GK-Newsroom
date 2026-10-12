@@ -3,7 +3,8 @@
  *
  * Refuses to run unless MONGO_DB ends with "_dev" (or --force-demo is given).
  * Wipes the app's thirtyda_* collections in that database (the admin's
- * sessions and audit log are kept), then inserts 21 demo people around BKK1
+ * sessions and audit log are kept; the admin's question choices go back to the
+ * built-in ones), then inserts 21 demo people around BKK1
  * plus the A2 design's sample pairs, chats and flags, and prints the dev
  * login phones. Demo people have no photos (the app shows a silhouette).
  *
@@ -21,6 +22,7 @@ const APP_COLLECTIONS = [
   "thirtyda_users", "thirtyda_user_sessions", "thirtyda_otps", "thirtyda_pairs",
   "thirtyda_sets", "thirtyda_chats", "thirtyda_flags", "thirtyda_counters",
   "thirtyda_photos.files", "thirtyda_photos.chunks", // GridFS photo store
+  "thirtyda_questions", // admin-set question choices: the demo starts on the built-in ones
 ];
 
 const dbName = process.env.MONGO_DB || "";

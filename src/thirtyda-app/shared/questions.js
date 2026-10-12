@@ -105,6 +105,11 @@ export const L1_ANSWERS = [
   q('maybe', 'Maybe', 'ប្រហែលជា', '可能吧', '아마도요', 'たぶん'),
 ];
 
+/** Level 1 answers for one question: the asker's own written question gets Yes / No only. */
+export function l1Answers(source) {
+  return source === 'written' ? L1_ANSWERS.filter((a) => a.key === 'yes' || a.key === 'no') : L1_ANSWERS;
+}
+
 // "YOU ARE" on the profile.
 export const ROLES = [
   q('sales', 'Sales', 'ផ្នែកលក់', '销售', '영업', '営業'),

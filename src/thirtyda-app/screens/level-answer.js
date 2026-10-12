@@ -4,7 +4,7 @@
 // Level 2: answers in words with the live contact-detail check.
 import {
   screen, el, icon, t, go, api, toast, topBar, levelBar, heartbeat, pairRoute, stageLevel, errorText, registerStrings,
-  L1_ANSWERS, answerText, checkWrittenAnswer,
+  l1Answers, answerText, checkWrittenAnswer,
 } from '../core.js';
 import {
   ANSWER_MAX, enc, personPath, myLang, levelParam, ruleMessage, showError, headTitle, translateNote, lockNote, moveOn,
@@ -98,7 +98,8 @@ screen('/answer/:pairId/:level', async ({ params, root }) => {
     const retry = el('button', { type: 'button', class: 'btn btn-secondary', hidden: true, on: { click: () => sendL1() } }, t('core_retry'));
     const groups = [];
     const blocks = questions.map((q) => {
-      const chips = L1_ANSWERS.map((a) => el('button', {
+      // Questions 1–4: Yes / No / OK / Not really / Maybe; the asker's own question 5: Yes / No only.
+      const chips = l1Answers(q.source).map((a) => el('button', {
         type: 'button', class: 'chip', dataset: { key: a.key }, on: { click: () => choose(q.n, a.key) },
       }, answerText(a.key, myLang()) || a.text.en));
       const group = el('div', { class: 'chips', role: 'group', 'aria-labelledby': `lan-q-${q.n}` }, chips);

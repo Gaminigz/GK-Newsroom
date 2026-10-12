@@ -5,6 +5,7 @@ import { ROLES } from './shared/questions.js';
 
 export * from './shared/rules.js';
 export * from './shared/questions.js';
+export * from './shared/question-slots.js';
 
 const API_BASE = '/30da/api';
 const LANG_KEY = 'thirtyda_lang';

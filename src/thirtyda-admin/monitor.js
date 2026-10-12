@@ -245,5 +245,11 @@ $('search').addEventListener('input', (e) => {
   renderUsers();
 });
 
+// Arriving from another admin page with #users / #monitor: mark that section in the side nav.
+if (/^#(top|users|monitor)$/.test(location.hash)) {
+  const target = location.hash.slice(1);
+  document.querySelectorAll('button.navitem').forEach((n) => n.classList.toggle('active', n.dataset.target === target));
+}
+
 refresh();
 setInterval(refresh, 15000);

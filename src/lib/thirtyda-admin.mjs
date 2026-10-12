@@ -1,14 +1,18 @@
 /**
- * 30+DA super admin web — screens 13 (Sign in) + A2 (Users & chat monitor).
+ * 30+DA super admin web — screens 13 (Sign in) + A2 (Users & chat monitor) + Questions.
  *
  *   GET  /30da/admin                      sign-in page (code only)
  *   GET  /30da/admin/monitor              live overview + chat monitor
+ *   GET  /30da/admin/questions            the question choices people pick from (Level 1 / Level 2)
  *   POST /30da/admin/api/signin           { code }
  *   POST /30da/admin/api/signout
  *   GET  /30da/admin/api/overview         counts, users, open flags
  *   GET  /30da/admin/api/chat?flag=|user= one full conversation
  *   POST /30da/admin/api/users/:id/block|unblock   { flagId?, undo? }
  *   POST /30da/admin/api/flags/:id/warn|dismiss
+ *   GET  /30da/admin/api/questions        both levels: [{ id:'L1', slots:[[{key,text:{en,km,zh,ko,ja}}×5]×4], … }]
+ *   PUT  /30da/admin/api/questions/L1|L2  { slots, updatedAt? } → saved level | 422 { problems } | 409 changed
+ *   POST /30da/admin/api/questions/L1|L2/reset   back to the built-in choices
  *
  * Auth: one access code from the THIRTYDA_ADMIN_CODE env var — NO default,
  * NEVER in the repo (public). Unset means sign-in fails closed.
@@ -22,6 +26,11 @@ import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { getDb } from "./mongo.ts";
 import { clientIp } from "./thirtyda-net.mjs";
+import {
+  QUESTION_LEVELS, levelDocId, levelFromId, questionConfig, saveQuestions, resetQuestions,
+} from "./thirtyda-questions.mjs";
+import { LEVEL_RULES } from "../thirtyda-app/shared/questions.js";
+import { QUESTION_CHOICES, CHOICE_LIMITS } from "../thirtyda-app/shared/question-slots.js";
 
 const BASE = "/30da/admin";
 const CODE = process.env.THIRTYDA_ADMIN_CODE || "";
@@ -32,6 +41,8 @@ const SESSION_HOURS = 8;
 const MAX_ATTEMPTS = 5; // wrong codes per IP per window
 const MAX_FAILURES = 20; // wrong codes from everyone together per window: caps guessing from rotating IPs
 const WINDOW_MS = 15 * 60 * 1000;
+const MAX_WRITES = 30; // question saves/resets per admin session per window
+const QUESTIONS_BODY_MAX = 200_000; // 20 choices × 5 languages × 100 characters, with room to spare
 
 const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
@@ -191,11 +202,66 @@ function readJson(req) {
   });
 }
 
+/** A JSON object body up to `max` characters → the object, or { tooLarge } / { bad }. */
+function readJsonBody(req, max) {
+  return new Promise((resolve) => {
+    let body = "";
+    let over = false;
+    req.on("data", (c) => {
+      if (over) return;
+      body += c;
+      if (body.length > max) { over = true; body = ""; }
+    });
+    req.on("end", () => {
+      if (over) return resolve({ tooLarge: true });
+      try {
+        const v = JSON.parse(body || "{}");
+        resolve(v && typeof v === "object" && !Array.isArray(v) ? { value: v } : { bad: true });
+      } catch {
+        resolve({ bad: true });
+      }
+    });
+    req.on("error", () => resolve({ bad: true }));
+  });
+}
+
+const writes = new Map(); // admin session → [timestamps of question saves/resets]
+function writeLimited(req) {
+  const key = tokenOf(req) || clientIp(req);
+  const now = Date.now();
+  const list = (writes.get(key) || []).filter((t) => now - t < WINDOW_MS);
+  if (list.length >= MAX_WRITES) {
+    writes.set(key, list);
+    return true;
+  }
+  list.push(now);
+  writes.set(key, list);
+  return false;
+}
+
+/** One level as the Questions page edits it. */
+function questionsView(level, config) {
+  return {
+    id: levelDocId(level),
+    level,
+    pick: LEVEL_RULES[level].pick,
+    write: LEVEL_RULES[level].write,
+    choices: QUESTION_CHOICES,
+    limits: { min: CHOICE_LIMITS[0], max: CHOICE_LIMITS[1] },
+    slots: config.slots,
+    updatedAt: config.updatedAt,
+    updatedBy: config.updatedBy,
+    reset: config.reset,
+    isDefault: config.isDefault,
+    matchesDefault: config.matchesDefault,
+  };
+}
+
 export async function handleThirtyDaAdmin(req, res, url) {
   const path = url.pathname.replace(/\/+$/, "") || "/";
   const sub = path.slice(BASE.length) || "/";
 
-  const asset = sub.match(/^\/(app\.css|signin\.js|monitor\.js)$/);
+  const asset = sub.match(/^\/(app\.css|signin\.js|monitor\.js|questions\.js)$/);
   if (req.method === "GET" && asset) return serveFile(res, asset[1]);
 
   if (req.method === "POST" && sub === "/api/signin") {
@@ -236,6 +302,11 @@ export async function handleThirtyDaAdmin(req, res, url) {
     await audit(req, "view_monitor");
     return serveFile(res, "monitor.html");
   }
+  if (req.method === "GET" && sub === "/questions") {
+    if (!me) return send(res, 302, "", { Location: BASE });
+    await audit(req, "view_questions");
+    return serveFile(res, "questions.html");
+  }
 
   if (sub.startsWith("/api/") && !me) return json(res, 401, { error: "signed_out" });
 
@@ -256,7 +327,43 @@ export async function handleThirtyDaAdmin(req, res, url) {
     return json(res, 200, { chat });
   }
 
-  let m = sub.match(/^\/api\/users\/(U-\d+)\/(block|unblock)$/);
+  if (req.method === "GET" && sub === "/api/questions") {
+    const d = await db();
+    const levels = await Promise.all(QUESTION_LEVELS.map(async (level) => questionsView(level, await questionConfig(d, level))));
+    return json(res, 200, { levels });
+  }
+
+  let m = sub.match(/^\/api\/questions\/(L\d)(\/reset)?$/);
+  if (m && ((req.method === "PUT" && !m[2]) || (req.method === "POST" && m[2]))) {
+    const level = levelFromId(m[1]);
+    if (!level) return json(res, 404, { error: "No such level." });
+    if (writeLimited(req)) return json(res, 429, { error: "Too many saves. Try again in a few minutes." });
+    const d = await db();
+    if (m[2]) {
+      const { config, diff } = await resetQuestions(d, level);
+      await audit(req, "questions_reset", { level: m[1], changes: diff.changes, summary: diff.summary });
+      return json(res, 200, { ...questionsView(level, config), changes: diff.changes, summary: diff.summary });
+    }
+    const body = await readJsonBody(req, QUESTIONS_BODY_MAX);
+    if (body.tooLarge) return json(res, 413, { error: "That is too much text to save." });
+    if (body.bad || !Array.isArray(body.value.slots)) return json(res, 400, { error: "Send { slots: [...] }." });
+    const opts = "updatedAt" in body.value ? { baseUpdatedAt: body.value.updatedAt } : {};
+    const r = await saveQuestions(d, level, body.value.slots, opts);
+    if (r.conflict) {
+      return json(res, 409, {
+        error: "These questions were changed in another tab. Reload to see the latest before saving.",
+        current: questionsView(level, r.current),
+      });
+    }
+    if (!r.ok) {
+      const n = r.problems.length;
+      return json(res, 422, { error: `Fix ${n} ${n === 1 ? "problem" : "problems"} before saving.`, problems: r.problems });
+    }
+    await audit(req, "questions_update", { level: m[1], changes: r.diff.changes, summary: r.diff.summary });
+    return json(res, 200, { ...questionsView(level, r.config), changes: r.diff.changes, summary: r.diff.summary });
+  }
+
+  m = sub.match(/^\/api\/users\/(U-\d+)\/(block|unblock)$/);
   if (req.method === "POST" && m) {
     const d = await db();
     const users = d.collection("thirtyda_users");

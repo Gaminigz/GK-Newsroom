@@ -1,10 +1,10 @@
-// Screens 5 + 8 · Level 1 / Level 2 · Ask 5 — pick system questions from the bank, write your own
-// (yes/no at Level 1, open at Level 2), live contact-detail check. A tap on the greyed-out Send
+// Screens 5 + 8 · Level 1 / Level 2 · Ask 5 — Question 1..pick are picked, each from its own 5 choices
+// (set by the super admin), the rest are written (yes/no at Level 1, open at Level 2), live contact-detail check. A tap on the greyed-out Send
 // while a contact detail is present still posts the set: the server records the stopped attempt
 // for the admin (design A2). Also exports the helpers the answer and wait screens share.
 import {
   screen, el, icon, t, go, api, toast, modal, state, topBar, levelBar, avatar, pronoun, langPair, heartbeat,
-  pairRoute, stageLevel, errorText, registerStrings, LEVEL_RULES, checkWrittenQuestion,
+  pairRoute, stageLevel, errorText, registerStrings, LEVEL_RULES, checkWrittenQuestion, dealSlots,
 } from '../core.js';
 
 // Same limits as shared/rules.js (QUESTION_LIMITS / ANSWER_LIMITS are not exported there).
@@ -95,19 +95,28 @@ export function paintSendButton(btn, { ready, busy, label }) {
 const canAsk = (pair, level) => stageLevel(pair) === level
   && (pair.next === 'ask' || (pair.next === 'ask_answer' && !pair.myOutgoing?.sent));
 
-function freshDraft(system, pick, write) {
-  return { picks: system.slice(0, pick).map((q) => q.key), written: Array(write).fill('') };
+// Question N starts on choice 1 of its own list.
+function freshDraft(slots, write) {
+  return { picks: slots.map((options) => options[0]?.key ?? null), written: Array(write).fill('') };
 }
 
-// The bank can change between visits: keep a draft only if its picks are still valid and distinct.
-function draftFor(key, system, pick, write) {
+// The admin can change the choices between visits: keep the written questions and every pick that is
+// still in its own list; a pick that is gone goes back to that question's choice 1.
+function draftFor(key, slots, write) {
   const old = drafts.get(key);
-  const keys = new Set(system.map((q) => q.key));
-  const valid = old && old.picks.length === pick && old.written.length === write
-    && new Set(old.picks).size === pick && old.picks.every((k) => keys.has(k));
-  const draft = valid ? old : freshDraft(system, pick, write);
+  const draft = freshDraft(slots, write);
+  if (old?.written.length === write) draft.written = old.written;
+  if (old?.picks.length === slots.length) {
+    draft.picks = old.picks.map((k, i) => (slots[i].some((q) => q.key === k) ? k : draft.picks[i]));
+  }
   drafts.set(key, draft);
   return draft;
+}
+
+/** [[{ key, text }] × pick] from GET /questions: `slots`, or (older servers) the flat list dealt the same way. */
+function slotsOf(bank, pick) {
+  if (Array.isArray(bank.slots) && bank.slots.length === pick) return bank.slots.map((s) => s.options || []);
+  return dealSlots(bank.system || [], pick);
 }
 
 const PICK_STYLE = {
@@ -136,19 +145,19 @@ screen('/ask/:pairId/:level', async ({ params, root }) => {
   const name = pair.other.name;
   const pick = bank.pick ?? LEVEL_RULES[level].pick;
   const write = bank.write ?? LEVEL_RULES[level].write;
-  const system = bank.system || [];
+  const slots = slotsOf(bank, pick);
   const draftKey = `${pair.id}:${level}`;
-  const draft = draftFor(draftKey, system, pick, write);
+  const draft = draftFor(draftKey, slots, write);
   const serverErr = Array(write).fill(null); // a server 422 for a row, until the row is edited
   let busy = false;
   let stoppedSig = null; // the exact set the server last stopped: re-tapping does not post it twice
 
-  const textOf = (key) => system.find((q) => q.key === key)?.text || '';
+  const textOf = (i, key) => slots[i]?.find((q) => q.key === key)?.text || '';
   const qrow = (n, ...kids) => el('li', { class: 'qrow' },
     el('span', { class: 'num', 'aria-hidden': 'true' }, String(n)),
     el('div', { class: 'qrow-main' }, ...kids));
 
-  // --- pick rows: a field-fill trigger that opens a sheet with the whole bank (no duplicates)
+  // --- pick rows: a field-fill trigger that opens a sheet with that question's own 5 choices
   const pickRows = draft.picks.map((_, i) => {
     const face = el('span', {});
     const trigger = el('button', {
@@ -159,17 +168,17 @@ screen('/ask/:pairId/:level', async ({ params, root }) => {
 
   function openPicker(i) {
     if (busy) return;
-    const used = new Set(draft.picks.filter((_, k) => k !== i));
+    const options = slots[i] || [];
     const current = draft.picks[i];
     const title = t('la_question_n', { n: i + 1 });
     const sheet = modal(el('div', { class: 'sheet-body' },
       el('h2', { class: 'sheet-title' }, title),
-      el('div', { class: 'menu', role: 'listbox', 'aria-label': title }, system.map((q) => {
-        const taken = used.has(q.key);
+      el('p', { class: 'label', style: { margin: '-4px 0 6px' } }, t('la_choose_one', { n: options.length })),
+      el('div', { class: 'menu', role: 'listbox', 'aria-label': title }, options.map((q) => {
         const selected = q.key === current;
         return el('button', {
           type: 'button', class: ['menu-item', selected && 'selected'], role: 'option', 'aria-selected': String(selected),
-          disabled: taken, style: { minHeight: '52px', padding: '12px 4px', lineHeight: '1.35', opacity: taken ? '0.45' : null },
+          style: { minHeight: '52px', padding: '12px 4px', lineHeight: '1.35' },
           on: {
             click: () => {
               draft.picks[i] = q.key;
@@ -178,7 +187,7 @@ screen('/ask/:pairId/:level', async ({ params, root }) => {
               pickRows[i].trigger.focus();
             },
           },
-        }, el('span', {}, q.text), selected ? icon('check', 18) : taken ? el('span', { class: 'label' }, t('la_in_list')) : null);
+        }, el('span', {}, q.text), selected ? icon('check', 18) : null);
       }))),
     { sheet: true, label: title });
     sheet.node.querySelector('.menu-item.selected')?.scrollIntoView({ block: 'center' });
@@ -215,7 +224,7 @@ screen('/ask/:pairId/:level', async ({ params, root }) => {
 
   function paint() {
     const results = checks();
-    pickRows.forEach((row, i) => { row.face.textContent = textOf(draft.picks[i]); });
+    pickRows.forEach((row, i) => { row.face.textContent = textOf(i, draft.picks[i]); });
     writeRows.forEach((row, j) => {
       const msg = serverErr[j] || ruleMessage(results[j], QUESTION_MAX[level]);
       row.input.classList.toggle('is-error', Boolean(msg));
@@ -223,7 +232,7 @@ screen('/ask/:pairId/:level', async ({ params, root }) => {
       showError(row.err, msg);
     });
     const missing = results.filter((r) => !r.ok).length;
-    const label = !missing ? t('la_send') : missing === 1 ? t('la_write_one') : t('la_write_n', { n: missing });
+    const label = t(`la_ask_${pronoun(pair.other.gender)}`); // enabled once all 5 are ready
     paintSendButton(sendBtn, { ready: !missing, busy, label });
     for (const row of pickRows) row.trigger.disabled = busy;
     return { results, missing };
@@ -267,6 +276,12 @@ screen('/ask/:pairId/:level', async ({ params, root }) => {
         stoppedSig = sig;
         if (row >= 0) serverErr[row] = ruleMessage({ error: 'contact', hits: err.data?.hits }, QUESTION_MAX[level]);
         toast(t('lv_stopped'));
+      } else if (err.code === 'invalid' && err.data?.slot) {
+        // A picked choice is no longer in its list (the admin changed the choices while this screen was open):
+        // load the choices again; the written questions and the picks still offered are kept.
+        toast(t('la_choices_changed'));
+        go(`/ask/${enc(pair.id)}/${level}`, { replace: true });
+        return;
       } else if (err.code === 'invalid') {
         const n = Number(err.data?.index) + 1 || 1;
         if (row >= 0) serverErr[row] = err.data?.reason === 'too_long' ? t('lv_too_long', { max: QUESTION_MAX[level] }) : t('lv_check_n', { n });
@@ -297,8 +312,8 @@ screen('/ask/:pairId/:level', async ({ params, root }) => {
       el('span', { class: 'label ink' }, t('la_rule', { pick, write })),
       translateNote(pair),
       el('ol', { class: 'qlist', style: { marginTop: '6px' } }, pickRows.map((r) => r.node), writeRows.map((r) => r.node))),
-    el('div', { class: 'spacer' }),
-    el('div', { class: 'sticky-actions' }, lockNote(t(`la_lock_${level}`)), sendBtn),
+    // Right under question 5, not pinned to the bottom of the screen.
+    el('div', { class: 'ask-actions' }, lockNote(t(`la_lock_${level}`)), sendBtn),
   ].filter(Boolean));
   paint();
 });
@@ -327,11 +342,14 @@ registerStrings({
     la_lock_1: 'No phone numbers or chat handles.',
     la_lock_2: 'Answers come back in words. No phone numbers or chat handles.',
     la_send: 'Send 5 questions',
+    la_ask_her: 'Ask her',
+    la_ask_him: 'Ask him',
     la_write_one: 'Write 1 more question',
     la_write_n: 'Write {n} more questions',
     la_sent: 'Sent. Now it is {name}’s turn.',
     la_question_n: 'Question {n}',
-    la_in_list: 'In your list',
+    la_choose_one: 'Choose 1 of these {n}',
+    la_choices_changed: 'The question choices were just updated. Check your picks.',
     la_answer_first: '{name} asked you 5 · answer first',
   },
   km: {
@@ -357,11 +375,14 @@ registerStrings({
     la_lock_1: 'គ្មានលេខទូរស័ព្ទ ឬឈ្មោះគណនីជជែកទេ។',
     la_lock_2: 'ចម្លើយនឹងត្រឡប់មកវិញជាពាក្យ។ គ្មានលេខទូរស័ព្ទ ឬឈ្មោះគណនីជជែកទេ។',
     la_send: 'ផ្ញើ 5 សំណួរ',
+    la_ask_her: 'សួរនាង',
+    la_ask_him: 'សួរគាត់',
     la_write_one: 'សរសេរសំណួរ 1 ទៀត',
     la_write_n: 'សរសេរសំណួរ {n} ទៀត',
     la_sent: 'បានផ្ញើហើយ។ ឥឡូវដល់វេន {name} ឆ្លើយ។',
     la_question_n: 'សំណួរទី {n}',
-    la_in_list: 'មានក្នុងបញ្ជីហើយ',
+    la_choose_one: 'ជ្រើសរើស 1 ក្នុងចំណោម {n} នេះ',
+    la_choices_changed: 'ជម្រើសសំណួរទើបតែត្រូវបានធ្វើបច្ចុប្បន្នភាព។ សូមពិនិត្យជម្រើសរបស់អ្នកម្តងទៀត។',
     la_answer_first: '{name} បានសួរអ្នក 5 សំណួរ · ឆ្លើយមុនសិន',
   },
   zh: {
@@ -387,11 +408,14 @@ registerStrings({
     la_lock_1: '不能留电话号码或聊天账号。',
     la_lock_2: '对方会用文字回答。不能留电话号码或聊天账号。',
     la_send: '发送 5 个问题',
+    la_ask_her: '问她',
+    la_ask_him: '问他',
     la_write_one: '还要再写 1 个问题',
     la_write_n: '还要再写 {n} 个问题',
     la_sent: '已发送，现在轮到 {name} 回答。',
     la_question_n: '第 {n} 个问题',
-    la_in_list: '已在列表中',
+    la_choose_one: '从这 {n} 个中选 1 个',
+    la_choices_changed: '问题选项刚刚更新了，请再检查一下你的选择。',
     la_answer_first: '{name} 问了你 5 个问题 · 先回答',
   },
   ko: {
@@ -417,11 +441,14 @@ registerStrings({
     la_lock_1: '전화번호나 채팅 아이디는 안 돼요.',
     la_lock_2: '답은 글로 돌아와요. 전화번호나 채팅 아이디는 안 돼요.',
     la_send: '질문 5개 보내기',
+    la_ask_her: '질문하기',
+    la_ask_him: '질문하기',
     la_write_one: '질문 1개 더 써 주세요',
     la_write_n: '질문 {n}개 더 써 주세요',
     la_sent: '보냈어요. 이제 {name}님이 답할 차례예요.',
     la_question_n: '{n}번 질문',
-    la_in_list: '이미 목록에 있어요',
+    la_choose_one: '이 {n}개 중 1개를 고르세요',
+    la_choices_changed: '질문 선택지가 방금 바뀌었어요. 고른 질문을 다시 확인해 주세요.',
     la_answer_first: '{name}님이 5가지를 물었어요 · 먼저 답하기',
   },
   ja: {
@@ -447,11 +474,14 @@ registerStrings({
     la_lock_1: '電話番号やチャットIDは書けません。',
     la_lock_2: '答えは言葉で返ってきます。電話番号やチャットIDは書けません。',
     la_send: '5つの質問を送る',
+    la_ask_her: '彼女に聞く',
+    la_ask_him: '彼に聞く',
     la_write_one: 'あと1つ質問を書いてください',
     la_write_n: 'あと{n}つ質問を書いてください',
     la_sent: '送信しました。次は{name}さんが答える番です。',
     la_question_n: '質問{n}',
-    la_in_list: 'リストに追加済み',
+    la_choose_one: 'この{n}つから1つ選んでください',
+    la_choices_changed: '質問の選択肢が更新されました。選んだ質問をもう一度確認してください。',
     la_answer_first: '{name}さんから5つの質問 · 先に答える',
   },
 });

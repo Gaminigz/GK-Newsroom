@@ -1159,7 +1159,10 @@
       if (!set.questions.some((q) => q.n === n) || seen.has(n)) throw invalid('Answer each question once.', { index: i });
       seen.add(n);
       if (level === 1) {
-        if (!R.L1_ANSWERS.some((x) => x.key === a.key)) throw invalid('Pick one of the answers.', { index: i });
+        const source = set.questions.find((q) => q.n === n)?.source;
+        if (!R.l1Answers(source).some((x) => x.key === a.key)) {
+          throw invalid(source === 'written' ? 'Answer the written question with Yes or No.' : 'Pick one of the answers.', { index: i });
+        }
       } else {
         const r = R.checkWrittenAnswer(String(a.text ?? '').trim());
         if (!r.ok) throw invalid(ERROR_TEXT[r.error] || 'Check this answer.', { index: i, reason: r.error });

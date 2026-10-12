@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Questions · 30+DA Super admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..900&family=JetBrains+Mono:wght@400..600&display=swap">
+  <link rel="stylesheet" href="/30da/admin/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-row">
+      <span class="wordmark">30+DA</span>
+      <span class="pill">Super admin</span>
+    </div>
+    <button class="link signout" id="signout" type="button">Sign out</button>
+  </header>
+
+  <div class="shell">
+    <nav class="sidenav" aria-label="Sections">
+      <a class="navitem" href="/30da/admin/monitor">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="4.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="8" y="1.5" width="4.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="1.5" y="8" width="4.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="8" y="8" width="4.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.3"/></svg>
+        Live overview
+      </a>
+      <a class="navitem" href="/30da/admin/monitor#users">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="5" cy="4.5" r="2.3" stroke="currentColor" stroke-width="1.3"/><path d="M1 12c.4-2.2 2-3.4 4-3.4s3.6 1.2 4 3.4M9.5 2.4a2.2 2.2 0 0 1 0 4.2M10.8 8.8c1.2.4 2 1.5 2.2 3.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        Users
+      </a>
+      <a class="navitem" href="/30da/admin/monitor#monitor">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 11.8 2.8 9A5 5 0 1 1 5 11.3L2 11.8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        Chat monitor
+      </a>
+      <a class="navitem active" href="/30da/admin/questions" aria-current="page">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5.6" stroke="currentColor" stroke-width="1.3"/><path d="M5.4 5.5a1.7 1.7 0 1 1 2.4 1.5c-.5.3-.8.6-.8 1.2v.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="10.2" r=".75" fill="currentColor"/></svg>
+        Questions
+      </a>
+    </nav>
+
+    <main class="main q-page">
+      <div class="head">
+        <h1>Questions</h1>
+        <span class="label" id="saved-state">Loading…</span>
+      </div>
+      <p class="q-lede">
+        What people pick from when they ask. Each question has its own 5 choices, and the app shows only
+        those 5 in that question's list. Every choice needs all five languages. Sets already sent keep
+        the text they were sent with.
+      </p>
+
+      <div class="q-toolbar">
+        <div class="seg" role="tablist" aria-label="Level">
+          <button type="button" role="tab" id="tab-1" data-level="1" aria-selected="true" class="active">Level 1</button>
+          <button type="button" role="tab" id="tab-2" data-level="2" aria-selected="false">Level 2</button>
+        </div>
+        <span class="label ink" id="level-rule"></span>
+        <button type="button" class="link q-expand-all" id="expand-all" aria-pressed="false">Show all languages</button>
+      </div>
+
+      <div class="q-grid" id="slots" aria-live="off"></div>
+
+      <div class="q-actions" role="region" aria-label="Save">
+        <span class="q-status" id="status" aria-live="polite"></span>
+        <button type="button" class="link plain" id="reset">Reset to defaults</button>
+        <button type="button" class="btn" id="discard" disabled>Discard changes</button>
+        <button type="button" class="btn-primary q-save" id="save" disabled>Save</button>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script type="module" src="/30da/admin/questions.js"></script>
+</body>
+</html>

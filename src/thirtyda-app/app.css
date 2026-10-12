@@ -682,6 +682,7 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 }
 
 /* ---------- 3 · Nearby ---------- */
+.ask-actions { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
 .me-btn { flex: none; padding: 0; border: 0; background: none; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--navy); cursor: pointer; }
 .dark .me-btn { box-shadow: 0 0 0 1.5px #fff; }
 .gps-card { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: var(--radius-lg); background: var(--navy); color: #fff; }
