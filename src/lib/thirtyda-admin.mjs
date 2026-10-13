@@ -13,11 +13,14 @@
  *   GET  /30da/admin/api/questions        both levels: [{ id:'L1', slots:[[{key,text:{en,km,zh,ko,ja}}×5]×4], titles, … }]
  *   PUT  /30da/admin/api/questions/L1|L2  { slots, titles?, updatedAt? } → saved level | 422 { problems } | 409 changed
  *   POST /30da/admin/api/questions/L1|L2/reset   back to the built-in choices
- *   GET  /30da/admin/connections          how people get their code / sign in (Telegram now; WhatsApp, Google, Facebook next)
+ *   GET  /30da/admin/connections  (= /30da/admin/code)   the "Code" page: how people get their code / sign in
  *   GET  /30da/admin/api/connections      { keyReady, devAuth, testCodes, onRailway, connections:[{ id, name, set, last4, updatedAt, updatedBy, live, … }] }
  *   PUT  /30da/admin/api/connections/telegram        { token } → saved (encrypted) | 422 bad format | 503 no key
- *   DELETE /30da/admin/api/connections/telegram      remove the saved token
- *   POST /30da/admin/api/connections/telegram/test   { phone } → a real Telegram code to that phone, or why not
+ *   PUT  /30da/admin/api/connections/whatsapp        { token?, phoneNumberId, templateName, templateLang? } (empty token = keep the saved one)
+ *   PUT  /30da/admin/api/connections/google          { clientId, clientSecret? }   (empty secret = keep the saved one)
+ *   PUT  /30da/admin/api/connections/facebook        { appId, appSecret? }
+ *   DELETE /30da/admin/api/connections/:id           remove what is saved for telegram | whatsapp | google | facebook
+ *   POST /30da/admin/api/connections/telegram|whatsapp/test   { phone } → a real code to that phone, or why not
  *
  * Secrets (src/lib/thirtyda-settings.mjs) are sealed with THIRTYDA_SECRET_KEY and never sent back:
  * only { set, last4, updatedAt, updatedBy }. The audit log never carries them either.
@@ -38,8 +41,13 @@ import {
   QUESTION_LEVELS, levelDocId, levelFromId, questionConfig, saveQuestions, resetQuestions,
 } from "./thirtyda-questions.mjs";
 import { LEVEL_RULES } from "../thirtyda-app/shared/questions.js";
-import { keyReady, saveSecret, removeSecret, secretStatus, SettingsError } from "./thirtyda-settings.mjs";
-import { checkTelegramToken, deliverCode, testCodesAllowed, CODE_TTL_S } from "./thirtyda-code-send.mjs";
+import {
+  keyReady, saveSecret, removeSecret, secretStatus, saveFields, readFields, fieldsStatus, SettingsError,
+} from "./thirtyda-settings.mjs";
+import {
+  checkTelegramToken, checkWhatsAppFields, channelLive, deliverCode, testCodesAllowed, CODE_TTL_S,
+} from "./thirtyda-code-send.mjs";
+import { checkSigninFields, signinRedirect, SIGNIN_WIRED } from "./thirtyda-signin.mjs";
 import { normalizePhone } from "./thirtyda-app.mjs";
 import { QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS } from "../thirtyda-app/shared/question-slots.js";
 
@@ -291,12 +299,19 @@ function testLimited(req) {
 /** "+85512345678" → "+855•••••678": enough for the audit to tell test numbers apart. */
 const maskPhone = (p) => (p ? `${p.slice(0, 4)}${"•".repeat(Math.max(0, p.length - 7))}${p.slice(-3)}` : null);
 
-/** The Connections page's data. Never a secret: Telegram shows only its last 4 characters. */
-async function connectionsView(d) {
+/**
+ * The Code page's data. Never a secret: a secret shows only its last 4 characters (last4 / masks); the
+ * plain fields (WhatsApp phone number ID + template, Google client ID, Facebook app ID) show as saved.
+ */
+async function connectionsView(d, req) {
   const tg = await secretStatus(d, "telegram");
   const envToken = String(process.env.THIRTYDA_TG_TOKEN ?? "").trim();
   const { readable, lastSend, ...view } = tg;
   const devAuth = process.env.THIRTYDA_DEV_AUTH === "1";
+  const [wa, google, facebook] = await Promise.all(["whatsapp", "google", "facebook"].map((n) => fieldsStatus(d, n)));
+  const signin = (id, name, st) => ({
+    id, name, kind: "signin", ...st, live: false, wired: SIGNIN_WIRED[id], redirect: signinRedirect(req, id),
+  });
   return {
     keyReady: keyReady(),
     devAuth,
@@ -316,12 +331,22 @@ async function connectionsView(d) {
         envFallback: envToken ? { last4: envToken.slice(-4) } : null,
         live: (view.set && readable) || Boolean(envToken),
       },
-      { id: "whatsapp", name: "WhatsApp", kind: "code", comingNext: true, live: false },
-      { id: "google", name: "Google sign-in", kind: "signin", comingNext: true, live: false },
-      { id: "facebook", name: "Facebook sign-in", kind: "signin", comingNext: true, live: false },
+      // Live once all four fields are saved and readable (the same rule the app uses: channelLive).
+      { id: "whatsapp", name: "WhatsApp", kind: "code", ...wa, live: await channelLive(d, "whatsapp") },
+      signin("google", "Google sign-in", google),
+      signin("facebook", "Facebook sign-in", facebook),
     ],
   };
 }
+
+/** PUT bodies of the "fields" connections: what the admin typed → checked values (a secret left empty keeps the saved one). */
+const FIELD_CHECKS = {
+  whatsapp: (input, current) => checkWhatsAppFields(input, current),
+  google: (input, current) => checkSigninFields("google", input, current),
+  facebook: (input, current) => checkSigninFields("facebook", input, current),
+};
+const CONNECTION_NAMES = { telegram: "Telegram", whatsapp: "WhatsApp", google: "Google", facebook: "Facebook" };
+const TESTABLE = ["telegram", "whatsapp"];
 
 /** One level as the Questions page edits it. */
 function questionsView(level, config) {
@@ -401,7 +426,8 @@ export async function handleThirtyDaAdmin(req, res, url) {
     await audit(req, "view_questions");
     return serveFile(res, "questions.html");
   }
-  if (req.method === "GET" && sub === "/connections") {
+  if (req.method === "GET" && (sub === "/connections" || sub === "/code")) {
+    // The "Code" page; /code is the same page under its new name.
     if (!me) return send(res, 302, "", { Location: BASE });
     await audit(req, "view_connections");
     return serveFile(res, "connections.html");
@@ -465,35 +491,42 @@ export async function handleThirtyDaAdmin(req, res, url) {
     return json(res, 200, { ...questionsView(level, r.config), changes: r.diff.changes, summary: r.diff.summary });
   }
 
-  if (req.method === "GET" && sub === "/api/connections") return json(res, 200, await connectionsView(await db()));
+  if (req.method === "GET" && sub === "/api/connections") return json(res, 200, await connectionsView(await db(), req));
 
   m = sub.match(/^\/api\/connections\/([a-z]+)(\/test)?$/);
   if (m && ((m[2] && req.method === "POST") || (!m[2] && (req.method === "PUT" || req.method === "DELETE")))) {
-    if (m[1] !== "telegram") {
+    const id = m[1];
+    if (!CONNECTION_NAMES[id]) {
       req.resume();
-      return json(res, 404, { error: "That connection is coming next. Only Telegram can be set up now." });
+      return json(res, 404, { error: "There is no such card on this page." });
+    }
+    if (m[2] && !TESTABLE.includes(id)) {
+      req.resume();
+      return json(res, 404, { error: `${CONNECTION_NAMES[id]} sign-in cannot be tested yet: it comes next.` });
     }
     if (writeLimited(req)) {
       req.resume();
       return json(res, 429, { error: "Too many changes. Try again in a few minutes." });
     }
     const d = await db();
+    const name = CONNECTION_NAMES[id];
 
     if (m[2]) {
-      // A real code to a real phone through the saved token (or THIRTYDA_TG_TOKEN): proves the setup works.
+      // A real code to a real phone through what is saved (Telegram: or THIRTYDA_TG_TOKEN): proves the setup works.
       const body = await readJsonBody(req, 1e4);
       if (body.bad || body.tooLarge) return json(res, 400, { error: "Send { phone }." });
       const phone = normalizePhone(body.value.phone);
       if (!phone) return json(res, 422, { error: "That phone number does not look right. Write it with the country code, e.g. +855 12 345 678.", reason: "bad_phone" });
-      const view = await connectionsView(d);
-      if (!view.connections[0].live) {
-        return json(res, 400, { error: "Save a Telegram token first, then send a test code.", reason: "not_set" });
+      const view = await connectionsView(d, req);
+      if (!view.connections.find((c) => c.id === id)?.live) {
+        const what = id === "telegram" ? "a Telegram token" : "all four WhatsApp boxes";
+        return json(res, 400, { error: `Save ${what} first, then send a test code.`, reason: "not_set" });
       }
       if (testLimited(req)) return json(res, 429, { error: `That is ${MAX_TESTS} test codes in 15 minutes. Try again later.` });
       const code = String(crypto.randomInt(0, 1e6)).padStart(6, "0");
-      const r = await deliverCode("telegram", phone, code, { d, record: false });
+      const r = await deliverCode(id, phone, code, { d, record: false });
       await audit(req, "connection_test", {
-        connection: "telegram", phone: maskPhone(phone), ok: r.ok, ...(r.ok ? { requestId: r.requestId } : { reason: r.reason, detail: r.detail }),
+        connection: id, phone: maskPhone(phone), ok: r.ok, ...(r.ok ? { requestId: r.requestId } : { reason: r.reason, detail: r.detail }),
       });
       if (!r.ok) return json(res, 422, { ok: false, error: r.message, reason: r.reason, detail: r.detail, phone });
       // The test code is not a sign-in code (nothing stores it): showing it lets the admin match what arrives.
@@ -502,27 +535,41 @@ export async function handleThirtyDaAdmin(req, res, url) {
 
     if (req.method === "DELETE") {
       req.resume();
-      const r = await removeSecret(d, "telegram");
-      await audit(req, "connection_remove", { connection: "telegram", removed: r.removed });
-      return json(res, 200, await connectionsView(d));
+      const r = await removeSecret(d, id);
+      await audit(req, "connection_remove", { connection: id, removed: r.removed });
+      return json(res, 200, await connectionsView(d, req));
     }
 
     const body = await readJsonBody(req, 1e4);
-    if (body.tooLarge) return json(res, 413, { error: "That is far too long for a token." });
-    if (body.bad) return json(res, 400, { error: "Send { token }." });
-    const c = checkTelegramToken(body.value.token);
-    if (!c.ok) return json(res, 422, { error: c.error, field: "token" });
+    if (body.tooLarge) return json(res, 413, { error: "That is far too long to save." });
+    if (body.bad) return json(res, 400, { error: id === "telegram" ? "Send { token }." : "Send the boxes as JSON." });
     try {
-      const saved = await saveSecret(d, "telegram", c.token, { by: "superadmin" });
-      await audit(req, "connection_save", { connection: "telegram", last4: saved.last4 });
+      if (id === "telegram") {
+        const c = checkTelegramToken(body.value.token);
+        if (!c.ok) return json(res, 422, { error: c.error, field: "token" });
+        const saved = await saveSecret(d, "telegram", c.token, { by: "superadmin" });
+        await audit(req, "connection_save", { connection: "telegram", last4: saved.last4 });
+      } else {
+        // An empty secret box keeps the secret already saved (so a template name can change without the token).
+        const current = await readFields(d, id).catch(() => null);
+        const c = FIELD_CHECKS[id](body.value, current);
+        if (!c.ok) return json(res, 422, { error: c.error, field: c.field });
+        const saved = await saveFields(d, id, c.values, { by: "superadmin" });
+        // Never a secret in the audit: only which boxes changed, and the secrets' last 4.
+        const changed = Object.keys(c.values).filter((f) => !current || current[f] !== c.values[f]);
+        await audit(req, "connection_save", { connection: id, masks: saved.masks, changed });
+      }
     } catch (err) {
       if (err instanceof SettingsError && err.code === "no_key") {
-        await audit(req, "connection_save_refused", { connection: "telegram", reason: "no_key" });
-        return json(res, 503, { error: err.message, reason: "no_key" });
+        await audit(req, "connection_save_refused", { connection: id, reason: "no_key" });
+        return json(res, 503, {
+          error: `The server's lock key is missing, so the ${name} keys cannot be saved yet. Ask your developer to set it, then save again.`,
+          reason: "no_key",
+        });
       }
       throw err;
     }
-    return json(res, 200, await connectionsView(d));
+    return json(res, 200, await connectionsView(d, req));
   }
 
   m = sub.match(/^\/api\/users\/(U-\d+)\/(block|unblock)$/);

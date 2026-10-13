@@ -805,6 +805,10 @@
   // until delivered (verify-code 409 code_sending): neither can happen here.
   const CODE_CHANNELS = ['telegram', 'whatsapp'];
 
+  // Which of the phone step's 4 buttons work (server: GET /auth/methods). The demo is the server's test mode
+  // with nothing set up: every button works (a test code on screen; Facebook / Google sign in at once).
+  const authMethods = () => ({ code: { telegram: true, whatsapp: true }, signin: { google: true, facebook: true } });
+
   function sendCode({ body }) {
     const phone = normalizePhone(body.phone);
     if (!phone) throw invalid('That phone number does not look right.', { field: 'phone' });
@@ -1387,6 +1391,7 @@
   // ------------------------------------------------------------------ router (same table as the server)
 
   const ROUTES = [
+    ['GET', /^\/auth\/methods$/, authMethods, { auth: 'none' }],
     ['POST', /^\/auth\/send-code$/, sendCode, { auth: 'none' }],
     ['POST', /^\/auth\/verify-code$/, verifyCode, { auth: 'none' }],
     ['POST', /^\/auth\/verify-social$/, verifySocial, { auth: 'none' }],

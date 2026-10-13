@@ -218,7 +218,7 @@ test('timeout: a hanging Telegram is cut off (10 s in use, 50 ms here)', async (
   assert.ok(Date.now() - t0 < 2000);
 });
 
-test('channels: Telegram is live with a saved token (or THIRTYDA_TG_TOKEN); WhatsApp is not yet', async () => {
+test('channels: Telegram is live with a saved token (or THIRTYDA_TG_TOKEN); WhatsApp not without its own keys', async () => {
   clearSettingsCache();
   const d = fakeDb();
   const prev = { key: process.env.THIRTYDA_SECRET_KEY, tg: process.env.THIRTYDA_TG_TOKEN };

@@ -25,8 +25,9 @@
  * Collections: thirtyda_users, thirtyda_user_sessions, thirtyda_otps,
  * thirtyda_pairs, thirtyda_sets, thirtyda_chats, thirtyda_flags, thirtyda_counters; reads the
  * admin's question choices from thirtyda_questions (src/lib/thirtyda-questions.mjs) and the code
- * channels' settings from thirtyda_settings (src/lib/thirtyda-code-send.mjs: Telegram codes are real
- * once the admin saves a Telegram Gateway token on the Connections page).
+ * channels' settings from thirtyda_settings (src/lib/thirtyda-code-send.mjs: Telegram / WhatsApp codes are
+ * real once the admin saves their keys on the admin Code page). GET /auth/methods tells the phone step which
+ * of its 4 buttons work (Telegram, WhatsApp, Facebook, Google).
  */
 
 import crypto from "node:crypto";
@@ -37,6 +38,7 @@ import { translate, translateAll, translateEnabled } from "./thirtyda-translate.
 import { areaFor, haversineKm } from "./thirtyda-geo.mjs";
 import { clientIp } from "./thirtyda-net.mjs";
 import { CODE_CHANNELS, DEFAULT_CHANNEL, CHANNEL_NAMES, channelLive, testCodesAllowed, deliverCode } from "./thirtyda-code-send.mjs";
+import { SIGNIN_PROVIDERS, SIGNIN_WIRED } from "./thirtyda-signin.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
   PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
@@ -754,16 +756,34 @@ function takeGiveBack(phone, now) {
 
 /** Who gets the code where: the person picks Telegram (default) or WhatsApp on the phone step. */
 const CHANNEL_FAILED_TEXT = {
-  not_on_telegram: (name, other) => `We could not send a ${name} code to this number. Check the number, or get the code by ${other}.`,
+  not_on: (name, other) => `We could not send a ${name} code to this number. Check the number, or get the code by ${other}.`,
   unavailable: (name, other) => `${name} codes are not working right now. Try ${other}.`,
 };
 
 /**
+ * GET /auth/methods → which of the phone step's buttons work right now:
+ *   { code: { telegram, whatsapp }, signin: { google, facebook } } (booleans).
+ * A code channel works when it is live, or (test mode only) while no channel is set up at all — the same
+ * rule send-code applies. Google / Facebook work only in test mode until their sign-in is built; then the
+ * app shows "Coming soon" for them. Nothing here is secret: no key, no count, no setting.
+ */
+async function authMethods(ctx) {
+  const { d } = ctx;
+  const testCodes = await testCodesAllowed(d, DEV_AUTH);
+  const code = {};
+  for (const channel of CODE_CHANNELS) code[channel] = testCodes || (await channelLive(d, channel));
+  const signin = {};
+  for (const provider of SIGNIN_PROVIDERS) signin[provider] = DEV_AUTH || SIGNIN_WIRED[provider];
+  return { code, signin };
+}
+
+/**
  * POST /auth/send-code { phone, channel:'telegram'|'whatsapp' } (channel defaults to telegram).
- * Live channel (configured on the admin Connections page) → the code really goes out and is never
+ * Live channel (configured on the admin Code page) → the code really goes out and is never
  * returned, test mode or not. The new code is claimed PENDING: verify-code checks nothing against it (nor
- * against the number's older code) until Telegram has accepted it, so a send that fails was never guessable.
- * If delivery fails → 422 channel_failed { channel, reason, message }: the number's older code comes back
+ * against the number's older code) until Telegram / WhatsApp has accepted it, so a send that fails was never
+ * guessable. If delivery fails → 422 channel_failed { channel, reason: 'not_on_telegram' | 'not_on_whatsapp' |
+ * 'unavailable', message } (never a devCode, never the provider's own words): the number's older code comes back
  * exactly as it was (its tries already used stay used), and the send itself is given back (no 30 s wait,
  * no use of its 3 per 15 minutes) at most OTP_GIVE_BACKS times per number per 15 minutes; after that a
  * failed send counts like a sent one. The address's count always stays used.
@@ -821,8 +841,9 @@ async function sendCode(ctx) {
       console.error("[30da api] could not clear a failed code send:", err instanceof Error ? err.message : err);
     }
     console.warn(`[30da api] ${channel} code not delivered: ${sent.reason}${sent.detail ? ` (${sent.detail})` : ""}${givenBack ? "" : " · send counted"}`);
-    const reason = sent.reason === "not_on_telegram" ? "not_on_telegram" : "unavailable";
-    throw fail(422, "channel_failed", CHANNEL_FAILED_TEXT[reason](name, other), { channel, reason });
+    const notOn = sent.reason === "not_on_telegram" || sent.reason === "not_on_whatsapp";
+    const reason = notOn ? sent.reason : "unavailable";
+    throw fail(422, "channel_failed", CHANNEL_FAILED_TEXT[notOn ? "not_on" : "unavailable"](name, other), { channel, reason });
   }
   // Not live (test mode with no channel set up, checked above): the code comes back for the "Test code" note.
   return { ok: true, phone, channel, live: false, resendIn: OTP_RESEND_S, devCode: code };
@@ -2001,6 +2022,7 @@ async function report(ctx) {
 
 // auth: "none" (anyone), "session" (any session, profile optional), "user" (default: a profile).
 const ROUTES = [
+  ["GET", /^\/auth\/methods$/, authMethods, { auth: "none", blockedOk: true }],
   ["POST", /^\/auth\/send-code$/, sendCode, { auth: "none" }],
   ["POST", /^\/auth\/verify-code$/, verifyCode, { auth: "none" }],
   ["POST", /^\/auth\/verify-social$/, verifySocial, { auth: "none" }],

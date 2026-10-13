@@ -678,13 +678,49 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
   line-height: 1.4;
 }
 .truth-note .icon { flex: none; margin-top: 1px; color: #c45f00; }
-/* Get the code by: Telegram | WhatsApp (small segmented choice above the number) */
-.code-by { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; }
-.code-by-label { font-size: 13px; font-weight: 600; color: var(--muted); }
-.code-by-seg { flex: 1 1 196px; max-width: 280px; }
-.code-by-seg > button { height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 13.5px; }
-.code-by-seg > button .icon { flex: none; }
-.code-by-seg > button[disabled] { cursor: progress; }
+/* Phone step: one row of round brand buttons — Telegram · WhatsApp (where the code goes) · Facebook · Google
+   (sign in). The chosen code channel gets a navy ring; one that does not work yet is dimmed, "Coming soon". */
+.ways { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-bottom: 2px; }
+.way {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 4px 0 2px;
+  border-radius: 12px;
+  text-align: center;
+}
+.way-dot { position: relative; display: block; width: 52px; height: 52px; border-radius: 50%; transition: box-shadow 0.15s, opacity 0.15s, transform 0.1s; }
+.way-mark { display: block; width: 52px; height: 52px; }
+.way:active .way-dot { transform: scale(0.95); }
+.way[aria-pressed="true"] .way-dot { box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--navy); }
+.way-name { max-width: 100%; font-size: 12px; font-weight: 600; line-height: 1.2; color: var(--muted); overflow-wrap: anywhere; }
+.way[aria-pressed="true"] .way-name { color: var(--ink); font-weight: 800; }
+.way.is-off .way-dot { opacity: 0.32; filter: grayscale(0.4); }
+.way.is-off .way-name { color: var(--muted-2); }
+.way-note { max-width: 100%; margin-top: -2px; font-size: 10.5px; font-weight: 600; line-height: 1.2; color: var(--muted-2); }
+.way.is-busy .way-dot { opacity: 0.6; cursor: progress; }
+.way-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background: var(--green);
+  color: #fff;
+  box-shadow: 0 0 0 2px #fff;
+}
+.way.is-done .way-name { color: var(--green); font-weight: 700; }
+/* The two sign-in buttons sit after a thin rule (they do not send a code). */
+.ways.with-signin .way:nth-child(3)::before { content: ''; position: absolute; left: -2px; top: 12px; height: 36px; border-left: 1px solid var(--line-soft); }
+.way-hint { font-size: 13px; color: var(--muted); }
+.way-msg { display: flex; align-items: flex-start; gap: 6px; padding: 8px 10px; border-radius: var(--radius); background: var(--bubble); font-size: 12.5px; font-weight: 600; line-height: 1.4; color: var(--ink); }
+.way-msg .icon { flex: none; margin-top: 1px; color: var(--muted); }
 .field-error .err-action { font-size: inherit; color: var(--ink); white-space: nowrap; }
 .phone-row { display: grid; grid-template-columns: 94px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
 .phone-row .select { padding: 0 26px 0 10px; background-position: right 6px center; font-family: var(--mono); font-size: 14px; }
@@ -695,8 +731,6 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .code-row { display: flex; align-items: center; gap: 12px; }
 .code-row .input { width: 172px; flex: none; }
 .resend { font-size: 13px; color: var(--muted); }
-.social-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.btn-social.is-verified { border-color: var(--green); color: var(--green); background: var(--green-soft); }
 .sticky-actions {
   position: sticky;
   bottom: 0;

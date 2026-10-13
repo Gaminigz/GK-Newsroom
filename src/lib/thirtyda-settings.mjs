@@ -1,10 +1,15 @@
 /**
- * 30+DA settings the super admin enters on the web (Connections page) — secrets such as the Telegram
- * Gateway API token.
+ * 30+DA settings the super admin enters on the web (the admin "Code" page, /30da/admin/connections) —
+ * the Telegram Gateway API token, the WhatsApp Cloud API keys, and the Google / Facebook sign-in keys.
  *
  * Mongo `thirtyda_settings`, one doc per setting:
  *   { _id:'telegram', kind:'secret', box:{ v:1, alg:'aes-256-gcm', iv, tag, data }, last4,
  *     updatedAt, updatedBy, lastSend?:{ ok, reason, detail, at } }
+ *   { _id:'whatsapp'|'google'|'facebook', kind:'fields', box (sealed JSON of ALL the fields), last4, masks:{ <secret field>: last4 },
+ *     updatedAt, updatedBy, lastSend? }
+ * A "fields" setting (FIELD_SETTINGS) keeps every field in the one sealed box; the fields marked secret are
+ * only ever shown as their last 4 characters, the others (a phone number ID, a template name, an app ID)
+ * are shown back to the admin as saved.
  * The value is sealed with AES-256-GCM under THIRTYDA_SECRET_KEY (64 hex characters = 32 bytes, server env only):
  * a fresh random 12-byte IV on every save, the 16-byte auth tag stored beside it, and the setting's name as
  * associated data, so a sealed value cannot be moved to another setting or changed without failing to open.
@@ -21,7 +26,15 @@
 import crypto from "node:crypto";
 
 export const SETTINGS_COLLECTION = "thirtyda_settings";
+/** Settings that hold ONE secret string (saveSecret / readSecret). */
 export const SECRET_NAMES = ["telegram"];
+/** Settings that hold several fields in one sealed box (saveFields / readFields); secret:true → shown as last 4 only. */
+export const FIELD_SETTINGS = {
+  whatsapp: { token: { secret: true }, phoneNumberId: {}, templateName: {}, templateLang: {} },
+  google: { clientId: {}, clientSecret: { secret: true } },
+  facebook: { appId: {}, appSecret: { secret: true } },
+};
+export const SETTING_NAMES = [...SECRET_NAMES, ...Object.keys(FIELD_SETTINGS)];
 const CACHE_MS = 30e3;
 const ALG = "aes-256-gcm";
 const KEY_RE = /^[0-9a-fA-F]{64}$/;
@@ -53,10 +66,11 @@ export function keyReady(raw = process.env.THIRTYDA_SECRET_KEY) {
   }
 }
 
-function checkName(name) {
-  if (!SECRET_NAMES.includes(name)) throw new SettingsError("unknown", `No such setting: ${String(name).slice(0, 40)}.`);
+function checkName(name, names = SETTING_NAMES) {
+  if (!names.includes(name)) throw new SettingsError("unknown", `No such setting: ${String(name).slice(0, 40)}.`);
   return name;
 }
+const checkFieldsName = (name) => checkName(name, Object.keys(FIELD_SETTINGS));
 
 const aad = (name) => Buffer.from(`${SETTINGS_COLLECTION}:${name}`, "utf8");
 
@@ -108,7 +122,7 @@ const warned = new Set();
 function warnUnreadable(name, why) {
   if (warned.has(name)) return;
   warned.add(name);
-  console.error(`[30da settings] the saved ${name} value cannot be read (${why}); save it again on the admin Connections page.`);
+  console.error(`[30da settings] the saved ${name} value cannot be read (${why}); save it again on the admin Code page.`);
 }
 
 // ---------- reads ----------
@@ -166,7 +180,7 @@ export async function secretStatus(d, name, { rawKey } = {}) {
 
 /** Seal and store `plain` as `name`. Refuses (SettingsError 'no_key') without a valid THIRTYDA_SECRET_KEY. */
 export async function saveSecret(d, name, plain, { by = "superadmin", rawKey } = {}) {
-  checkName(name);
+  checkName(name, SECRET_NAMES);
   const key = settingsKey(rawKey);
   const value = String(plain ?? "");
   if (!value) throw new SettingsError("empty", "Nothing to save.");
@@ -199,4 +213,95 @@ export async function noteSecretUse(d, name, { ok, reason = null, detail = null 
     { _id: name, box: { $exists: true } },
     { $set: { lastSend: { ok: Boolean(ok), reason, detail, at: new Date() } } },
   );
+}
+
+// ---------- several fields in one sealed box (WhatsApp, Google, Facebook) ----------
+
+/** { field: value } with only the fields of `name`, each a trimmed string (missing → ""). */
+function pickFields(name, values) {
+  const out = {};
+  for (const f of Object.keys(FIELD_SETTINGS[name])) out[f] = String(values?.[f] ?? "").trim();
+  return out;
+}
+const secretFields = (name) => Object.keys(FIELD_SETTINGS[name]).filter((f) => FIELD_SETTINGS[name][f].secret);
+const plainFields = (name) => Object.keys(FIELD_SETTINGS[name]).filter((f) => !FIELD_SETTINGS[name][f].secret);
+
+/** The fields of a sealed box → object, or null when it is not a JSON object. */
+function parseFields(name, json) {
+  try {
+    const v = JSON.parse(json);
+    return v && typeof v === "object" && !Array.isArray(v) ? pickFields(name, v) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What a client may see of a "fields" setting: never the box, never a secret field — only its last 4
+ * (masks). The plain fields come from the opened box (`values`), so they show only when this server can read it.
+ */
+export function fieldsView(name, doc, values = null) {
+  checkFieldsName(name);
+  const set = Boolean(doc?.box);
+  const shown = {};
+  if (set && values) for (const f of plainFields(name)) shown[f] = values[f] ?? "";
+  return {
+    set,
+    last4: set ? doc.last4 ?? null : null,
+    masks: set ? { ...(doc.masks ?? {}) } : {},
+    fields: set && values ? shown : null,
+    updatedAt: set ? iso(doc.updatedAt) : null,
+    updatedBy: set ? doc.updatedBy ?? null : null,
+  };
+}
+
+/** Every field of `name` (secrets included), or null: not saved, not readable, or damaged. Cached like readSecret. */
+export async function readFields(d, name, { rawKey } = {}) {
+  checkFieldsName(name);
+  const json = await readSecret(d, name, { rawKey });
+  return json == null ? null : parseFields(name, json);
+}
+
+/** The admin's view of a "fields" setting: fieldsView + readable + the last live use. Never a secret value. */
+export async function fieldsStatus(d, name, { rawKey } = {}) {
+  checkFieldsName(name);
+  const doc = await d.collection(SETTINGS_COLLECTION).findOne({ _id: name });
+  let values = null;
+  if (doc?.box) {
+    try {
+      values = parseFields(name, openSecret(doc.box, settingsKey(rawKey), name));
+    } catch { /* wrong key, damaged, or no key on this server */ }
+  }
+  const last = doc?.box && doc.lastSend ? {
+    ok: Boolean(doc.lastSend.ok), reason: doc.lastSend.reason ?? null, detail: doc.lastSend.detail ?? null, at: iso(doc.lastSend.at),
+  } : null;
+  return { ...fieldsView(name, doc, values), readable: Boolean(values), lastSend: last };
+}
+
+/**
+ * Seal and store every field of `name` (one box; a fresh IV each time). Each field must be filled in
+ * (SettingsError 'empty', err.field). Refuses (SettingsError 'no_key') without a valid THIRTYDA_SECRET_KEY.
+ * → fieldsView (the plain fields + the secrets' last 4). A save starts a new card: the last live use is dropped.
+ */
+export async function saveFields(d, name, values, { by = "superadmin", rawKey } = {}) {
+  checkFieldsName(name);
+  const key = settingsKey(rawKey);
+  const all = pickFields(name, values);
+  for (const [f, v] of Object.entries(all)) {
+    if (!v) throw Object.assign(new SettingsError("empty", `Fill in ${f} first.`), { field: f });
+  }
+  const masks = Object.fromEntries(secretFields(name).map((f) => [f, lastFour(all[f])]));
+  const doc = {
+    _id: name,
+    kind: "fields",
+    box: sealSecret(JSON.stringify(all), key, name),
+    last4: masks[secretFields(name)[0]] ?? null,
+    masks,
+    updatedAt: new Date(),
+    updatedBy: by,
+  };
+  await d.collection(SETTINGS_COLLECTION).replaceOne({ _id: name }, doc, { upsert: true });
+  clearSettingsCache(name);
+  warned.delete(name);
+  return fieldsView(name, doc, all);
 }

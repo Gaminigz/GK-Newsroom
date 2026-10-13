@@ -471,7 +471,7 @@ textarea.input.q-in {
 .btn-primary.q-save { width: auto; min-width: 150px; height: 38px; margin-top: 0; padding: 0 18px; }
 .btn-primary.q-save[disabled] { opacity: 0.4; cursor: default; }
 
-/* ---------- Connections (how people get their code / sign in) ---------- */
+/* ---------- Code (how people get their code / sign in: Telegram, WhatsApp, Facebook, Google) ---------- */
 .cx-banner {
   margin: 0 0 16px;
   max-width: 78ch;
@@ -500,7 +500,9 @@ textarea.input.q-in {
   color: var(--muted);
 }
 .cx-logo.telegram { background: #e5f3fb; color: #1a86c7; }
-.is-next .cx-logo { background: #f1f3f7; color: #9aa1ae; }
+.cx-logo.whatsapp { background: #e3f7ea; color: #15964a; }
+.cx-logo.facebook { background: #e7f0fe; color: #1877f2; }
+.cx-logo.google { background: #fdecea; color: #d93025; }
 .cx-pill {
   flex: none;
   display: inline-flex;
@@ -520,8 +522,7 @@ textarea.input.q-in {
 .cx-pill::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .cx-pill.live { background: #e3f5ea; color: var(--green); }
 .cx-pill.warn { background: var(--red-soft); color: var(--red); }
-.cx-pill.next { background: #f6f7fa; color: #9aa1ae; }
-.cx-pill.next::before { display: none; }
+.cx-pill.saved { background: #e7f0fe; color: #1a5fc8; }
 .cx-status { margin: 16px 0 0; padding: 12px 0 0; border-top: 1px solid var(--line); display: grid; gap: 8px; }
 .cx-row { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; align-items: baseline; }
 .cx-row dt { margin: 0; }
@@ -558,16 +559,24 @@ textarea.input.q-in {
 .cx-result.bad .cx-fine { color: #8f2a24; }
 .cx-fine { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
 .cx-code { font-family: var(--mono); font-size: 13px; font-weight: 600; letter-spacing: 0.12em; padding: 1px 6px; border-radius: 4px; background: #fff; }
-.cx-next { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-.cx-card.is-next { color: var(--muted); }
-.cx-card.is-next h2 { color: #6b7385; }
-.cx-card.is-next .cx-help { margin-top: 12px; }
-.cx-next-row { display: flex; gap: 8px; margin-top: 12px; }
-.cx-next-row .input { flex: 1 1 auto; min-width: 0; }
-.cx-next-row .input:disabled { background: #f3f5f8; cursor: not-allowed; }
-.cx-next-row .btn { height: 40px; border-color: #c9d0dc; color: #9aa1ae; }
+/* Several boxes saved together (WhatsApp 2×2, Google / Facebook 1×2) */
+.cx-boxes { display: grid; gap: 12px 16px; }
+.cx-boxes.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cx-boxes .field { margin-bottom: 6px; }
+.cx-box { min-width: 0; }
+.cx-box .cx-help { margin-top: 6px; }
+.cx-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.cx-signin-body { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); display: grid; gap: 14px; }
+.cx-where { margin: 0; }
+.cx-redirect .cx-help { margin: 0 0 6px; }
+.cx-copy-row { display: flex; align-items: center; gap: 8px; }
+.cx-address { flex: 1 1 auto; min-width: 0; padding: 9px 10px; border-radius: 6px; background: #f3f5f8; overflow-wrap: anywhere; line-height: 1.4; user-select: all; }
+.btn.cx-copy-btn { flex: none; height: 38px; }
 @media (max-width: 1000px) {
-  .cx-split, .cx-next { grid-template-columns: 1fr; }
+  .cx-split, .cx-pair { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .cx-boxes.four { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
   .cx-card { padding: 14px; }

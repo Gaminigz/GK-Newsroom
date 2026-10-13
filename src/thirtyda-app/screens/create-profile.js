@@ -118,11 +118,51 @@ export const blankPhone = () => ({
   channel: 'telegram', sentBy: null, live: false, failed: [],
 });
 
-// The channels a code can come by, in the order shown. Brand names stay in Latin letters in every language.
-const CODE_CHANNELS = [['telegram', 'send', 'Telegram'], ['whatsapp', 'chat', 'WhatsApp']];
-const channelName = (key) => CODE_CHANNELS.find((c) => c[0] === key)?.[2] ?? key;
+// The ways in, in the order shown: two bring the code (Telegram, WhatsApp), two sign in (Facebook, Google).
+// Brand names stay in Latin letters in every language.
+const CODE_CHANNELS = [['telegram', 'Telegram'], ['whatsapp', 'WhatsApp']];
+const SIGN_INS = [['facebook', 'facebook', 'Facebook'], ['google', 'gmail', 'Google']]; // [provider, verified key, name]
+const channelName = (key) => CODE_CHANNELS.find((c) => c[0] === key)?.[1] ?? key;
 const otherChannel = (key) => CODE_CHANNELS.find((c) => c[0] !== key)[0];
 let verifierSeq = 0;
+
+// Round brand marks in their own colours (constant markup, never user text). 24×24, the circle included.
+const BRAND_SVG = {
+  telegram: '<circle cx="12" cy="12" r="12" fill="#229ED9"/>'
+    + '<path fill="#fff" d="M5.4 11.7 17.6 7c.6-.2 1.1.1.9.9l-2.1 9.8c-.2.7-.6.9-1.2.5l-3.2-2.4-1.5 1.5c-.2.2-.3.3-.7.3l.2-3.3 6-5.4c.3-.2-.1-.4-.4-.2l-7.4 4.7-3.2-1c-.7-.2-.7-.7.1-1Z"/>',
+  whatsapp: '<circle cx="12" cy="12" r="12" fill="#25D366"/>'
+    + '<path fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" d="M12 5.4a6.5 6.5 0 0 0-5.6 9.8l-.9 3.3 3.4-.9A6.5 6.5 0 1 0 12 5.4Z"/>'
+    + '<path fill="#fff" d="M9.7 8.6c.2-.2.5-.2.7 0l.8 1.4c.1.3.1.5-.1.7l-.4.5c.4.9 1.2 1.7 2.1 2.1l.5-.4c.2-.2.5-.2.7-.1l1.4.8c.3.2.3.5.1.7-.6.8-1.5 1.1-2.4.8-1.8-.6-3.2-2-3.8-3.8-.3-.9 0-1.8.4-2.4Z"/>',
+  facebook: '<circle cx="12" cy="12" r="12" fill="#1877F2"/>'
+    + '<path fill="#fff" d="M13.1 23.9v-8.4h2.8l.4-3.3h-3.2v-2c0-1 .3-1.6 1.7-1.6h1.7V5.7c-.3 0-1.3-.1-2.5-.1-2.5 0-4.2 1.5-4.2 4.3v2.3H7v3.3h2.8v8.3a12 12 0 0 0 3.3.1Z"/>',
+  google: '<circle cx="12" cy="12" r="11.5" fill="#fff" stroke="#dadce0"/>'
+    + '<svg x="5.5" y="5.5" width="13" height="13" viewBox="0 0 48 48">'
+    + '<path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>'
+    + '<path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>'
+    + '<path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>'
+    + '<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>'
+    + '</svg>',
+};
+function brandMark(key) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  for (const [k, v] of Object.entries({ viewBox: '0 0 24 24', width: '52', height: '52', 'aria-hidden': 'true', focusable: 'false', class: 'way-mark' })) svg.setAttribute(k, v);
+  svg.innerHTML = BRAND_SVG[key];
+  return svg;
+}
+
+// Which of the buttons work right now (GET /auth/methods: { code:{ telegram, whatsapp }, signin:{ google, facebook } }).
+// Kept a minute; unknown (the call failed) → every button stays on and the server answers for itself.
+let methodsCache = null;
+async function loadMethods() {
+  if (methodsCache && Date.now() - methodsCache.at < 60e3) return methodsCache.value;
+  try {
+    const value = await api.get('/auth/methods', { redirect: false });
+    methodsCache = { at: Date.now(), value };
+    return value;
+  } catch {
+    return null;
+  }
+}
 
 // What the user typed → E.164-ish ("+855" + digits, leading zeros dropped), or null when too short.
 function fullPhone(model) {
@@ -135,7 +175,7 @@ function fullPhone(model) {
 
 function sendErrorText(err, channel) {
   const names = { channel: channelName(channel), other: channelName(otherChannel(channel)) };
-  if (err.code === 'channel_failed') return t(err.data?.reason === 'not_on_telegram' ? 'cp_ch_not_on' : 'cp_ch_failed', names);
+  if (err.code === 'channel_failed') return t(/^not_on_/.test(err.data?.reason || '') ? 'cp_ch_not_on' : 'cp_ch_failed', names);
   if (err.code === 'channel_unavailable') return t('cp_ch_off', names);
   if (err.code === 'sms_unavailable') return t('cp_sms_off');
   if (err.code === 'too_soon') return t('cp_resend_in', { s: err.data?.resendIn ?? 30 });
@@ -153,21 +193,29 @@ function verifyErrorText(err) {
 }
 
 /**
- * Get the code by: [Telegram | WhatsApp] (Telegram first), then [+855 ⌄][12 345 678][Send code] → 6-digit code
- * with a resend countdown → green "Phone verified". A live channel really sends ("We sent a code to your
- * Telegram"); test mode shows the code on screen. If the channel cannot deliver, the message offers the other one.
+ * One row of round brand buttons: Telegram · WhatsApp (where the code goes) · Facebook · Google (sign in;
+ * only when `signin` is given — Create profile). Then [+855 ⌄][12 345 678][Send code] → 6-digit code with a
+ * resend countdown → green "Phone verified". A live channel really sends ("We sent a code to your Telegram");
+ * test mode shows the code on screen. If the channel cannot deliver, the message offers the other one.
+ * A button that does not work yet (GET /auth/methods) is dimmed with "Coming soon"; tapping it says why.
+ * Facebook / Google say "Coming soon" until their sign-in is built (test mode keeps its test sign-in).
  * `model` (see blankPhone) keeps the state across re-renders. onVerified(response) after a good code.
+ * signin: { verified: () => ({ gmail, facebook }), onVerified(verified) } — what the session has proved.
  */
-export function phoneVerifier(model, { onVerified, onChange } = {}) {
+export function phoneVerifier(model, { onVerified, onChange, signin = null } = {}) {
   model.channel ||= 'telegram';
   model.failed ||= [];
   const uid = `pv${++verifierSeq}`;
   const node = el('div', { class: 'stack phone-box', style: { '--gap': '10px' } });
   const error = el('p', { class: 'field-error', role: 'alert', hidden: true });
+  const note = el('p', { class: 'way-msg', role: 'status', hidden: true });
   let resendTimer = null;
   let sending = false;
   let checking = false;
+  let signingIn = null;
   let codeEl = null;
+  let methods = null; // null = not known (yet): every button on
+  let alive = true;
 
   // An optional action (e.g. "Send by WhatsApp") sits right after the message.
   const showError = (text, action = null) => {
@@ -175,16 +223,58 @@ export function phoneVerifier(model, { onVerified, onChange } = {}) {
       ? el('button', { type: 'button', class: 'link err-action', on: { click: action.run } }, action.label) : null) : null;
     error.replaceChildren(...(text ? [icon('flag', 14), body] : []));
     error.hidden = !text;
+    if (text) showNote(null);
   };
+  // A calm note (not an error): "Coming soon", "Verified with Google".
+  function showNote(text, iconName = 'clock') {
+    note.replaceChildren(...(text ? [icon(iconName, 14), el('span', {}, text)] : []));
+    note.hidden = !text;
+  }
 
-  /** After a channel could not send: offer the other one, unless it failed too. */
+  const codeOn = (key) => methods?.code?.[key] !== false;
+  const signinOn = (provider) => methods?.signin?.[provider] !== false;
+
+  /** After a channel could not send: offer the other one, unless it failed too or does not work. */
   function offerOther(channel) {
     const other = otherChannel(channel);
-    if (model.failed.includes(other)) return null;
+    if (model.failed.includes(other) || !codeOn(other)) return null;
     return {
       label: t('cp_ch_try', { channel: channelName(other) }),
       run: () => { model.channel = other; render(); send(); },
     };
+  }
+
+  function pickChannel(key) {
+    if (!codeOn(key)) {
+      showError(null);
+      showNote(t('cp_ch_off', { channel: channelName(key), other: channelName(otherChannel(key)) }));
+      return;
+    }
+    if (model.channel === key) return;
+    model.channel = key;
+    showError(null);
+    showNote(null);
+    render();
+  }
+
+  async function signIn(provider, key, name) {
+    if (signingIn || signin?.verified?.()[key]) return;
+    showError(null);
+    if (!signinOn(provider)) return showNote(t('cp_signin_soon', { name }));
+    signingIn = provider;
+    render();
+    try {
+      const r = await api.post('/auth/verify-social', { provider });
+      signin.onVerified?.({ ...(r.verified || {}), [key]: true });
+      showNote(t('cp_verified_with', { name }), 'check');
+    } catch (err) {
+      if (err.code === 'oauth_unavailable') showNote(t('cp_signin_soon', { name }));
+      else showError(err.status === 0 ? t('err_network') : t('err_generic'));
+    } finally {
+      signingIn = null;
+      render();
+      onChange?.();
+    }
   }
 
   async function send() {
@@ -193,6 +283,7 @@ export function phoneVerifier(model, { onVerified, onChange } = {}) {
     if (!phone) return showError(t('cp_phone_invalid'));
     const channel = model.channel;
     sending = true;
+    showNote(null);
     render();
     let sent = false;
     try {
@@ -260,7 +351,36 @@ export function phoneVerifier(model, { onVerified, onChange } = {}) {
     return line;
   }
 
+  /** One round button: brand mark, name under it, "Coming soon" under that while it does not work. */
+  function wayButton({ key, name, on, pressed = null, done = false, busy = false, click }) {
+    return el('button', {
+      type: 'button', class: ['way', !on && 'is-off', done && 'is-done', busy && 'is-busy'],
+      'aria-pressed': pressed == null ? null : String(pressed),
+      'aria-disabled': on ? null : 'true',
+      'aria-label': [name, done ? t('cp_verified') : null, on ? null : t('cp_soon')].filter(Boolean).join(' · '),
+      on: { click },
+    },
+    el('span', { class: 'way-dot' }, brandMark(key),
+      done ? el('span', { class: 'way-badge', 'aria-hidden': 'true' }, icon('check', 12)) : null),
+    el('span', { class: 'way-name', 'aria-hidden': 'true' }, name),
+    on ? null : el('span', { class: 'way-note', 'aria-hidden': 'true' }, t('cp_soon')));
+  }
+
+  function waysRow() {
+    const proved = signin?.verified?.() || {};
+    return el('div', { class: ['ways', signin && 'with-signin'], role: 'group', 'aria-label': t('cp_ways') },
+      CODE_CHANNELS.map(([key, name]) => wayButton({
+        key, name, on: codeOn(key), pressed: model.channel === key && codeOn(key),
+        click: () => { if (!sending) pickChannel(key); },
+      })),
+      signin ? SIGN_INS.map(([provider, key, name]) => wayButton({
+        key: provider, name, on: signinOn(provider), done: Boolean(proved[key]), busy: signingIn === provider,
+        click: () => signIn(provider, key, name),
+      })) : null);
+  }
+
   function render() {
+    if (!alive) return;
     clearInterval(resendTimer);
     resendTimer = null;
     codeEl = null;
@@ -272,20 +392,6 @@ export function phoneVerifier(model, { onVerified, onChange } = {}) {
         error);
       return;
     }
-    // Get the code by: Telegram | WhatsApp. Switching keeps a code already sent; the next send uses the new one.
-    const channelBy = el('div', { class: 'code-by', role: 'group', 'aria-labelledby': `${uid}-by` },
-      el('span', { class: 'code-by-label', id: `${uid}-by` }, t('cp_code_by')),
-      el('div', { class: 'seg code-by-seg' }, CODE_CHANNELS.map(([key, iconName, name]) => el('button', {
-        type: 'button', 'aria-pressed': String(model.channel === key), disabled: sending,
-        on: {
-          click: () => {
-            if (model.channel === key) return;
-            model.channel = key;
-            showError(null);
-            render();
-          },
-        },
-      }, icon(iconName, 15), el('span', {}, name)))));
     const ccSel = el('select', { class: 'select', 'aria-label': t('cp_country_code'), on: { change: () => { model.cc = ccSel.value; } } },
       COUNTRY_CODES.map((c) => el('option', { value: c, selected: c === model.cc }, c)));
     // While a code is out, "Resend code" under it takes over until the 30 s are up.
@@ -295,17 +401,20 @@ export function phoneVerifier(model, { onVerified, onChange } = {}) {
     }, t(sending ? 'cp_sending' : 'cp_send_code'));
     const phoneInput = el('input', {
       class: 'input', type: 'tel', inputmode: 'tel', autocomplete: 'tel-national', maxlength: '20',
-      placeholder: t('cp_phone_ph'), 'aria-label': t('cp_phone'), value: model.phone,
+      placeholder: t('cp_phone_ph'), 'aria-label': t('cp_phone'), 'aria-describedby': `${uid}-by`, value: model.phone,
       on: {
         input: () => {
           model.phone = phoneInput.value;
           if (model.codeSent && fullPhone(model) !== model.sentTo) Object.assign(model, { codeSent: false, devCode: null, code: '', live: false, sentBy: null });
           sendBtn.disabled = sending || waiting() || !fullPhone(model);
           codeBox.hidden = !model.codeSent;
+          hint.hidden = model.codeSent;
         },
         keydown: (e) => { if (e.key === 'Enter') send(); },
       },
     });
+    // "Your code comes by Telegram." — which of the two the Send button uses.
+    const hint = el('p', { class: 'way-hint', id: `${uid}-by`, hidden: model.codeSent }, t('cp_code_comes_by', { channel: channelName(model.channel) }));
 
     const codeBox = el('div', { class: 'stack', style: { '--gap': '8px' }, hidden: !model.codeSent });
     if (model.codeSent) {
@@ -328,14 +437,32 @@ export function phoneVerifier(model, { onVerified, onChange } = {}) {
           : t('cp_code_sent', { phone: model.sentTo })));
       if (model.devCode) codeBox.append(el('p', { class: 'dev-note' }, t('cp_test_code', { code: model.devCode })));
     }
-    node.replaceChildren(channelBy, el('div', { class: 'phone-row' }, ccSel, phoneInput, sendBtn), codeBox, error);
+    // "Google or Facebook is enough to start…" only once one of them is known to work.
+    const signinNote = signin && methods && SIGN_INS.some(([provider]) => signinOn(provider))
+      ? el('p', { class: 'help' }, t('cp_social_note')) : null;
+    node.replaceChildren(...[waysRow(), note, hint, el('div', { class: 'phone-row' }, ccSel, phoneInput, sendBtn), codeBox, error, signinNote]
+      .filter(Boolean));
   }
 
   render();
+  loadMethods().then((m) => {
+    if (!alive || !m) return;
+    methods = m;
+    // The chosen channel does not work but the other one does: start there (unless a code is already out).
+    if (!model.codeSent && !codeOn(model.channel) && codeOn(otherChannel(model.channel))) model.channel = otherChannel(model.channel);
+    const focused = node.contains(document.activeElement) ? document.activeElement : null;
+    const typed = focused?.matches?.('input') ? { value: focused.value, start: focused.selectionStart } : null;
+    render();
+    // Re-rendering replaces the inputs: put the cursor back where it was.
+    if (typed) {
+      const again = node.querySelector(focused.classList.contains('code') ? 'input.code' : '.phone-row input[type=tel]');
+      if (again) { again.focus(); try { again.setSelectionRange(typed.start, typed.start); } catch { /* type=tel */ } }
+    }
+  });
   return {
     node,
     focusCode: () => codeEl?.focus(),
-    destroy: () => clearInterval(resendTimer),
+    destroy: () => { alive = false; clearInterval(resendTimer); },
   };
 }
 
@@ -477,7 +604,7 @@ screen('/create', ({ root }) => {
   el('option', { value: '', disabled: true, selected: !draft.role }, t('cp_choose')),
   ROLES.map((r) => el('option', { value: r.key, selected: r.key === draft.role }, roleLabel(r.key))));
 
-  // --- phone or Google / Facebook
+  // --- phone, or Facebook / Google: one row of 4 round buttons (Telegram · WhatsApp · Facebook · Google)
   const phone = phoneVerifier(draft.phone, {
     onChange: () => update(),
     onVerified: (r) => {
@@ -488,26 +615,11 @@ screen('/create', ({ root }) => {
         go('/nearby', { replace: true });
       }
     },
+    signin: {
+      verified: () => draft.verified,
+      onVerified: (verified) => { draft.verified = { ...draft.verified, ...verified }; },
+    },
   });
-  const socialRow = el('div', { class: 'social-row' });
-  const paintSocial = () => socialRow.replaceChildren(...[['google', 'gmail', 'Google'], ['facebook', 'facebook', 'Facebook']].map(([provider, key, name]) => {
-    const done = Boolean(draft.verified[key]);
-    return el('button', {
-      type: 'button', class: ['btn', 'btn-secondary', 'btn-social', done && 'is-verified'], 'aria-pressed': String(done),
-      on: { click: () => { if (!done) verifySocial(provider, key); } },
-    }, icon(done ? 'check' : provider, 18), name, done ? el('span', { class: 'visually-hidden' }, t('cp_verified')) : null);
-  }));
-  async function verifySocial(provider, key) {
-    try {
-      const r = await api.post('/auth/verify-social', { provider });
-      draft.verified = { ...draft.verified, ...(r.verified || {}), [key]: true };
-      paintSocial();
-      update();
-    } catch (err) {
-      toast(err.code === 'oauth_unavailable' ? t('cp_social_off') : err.status === 0 ? t('err_network') : t('err_generic'));
-    }
-  }
-  paintSocial();
 
   // --- continue
   const contText = el('span', { class: 'btn-text' }, t('cp_continue'));
@@ -597,11 +709,7 @@ screen('/create', ({ root }) => {
       field(t('cp_i_am'), null, { labelId: 'cp-gender-l' },
         el('div', { class: 'seg', role: 'group', 'aria-labelledby': 'cp-gender-l' }, genderBtns)),
       field(t('cp_you_are'), null, { forId: 'cp-role' }, roleSel),
-      field(t('cp_phone'), tag(t('cp_tag_needed_chat'), 'chat', false), { labelId: 'cp-phone-l' }, phone.node),
-      el('div', { class: 'stack', style: { '--gap': '12px' } },
-        el('p', { class: 'label or-divider' }, t('cp_or_verify')),
-        socialRow,
-        el('p', { class: 'help' }, t('cp_social_note')))),
+      field(t('cp_phone'), tag(t('cp_tag_needed_chat'), 'chat', false), { labelId: 'cp-phone-l' }, phone.node)),
     el('div', { class: 'sticky-actions' }, cont, contNote));
   update();
 
@@ -657,16 +765,18 @@ registerStrings({
     cp_code_on_way: 'A new code is on its way. Enter the new code when it arrives.',
     cp_too_many: 'Too many tries. Please wait a few minutes.',
     cp_sms_off: 'Text messages are not available yet. Verify with Google or Facebook for now.',
-    cp_code_by: 'Get the code by',
+    cp_ways: 'How to verify',
+    cp_code_comes_by: 'Your code comes by {channel}.',
+    cp_soon: 'Coming soon',
+    cp_signin_soon: 'Sign-in with {name} is coming soon. For now, get a code on your phone.',
+    cp_verified_with: 'Verified with {name}.',
     cp_code_sent_ch: 'We sent a code to your {channel} ({phone}).',
     cp_ch_not_on: 'We could not send a {channel} code to this number. Check the number, or get the code by {other}.',
     cp_ch_failed: '{channel} codes are not working right now. Try {other}.',
     cp_ch_off: 'Codes by {channel} are not available yet. Try {other}.',
     cp_ch_try: 'Send by {channel}',
     cp_phone_in_use: 'This phone number already has a profile.',
-    cp_or_verify: 'Or verify with',
     cp_verified: 'Verified',
-    cp_social_off: 'This sign-in is not available yet.',
     cp_social_note: 'Google or Facebook is enough to start. Your phone is needed before you can chat at Level 3.',
     cp_continue: 'Continue',
     cp_need_all: 'Add your photo, fill in every field and verify your phone, Google or Facebook.',
@@ -723,16 +833,18 @@ registerStrings({
     cp_code_on_way: 'លេខកូដថ្មីកំពុងផ្ញើមក។ សូមបញ្ចូលលេខកូដថ្មីនៅពេលវាមកដល់។',
     cp_too_many: 'ព្យាយាមច្រើនដងពេក។ សូមរង់ចាំប៉ុន្មាននាទីសិន។',
     cp_sms_off: 'សារ SMS មិនទាន់អាចប្រើបាននៅឡើយទេ។ សូមផ្ទៀងផ្ទាត់ជាមួយ Google ឬ Facebook សិន។',
-    cp_code_by: 'ទទួលលេខកូដតាម',
+    cp_ways: 'របៀបផ្ទៀងផ្ទាត់',
+    cp_code_comes_by: 'លេខកូដរបស់អ្នកនឹងផ្ញើមកតាម {channel}។',
+    cp_soon: 'ឆាប់ៗនេះ',
+    cp_signin_soon: 'ការចូលតាម {name} នឹងមានឆាប់ៗនេះ។ សម្រាប់ពេលនេះ សូមទទួលលេខកូដតាមទូរស័ព្ទរបស់អ្នក។',
+    cp_verified_with: 'បានផ្ទៀងផ្ទាត់ជាមួយ {name}។',
     cp_code_sent_ch: 'យើងបានផ្ញើលេខកូដទៅ {channel} របស់អ្នក ({phone})។',
     cp_ch_not_on: 'យើងមិនអាចផ្ញើលេខកូដតាម {channel} ទៅលេខនេះបានទេ។ សូមពិនិត្យលេខ ឬទទួលលេខកូដតាម {other}។',
     cp_ch_failed: 'ការផ្ញើលេខកូដតាម {channel} មិនដំណើរការនៅពេលនេះទេ។ សូមសាកល្បង {other}។',
     cp_ch_off: 'លេខកូដតាម {channel} មិនទាន់អាចប្រើបាននៅឡើយទេ។ សូមសាកល្បង {other}។',
     cp_ch_try: 'ផ្ញើតាម {channel}',
     cp_phone_in_use: 'លេខទូរស័ព្ទនេះមានប្រវត្តិរូបរួចហើយ។',
-    cp_or_verify: 'ឬផ្ទៀងផ្ទាត់ជាមួយ',
     cp_verified: 'បានផ្ទៀងផ្ទាត់',
-    cp_social_off: 'ការចូលតាមវិធីនេះមិនទាន់អាចប្រើបាននៅឡើយទេ។',
     cp_social_note: 'Google ឬ Facebook គ្រប់គ្រាន់ដើម្បីចាប់ផ្ដើម។ ត្រូវការលេខទូរស័ព្ទ មុនពេលអ្នកអាចជជែកនៅកម្រិត 3។',
     cp_continue: 'បន្ត',
     cp_need_all: 'សូមបន្ថែមរូបថត បំពេញគ្រប់ចន្លោះ ហើយផ្ទៀងផ្ទាត់ទូរស័ព្ទ Google ឬ Facebook។',
@@ -789,16 +901,18 @@ registerStrings({
     cp_code_on_way: '新验证码正在发送中，收到后请输入新的验证码。',
     cp_too_many: '尝试次数过多，请稍等几分钟。',
     cp_sms_off: '短信验证暂未开通，请先用 Google 或 Facebook 验证。',
-    cp_code_by: '验证码接收方式',
+    cp_ways: '验证方式',
+    cp_code_comes_by: '验证码将通过 {channel} 发送。',
+    cp_soon: '即将推出',
+    cp_signin_soon: '{name} 登录即将推出。现在请先用手机接收验证码。',
+    cp_verified_with: '已通过 {name} 验证。',
     cp_code_sent_ch: '验证码已发送到你的 {channel}（{phone}）。',
     cp_ch_not_on: '无法通过 {channel} 向这个号码发送验证码。请检查号码，或改用 {other} 接收。',
     cp_ch_failed: '{channel} 验证码暂时无法发送，请改用 {other}。',
     cp_ch_off: '{channel} 验证码暂未开通，请改用 {other}。',
     cp_ch_try: '改用 {channel} 发送',
     cp_phone_in_use: '这个手机号已经有资料了。',
-    cp_or_verify: '或通过以下方式验证',
     cp_verified: '已验证',
-    cp_social_off: '此登录方式暂未开通。',
     cp_social_note: '用 Google 或 Facebook 即可开始；到等级 3 聊天前需要验证手机号。',
     cp_continue: '继续',
     cp_need_all: '请添加照片、填写所有信息，并验证手机、Google 或 Facebook。',
@@ -855,16 +969,18 @@ registerStrings({
     cp_code_on_way: '새 코드를 보내는 중이에요. 도착하면 새 코드를 입력해 주세요.',
     cp_too_many: '시도 횟수가 너무 많아요. 몇 분 뒤에 다시 해 주세요.',
     cp_sms_off: '아직 문자 인증을 쓸 수 없어요. 지금은 Google 또는 Facebook으로 인증해 주세요.',
-    cp_code_by: '코드 받을 곳',
+    cp_ways: '인증 방법',
+    cp_code_comes_by: '코드는 {channel}(으)로 보내 드려요.',
+    cp_soon: '곧 제공',
+    cp_signin_soon: '{name} 로그인은 곧 제공돼요. 지금은 휴대폰으로 코드를 받아 주세요.',
+    cp_verified_with: '{name}(으)로 인증했어요.',
     cp_code_sent_ch: '{channel}({phone})(으)로 코드를 보냈어요.',
     cp_ch_not_on: '이 번호로는 {channel} 코드를 보낼 수 없어요. 번호를 확인하거나 {other}(으)로 받아 보세요.',
     cp_ch_failed: '지금은 {channel} 코드를 보낼 수 없어요. {other}(으)로 받아 보세요.',
     cp_ch_off: '{channel} 코드는 아직 쓸 수 없어요. {other}(으)로 받아 보세요.',
     cp_ch_try: '{channel}(으)로 받기',
     cp_phone_in_use: '이 전화번호로 이미 만든 프로필이 있어요.',
-    cp_or_verify: '또는 다음으로 인증',
     cp_verified: '인증됨',
-    cp_social_off: '이 로그인 방법은 아직 쓸 수 없어요.',
     cp_social_note: 'Google 또는 Facebook으로 시작할 수 있어요. 레벨 3에서 채팅하려면 전화번호 인증이 필요해요.',
     cp_continue: '계속',
     cp_need_all: '사진을 올리고 모든 항목을 채운 뒤 전화번호, Google 또는 Facebook으로 인증해 주세요.',
@@ -921,16 +1037,18 @@ registerStrings({
     cp_code_on_way: '新しいコードを送信中です。届いたら新しいコードを入力してください。',
     cp_too_many: '試行回数が多すぎます。数分お待ちください。',
     cp_sms_off: 'SMSはまだ利用できません。今はGoogleまたはFacebookで確認してください。',
-    cp_code_by: 'コードの受け取り方法',
+    cp_ways: '確認の方法',
+    cp_code_comes_by: 'コードは{channel}に届きます。',
+    cp_soon: '近日公開',
+    cp_signin_soon: '{name}でのログインは近日公開です。今は電話でコードを受け取ってください。',
+    cp_verified_with: '{name}で確認しました。',
     cp_code_sent_ch: 'あなたの{channel}（{phone}）にコードを送りました。',
     cp_ch_not_on: 'この番号には{channel}でコードを送れませんでした。番号を確認するか、{other}で受け取ってください。',
     cp_ch_failed: '現在{channel}でコードを送れません。{other}をお試しください。',
     cp_ch_off: '{channel}でのコード送信はまだ利用できません。{other}をお試しください。',
     cp_ch_try: '{channel}で送る',
     cp_phone_in_use: 'この電話番号のプロフィールはすでにあります。',
-    cp_or_verify: 'または次で確認',
     cp_verified: '確認済み',
-    cp_social_off: 'このログイン方法はまだ利用できません。',
     cp_social_note: 'GoogleまたはFacebookで始められます。レベル3でチャットするには電話番号の確認が必要です。',
     cp_continue: '次へ',
     cp_need_all: '写真を追加してすべての項目を入力し、電話番号・Google・Facebookのいずれかで確認してください。',
