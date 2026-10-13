@@ -1160,11 +1160,18 @@ screen('/create', ({ root, query }) => {
       draft.photo ? el('img', { src: draft.photo, alt: '' }) : icon('camera', 30),
       el('span', { class: 'badge', 'aria-hidden': 'true' }, icon('plus', 16)));
   };
+  function samePhoto() {
+    photoErr.textContent = t('cp_photo_same');
+    photoErr.hidden = false;
+  }
   async function readFace(f) {
     photoErr.hidden = true;
     pick.classList.add('busy');
     try {
-      draft.photo = await resizeImage(f);
+      const url = await resizeImage(f);
+      // The same picture twice (owner saw 4 identical photos): say so, keep what is there.
+      if (draft.extraPhotos?.includes(url)) return samePhoto();
+      draft.photo = url;
       paintPhoto();
     } catch {
       photoErr.textContent = t('cp_photo_error');
@@ -1209,7 +1216,9 @@ screen('/create', ({ root, query }) => {
     moreBusy = slot;
     paintMore();
     try {
-      draft.extraPhotos[slot - 1] = await resizeImage(f);
+      const url = await resizeImage(f);
+      if (url === draft.photo || draft.extraPhotos.some((p, i) => p === url && i !== slot - 1)) return samePhoto();
+      draft.extraPhotos[slot - 1] = url;
     } catch {
       photoErr.textContent = t('cp_photo_error');
       photoErr.hidden = false;
@@ -1454,6 +1463,7 @@ registerStrings({
     cp_photo_add: 'Add a photo of your face',
     cp_photo_change: 'Change photo',
     cp_photo_error: 'This photo could not be used. Try another one.',
+    cp_photo_same: 'You already added this photo. Choose a different one.',
     cp_slot_shows: 'Shows at Level\u00a0{n}', // "Level 2" never split over two lines
     cp_slot_add: 'Add photo {slot} (shows at Level {n})',
     cp_slot_change: 'Change photo {slot} (shows at Level {n})',
@@ -1547,6 +1557,7 @@ registerStrings({
     cp_photo_add: 'បន្ថែមរូបថតមុខរបស់អ្នក',
     cp_photo_change: 'ប្ដូររូបថត',
     cp_photo_error: 'មិនអាចប្រើរូបថតនេះបានទេ។ សូមសាកល្បងរូបផ្សេង។',
+    cp_photo_same: 'អ្នកបានបន្ថែមរូបថតនេះរួចហើយ។ សូមជ្រើសរូបផ្សេង។',
     cp_slot_shows: 'បង្ហាញនៅ\u200bកម្រិត\u00a0{n}', // may break after "បង្ហាញនៅ", never inside "កម្រិត 2"
     cp_slot_add: 'បន្ថែមរូបថតទី {slot} (បង្ហាញនៅកម្រិត {n})',
     cp_slot_change: 'ប្ដូររូបថតទី {slot} (បង្ហាញនៅកម្រិត {n})',
@@ -1640,6 +1651,7 @@ registerStrings({
     cp_photo_add: '添加正脸照片',
     cp_photo_change: '更换照片',
     cp_photo_error: '这张照片无法使用，请换一张。',
+    cp_photo_same: '这张照片已经加过了。请选另一张。',
     cp_slot_shows: '等级\u00a0{n}\u00a0可见',
     cp_slot_add: '添加第 {slot} 张照片（等级 {n} 可见）',
     cp_slot_change: '更换第 {slot} 张照片（等级 {n} 可见）',
@@ -1733,6 +1745,7 @@ registerStrings({
     cp_photo_add: '얼굴 사진 추가',
     cp_photo_change: '사진 바꾸기',
     cp_photo_error: '이 사진은 사용할 수 없어요. 다른 사진을 골라 주세요.',
+    cp_photo_same: '이미 추가한 사진이에요. 다른 사진을 골라 주세요.',
     cp_slot_shows: '레벨\u00a0{n}에서 보여요',
     cp_slot_add: '사진 {slot} 추가 (레벨 {n}에서 보여요)',
     cp_slot_change: '사진 {slot} 바꾸기 (레벨 {n}에서 보여요)',
@@ -1826,6 +1839,7 @@ registerStrings({
     cp_photo_add: '顔写真を追加',
     cp_photo_change: '写真を変更',
     cp_photo_error: 'この写真は使えません。別の写真をお試しください。',
+    cp_photo_same: 'この写真はもう追加されています。別の写真を選んでください。',
     cp_slot_shows: 'レベル{n}で表示',
     cp_slot_add: '写真{slot}を追加（レベル{n}で表示）',
     cp_slot_change: '写真{slot}を変更（レベル{n}で表示）',
