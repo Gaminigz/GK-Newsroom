@@ -81,18 +81,18 @@ export function guessLang(text, fallback = "en") {
 
 /** The bot's profile words (setMyDescription ≤ 512, setMyShortDescription ≤ 120), in the 5 app languages. */
 export const BOT_DESCRIPTION = {
-  en: "30+DA — safe and calm dating for 30+ in Phnom Penh. Verify your number here, or ask us anything.",
-  km: "30+DA — ការណាត់ជួបដែលមានសុវត្ថិភាព និងស្ងប់ស្ងាត់ សម្រាប់អ្នកអាយុ 30+ នៅភ្នំពេញ។ ផ្ទៀងផ្ទាត់លេខរបស់អ្នកនៅទីនេះ ឬសួរយើងអ្វីក៏បាន។",
-  zh: "30+DA — 金边 30+ 人士安全、安心的交友。在这里验证你的号码，或问我们任何问题。",
-  ko: "30+DA — 프놈펜의 30+를 위한 안전하고 차분한 만남. 여기에서 번호를 인증하거나 무엇이든 물어보세요.",
-  ja: "30+DA — プノンペンの 30+ のための、安全で落ち着いた出会い。ここで番号の確認ができます。何でも聞いてください。",
+  en: "GKVerify — GK SMART's number check for 30+DA and other GK apps. Verify your number here, or ask us anything.",
+  km: "GKVerify — ការផ្ទៀងផ្ទាត់លេខរបស់ GK SMART សម្រាប់ 30+DA និងកម្មវិធី GK ផ្សេងទៀត។ ផ្ទៀងផ្ទាត់លេខរបស់អ្នកនៅទីនេះ ឬសួរយើងអ្វីក៏បាន។",
+  zh: "GKVerify — GK SMART 为 30+DA 及其他 GK 应用提供的号码验证。在这里验证你的号码，或问我们任何问题。",
+  ko: "GKVerify — 30+DA와 다른 GK 앱을 위한 GK SMART 번호 인증. 여기에서 번호를 인증하거나 무엇이든 물어보세요.",
+  ja: "GKVerify — 30+DA などの GK アプリのための GK SMART の番号確認。ここで番号の確認ができます。何でも聞いてください。",
 };
 export const BOT_SHORT_DESCRIPTION = {
-  en: "Safe, calm dating for 30+ in Phnom Penh. Verify your number or ask us anything.",
-  km: "ការណាត់ជួបមានសុវត្ថិភាព សម្រាប់អ្នកអាយុ 30+ នៅភ្នំពេញ។ ផ្ទៀងផ្ទាត់លេខ ឬសួរយើង។",
-  zh: "金边 30+ 安全安心交友。验证号码，或问我们任何问题。",
-  ko: "프놈펜 30+를 위한 안전한 만남. 번호 인증이나 질문은 여기에서.",
-  ja: "プノンペンの 30+ のための安全な出会い。番号の確認やご質問はこちら。",
+  en: "GK SMART number check for 30+DA and other GK apps. Verify or ask us anything.",
+  km: "ការផ្ទៀងផ្ទាត់លេខ GK SMART សម្រាប់ 30+DA និងកម្មវិធី GK។ ផ្ទៀងផ្ទាត់ ឬសួរយើង។",
+  zh: "GK SMART 号码验证，适用于 30+DA 及其他 GK 应用。验证或提问。",
+  ko: "30+DA와 GK 앱을 위한 GK SMART 번호 인증. 인증하거나 질문하세요.",
+  ja: "30+DA などの GK アプリ向け GK SMART 番号確認。確認やご質問はこちら。",
 };
 
 // ---------------------------------------------------------------- in (the webhook)

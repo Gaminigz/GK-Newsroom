@@ -487,7 +487,7 @@ test('a forwarded link is caught: the ask names the Phnom Penh time and the sign
   assert.deepEqual(plan.vars, { time: '14:05', mark: match });
   assert.deepEqual(askVars(null), { time: '—', mark: '—' });
   const text = botReply(plan.kind, plan.lang, 111, plan.vars).text;
-  assert.equal(text, `Signing in to 30+DA (14:05, Phnom Penh time)?\nCheck that your 30+DA screen shows ${match}, then tap the button to share your number.\nIf someone sent you this link, do not tap.`);
+  assert.equal(text, `GKVerify — confirm your number for 30+DA (14:05, Phnom Penh time).\nCheck that your 30+DA screen shows ${match}, then tap the button to share your number.\nIf someone sent you this link, do not tap.`);
   assert.ok(!text.includes(PHONE) && !text.includes('678') && !text.includes('•'), 'never the number, not even masked');
   // A number typed as text gets the same ask again (words that are not a number go to support instead).
   const again = await processUpdate(d, parseUpdate(textUpdate(111, '012 345 678')), t0 + 61e3);

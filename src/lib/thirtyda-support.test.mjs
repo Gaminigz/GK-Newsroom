@@ -371,7 +371,7 @@ test('the bot\'s profile words: setMyDescription + setMyShortDescription in 5 la
     assert.deepEqual(api.of('setMyDescription').map((c) => c.body.language_code).sort(), ['', 'ja', 'km', 'ko', 'zh']);
     assert.deepEqual(api.of('setMyShortDescription').map((c) => c.body.language_code).sort(), ['', 'ja', 'km', 'ko', 'zh']);
     assert.equal(api.of('setMyDescription').find((c) => c.body.language_code === '').body.description,
-      '30+DA — safe and calm dating for 30+ in Phnom Penh. Verify your number here, or ask us anything.');
+      "GKVerify — GK SMART's number check for 30+DA and other GK apps. Verify your number here, or ask us anything.");
     for (const lang of BOT_LANGS) {
       assert.ok(BOT_DESCRIPTION[lang].length <= 512 && BOT_SHORT_DESCRIPTION[lang].length <= 120, lang);
     }

@@ -497,7 +497,7 @@ export function langFor(check, langCode) {
  */
 export const BOT_TEXT = {
   en: {
-    ask: "Signing in to 30+DA ({time}, Phnom Penh time)?\nCheck that your 30+DA screen shows {mark}, then tap the button to share your number.\nIf someone sent you this link, do not tap.",
+    ask: "GKVerify — confirm your number for 30+DA ({time}, Phnom Penh time).\nCheck that your 30+DA screen shows {mark}, then tap the button to share your number.\nIf someone sent you this link, do not tap.",
     button: "Share my number",
     done: "Number verified ✓ Go back to 30+DA.",
     mismatch: "That number is not the one you typed in 30+DA. In 30+DA, type the same number your Telegram uses, with its country code, then tap Telegram again.",
@@ -507,7 +507,7 @@ export const BOT_TEXT = {
     support_ack: "Thanks — the 30+DA team will reply here.",
   },
   km: {
-    ask: "អ្នកកំពុងចូល 30+DA ({time} ម៉ោងភ្នំពេញ) មែនទេ?\nសូមពិនិត្យថា អេក្រង់ 30+DA របស់អ្នកបង្ហាញ {mark} រួចចុចប៊ូតុង ដើម្បីចែករំលែកលេខរបស់អ្នក។\nបើមាននរណាម្នាក់ផ្ញើតំណនេះមកអ្នក សូមកុំចុច។",
+    ask: "GKVerify — បញ្ជាក់លេខរបស់អ្នកសម្រាប់ 30+DA ({time} ម៉ោងភ្នំពេញ)។\nសូមពិនិត្យថា អេក្រង់ 30+DA របស់អ្នកបង្ហាញ {mark} រួចចុចប៊ូតុង ដើម្បីចែករំលែកលេខរបស់អ្នក។\nបើមាននរណាម្នាក់ផ្ញើតំណនេះមកអ្នក សូមកុំចុច។",
     button: "ចែករំលែកលេខរបស់ខ្ញុំ",
     done: "បានផ្ទៀងផ្ទាត់លេខ ✓ សូមត្រឡប់ទៅ 30+DA វិញ។",
     mismatch: "លេខនេះមិនមែនជាលេខដែលអ្នកបានវាយក្នុង 30+DA ទេ។ នៅក្នុង 30+DA សូមវាយលេខដូចគ្នានឹងលេខដែល Telegram របស់អ្នកប្រើ ជាមួយលេខកូដប្រទេស រួចចុច Telegram ម្ដងទៀត។",
@@ -517,7 +517,7 @@ export const BOT_TEXT = {
     support_ack: "អរគុណ — ក្រុម 30+DA នឹងឆ្លើយតបនៅទីនេះ។",
   },
   zh: {
-    ask: "你正在登录 30+DA 吗？（金边时间 {time}）\n请确认你的 30+DA 屏幕上显示 {mark}，再点按钮分享你的号码。\n如果这个链接是别人发给你的，请不要点。",
+    ask: "GKVerify — 为 30+DA 确认你的号码（金边时间 {time}）。\n请确认你的 30+DA 屏幕上显示 {mark}，再点按钮分享你的号码。\n如果这个链接是别人发给你的，请不要点。",
     button: "分享我的号码",
     done: "号码已验证 ✓ 请回到 30+DA。",
     mismatch: "这个号码不是你在 30+DA 里输入的号码。请在 30+DA 里输入你的 Telegram 用的同一个号码（带国家区号），再点一次 Telegram。",
@@ -527,7 +527,7 @@ export const BOT_TEXT = {
     support_ack: "谢谢！30+DA 团队会在这里回复你。",
   },
   ko: {
-    ask: "30+DA에 로그인하는 중인가요? (프놈펜 시간 {time})\n30+DA 화면에 {mark} 표시가 있는지 확인한 뒤, 버튼을 눌러 번호를 공유하세요.\n누군가 이 링크를 보내 줬다면 누르지 마세요.",
+    ask: "GKVerify — 30+DA를 위해 번호를 확인해 주세요 (프놈펜 시간 {time}).\n30+DA 화면에 {mark} 표시가 있는지 확인한 뒤, 버튼을 눌러 번호를 공유하세요.\n누군가 이 링크를 보내 줬다면 누르지 마세요.",
     button: "내 번호 공유",
     done: "번호 인증 완료 ✓ 30+DA로 돌아가세요.",
     mismatch: "이 번호는 30+DA에 입력한 번호가 아니에요. 30+DA에서 Telegram에 쓰는 번호를 국가 번호와 함께 입력한 뒤 Telegram을 다시 누르세요.",
@@ -537,7 +537,7 @@ export const BOT_TEXT = {
     support_ack: "고마워요 — 30+DA 팀이 여기에서 답해 드릴게요.",
   },
   ja: {
-    ask: "30+DA にログインしようとしていますか？（プノンペン時間 {time}）\n30+DA の画面に {mark} が出ているか確かめてから、ボタンを押して番号を共有してください。\n誰かからこのリンクが送られてきた場合は、押さないでください。",
+    ask: "GKVerify — 30+DA のために番号を確認してください（プノンペン時間 {time}）。\n30+DA の画面に {mark} が出ているか確かめてから、ボタンを押して番号を共有してください。\n誰かからこのリンクが送られてきた場合は、押さないでください。",
     button: "自分の番号を共有",
     done: "番号を確認しました ✓ 30+DA に戻ってください。",
     mismatch: "この番号は 30+DA で入力した番号ではありません。30+DA で、Telegram で使っている番号を国番号から入力し、もう一度 Telegram を押してください。",
