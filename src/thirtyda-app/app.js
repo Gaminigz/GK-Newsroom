@@ -202,4 +202,25 @@ registerStrings({
   },
 });
 
+// A new version went live while this tab was open: reload on the next screen change, or when the tab
+// comes back into view, so nobody keeps running old screens.
+let bootBuild = null;
+let stale = false;
+async function checkBuild() {
+  try {
+    const { build } = await (await fetch('/30da/api/version', { cache: 'no-store' })).json();
+    if (!build) return;
+    if (bootBuild === null) bootBuild = build;
+    else if (build !== bootBuild) stale = true;
+  } catch { /* offline: try again later */ }
+}
+checkBuild();
+setInterval(checkBuild, 60e3);
+window.addEventListener('hashchange', () => { if (stale) location.reload(); });
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible') return;
+  await checkBuild();
+  if (stale) location.reload();
+});
+
 boot();

@@ -160,10 +160,15 @@ function scan(re, t, accept) {
 // read as one number started with 0 or 855 ("012 … 887 … 766", even over several messages),
 // and 9+ digits packed into any 40 characters whatever sits between them ("012x887x766").
 
-const EN_NUMBER_WORDS = [['nought', '0'], ['triple', ''], ['double', ''], ['three', '3'], ['seven', '7'], ['eight', '8'],
+// Tens and teens count as their digits too: "eight nine ten twelve five" is 7 digits (Gamini 2026-10-13).
+const EN_NUMBER_WORDS = [['seventeen', '17'], ['eighteen', '18'], ['nineteen', '19'], ['thirteen', '13'], ['fourteen', '14'],
+  ['fifteen', '15'], ['sixteen', '16'], ['seventy', '70'], ['eighty', '80'], ['ninety', '90'], ['twenty', '20'], ['thirty', '30'],
+  ['forty', '40'], ['fourty', '40'], ['fifty', '50'], ['sixty', '60'], ['eleven', '11'], ['twelve', '12'], ['hundred', '00'],
+  ['thousand', '000'], ['ten', '10'], ['nought', '0'], ['triple', ''], ['double', ''], ['three', '3'], ['seven', '7'], ['eight', '8'],
   ['zero', '0'], ['four', '4'], ['five', '5'], ['nine', '9'], ['one', '1'], ['two', '2'], ['six', '6'], ['oh', '0'], ['o', '0']];
 const MULTIPLIER = { double: 2, triple: 3 };
-const KM_NUMBER_WORDS = [['ប្រាំមួយ', '6'], ['ប្រាំពីរ', '7'], ['ប្រាំពីល', '7'], ['ប្រាំបី', '8'], ['ប្រាំបួន', '9'], ['ប្រាំ', '5'],
+const KM_NUMBER_WORDS = [['សាមសិប', '30'], ['សែសិប', '40'], ['ហាសិប', '50'], ['ហុកសិប', '60'], ['ចិតសិប', '70'],
+  ['ប៉ែតសិប', '80'], ['កៅសិប', '90'], ['ម្ភៃ', '20'], ['ដប់', '10'], ['រយ', '00'], ['ប្រាំមួយ', '6'], ['ប្រាំពីរ', '7'], ['ប្រាំពីល', '7'], ['ប្រាំបី', '8'], ['ប្រាំបួន', '9'], ['ប្រាំ', '5'],
   ['សូន្យ', '0'], ['មួយ', '1'], ['ពីរ', '2'], ['បី', '3'], ['បួន', '4']];
 // A Khmer vowel/sign/coeng glued on means a different word (ពីរ "two" vs ពីរោះ "lovely").
 const KHMER_DEPENDENT = /[ា-៓៝]/;
@@ -225,18 +230,21 @@ function numberTokenAt(t, i, glued) {
     const w = englishNumberAt(t, i);
     if (!w) return null;
     const mult = MULTIPLIER[w.word];
-    return mult ? { end: w.end, n: mult - 1, v: '', mult: true } : { end: w.end, n: 1, v: w.v };
+    return mult ? { end: w.end, n: mult - 1, v: '', mult: true } : { end: w.end, n: w.v.length, v: w.v, word: true };
   }
+  if (c === '十' || c === '拾') return { end: i + 1, n: 2, v: '10', word: true };
+  if (c === '십') return { end: i + 1, n: 2, v: '10', weak: true };
+  if (t.startsWith('じゅう', i) || t.startsWith('ジュウ', i)) return { end: i + 3, n: 2, v: '10', word: true };
   let k = CJK_DIGITS.indexOf(c);
   if (k >= 0) return { end: i + 1, n: 1, v: CJK_VALUES[k] };
   k = HANGUL_DIGITS.indexOf(c);
   if (k >= 0) return { end: i + 1, n: 1, v: HANGUL_VALUES[k], weak: true };
-  for (const [w, v] of KANA_NUMBER_WORDS) if (t.startsWith(w, i)) return { end: i + w.length, n: 1, v };
+  for (const [w, v] of KANA_NUMBER_WORDS) if (t.startsWith(w, i)) return { end: i + w.length, n: 1, v, word: true };
   k = KANA_WEAK.indexOf(c);
   if (k >= 0) return { end: i + 1, n: 1, v: KANA_WEAK_VALUES[k], weak: true };
   if (c >= 'ក' && c <= '៿' && t[i - 1] !== '្') {
     for (const [w, v] of KM_NUMBER_WORDS) {
-      if (t.startsWith(w, i) && !KHMER_DEPENDENT.test(t[i + w.length] || '')) return { end: i + w.length, n: 1, v };
+      if (t.startsWith(w, i) && !KHMER_DEPENDENT.test(t[i + w.length] || '')) return { end: i + w.length, n: v.length, v, word: true };
     }
   }
   return null;
@@ -381,14 +389,44 @@ function phoneHits(f, { chainGap = CHAIN_GAP } = {}) {
     const total = toks.reduce((n, k) => n + k.n, 0);
     const long = total >= 7 && (!weak || total >= 8);
     const cued = total >= 6 && !weak && cuedAt(t, start);
-    if (!long && !cued) continue;
+    // Four or more number words in a row read as a number being spelled out, whatever they add up to.
+    const spelled = toks.filter((k) => k.word).length >= 4;
+    if (!long && !cued && !spelled) continue;
     let fs = start, plus = false;
     if (t[fs - 1] === '(') fs--;
     if (t[fs - 1] === '+') { fs--; plus = true; } else if (t[fs - 1] === ' ' && t[fs - 2] === '+') { fs -= 2; plus = true; }
     if (!plus && harmless) continue;
     out.push({ type: 'phone', fs, fe: end });
   }
-  return [...out, ...chainHits(t, runs, chainGap), ...denseHits(t, runs)];
+  return [...out, ...chainHits(t, runs, chainGap), ...denseHits(t, runs), ...gluedNumberHits(t)];
+}
+
+// Number words glued together or misspelt to slip past the word check ("fitythousandtworilmillionfittyfour",
+// "fity thousand two million"): read the letters only, find number-word stems anywhere, and flag a chain of
+// four or more that sit at most 3 stray letters apart. Ordinary sentences rarely chain more than two.
+const GLUED_STEMS = [
+  'seventeen', 'eighteen', 'nineteen', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'thousand', 'thousend', 'tousand',
+  'hundred', 'hundered', 'hundret', 'million', 'milion', 'billion', 'seventy', 'eighty', 'ninety', 'ninty', 'twenty',
+  'twenty', 'thirty', 'forty', 'fourty', 'fifty', 'fifity', 'fitty', 'fity', 'sixty', 'eleven', 'twelve', 'twelv',
+  'three', 'seven', 'eight', 'zero', 'four', 'five', 'nine', 'one', 'two', 'six', 'ten',
+];
+function gluedNumberHits(t) {
+  const idx = [];
+  let letters = '';
+  for (let i = 0; i < t.length; i++) if (t[i] >= 'a' && t[i] <= 'z') { letters += t[i]; idx.push(i); }
+  const toks = [];
+  for (let i = 0; i < letters.length;) {
+    const w = GLUED_STEMS.find((stem) => letters.startsWith(stem, i));
+    if (w) { toks.push([i, i + w.length]); i += w.length; } else i++;
+  }
+  const out = [];
+  for (let a = 0; a < toks.length;) {
+    let b = a;
+    while (b + 1 < toks.length && toks[b + 1][0] - toks[b][1] <= 3) b++;
+    if (b - a + 1 >= 4) out.push({ type: 'phone', fs: idx[toks[a][0]], fe: idx[toks[b][1] - 1] + 1 });
+    a = b + 1;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

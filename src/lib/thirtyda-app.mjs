@@ -1886,8 +1886,15 @@ async function handleApi(req, res, url, sub) {
   }
 }
 
+// Which build is running: open tabs compare it and reload after a deploy, so nobody keeps old code.
+const BUILD = (process.env.RAILWAY_GIT_COMMIT_SHA || "").slice(0, 12) || String(Date.now());
+
 export async function handleThirtyDaApp(req, res, url) {
   const path = url.pathname;
+  if (path === `${API}/version`) {
+    res.writeHead(200, { ...BASE_HEADERS, "Content-Type": "application/json", "Cache-Control": "no-store" }).end(JSON.stringify({ build: BUILD }));
+    return;
+  }
   if (path === API || path.startsWith(`${API}/`)) return handleApi(req, res, url, path.slice(API.length) || "/");
   if (req.method === "GET" || req.method === "HEAD") {
     // The client loads its modules relative to /30da/, so the bare path gets a slash.

@@ -446,3 +446,14 @@ test('written answers: 2–120 characters', () => {
   assert.deepEqual([r.ok, r.error, r.reason], [false, 'contact', 'Chat handle shared']);
   assert.equal(r.hits[0].match, 'IG: visal88');
 });
+
+test('number words spelled out, glued or misspelt are caught; ordinary counting is not', () => {
+  for (const s of [
+    'eight nine ten twelve five', 'one two three four', 'zero one two three',
+    'itcan writefitythousandtworilmillionfittyfour', 'fity thousand two million', 'ដប់ ម្ភៃ សាមសិប សែសិប',
+  ]) assert.equal(findContactDetails(s).ok, false, s);
+  for (const s of [
+    'one two three', 'I have ten years of work', 'twenty five years old', 'someone often went to the tent',
+    'I have two kids and three dogs', 'we were seven to eight people', 'ten minutes and twelve seconds', '二十五岁',
+  ]) assert.equal(findContactDetails(s).ok, true, s);
+});
