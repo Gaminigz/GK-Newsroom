@@ -3,7 +3,7 @@
 // Only `npm run 30da:seed` reads this (and it refuses a non-dev database):
 // the live app and the admin never create fake users.
 
-import { LANGS, LANG_ENGLISH, stageOpenLevel } from "../thirtyda-app/shared/rules.js";
+import { LANGS, LANG_ENGLISH, stageOpenLevel, currentYear } from "../thirtyda-app/shared/rules.js";
 import { SYSTEM_QUESTIONS, questionText, answerText } from "../thirtyda-app/shared/questions.js";
 
 const CENTER = { lat: 11.549, lng: 104.928 }; // BKK1
@@ -27,7 +27,7 @@ const PEOPLE = [
   ['U-10377', 'Rotha', 'Meas Rotha', 'man', 'km', 'sales', 'Mean Chey', 12, 2, [-3.2, 0.4], 'offline', 'p', 1, true],
   ['U-10233', 'Rithy', 'Ouk Rithy', 'man', 'km', 'accountant', 'BKK2', 37, 15, [-0.3, 0.8], 'idle', 'pg', 1],
   ['U-10240', 'Bopha', 'Heng Bopha', 'woman', 'km', 'family_home', 'Toul Tom Poung', 84, 21, [-1.6, -0.9], 'online', 'p', 1],
-  ['U-10241', 'Srey Leak', 'Chea Sreyleak', 'woman', 'km', 'sales', 'Phsar Thmei 1', 45, 11, [1.9, 0.6], 'offline', 'pf', 1],
+  ['U-10241', 'Leak', 'Chea Sreyleak', 'woman', 'km', 'sales', 'Phsar Thmei 1', 45, 11, [1.9, 0.6], 'offline', 'pf', 1],
   ['U-10242', 'Kanha', 'Nhem Kanha', 'woman', 'km', 'accountant', 'Boeng Trabaek', 61, 17, [-2.4, 0.2], 'online', 'p', 1],
   ['U-10243', 'Min-jun', 'Kim Min-jun', 'man', 'ko', 'sales', 'BKK1', 29, 7, [0.1, -0.4], 'idle', 'pg', 1],
   ['U-10244', 'Haruto', 'Sato Haruto', 'man', 'ja', 'own_business', 'Daun Penh', 22, 5, [2.8, 1.3], 'offline', 'p', 1],
@@ -36,6 +36,14 @@ const PEOPLE = [
   ['U-10247', 'James', 'James Moore', 'man', 'en', 'time_off', 'BKK1', 15, 4, [0.6, -0.2], 'online', 'pf', 1],
   ['U-10248', 'Chenda', 'Pich Chenda', 'woman', 'km', 'sales', 'Veal Vong', 70, 16, [1.5, -1.0], 'offline', 'p', 1],
 ];
+
+// Each demo person's age (30–65; Lina tells Chen she is 46). Stored as a birth year from this year,
+// as the app asks for it at sign-up. App names are all 2–7 characters, like the app's rule.
+const AGES = {
+  'U-10231': 34, 'U-10232': 41, 'U-10418': 38, 'U-10644': 36, 'U-10507': 44, 'U-10702': 39, 'U-10611': 47,
+  'U-10735': 46, 'U-10790': 35, 'U-10812': 42, 'U-10377': 51, 'U-10233': 33, 'U-10240': 45, 'U-10241': 31,
+  'U-10242': 37, 'U-10243': 40, 'U-10244': 49, 'U-10245': 43, 'U-10246': 32, 'U-10247': 58, 'U-10248': 52,
+};
 
 // The design's example questions, looked up by their English text.
 const L1_EXAMPLES = [
@@ -102,7 +110,7 @@ const location = ([north, east]) => ({
 export function buildDemo(now = Date.now()) {
   const ago = (min) => new Date(now - min * 60000).toISOString();
   const users = PEOPLE.map(([id, name, realName, gender, lang, role, area, red, orange, km, seen, ver, level, blocked = false], i) => ({
-    _id: id, id, name, realName, role, gender, lang, language: LANG_ENGLISH[lang],
+    _id: id, id, name, realName, birthYear: currentYear(now) - AGES[id], role, gender, lang, language: LANG_ENGLISH[lang],
     phone: `+855100001${String(i + 1).padStart(2, '0')}`,
     verified: { phone: ver.includes('p'), gmail: ver.includes('g'), facebook: ver.includes('f') },
     photos: [], location: location(km), area, city: 'Phnom Penh', hearts: { red, orange }, level,

@@ -209,7 +209,7 @@
     ['U-10240', 'Malis', 'woman', 'km', 3.4, 88, 25, 2, 'pf', 'own_business'],
     ['U-10241', 'Minji', 'woman', 'ko', 3.9, 175, 52, 4, 'pg', 'time_off'],
     ['U-10242', 'Piseth', 'man', 'km', 4.3, 49, 11, 1, 'p', 'accountant'],
-    ['U-10243', 'Sreyneang', 'woman', 'km', 4.8, 103, 31, 2, 'pgf', 'family_home'],
+    ['U-10243', 'Neang', 'woman', 'km', 4.8, 103, 31, 2, 'pgf', 'family_home'],
     ['U-10244', 'Vibol', 'man', 'km', 5.4, 30, 8, 1, 'pf', 'sales'],
     ['U-10245', 'Yuki', 'woman', 'ja', 5.9, 121, 38, 3, 'pg', 'own_business'],
     ['U-10246', 'Lina', 'woman', 'km', 6.5, 76, 20, 2, 'p', 'accountant'],
@@ -220,6 +220,8 @@
     ['U-10251', 'Davy', 'woman', 'km', 14.6, 69, 22, 2, 'pg', 'family_home'],
   ];
   const REAL_NAMES = { [SOPHEA]: 'Sophea Chan', [DARA]: 'Dara Sok' };
+  // Ages 30–65 (stored as a birth year from Phnom Penh's year, like the seed). App names are 2–7 characters.
+  const AGES = [34, 41, 36, 38, 39, 33, 44, 37, 47, 42, 35, 49, 31, 52, 40, 45, 58, 32, 43, 61, 48];
   const PHONES = { [SOPHEA]: '+85512880002', [DARA]: '+85512880001' };
 
   const TINTS = [['#dfe3ea', '#a9b1bf'], ['#e5e1eb', '#ada5bd'], ['#dde7e2', '#9db2a8'], ['#ece5dc', '#baa894']];
@@ -314,9 +316,9 @@
   const fullTr = (tr) => Object.fromEntries(R.LANGS.map((l) => [l, tr[l] ?? null]));
   const sophLang = () => (SC.me === SOPHEA ? SC.lang : 'km');
 
-  function seedUser([id, name, gender, lang, km, red, orange, photos, v, role]) {
+  function seedUser([id, name, gender, lang, km, red, orange, photos, v, role], i) {
     return {
-      id, name, realName: REAL_NAMES[id] || name, role, gender, lang, phone: PHONES[id] || null,
+      id, name, realName: REAL_NAMES[id] || name, birthYear: R.currentYear() - AGES[i % AGES.length], role, gender, lang, phone: PHONES[id] || null,
       verified: { phone: v.includes('p'), gmail: v.includes('g'), facebook: v.includes('f') },
       photos: Array.from({ length: photos }, (_, i) => silhouette(i)), seeded: true,
       location: { lat: BKK1.latitude, lng: BKK1.longitude }, km, area: 'BKK1', city: 'Phnom Penh',
@@ -363,7 +365,7 @@
   }
 
   function build() {
-    for (const row of PEOPLE) W.users.set(row[0], seedUser(row));
+    PEOPLE.forEach((row, i) => W.users.set(row[0], seedUser(row, i)));
     W.users.get(SOPHEA).lang = sophLang();
     const now = Date.now();
 
@@ -481,6 +483,7 @@
       gender: u.gender ?? null,
       lang: u.lang ?? 'en',
       phone: u.phone ?? null,
+      birthYear: Number.isInteger(u.birthYear) ? u.birthYear : null,
       verified: { phone: Boolean(u.verified?.phone), gmail: Boolean(u.verified?.gmail), facebook: Boolean(u.verified?.facebook) },
       photos: slotUrls(u),
       photoSlots: { max: R.PHOTO_MAX, allowed: R.photoSlotsFor(u.level ?? 1), levels: [...R.PHOTO_SLOT_LEVELS], filled: filledCount(u) },
@@ -675,12 +678,17 @@
   }
 
   function checkName(raw) {
-    const name = String(raw ?? '').trim().replace(/\s+/g, ' ');
-    const n = R.charCount(name);
-    if (n < 2 || n > 24) throw invalid('Your app name needs 2 to 24 characters.', { field: 'name' });
-    const c = R.findContactDetails(name);
-    if (!c.ok) throw fail(422, 'contact_detail', c.reason, { field: 'name', hits: c.hits, reason: c.reason });
-    return name;
+    const c = R.checkAppName(raw);
+    if (c.error === 'contact') throw fail(422, 'contact_detail', c.reason, { field: 'name', hits: c.hits, reason: c.reason });
+    if (!c.ok) throw invalid(`Your app name needs ${R.NAME_MIN} to ${R.NAME_MAX} characters.`, { field: 'name', min: R.NAME_MIN, max: R.NAME_MAX });
+    return c.name;
+  }
+  function checkBirth(raw) {
+    const c = R.checkBirthYear(raw);
+    if (c.error === 'too_young') throw fail(422, 'too_young', `30+DA is for people aged ${R.AGE_MIN} and over.`, { field: 'birthYear', minAge: R.AGE_MIN });
+    if (c.error === 'missing') throw invalid('Choose your birth year.', { field: 'birthYear' });
+    if (!c.ok) throw invalid('Choose your birth year from the list.', { field: 'birthYear', minAge: R.AGE_MIN, maxAge: R.AGE_MAX });
+    return c.year;
   }
   const checkLang = (lang) => {
     if (!R.LANGS.includes(lang)) throw invalid('Choose one of the five languages.', { field: 'lang' });
@@ -858,6 +866,7 @@
     const s = W.session;
     if (!s.phoneVerified && !s.verified?.gmail && !s.verified?.facebook) throw fail(403, 'not_verified', 'Verify your phone, Google or Facebook first.');
     const name = checkName(body.name);
+    const birthYear = checkBirth(body.birthYear);
     const realName = String(body.realName ?? '').trim().replace(/\s+/g, ' ');
     if (R.charCount(realName) < 2 || R.charCount(realName) > 60) throw invalid('Write your first and last name.', { field: 'realName' });
     const role = checkRole(body.role);
@@ -868,7 +877,7 @@
     const photo = checkPhoto(body.photo);
     const id = nextId('user', 'U-');
     const user = {
-      id, name, realName, role, gender: body.gender, lang, phone,
+      id, name, realName, birthYear, role, gender: body.gender, lang, phone,
       verified: { phone: Boolean(phone), gmail: Boolean(s.verified?.gmail), facebook: Boolean(s.verified?.facebook) },
       photos: [photo], seeded: false, location: null, km: 0, area: '', city: '', hearts: { red: 0, orange: 0 },
       level: 1, blocked: false, notices: [],
@@ -884,6 +893,11 @@
     if (body.name !== undefined) set.name = checkName(body.name);
     if (body.lang !== undefined) set.lang = checkLang(body.lang);
     if (body.role !== undefined) set.role = checkRole(body.role);
+    // Set once: at sign-up, or once on #/me for a profile made before it was asked.
+    if (body.birthYear !== undefined) {
+      if (Number.isInteger(u.birthYear)) throw fail(409, 'birth_year_set', 'Your birth year is already set.', { field: 'birthYear' });
+      set.birthYear = checkBirth(body.birthYear);
+    }
     if (!Object.keys(set).length) throw invalid('Nothing to change.');
     Object.assign(u, set);
     return { user: meView(u) };

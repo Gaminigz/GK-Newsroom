@@ -857,3 +857,79 @@ export function checkWrittenQuestion(text, level) {
 export function checkWrittenAnswer(text) {
   return checkWritten(text, ANSWER_LIMITS);
 }
+
+// ---------------------------------------------------------------------------
+// Profile (owner rule 2026-10-13): the app name is short (2–7 characters, the user's own pick, never a
+// contact detail) and everyone gives a birth year. 30+DA is for people aged 30 and over, so the list
+// only holds the years of ages 30–80 and anything younger is refused.
+
+export const NAME_MIN = 2, NAME_MAX = 7;
+export const AGE_MIN = 30, AGE_MAX = 80;
+
+// "This year" is Phnom Penh's (fixed UTC+7) on the server and in every browser, whatever the device
+// clock's zone, so the year list and the server's check always agree.
+const PHNOM_PENH_MS = 7 * 3600e3;
+export function currentYear(now = Date.now()) {
+  const ms = now instanceof Date ? now.getTime() : Number(now);
+  return new Date((Number.isFinite(ms) ? ms : Date.now()) + PHNOM_PENH_MS).getUTCFullYear();
+}
+
+/** The birth years a person may pick, newest first: this year − 30 down to this year − 80. */
+export function birthYearOptions(now = Date.now()) {
+  const year = currentYear(now);
+  return Array.from({ length: AGE_MAX - AGE_MIN + 1 }, (_, i) => year - AGE_MIN - i);
+}
+
+/**
+ * A birth year as sent by a form (number or digit string) →
+ * { ok, year:int|null, error:null|'missing'|'too_young'|'invalid' }.
+ * missing = nothing chosen; too_young = born after this year − 30; invalid = not a year, in the future,
+ * or before this year − 80 (not on the list).
+ */
+export function checkBirthYear(value, now = Date.now()) {
+  const raw = typeof value === 'string' ? value.trim() : value;
+  if (raw === undefined || raw === null || raw === '') return { ok: false, year: null, error: 'missing' };
+  const year = typeof raw === 'number' ? raw : /^\d{4}$/.test(String(raw)) ? Number(raw) : NaN;
+  if (!Number.isInteger(year)) return { ok: false, year: null, error: 'invalid' };
+  const thisYear = currentYear(now);
+  if (year > thisYear || year < thisYear - AGE_MAX) return { ok: false, year, error: 'invalid' };
+  if (year > thisYear - AGE_MIN) return { ok: false, year, error: 'too_young' };
+  return { ok: true, year, error: null };
+}
+
+/**
+ * An app name → { ok, name, count, error:null|'empty'|'too_short'|'too_long'|'contact', hits, reason }
+ * (name = trimmed, single spaces). A contact detail is reported first: it is the rule that matters.
+ */
+export function checkAppName(text) {
+  const name = String(text ?? '').trim().replace(/\s+/g, ' ');
+  const count = charCount(name);
+  const { ok: clean, hits, reason } = findContactDetails(name);
+  const result = (error) => ({ ok: !error, name, count, error, hits, reason });
+  if (!count) return result('empty');
+  if (!clean) return result('contact');
+  if (count < NAME_MIN) return result('too_short');
+  if (count > NAME_MAX) return result('too_long');
+  return result(null);
+}
+
+/** The longest start of `text` that is at most `max` characters (as charCount counts them). For live inputs. */
+export function clipChars(text, max) {
+  const s = String(text ?? '');
+  if (charCount(s) <= max) return s;
+  const cps = [...s];
+  let lo = 0, hi = cps.length;
+  while (lo < hi) { // largest k with charCount(first k code points) <= max
+    const mid = Math.ceil((lo + hi) / 2);
+    if (charCount(cps.slice(0, mid).join('')) <= max) lo = mid;
+    else hi = mid - 1;
+  }
+  // Never end on a lone combining mark's base without its marks: extend while the next code point joins.
+  let out = cps.slice(0, lo).join('');
+  for (let k = lo; k < cps.length; k++) {
+    const next = out + cps[k];
+    if (charCount(next) > charCount(out)) break;
+    out = next;
+  }
+  return out;
+}

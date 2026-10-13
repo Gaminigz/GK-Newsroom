@@ -9,6 +9,7 @@ import { SYSTEM_QUESTIONS, LEVEL_RULES } from './questions.js';
 
 export const QUESTION_CHOICES = 5; // choices per picked question
 export const CHOICE_LIMITS = Object.freeze([4, 100]); // characters per choice, in every language
+export const TITLE_LIMITS = Object.freeze([2, 40]); // characters per (optional) question topic, in every language
 
 /**
  * Deal `list` into `slots` lists of `size`, in order: choice j of slot i is list[j * slots + i].
@@ -38,28 +39,43 @@ export function defaultSlots(level) {
     .map((slot) => slot.map((q) => ({ key: q.key, text: { ...q.text } })));
 }
 
-/** One choice in one language: 4–100 characters, never a contact detail. */
+/**
+ * One choice in one language: 4–100 characters, never a contact detail, no U+FFFD (the mark a
+ * broken UTF-8 decode leaves; such text would reach every app user as "�").
+ * error: null | 'empty' | 'garbled' | 'contact' | 'too_short' | 'too_long'.
+ */
 export function checkQuestionChoice(text) {
+  return checkText(text, CHOICE_LIMITS);
+}
+
+/** One question topic in one language ("Communication"): the same rules with 2–40 characters. */
+export function checkQuestionTitle(text) {
+  return checkText(text, TITLE_LIMITS);
+}
+
+function checkText(text, limits) {
   const s = typeof text === 'string' ? text.trim() : '';
   const count = charCount(s);
   if (!count) return { ok: false, error: 'empty', count, hits: [], reason: null };
+  if (s.includes('\uFFFD')) return { ok: false, error: 'garbled', count, hits: [], reason: null };
   const { ok: clean, hits, reason } = findContactDetails(s);
   const result = (error) => ({ ok: !error, error, count, hits, reason });
   if (!clean) return result('contact');
-  if (count < CHOICE_LIMITS[0]) return result('too_short');
-  if (count > CHOICE_LIMITS[1]) return result('too_long');
+  if (count < limits[0]) return result('too_short');
+  if (count > limits[1]) return result('too_long');
   return result(null);
 }
 
 // Same question twice in one level, whatever the case, spacing or final question mark.
 const sameKey = (s) => String(s ?? '').normalize('NFC').trim().replace(/\s+/g, ' ').replace(/[\s?？。.!！]+$/u, '').toLowerCase();
 
-function choiceMessage(r, lang) {
+function choiceMessage(r, lang, limits = CHOICE_LIMITS) {
   const name = LANG_ENGLISH[lang] || lang;
   switch (r.error) {
     case 'empty': return `${name} text is missing.`;
-    case 'too_short': return `${name}: at least ${CHOICE_LIMITS[0]} characters.`;
-    case 'too_long': return `${name}: at most ${CHOICE_LIMITS[1]} characters (now ${r.count}).`;
+    case 'garbled': return `${name}: has a broken character (\uFFFD). Type it again.`;
+    case 'too_short': return `${name}: at least ${limits[0]} characters.`;
+    case 'too_long': return `${name}: at most ${limits[1]} characters (now ${r.count}).`;
     case 'contact': return `${name}: no contact details (${r.reason || 'contact detail'}: “${r.hits?.[0]?.match ?? ''}”).`;
     default: return `${name}: check this text.`;
   }
@@ -103,6 +119,38 @@ export function checkQuestionSlots(slots, level) {
         }
       }
     });
+  });
+  return { ok: problems.length === 0, problems };
+}
+
+/** True when a topic has text in at least one language (all blank, null or not an object = no topic). */
+export function hasTitle(title) {
+  return Boolean(title && typeof title === 'object' && LANGS.some((l) => typeof title[l] === 'string' && title[l].trim()));
+}
+
+/**
+ * Optional topic per picked question, shown as "Question 1 · Communication": `titles` =
+ * [ {en,km,zh,ko,ja} | null ] × pick (null/undefined for the whole list = no topics). A topic blank in
+ * every language means none. Once any language is written all five are needed, 2–40 characters each,
+ * no contact details. Problems: { slot, choice: null, field: 'title', lang, error, message }.
+ */
+export function checkQuestionTitles(titles, level) {
+  const rules = LEVEL_RULES[level];
+  const whole = (error, message) => ({ ok: false, problems: [{ slot: null, choice: null, field: 'title', lang: null, error, message }] });
+  if (!rules) return whole('level', 'Unknown level.');
+  if (titles == null) return { ok: true, problems: [] };
+  if (!Array.isArray(titles) || titles.length !== rules.pick) return whole('shape', `Level ${level} has ${rules.pick} question topics.`);
+  const problems = [];
+  titles.forEach((title, i) => {
+    if (!hasTitle(title)) return;
+    for (const lang of LANGS) {
+      const r = checkQuestionTitle(title[lang]);
+      if (r.ok) continue;
+      problems.push({
+        slot: i + 1, choice: null, field: 'title', lang, error: r.error, message: `Topic · ${choiceMessage(r, lang, TITLE_LIMITS)}`,
+        ...(r.error === 'contact' ? { hits: r.hits, reason: r.reason } : {}),
+      });
+    }
   });
   return { ok: problems.length === 0, problems };
 }

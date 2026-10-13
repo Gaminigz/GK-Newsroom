@@ -1,10 +1,44 @@
-// Screen 2 · Create profile — face photo, app name (shown), real name (not shown), I am, You are,
-// and a verified phone (or Google / Facebook). Then location, then Nearby.
+// Screen 2 · Create profile — face photo, app name (shown, max 7 characters) + birth year (ages 30+ only)
+// on one row, real name (not shown), I am, You are, and a verified phone (or Google / Facebook).
+// Then location, then Nearby.
 import {
   screen, el, icon, t, go, api, toast, modal, state, setLang, setMe, registerStrings,
-  resizeImage, updateLocation, roleLabel, LANGS, LANG_CODES, LANG_NATIVE, ROLES, findContactDetails, charCount,
-  PHOTO_SLOT_LEVELS,
+  resizeImage, updateLocation, roleLabel, LANGS, LANG_CODES, LANG_NATIVE, ROLES, charCount,
+  PHOTO_SLOT_LEVELS, NAME_MAX, checkAppName, clipChars, birthYearOptions, checkBirthYear,
 } from '../core.js';
+
+// ---------------------------------------------------------------- app name + birth year (also used on #/me)
+
+/** 'length' | 'contact' | null for a typed app name (empty → null: nothing to complain about yet). */
+export function appNameProblem(value) {
+  const c = checkAppName(value);
+  if (c.ok || c.error === 'empty') return null;
+  return c.error === 'contact' ? 'contact' : 'length';
+}
+
+/**
+ * Keep an app-name input at NAME_MAX characters as the server counts them (a Khmer cluster is one), like
+ * maxlength would for plain letters. Never while an IME is composing (Chinese, Japanese, Korean typing).
+ */
+export function clipNameInput(input, e) {
+  if (e?.isComposing) return;
+  const clipped = clipChars(input.value, NAME_MAX);
+  if (clipped !== input.value) input.value = clipped;
+}
+
+/** Birth year dropdown: only this year − 30 down to this year − 80 (30+DA is for people aged 30 and over). */
+export function birthYearSelect({ id, value = '', onChange } = {}) {
+  const sel = el('select', {
+    class: ['select', 'year-select', !value && 'placeholder'], id,
+    on: { change: () => { sel.classList.toggle('placeholder', !sel.value); onChange?.(sel.value); } },
+  },
+  el('option', { value: '', disabled: true, selected: !value }, t('cp_year_ph')),
+  birthYearOptions().map((y) => el('option', { value: String(y), selected: String(y) === String(value) }, String(y))));
+  return sel;
+}
+
+/** "Tell the truth — at the end we will know." */
+export const truthNote = () => el('p', { class: 'truth-note' }, icon('alert', 16), el('span', {}, t('cp_truth')));
 
 const COUNTRY_CODES = [
   '+855', '+66', '+84', '+856', '+95', '+60', '+65', '+63', '+62', '+86', '+852', '+886', '+82', '+81',
@@ -206,18 +240,14 @@ export function phoneVerifier(model, { onVerified, onChange } = {}) {
 // ---------------------------------------------------------------- screen
 
 const blankDraft = () => ({
-  photo: null, name: '', realName: '', gender: '', role: '', phone: blankPhone(), verified: { gmail: false, facebook: false },
+  photo: null, name: '', birthYear: '', realName: '', gender: '', role: '', phone: blankPhone(), verified: { gmail: false, facebook: false },
 });
 // Survives a language switch (which re-renders this screen) but not a reload.
 let draft = blankDraft();
 
 function nameProblem(value) {
-  const name = value.trim().replace(/\s+/g, ' ');
-  if (!name) return null;
-  const n = charCount(name);
-  if (n < 2 || n > 24) return t('cp_name_length');
-  if (!findContactDetails(name).ok) return t('cp_name_contact');
-  return null;
+  const problem = appNameProblem(value);
+  return problem === 'contact' ? t('cp_name_contact') : problem === 'length' ? t('cp_name_length') : null;
 }
 
 const tag = (text, iconName, filled) =>
@@ -292,12 +322,24 @@ screen('/create', ({ root }) => {
   });
   paintPhoto();
 
-  // --- names
+  // --- names + birth year
   const nameErr = el('p', { class: 'field-error', role: 'alert', hidden: true });
+  // Max 7 characters, clipped as typed (see clipNameInput; a code-unit maxlength would cut Khmer names short).
+  const onName = (e) => {
+    clipNameInput(nameInput, e);
+    draft.name = nameInput.value;
+    paintName();
+    update();
+  };
   const nameInput = el('input', {
-    class: 'input', id: 'cp-name', type: 'text', maxlength: '40', autocomplete: 'nickname', enterkeyhint: 'next',
-    placeholder: t('cp_app_name_ph'), value: draft.name,
-    on: { input: () => { draft.name = nameInput.value; paintName(); update(); } },
+    class: 'input name-input', id: 'cp-name', type: 'text', maxlength: '32', autocomplete: 'nickname', enterkeyhint: 'next',
+    placeholder: t('cp_app_name_ph'), value: draft.name, 'aria-describedby': 'cp-name-rule', 'data-max-chars': String(NAME_MAX),
+    on: { input: onName, compositionend: onName },
+  });
+  const yearErr = el('p', { class: 'field-error', role: 'alert', hidden: true });
+  const yearSel = birthYearSelect({
+    id: 'cp-year', value: draft.birthYear,
+    onChange: (v) => { draft.birthYear = v; yearErr.hidden = true; yearSel.classList.remove('is-error'); update(); },
   });
   const paintName = () => {
     const problem = nameProblem(draft.name);
@@ -367,7 +409,8 @@ screen('/create', ({ root }) => {
   const contText = el('span', { class: 'btn-text' }, t('cp_continue'));
   const cont = el('button', { type: 'button', class: 'btn btn-primary', on: { click: () => submit() } }, contText, icon('arrow', 18));
   const contNote = el('p', { class: 'help center' }, t('cp_need_all'));
-  const ready = () => Boolean(draft.photo && draft.name.trim() && !nameProblem(draft.name) && charCount(draft.realName.trim()) >= 2
+  const ready = () => Boolean(draft.photo && checkAppName(draft.name).ok && checkBirthYear(draft.birthYear).ok
+    && charCount(draft.realName.trim()) >= 2
     && draft.gender && draft.role && (draft.phone.verified || draft.verified.gmail || draft.verified.facebook));
   function update() {
     const ok = ready();
@@ -382,8 +425,8 @@ screen('/create', ({ root }) => {
     contText.textContent = t('cp_saving');
     try {
       const r = await api.post('/profile', {
-        name: draft.name.trim().replace(/\s+/g, ' '), realName: draft.realName.trim(), role: draft.role, gender: draft.gender,
-        lang: state.lang, photo: draft.photo,
+        name: draft.name.trim().replace(/\s+/g, ' '), birthYear: Number(draft.birthYear), realName: draft.realName.trim(),
+        role: draft.role, gender: draft.gender, lang: state.lang, photo: draft.photo,
       });
       draft = blankDraft();
       setMe(r.user);
@@ -402,7 +445,12 @@ screen('/create', ({ root }) => {
 
   function profileError(err) {
     const fieldName = err.data?.field;
-    if (err.code === 'contact_detail' || fieldName === 'name') {
+    if (err.code === 'too_young' || fieldName === 'birthYear') {
+      yearErr.replaceChildren(icon('flag', 14), err.code === 'too_young' ? t('cp_too_young') : t('cp_year_needed'));
+      yearErr.hidden = false;
+      yearSel.classList.add('is-error');
+      yearSel.focus();
+    } else if (err.code === 'contact_detail' || fieldName === 'name') {
       nameErr.textContent = err.code === 'contact_detail' ? t('cp_name_contact') : t('cp_name_length');
       nameErr.hidden = false;
       nameInput.classList.add('is-error');
@@ -434,7 +482,13 @@ screen('/create', ({ root }) => {
             el('p', { class: 'photo-hint' }, t('cp_photo_hint')),
             lockedSlots())),
         photoErr, file),
-      field(t('cp_app_name'), tag(t('cp_tag_shown'), 'eye', true), { forId: 'cp-name' }, nameInput, nameErr),
+      // App name (short) and birth year side by side, the warning under both.
+      el('div', { class: 'name-year-group' },
+        el('div', { class: 'name-year' },
+          field(t('cp_app_name'), tag(t('cp_tag_shown'), 'eye', true), { forId: 'cp-name' }, nameInput),
+          field(t('cp_birth_year'), null, { forId: 'cp-year' }, yearSel)),
+        el('p', { class: 'visually-hidden', id: 'cp-name-rule' }, t('cp_name_length')),
+        nameErr, yearErr, truthNote()),
       field(t('cp_real_name'), tag(t('cp_tag_not_shown'), 'eye-off', false), { forId: 'cp-real' }, realInput),
       field(t('cp_i_am'), null, { labelId: 'cp-gender-l' },
         el('div', { class: 'seg', role: 'group', 'aria-labelledby': 'cp-gender-l' }, genderBtns)),
@@ -464,11 +518,16 @@ registerStrings({
     cp_more_photos: 'More photos unlock at Level 2 and Level 3.',
     cp_app_name: 'App name',
     cp_tag_shown: 'Shown',
-    cp_app_name_ph: 'The name others see',
+    cp_app_name_ph: 'Name',
     cp_real_name: 'Real name',
     cp_tag_not_shown: 'Not shown',
     cp_real_name_ph: 'First and last name',
-    cp_name_length: 'Use 2 to 24 characters.',
+    cp_name_length: 'Use 2 to 7 characters.',
+    cp_birth_year: 'Birth year',
+    cp_year_ph: 'Year',
+    cp_truth: 'Tell the truth — at the end we will know.',
+    cp_too_young: '30+DA is for people aged 30 and over.',
+    cp_year_needed: 'Choose your birth year from the list.',
     cp_name_contact: 'No phone numbers, emails or chat handles in your name.',
     cp_i_am: 'I am',
     cp_gender_woman: 'Woman',
@@ -517,11 +576,16 @@ registerStrings({
     cp_more_photos: 'រូបថតបន្ថែមនឹងបើកនៅកម្រិត 2 និងកម្រិត 3។',
     cp_app_name: 'ឈ្មោះក្នុងកម្មវិធី',
     cp_tag_shown: 'បង្ហាញ',
-    cp_app_name_ph: 'ឈ្មោះដែលអ្នកដទៃឃើញ',
+    cp_app_name_ph: 'ឈ្មោះ',
     cp_real_name: 'ឈ្មោះពិត',
     cp_tag_not_shown: 'មិនបង្ហាញ',
     cp_real_name_ph: 'នាមត្រកូល និងនាមខ្លួន',
-    cp_name_length: 'សូមប្រើពី 2 ដល់ 24 តួអក្សរ។',
+    cp_name_length: 'សូមប្រើពី 2 ដល់ 7 តួអក្សរ។',
+    cp_birth_year: 'ឆ្នាំកំណើត',
+    cp_year_ph: 'ឆ្នាំ',
+    cp_truth: 'សូមប្រាប់ការពិត — នៅទីបញ្ចប់ យើងនឹងដឹង។',
+    cp_too_young: '30+DA សម្រាប់អ្នកដែលមានអាយុពី 30 ឆ្នាំឡើងទៅ។',
+    cp_year_needed: 'សូមជ្រើសរើសឆ្នាំកំណើតរបស់អ្នកពីបញ្ជី។',
     cp_name_contact: 'កុំដាក់លេខទូរស័ព្ទ អ៊ីមែល ឬឈ្មោះគណនីជជែក ក្នុងឈ្មោះរបស់អ្នក។',
     cp_i_am: 'ខ្ញុំជា',
     cp_gender_woman: 'ស្ត្រី',
@@ -570,11 +634,16 @@ registerStrings({
     cp_more_photos: '更多照片在等级 2 和等级 3 解锁。',
     cp_app_name: '应用昵称',
     cp_tag_shown: '公开',
-    cp_app_name_ph: '别人看到的名字',
+    cp_app_name_ph: '昵称',
     cp_real_name: '真实姓名',
     cp_tag_not_shown: '不公开',
     cp_real_name_ph: '姓和名',
-    cp_name_length: '请使用 2 到 24 个字符。',
+    cp_name_length: '请使用 2 到 7 个字符。',
+    cp_birth_year: '出生年份',
+    cp_year_ph: '年份',
+    cp_truth: '请如实填写——最后我们都会知道。',
+    cp_too_young: '30+DA 仅供 30 岁及以上的人使用。',
+    cp_year_needed: '请从列表中选择你的出生年份。',
     cp_name_contact: '名字中不能包含电话、邮箱或聊天账号。',
     cp_i_am: '我是',
     cp_gender_woman: '女士',
@@ -623,11 +692,16 @@ registerStrings({
     cp_more_photos: '사진은 레벨 2와 레벨 3에서 더 올릴 수 있어요.',
     cp_app_name: '앱 이름',
     cp_tag_shown: '공개',
-    cp_app_name_ph: '다른 사람에게 보이는 이름',
+    cp_app_name_ph: '이름',
     cp_real_name: '실명',
     cp_tag_not_shown: '비공개',
     cp_real_name_ph: '성과 이름',
-    cp_name_length: '2~24자로 입력해 주세요.',
+    cp_name_length: '2~7자로 입력해 주세요.',
+    cp_birth_year: '출생 연도',
+    cp_year_ph: '연도',
+    cp_truth: '사실대로 알려 주세요. 결국 우리는 알게 돼요.',
+    cp_too_young: '30+DA는 30세 이상만 이용할 수 있어요.',
+    cp_year_needed: '목록에서 출생 연도를 선택해 주세요.',
     cp_name_contact: '이름에 전화번호, 이메일, 메신저 아이디를 넣을 수 없어요.',
     cp_i_am: '나는',
     cp_gender_woman: '여성',
@@ -676,11 +750,16 @@ registerStrings({
     cp_more_photos: '写真はレベル2とレベル3でさらに追加できます。',
     cp_app_name: 'アプリ名',
     cp_tag_shown: '表示',
-    cp_app_name_ph: '相手に表示される名前',
+    cp_app_name_ph: '名前',
     cp_real_name: '本名',
     cp_tag_not_shown: '非表示',
     cp_real_name_ph: '姓と名',
-    cp_name_length: '2〜24文字で入力してください。',
+    cp_name_length: '2〜7文字で入力してください。',
+    cp_birth_year: '生まれ年',
+    cp_year_ph: '年',
+    cp_truth: '正直に選んでください。最後にはわかります。',
+    cp_too_young: '30+DAは30歳以上の方のためのアプリです。',
+    cp_year_needed: 'リストから生まれ年を選んでください。',
     cp_name_contact: '名前に電話番号・メール・チャットIDは入れられません。',
     cp_i_am: '性別',
     cp_gender_woman: '女性',

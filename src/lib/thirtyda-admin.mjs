@@ -10,8 +10,8 @@
  *   GET  /30da/admin/api/chat?flag=|user= one full conversation
  *   POST /30da/admin/api/users/:id/block|unblock   { flagId?, undo? }
  *   POST /30da/admin/api/flags/:id/warn|dismiss
- *   GET  /30da/admin/api/questions        both levels: [{ id:'L1', slots:[[{key,text:{en,km,zh,ko,ja}}×5]×4], … }]
- *   PUT  /30da/admin/api/questions/L1|L2  { slots, updatedAt? } → saved level | 422 { problems } | 409 changed
+ *   GET  /30da/admin/api/questions        both levels: [{ id:'L1', slots:[[{key,text:{en,km,zh,ko,ja}}×5]×4], titles, … }]
+ *   PUT  /30da/admin/api/questions/L1|L2  { slots, titles?, updatedAt? } → saved level | 422 { problems } | 409 changed
  *   POST /30da/admin/api/questions/L1|L2/reset   back to the built-in choices
  *
  * Auth: one access code from the THIRTYDA_ADMIN_CODE env var — NO default,
@@ -30,7 +30,7 @@ import {
   QUESTION_LEVELS, levelDocId, levelFromId, questionConfig, saveQuestions, resetQuestions,
 } from "./thirtyda-questions.mjs";
 import { LEVEL_RULES } from "../thirtyda-app/shared/questions.js";
-import { QUESTION_CHOICES, CHOICE_LIMITS } from "../thirtyda-app/shared/question-slots.js";
+import { QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS } from "../thirtyda-app/shared/question-slots.js";
 
 const BASE = "/30da/admin";
 const CODE = process.env.THIRTYDA_ADMIN_CODE || "";
@@ -195,27 +195,30 @@ async function serveFile(res, name) {
 }
 
 function readJson(req) {
-  return new Promise((resolve) => {
-    let body = "";
-    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
-    req.on("end", () => { try { resolve(JSON.parse(body || "{}")); } catch { resolve({}); } });
-  });
+  return readJsonBody(req, 1e4).then((r) => r.value ?? {});
 }
 
-/** A JSON object body up to `max` characters → the object, or { tooLarge } / { bad }. */
+/**
+ * A JSON object body up to `max` BYTES → { value }, or { tooLarge } / { bad }.
+ * The raw Buffers are joined before decoding: decoding chunk by chunk would turn a Khmer or
+ * Chinese character split across two chunks into U+FFFD.
+ */
 function readJsonBody(req, max) {
   return new Promise((resolve) => {
-    let body = "";
+    const chunks = [];
+    let size = 0;
     let over = false;
     req.on("data", (c) => {
       if (over) return;
-      body += c;
-      if (body.length > max) { over = true; body = ""; }
+      size += c.length;
+      if (size > max) { over = true; chunks.length = 0; return; }
+      chunks.push(c);
     });
     req.on("end", () => {
       if (over) return resolve({ tooLarge: true });
       try {
-        const v = JSON.parse(body || "{}");
+        const raw = Buffer.concat(chunks).toString("utf8");
+        const v = JSON.parse(raw.trim() ? raw : "{}");
         resolve(v && typeof v === "object" && !Array.isArray(v) ? { value: v } : { bad: true });
       } catch {
         resolve({ bad: true });
@@ -223,6 +226,26 @@ function readJsonBody(req, max) {
     });
     req.on("error", () => resolve({ bad: true }));
   });
+}
+
+/**
+ * Writes must come from the admin pages themselves. SameSite=Strict keeps the cookie off other
+ * sites, but not off a sibling subdomain: refuse a foreign Origin / Sec-Fetch-Site, and any body
+ * that is not JSON (an HTML form can only send form-encoded or text/plain without a preflight).
+ * → null when fine, else [status, message].
+ */
+function writeRefused(req) {
+  const site = req.headers["sec-fetch-site"];
+  if (site && site !== "same-origin" && site !== "none") return [403, "Requests must come from the admin pages."];
+  const origin = req.headers.origin;
+  if (origin) {
+    let host = null;
+    try { host = new URL(origin).host; } catch { /* "null" or junk */ }
+    if (host !== (req.headers["x-forwarded-host"] || req.headers.host)) return [403, "Requests must come from the admin pages."];
+  }
+  const type = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+  if (type !== "application/json") return [415, "Send JSON (Content-Type: application/json)."];
+  return null;
 }
 
 const writes = new Map(); // admin session → [timestamps of question saves/resets]
@@ -248,7 +271,9 @@ function questionsView(level, config) {
     write: LEVEL_RULES[level].write,
     choices: QUESTION_CHOICES,
     limits: { min: CHOICE_LIMITS[0], max: CHOICE_LIMITS[1] },
+    titleLimits: { min: TITLE_LIMITS[0], max: TITLE_LIMITS[1] },
     slots: config.slots,
+    titles: config.titles,
     updatedAt: config.updatedAt,
     updatedBy: config.updatedBy,
     reset: config.reset,
@@ -263,6 +288,14 @@ export async function handleThirtyDaAdmin(req, res, url) {
 
   const asset = sub.match(/^\/(app\.css|signin\.js|monitor\.js|questions\.js)$/);
   if (req.method === "GET" && asset) return serveFile(res, asset[1]);
+
+  if (req.method !== "GET" && req.method !== "HEAD" && sub.startsWith("/api/")) {
+    const refused = writeRefused(req);
+    if (refused) {
+      req.resume();
+      return json(res, refused[0], { error: refused[1] });
+    }
+  }
 
   if (req.method === "POST" && sub === "/api/signin") {
     const ip = clientIp(req);
@@ -347,7 +380,10 @@ export async function handleThirtyDaAdmin(req, res, url) {
     const body = await readJsonBody(req, QUESTIONS_BODY_MAX);
     if (body.tooLarge) return json(res, 413, { error: "That is too much text to save." });
     if (body.bad || !Array.isArray(body.value.slots)) return json(res, 400, { error: "Send { slots: [...] }." });
-    const opts = "updatedAt" in body.value ? { baseUpdatedAt: body.value.updatedAt } : {};
+    const opts = {
+      ...("updatedAt" in body.value ? { baseUpdatedAt: body.value.updatedAt } : {}),
+      ...("titles" in body.value ? { titles: body.value.titles } : {}),
+    };
     const r = await saveQuestions(d, level, body.value.slots, opts);
     if (r.conflict) {
       return json(res, 409, {

@@ -45,8 +45,9 @@
       </div>
       <p class="q-lede">
         What people pick from when they ask. Each question has its own 5 choices, and the app shows only
-        those 5 in that question's list. Every choice needs all five languages. Sets already sent keep
-        the text they were sent with.
+        those 5 in that question's list. Every choice needs all five languages; a topic is optional.
+        Re-wording a choice in English makes it a new question. Sets already sent keep the text they
+        were sent with.
       </p>
 
       <div class="q-toolbar">
@@ -64,6 +65,7 @@
         <span class="q-status" id="status" aria-live="polite"></span>
         <button type="button" class="link plain" id="reset">Reset to defaults</button>
         <button type="button" class="btn" id="discard" disabled>Discard changes</button>
+        <button type="button" class="btn q-merge" id="merge" hidden>Load the latest</button>
         <button type="button" class="btn-primary q-save" id="save" disabled>Save</button>
       </div>
     </main>

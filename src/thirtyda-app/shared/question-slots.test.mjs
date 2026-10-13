@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { SYSTEM_QUESTIONS, LEVEL_RULES } from './questions.js';
 import { LANGS } from './rules.js';
 import {
-  QUESTION_CHOICES, CHOICE_LIMITS, dealSlots, flattenSlots, defaultSlots, checkQuestionChoice, checkQuestionSlots,
+  QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS, dealSlots, flattenSlots, defaultSlots, checkQuestionChoice, checkQuestionSlots,
+  checkQuestionTitle, checkQuestionTitles, hasTitle,
 } from './question-slots.js';
 
 const tx = (en, extra = {}) => ({ en, km: `${en} ខ្មែរ`, zh: `${en} 中文`, ko: `${en} 한국어`, ja: `${en} 日本語`, ...extra });
@@ -127,4 +128,45 @@ test('checkQuestionSlots: no duplicates within a level (case, spaces and ? ignor
   const l2 = defaultSlots(2);
   l2[0][4].text = tx('Is it raining where you are?');
   assert.equal(checkQuestionSlots(l2, 2).ok, true);
+});
+
+test('checkQuestionChoice: a broken character (U+FFFD from a bad UTF-8 decode) is refused', () => {
+  const r = checkQuestionChoice('តើអ្នកចូលចិត្ត\uFFFD\uFFFD\uFFFD្កាឈូកទេ?');
+  assert.equal(r.ok, false);
+  assert.equal(r.error, 'garbled');
+  const slots = defaultSlots(1);
+  slots[0][0].text.km = 'តើ\uFFFDនៅកន្លែងអ្នកកំពុងភ្លៀងទេ?';
+  const p = checkQuestionSlots(slots, 1).problems.find((x) => x.slot === 1 && x.choice === 1 && x.lang === 'km');
+  assert.equal(p.error, 'garbled');
+  assert.match(p.message, /^Khmer: has a broken character/);
+});
+
+test('question topics: optional, all five languages once started, 2–40 characters, no contact details', () => {
+  assert.deepEqual(TITLE_LIMITS, [2, 40]);
+  assert.equal(checkQuestionTitle('生活').ok, true);
+  assert.equal(checkQuestionTitle('A').error, 'too_short');
+  assert.equal(checkQuestionTitle('a'.repeat(41)).error, 'too_long');
+  assert.equal(checkQuestionTitle('Telegram').error, 'contact');
+  assert.equal(hasTitle(null), false);
+  assert.equal(hasTitle({ en: '  ', km: '' }), false);
+  assert.equal(hasTitle({ en: 'Communication' }), true);
+  // No topics at all, or every topic blank: fine.
+  assert.deepEqual(checkQuestionTitles(undefined, 1), { ok: true, problems: [] });
+  assert.deepEqual(checkQuestionTitles([null, null, null, null], 1), { ok: true, problems: [] });
+  assert.equal(checkQuestionTitles([{ en: '', km: '', zh: '', ko: '', ja: '' }, null], 2).ok, true);
+  // A topic in all five languages.
+  const comm = tx('Communication');
+  assert.equal(checkQuestionTitles([comm, null, null, null], 1).ok, true);
+  // Started but not finished: each missing language is a problem on that question's topic.
+  const { ok, problems } = checkQuestionTitles([null, { en: 'Lifestyle', km: 'របៀបរស់នៅ' }, null, null], 1);
+  assert.equal(ok, false);
+  assert.deepEqual(problems.map((p) => [p.slot, p.choice, p.field, p.lang, p.error]), [
+    [2, null, 'title', 'zh', 'empty'], [2, null, 'title', 'ko', 'empty'], [2, null, 'title', 'ja', 'empty'],
+  ]);
+  assert.match(problems[0].message, /^Topic · Chinese text is missing/);
+  assert.equal(checkQuestionTitles([tx('Add me on Telegram'), null], 2).problems[0].error, 'contact');
+  // Shape: one entry per picked question.
+  assert.equal(checkQuestionTitles([comm], 1).problems[0].error, 'shape');
+  assert.equal(checkQuestionTitles('Communication', 1).problems[0].error, 'shape');
+  assert.equal(checkQuestionTitles([], 3).problems[0].error, 'level');
 });

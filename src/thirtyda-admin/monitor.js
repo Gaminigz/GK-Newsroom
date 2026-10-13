@@ -119,6 +119,7 @@ function renderUsers() {
     return `<tr class="${u.blocked ? 'is-blocked' : ''}">
       <td><span class="who">${avatar}<span><b>${esc(u.name)}</b><small>${esc(u.id)}</small></span></span></td>
       <td>${levelBars(u.level)}</td>
+      <td class="born">${Number.isInteger(u.birthYear) ? u.birthYear : '<span class="muted">–</span>'}</td>
       <td>${esc(u.language)}</td>
       <td>${esc(u.area)}</td>
       <td><span class="status"><span class="dot ${status}"></span>${status}</span></td>
@@ -235,7 +236,7 @@ document.addEventListener('click', async (e) => {
     if (ds.target === 'monitor') { view.tab = 'queue'; renderMonitor(); }
     $(ds.target).scrollIntoView({ behavior: 'smooth', block: 'start' });
   } else if (b.id === 'signout') {
-    await fetch('/30da/admin/api/signout', { method: 'POST' });
+    await fetch('/30da/admin/api/signout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     location.href = '/30da/admin';
   }
 });

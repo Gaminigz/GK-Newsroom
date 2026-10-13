@@ -271,6 +271,8 @@ tr.is-blocked td { color: var(--muted); background: #fafbfc; }
 .level i { width: 8px; height: 3px; border-radius: 2px; background: #d4d9e2; display: inline-block; }
 .level i.on { background: var(--navy); }
 .level span { margin-left: 4px; }
+td.born { font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+td.born .muted { color: var(--muted); }
 .status { display: inline-flex; align-items: center; gap: 6px; text-transform: capitalize; }
 .count { display: inline-grid; place-items: center; min-width: 20px; height: 18px; border-radius: 999px; background: #eef1f6; font-size: 10px; font-weight: 700; }
 .count.hot { background: var(--red-soft); color: var(--red); }
@@ -374,8 +376,22 @@ mark.hit { background: none; color: var(--red); font-weight: 800; }
 .q-num.dirty { background: var(--amber); }
 .q-num.new { background: #fff; color: var(--amber); box-shadow: inset 0 0 0 1.5px var(--amber); }
 .q-body { min-width: 0; }
-.q-line { display: flex; gap: 6px; align-items: center; }
+.q-line { display: flex; gap: 6px; align-items: flex-start; }
 .q-line .input { flex: 1 1 auto; min-width: 0; }
+/* Choice and topic boxes wrap and grow with their text, so long Khmer/Japanese stays readable. */
+textarea.input.q-in {
+  display: block;
+  height: auto;
+  min-height: 40px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  resize: none;
+  overflow: hidden;
+  field-sizing: content;
+}
+.q-field textarea.input.q-in { min-height: 36px; padding: 8px 10px; }
 .input.is-error, .input.is-error:focus { border-color: var(--red); background: #fff; }
 .q-langs, .q-replace {
   flex: none;
@@ -389,7 +405,7 @@ mark.hit { background: none; color: var(--red); font-weight: 800; }
 .q-langs[aria-expanded="true"] { border-color: var(--navy); color: var(--ink); }
 .q-langs[aria-expanded="true"] svg { transform: rotate(180deg); }
 .q-langs:hover, .q-replace:hover { border-color: #c9d0dc; color: var(--ink); }
-.q-replace { width: 40px; display: grid; place-items: center; }
+.q-replace { display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; font-size: 11.5px; font-weight: 600; }
 .q-chip {
   font-family: var(--mono);
   font-size: 9px;
@@ -417,6 +433,14 @@ mark.hit { background: none; color: var(--red); font-weight: 800; }
 .q-field .input { height: 36px; background: #fff; border-color: var(--line); }
 .q-field .input:focus { border-color: var(--navy); }
 .q-note { margin: 6px 0 0; font-size: 12px; font-weight: 600; color: #9a5b0b; }
+.q-undo { margin: 6px 0 0; font-size: 12px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.q-undo .link { font-size: 12px; }
+.q-topic { margin: -2px 0 14px; padding: 0 0 12px 32px; border-bottom: 1px dashed var(--line); }
+.q-topic .q-line { align-items: center; }
+.q-topic-label { flex: none; width: 42px; }
+.q-topic textarea.input.q-in { min-height: 34px; padding: 7px 10px; }
+.q-topic .q-langs { height: 34px; }
+.q-topic.dirty .q-topic-label { color: #9a5b0b; }
 .q-err { margin: 6px 0 0; font-size: 12px; font-weight: 600; color: var(--red); line-height: 1.4; }
 .q-actions {
   position: sticky;
@@ -432,11 +456,12 @@ mark.hit { background: none; color: var(--red); font-weight: 800; }
   border-radius: var(--radius) var(--radius) 0 0;
   box-shadow: 0 -8px 20px rgb(11 28 63 / 0.07);
 }
-.q-status { margin-right: auto; font-size: 13px; font-weight: 600; color: var(--muted); }
+.q-status { margin-right: auto; min-width: 0; font-size: 13px; font-weight: 600; color: var(--muted); line-height: 1.35; }
 .q-status.warn { color: #9a5b0b; }
 .q-status.err { color: var(--red); }
 .q-actions .link { font-size: 12px; }
 .q-actions .btn { height: 38px; }
+.q-actions .btn.q-merge { background: var(--navy); color: #fff; }
 .btn-primary.q-save { width: auto; min-width: 150px; height: 38px; margin-top: 0; padding: 0 18px; }
 .btn-primary.q-save[disabled] { opacity: 0.4; cursor: default; }
 
@@ -464,7 +489,11 @@ mark.hit { background: none; color: var(--red); font-weight: 800; }
   .q-line { flex-wrap: wrap; }
   .q-line .input { flex: 1 0 100%; }
   .q-line .q-langs { margin-left: auto; height: 34px; }
-  .q-line .q-replace { height: 34px; width: 34px; }
+  .q-line .q-replace { height: 34px; }
+  .q-topic { padding-left: 0; }
+  .q-topic .q-line { flex-wrap: wrap; }
+  .q-topic .q-line .input { flex: 1 0 100%; }
+  .q-topic .q-topic-label { width: auto; }
   .q-num { margin-top: 9px; }
   .q-actions .btn-primary.q-save { min-width: 0; flex: 1 0 auto; }
 }

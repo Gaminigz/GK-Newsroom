@@ -1,19 +1,20 @@
 // me · My profile (not in the design; same visual language): the 4 photo slots (main face photo, then
-// slots that unlock at Level 2 and Level 3), app name, language, role, phone verification, hearts, sign out.
+// slots that unlock at Level 2 and Level 3), app name (max 7 characters), birth year (read-only: set once),
+// language, role, phone verification, hearts, sign out.
 import {
   screen, el, icon, t, go, api, toast, modal, state, setLang, setMe, topBar, heartPills, roleLabel, resizeImage,
-  registerStrings, LANGS, LANG_NATIVE, ROLES, findContactDetails, charCount, PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor,
+  registerStrings, LANGS, LANG_NATIVE, ROLES, PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, NAME_MAX,
 } from '../core.js';
-import { phoneVerifier, blankPhone } from './create-profile.js';
+import {
+  phoneVerifier, blankPhone, appNameProblem, clipNameInput, birthYearSelect, truthNote,
+} from './create-profile.js';
 
 let phoneModel = blankPhone(); // keeps a half-finished phone check across re-renders
 
 function nameProblem(value) {
-  const name = value.trim().replace(/\s+/g, ' ');
-  const n = charCount(name);
-  if (n < 2 || n > 24) return t('me_name_length');
-  if (!findContactDetails(name).ok) return t('me_name_contact');
-  return null;
+  const problem = appNameProblem(value);
+  if (!value.trim() || problem === 'length') return t('me_name_length');
+  return problem === 'contact' ? t('me_name_contact') : null;
 }
 
 const errText = (err) => (err.status === 0 ? t('err_network') : t('err_generic'));
@@ -191,7 +192,11 @@ screen('/me', async ({ root }) => {
 
   // --- app name
   const nameErr = el('p', { class: 'field-error', role: 'alert', hidden: true });
-  const nameInput = el('input', { class: 'input', id: 'me-name', type: 'text', maxlength: '40', autocomplete: 'nickname', value: me.name || '' });
+  // Max 7 characters, clipped as typed (a name saved before the rule shows in full until it is edited).
+  const nameInput = el('input', {
+    class: 'input name-input', id: 'me-name', type: 'text', maxlength: '32', autocomplete: 'nickname', value: me.name || '',
+    placeholder: t('me_name_ph'), 'data-max-chars': String(NAME_MAX),
+  });
   const saveName = el('button', { type: 'button', class: 'btn btn-secondary', disabled: true }, t('me_save'));
   const paintName = () => {
     const value = nameInput.value;
@@ -202,7 +207,12 @@ screen('/me', async ({ root }) => {
     nameInput.classList.toggle('is-error', Boolean(changed && problem));
     saveName.disabled = !changed || Boolean(problem);
   };
-  nameInput.addEventListener('input', paintName);
+  const onName = (e) => {
+    clipNameInput(nameInput, e);
+    paintName();
+  };
+  nameInput.addEventListener('input', onName);
+  nameInput.addEventListener('compositionend', onName);
   nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !saveName.disabled) saveName.click(); });
   saveName.addEventListener('click', async () => {
     saveName.disabled = true;
@@ -222,6 +232,57 @@ screen('/me', async ({ root }) => {
       nameInput.classList.add('is-error');
     }
   });
+
+  // --- birth year: set once (at sign-up, or here once for a profile made before it was asked).
+  // Only its owner sees it; Nearby and profiles show no age.
+  const birthBox = el('section', { class: 'section' });
+  function paintBirth() {
+    const year = state.me?.birthYear;
+    if (Number.isInteger(year)) {
+      birthBox.replaceChildren(
+        el('span', { class: 'label ink' }, t('me_birth_year')),
+        el('p', { class: 'kv birth-year-line' }, icon('lock', 16),
+          el('span', {}, t('me_birth_year_is', { year }))),
+        el('p', { class: 'help' }, t('me_birth_once')),
+        truthNote());
+      return;
+    }
+    let picked = '';
+    const err = el('p', { class: 'field-error', role: 'alert', hidden: true });
+    const save = el('button', { type: 'button', class: 'btn btn-secondary', disabled: true }, t('me_save'));
+    const sel = birthYearSelect({
+      id: 'me-year',
+      onChange: (v) => { picked = v; save.disabled = !v; err.hidden = true; sel.classList.remove('is-error'); },
+    });
+    save.addEventListener('click', async () => {
+      if (!picked) return;
+      save.disabled = true;
+      try {
+        const r = await api.patch('/me', { birthYear: Number(picked) });
+        setMe(r.user);
+        toast(t('me_saved'));
+        paintBirth();
+      } catch (e) {
+        if (e.code === 'birth_year_set') {
+          toast(t('me_birth_set'));
+          await refreshMe();
+          paintBirth();
+          return;
+        }
+        save.disabled = false;
+        const text = e.code === 'too_young' ? t('cp_too_young') : e.data?.field === 'birthYear' ? t('cp_year_needed') : '';
+        if (!text) return toast(errText(e));
+        err.replaceChildren(icon('flag', 14), text);
+        err.hidden = false;
+        sel.classList.add('is-error');
+      }
+    });
+    birthBox.replaceChildren(
+      el('label', { class: 'label ink', for: 'me-year' }, t('me_birth_year')),
+      el('p', { class: 'help' }, t('me_birth_missing')),
+      el('div', { class: 'inline-row' }, sel, save), err, truthNote());
+  }
+  paintBirth();
 
   // --- language (also the language others' messages are translated into)
   const langBtns = LANGS.map((code) => el('button', {
@@ -308,6 +369,7 @@ screen('/me', async ({ root }) => {
       el('div', { class: 'field-head' }, el('label', { class: 'label ink', for: 'me-name' }, t('me_app_name')),
         el('span', { class: 'tag tag-filled' }, icon('eye', 11), t('me_tag_shown'))),
       el('div', { class: 'inline-row' }, nameInput, saveName), nameErr),
+    birthBox,
     section(t('me_language'), el('div', { class: 'lang-grid' }, langBtns), el('p', { class: 'help' }, t('me_language_note'))),
     el('section', { class: 'section' }, el('label', { class: 'label ink', for: 'me-role' }, t('me_role')), roleSel),
     section(t('me_verified_with'), chips, phoneBlock),
@@ -348,7 +410,13 @@ registerStrings({
     me_photo_changed: 'Your photos changed. Try again.',
     me_app_name: 'App name',
     me_tag_shown: 'Shown',
-    me_name_length: 'Use 2 to 24 characters.',
+    me_name_length: 'Use 2 to 7 characters.',
+    me_name_ph: 'Name',
+    me_birth_year: 'Birth year',
+    me_birth_year_is: 'Birth year {year}',
+    me_birth_once: 'Set once at sign-up. Other people never see it.',
+    me_birth_missing: 'Add your birth year. You can set it only once.',
+    me_birth_set: 'Your birth year is already set.',
     me_name_contact: 'No phone numbers, emails or chat handles in your name.',
     me_save: 'Save',
     me_saved: 'Saved',
@@ -391,7 +459,13 @@ registerStrings({
     me_photo_changed: 'រូបថតរបស់អ្នកបានផ្លាស់ប្តូរ។ សូមព្យាយាមម្តងទៀត។',
     me_app_name: 'ឈ្មោះក្នុងកម្មវិធី',
     me_tag_shown: 'បង្ហាញ',
-    me_name_length: 'សូមប្រើពី 2 ដល់ 24 តួអក្សរ។',
+    me_name_length: 'សូមប្រើពី 2 ដល់ 7 តួអក្សរ។',
+    me_name_ph: 'ឈ្មោះ',
+    me_birth_year: 'ឆ្នាំកំណើត',
+    me_birth_year_is: 'ឆ្នាំកំណើត {year}',
+    me_birth_once: 'កំណត់តែម្ដងនៅពេលចុះឈ្មោះ។ អ្នកដទៃមិនដែលឃើញវាទេ។',
+    me_birth_missing: 'សូមបន្ថែមឆ្នាំកំណើតរបស់អ្នក។ អ្នកអាចកំណត់វាបានតែម្ដងប៉ុណ្ណោះ។',
+    me_birth_set: 'ឆ្នាំកំណើតរបស់អ្នកត្រូវបានកំណត់រួចហើយ។',
     me_name_contact: 'កុំដាក់លេខទូរស័ព្ទ អ៊ីមែល ឬឈ្មោះគណនីជជែក ក្នុងឈ្មោះរបស់អ្នក។',
     me_save: 'រក្សាទុក',
     me_saved: 'បានរក្សាទុក',
@@ -434,7 +508,13 @@ registerStrings({
     me_photo_changed: '你的照片已有变化，请再试一次。',
     me_app_name: '应用昵称',
     me_tag_shown: '公开',
-    me_name_length: '请使用 2 到 24 个字符。',
+    me_name_length: '请使用 2 到 7 个字符。',
+    me_name_ph: '昵称',
+    me_birth_year: '出生年份',
+    me_birth_year_is: '出生年份 {year}',
+    me_birth_once: '注册时设定一次，其他人永远看不到。',
+    me_birth_missing: '请填写你的出生年份，只能设定一次。',
+    me_birth_set: '你的出生年份已经设定好了。',
     me_name_contact: '名字中不能包含电话、邮箱或聊天账号。',
     me_save: '保存',
     me_saved: '已保存',
@@ -477,7 +557,13 @@ registerStrings({
     me_photo_changed: '사진이 바뀌었어요. 다시 시도해 주세요.',
     me_app_name: '앱 이름',
     me_tag_shown: '공개',
-    me_name_length: '2~24자로 입력해 주세요.',
+    me_name_length: '2~7자로 입력해 주세요.',
+    me_name_ph: '이름',
+    me_birth_year: '출생 연도',
+    me_birth_year_is: '출생 연도 {year}',
+    me_birth_once: '가입할 때 한 번만 정해요. 다른 사람에게는 보이지 않아요.',
+    me_birth_missing: '출생 연도를 추가해 주세요. 한 번만 정할 수 있어요.',
+    me_birth_set: '출생 연도는 이미 정해져 있어요.',
     me_name_contact: '이름에 전화번호, 이메일, 메신저 아이디를 넣을 수 없어요.',
     me_save: '저장',
     me_saved: '저장했어요',
@@ -520,7 +606,13 @@ registerStrings({
     me_photo_changed: '写真が変更されました。もう一度お試しください。',
     me_app_name: 'アプリ名',
     me_tag_shown: '表示',
-    me_name_length: '2〜24文字で入力してください。',
+    me_name_length: '2〜7文字で入力してください。',
+    me_name_ph: '名前',
+    me_birth_year: '生まれ年',
+    me_birth_year_is: '生まれ年 {year}',
+    me_birth_once: '登録時に一度だけ設定します。他の人には表示されません。',
+    me_birth_missing: '生まれ年を追加してください。設定できるのは一度だけです。',
+    me_birth_set: '生まれ年はすでに設定されています。',
     me_name_contact: '名前に電話番号・メール・チャットIDは入れられません。',
     me_save: '保存',
     me_saved: '保存しました',

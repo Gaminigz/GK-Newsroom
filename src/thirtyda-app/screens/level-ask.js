@@ -95,19 +95,25 @@ export function paintSendButton(btn, { ready, busy, label }) {
 const canAsk = (pair, level) => stageLevel(pair) === level
   && (pair.next === 'ask' || (pair.next === 'ask_answer' && !pair.myOutgoing?.sent));
 
-// Question N starts on choice 1 of its own list.
+// Question N starts on choice 1 of its own list. `changed` = rows whose pick went back to choice 1
+// because the admin changed that list; they stay marked until their list is opened.
 function freshDraft(slots, write) {
-  return { picks: slots.map((options) => options[0]?.key ?? null), written: Array(write).fill('') };
+  return { picks: slots.map((options) => options[0]?.key ?? null), written: Array(write).fill(''), changed: new Set() };
 }
 
 // The admin can change the choices between visits: keep the written questions and every pick that is
-// still in its own list; a pick that is gone goes back to that question's choice 1.
+// still in its own list; a pick that is gone goes back to that question's choice 1, and the row is marked.
 function draftFor(key, slots, write) {
   const old = drafts.get(key);
   const draft = freshDraft(slots, write);
   if (old?.written.length === write) draft.written = old.written;
   if (old?.picks.length === slots.length) {
-    draft.picks = old.picks.map((k, i) => (slots[i].some((q) => q.key === k) ? k : draft.picks[i]));
+    draft.changed = new Set([...(old.changed || [])].filter((i) => i < slots.length));
+    draft.picks = old.picks.map((k, i) => {
+      if (slots[i].some((q) => q.key === k)) return k;
+      if (k) draft.changed.add(i);
+      return draft.picks[i];
+    });
   }
   drafts.set(key, draft);
   return draft;
@@ -117,6 +123,12 @@ function draftFor(key, slots, write) {
 function slotsOf(bank, pick) {
   if (Array.isArray(bank.slots) && bank.slots.length === pick) return bank.slots.map((s) => s.options || []);
   return dealSlots(bank.system || [], pick);
+}
+
+/** Question N's optional topic set by the admin ("Communication"), or null. */
+function titlesOf(bank, pick) {
+  if (!Array.isArray(bank.slots) || bank.slots.length !== pick) return [];
+  return bank.slots.map((s) => (typeof s.title === 'string' && s.title.trim() ? s.title.trim() : null));
 }
 
 const PICK_STYLE = {
@@ -146,6 +158,9 @@ screen('/ask/:pairId/:level', async ({ params, root }) => {
   const pick = bank.pick ?? LEVEL_RULES[level].pick;
   const write = bank.write ?? LEVEL_RULES[level].write;
   const slots = slotsOf(bank, pick);
+  const titles = titlesOf(bank, pick);
+  // "Question 1 · Communication" when the admin gave Question 1 a topic.
+  const slotTitle = (i) => (titles[i] ? `${t('la_question_n', { n: i + 1 })} · ${titles[i]}` : t('la_question_n', { n: i + 1 }));
   const draftKey = `${pair.id}:${level}`;
   const draft = draftFor(draftKey, slots, write);
   const serverErr = Array(write).fill(null); // a server 422 for a row, until the row is edited
@@ -162,8 +177,11 @@ screen('/ask/:pairId/:level', async ({ params, root }) => {
     const face = el('span', {});
     const trigger = el('button', {
       type: 'button', class: 'select', 'aria-haspopup': 'listbox', 'aria-expanded': 'false', style: PICK_STYLE, on: { click: () => openPicker(i) },
-    }, el('span', { class: 'visually-hidden' }, `${t('la_question_n', { n: i + 1 })}: `), face);
-    return { face, trigger, node: qrow(i + 1, trigger) };
+    }, el('span', { class: 'visually-hidden' }, `${slotTitle(i)}: `), face);
+    // Shown after the admin changed this question's list and the pick went back to choice 1.
+    const note = el('p', { class: 'pick-note', id: `la-upd-${i + 1}`, hidden: true }, icon('flag', 14), el('span', {}, t('la_pick_updated')));
+    const topic = titles[i] ? el('span', { class: 'label pick-topic', 'aria-hidden': 'true' }, titles[i]) : null;
+    return { face, trigger, note, node: qrow(i + 1, ...[topic, trigger, note].filter(Boolean)) };
   });
 
   // One drop list open at a time, directly under the question that was tapped.
@@ -181,10 +199,11 @@ screen('/ask/:pairId/:level', async ({ params, root }) => {
     if (busy) return;
     const wasOpen = openIndex === i;
     closePicker();
+    if (draft.changed.delete(i)) paint();
     if (wasOpen) return;
     const options = slots[i] || [];
     const current = draft.picks[i];
-    const panel = el('div', { class: 'droplist', role: 'listbox', 'aria-label': t('la_question_n', { n: i + 1 }) },
+    const panel = el('div', { class: 'droplist', role: 'listbox', 'aria-label': slotTitle(i) },
       options.map((q) => {
         const selected = q.key === current;
         return el('button', {
@@ -242,7 +261,14 @@ screen('/ask/:pairId/:level', async ({ params, root }) => {
 
   function paint() {
     const results = checks();
-    pickRows.forEach((row, i) => { row.face.textContent = textOf(i, draft.picks[i]); });
+    pickRows.forEach((row, i) => {
+      row.face.textContent = textOf(i, draft.picks[i]);
+      const changed = draft.changed.has(i);
+      row.trigger.classList.toggle('is-updated', changed);
+      row.note.hidden = !changed;
+      if (changed) row.trigger.setAttribute('aria-describedby', row.note.id);
+      else row.trigger.removeAttribute('aria-describedby');
+    });
     writeRows.forEach((row, j) => {
       const msg = serverErr[j] || ruleMessage(results[j], QUESTION_MAX[level]);
       row.input.classList.toggle('is-error', Boolean(msg));
@@ -296,8 +322,9 @@ screen('/ask/:pairId/:level', async ({ params, root }) => {
         toast(t('lv_stopped'));
       } else if (err.code === 'invalid' && err.data?.slot) {
         // A picked choice is no longer in its list (the admin changed the choices while this screen was open):
-        // load the choices again; the written questions and the picks still offered are kept.
-        toast(t('la_choices_changed'));
+        // load the choices again; the written questions and the picks still offered are kept, and the
+        // rows that went back to choice 1 are marked until their list is opened.
+        toast(t('la_choices_changed'), 6000);
         go(`/ask/${enc(pair.id)}/${level}`, { replace: true });
         return;
       } else if (err.code === 'invalid') {
@@ -368,6 +395,7 @@ registerStrings({
     la_question_n: 'Question {n}',
     la_choose_one: 'Choose 1 of these {n}',
     la_choices_changed: 'The question choices were just updated. Check your picks.',
+    la_pick_updated: 'Updated. Check this question.',
     la_answer_first: '{name} asked you 5 · answer first',
   },
   km: {
@@ -401,6 +429,7 @@ registerStrings({
     la_question_n: 'សំណួរទី {n}',
     la_choose_one: 'ជ្រើសរើស 1 ក្នុងចំណោម {n} នេះ',
     la_choices_changed: 'ជម្រើសសំណួរទើបតែត្រូវបានធ្វើបច្ចុប្បន្នភាព។ សូមពិនិត្យជម្រើសរបស់អ្នកម្តងទៀត។',
+    la_pick_updated: 'បានធ្វើបច្ចុប្បន្នភាព។ សូមពិនិត្យសំណួរនេះ។',
     la_answer_first: '{name} បានសួរអ្នក 5 សំណួរ · ឆ្លើយមុនសិន',
   },
   zh: {
@@ -434,6 +463,7 @@ registerStrings({
     la_question_n: '第 {n} 个问题',
     la_choose_one: '从这 {n} 个中选 1 个',
     la_choices_changed: '问题选项刚刚更新了，请再检查一下你的选择。',
+    la_pick_updated: '已更新，请检查这个问题。',
     la_answer_first: '{name} 问了你 5 个问题 · 先回答',
   },
   ko: {
@@ -467,6 +497,7 @@ registerStrings({
     la_question_n: '{n}번 질문',
     la_choose_one: '이 {n}개 중 1개를 고르세요',
     la_choices_changed: '질문 선택지가 방금 바뀌었어요. 고른 질문을 다시 확인해 주세요.',
+    la_pick_updated: '바뀌었어요. 이 질문을 확인해 주세요.',
     la_answer_first: '{name}님이 5가지를 물었어요 · 먼저 답하기',
   },
   ja: {
@@ -500,6 +531,7 @@ registerStrings({
     la_question_n: '質問{n}',
     la_choose_one: 'この{n}つから1つ選んでください',
     la_choices_changed: '質問の選択肢が更新されました。選んだ質問をもう一度確認してください。',
+    la_pick_updated: '更新されました。この質問を確認してください。',
     la_answer_first: '{name}さんから5つの質問 · 先に答える',
   },
 });

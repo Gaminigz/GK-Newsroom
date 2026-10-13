@@ -658,6 +658,25 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .slot-mini .label { font-size: 9px; white-space: nowrap; }
 :lang(km) .slot-mini .label { font-size: 10px; }
 .slot-minis-wrap .help { font-size: 12px; line-height: 1.4; }
+/* App name (max 7 characters, so a short box) and birth year on one row; the truth warning under both. */
+.name-year-group { display: flex; flex-direction: column; gap: 8px; }
+.name-year { display: grid; grid-template-columns: minmax(0, max-content) max-content; justify-content: start; align-items: end; column-gap: 14px; }
+.name-year .field-head { min-height: 19px; } /* the tag's height: both labels sit on one line */
+.name-input { width: 9.5em; max-width: 100%; }
+.year-select { width: 118px; font-variant-numeric: tabular-nums; }
+.truth-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--radius);
+  background: var(--orange-soft);
+  color: #8a4500;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.truth-note .icon { flex: none; margin-top: 1px; color: #c45f00; }
 .phone-row { display: grid; grid-template-columns: 94px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
 .phone-row .select { padding: 0 26px 0 10px; background-position: right 6px center; font-family: var(--mono); font-size: 14px; }
 .phone-row .send-code { min-height: 46px; white-space: nowrap; }
@@ -689,6 +708,11 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .droplist-item:first-child { border-top: 0; }
 .droplist-item:hover { background: #f4f6fa; }
 .droplist-item.selected { background: #eef2f8; }
+/* The admin changed this question's list and the pick went back to choice 1: marked until opened. */
+.select.is-updated { border-color: var(--orange); background-color: var(--orange-soft); }
+.pick-note { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12.5px; font-weight: 600; color: #9a5b0b; }
+.pick-note .icon { flex: none; }
+.pick-topic { color: var(--muted); }
 .ask-actions { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
 .me-btn { flex: none; padding: 0; border: 0; background: none; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--navy); cursor: pointer; }
 .dark .me-btn { box-shadow: 0 0 0 1.5px #fff; }
@@ -812,6 +836,8 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .inline-row { display: flex; gap: 8px; }
 .inline-row .input { flex: 1; min-width: 0; }
 .inline-row .btn { width: auto; flex: none; }
+.inline-row .name-input, .inline-row .year-select { flex: 0 1 auto; }
+.birth-year-line { font-weight: 700; font-variant-numeric: tabular-nums; }
 .me .lang-grid .btn { min-height: 42px; font-size: 15px; }
 .me .lang-grid .btn[aria-pressed="true"] { background: var(--navy); color: #fff; border-color: var(--navy); }
 .kv { display: flex; align-items: center; gap: 8px; font-size: 14px; }

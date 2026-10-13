@@ -28,6 +28,7 @@ import { clientIp } from "./thirtyda-net.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
   checkWrittenAnswer, PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
+  NAME_MIN, NAME_MAX, AGE_MIN, AGE_MAX, checkAppName, checkBirthYear,
 } from "../thirtyda-app/shared/rules.js";
 import {
   LEVEL_RULES, L1_ANSWERS, l1Answers, ROLES, questionText, answerText,
@@ -314,6 +315,8 @@ function meView(u) {
     gender: u.gender ?? null,
     lang: u.lang ?? "en",
     phone: u.phone ?? null,
+    // Set once (sign-up, or once on #/me for profiles made before the rule); only ever shown to its owner.
+    birthYear: Number.isInteger(u.birthYear) ? u.birthYear : null,
     verified: { phone: Boolean(u.verified?.phone), gmail: Boolean(u.verified?.gmail), facebook: Boolean(u.verified?.facebook) },
     // Slot-aligned: photos[i] is slot i+1's url, or null for an empty slot (trailing empty slots left out).
     photos: slotUrls(u),
@@ -628,13 +631,23 @@ function safeEqualHex(a, b) {
   return x.length === y.length && x.length > 0 && crypto.timingSafeEqual(x, y);
 }
 
+/** App name: 2–7 characters, the user's own pick, never a contact detail (that is checked first). */
 function checkName(raw) {
-  const name = String(raw ?? "").trim().replace(/\s+/g, " ");
-  const n = charCount(name);
-  if (n < 2 || n > 24) throw invalid("Your app name needs 2 to 24 characters.", { field: "name" });
-  const c = findContactDetails(name);
-  if (!c.ok) throw fail(422, "contact_detail", c.reason, { field: "name", hits: c.hits, reason: c.reason });
-  return name;
+  const c = checkAppName(raw);
+  if (c.error === "contact") throw fail(422, "contact_detail", c.reason, { field: "name", hits: c.hits, reason: c.reason });
+  if (!c.ok) throw invalid(`Your app name needs ${NAME_MIN} to ${NAME_MAX} characters.`, { field: "name", min: NAME_MIN, max: NAME_MAX });
+  return c.name;
+}
+
+/** Birth year: from the list of ages 30–80 (Phnom Penh's year). Younger → 422 too_young. */
+function checkBirth(raw) {
+  const c = checkBirthYear(raw);
+  if (c.error === "too_young") {
+    throw fail(422, "too_young", `30+DA is for people aged ${AGE_MIN} and over.`, { field: "birthYear", minAge: AGE_MIN });
+  }
+  if (c.error === "missing") throw invalid("Choose your birth year.", { field: "birthYear" });
+  if (!c.ok) throw invalid("Choose your birth year from the list.", { field: "birthYear", minAge: AGE_MIN, maxAge: AGE_MAX });
+  return c.year;
 }
 
 const checkLang = (lang) => {
@@ -810,6 +823,7 @@ async function createProfile(ctx) {
     throw fail(403, "not_verified", "Verify your phone, Google or Facebook first.");
   }
   const name = checkName(body.name);
+  const birthYear = checkBirth(body.birthYear);
   const realName = String(body.realName ?? "").trim().replace(/\s+/g, " ");
   if (charCount(realName) < 2 || charCount(realName) > 60) throw invalid("Write your first and last name.", { field: "realName" });
   const role = checkRole(body.role);
@@ -827,6 +841,7 @@ async function createProfile(ctx) {
     id,
     name,
     realName,
+    birthYear,
     role,
     gender: body.gender,
     lang,
@@ -884,10 +899,21 @@ async function patchMe(ctx) {
   if (body.name !== undefined) set.name = checkName(body.name);
   if (body.lang !== undefined) Object.assign(set, { lang: checkLang(body.lang), language: LANG_ENGLISH[body.lang] });
   if (body.role !== undefined) set.role = checkRole(body.role);
+  // The birth year is set once: at sign-up, or here once for a profile made before it was asked.
+  if (body.birthYear !== undefined) {
+    if (Number.isInteger(me.birthYear)) throw birthYearSet();
+    set.birthYear = checkBirth(body.birthYear);
+  }
   if (!Object.keys(set).length) throw invalid("Nothing to change.");
-  await d.collection(C.users).updateOne({ _id: me._id }, { $set: set });
+  const filter = { _id: me._id };
+  // Atomic: two parallel first-time saves cannot both win.
+  if (set.birthYear !== undefined) filter.$or = [{ birthYear: { $exists: false } }, { birthYear: null }];
+  const r = await d.collection(C.users).updateOne(filter, { $set: set });
+  if (!r.matchedCount && set.birthYear !== undefined) throw birthYearSet();
   return { user: meView({ ...me, ...set }) };
 }
+
+const birthYearSet = () => fail(409, "birth_year_set", "Your birth year is already set.", { field: "birthYear" });
 
 /**
  * Why a photo cannot go in slot `index` (default: the lowest empty slot): all 4 slots used (409), or
@@ -1231,11 +1257,13 @@ async function getPair(ctx) {
 
 // The admin's choices: Question N of the set is picked from slot N's own 5 (thirtyda_questions).
 // `system` is the same choices as one flat list, choice 1 of every slot first (older clients).
+// slots[i].title = Question i+1's optional topic in my language (null when the admin set none).
 async function questions(ctx) {
   const level = levelParam(ctx.url.searchParams.get("level"));
   const lang = ctx.me.lang ?? "en";
   const { pick, write } = LEVEL_RULES[level];
-  const slots = slotsView((await questionConfig(ctx.d, level)).slots, lang);
+  const config = await questionConfig(ctx.d, level);
+  const slots = slotsView(config.slots, lang, config.titles);
   return { level, pick, write, slots, system: flatView(slots) };
 }
 

@@ -345,6 +345,7 @@ const ICONS = {
   google: '<path d="M20.5 12.2h-8.2M20.5 12.2a8.5 8.5 0 1 1-2.5-6"/>',
   facebook: '<path d="M14.5 21v-7.5h2.6l.4-3h-3V8.6c0-.9.3-1.5 1.5-1.5h1.6V4.4c-.3 0-1.2-.1-2.3-.1-2.3 0-3.8 1.4-3.8 4v2.2H9v3h2.5V21"/>',
   image: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M4 18l5-5 4 4 3-3 4 4"/>',
+  alert: '<path d="M12 3.8 21.2 19.5H2.8z"/><path d="M12 9.6v4.6"/><circle cx="12" cy="16.9" r=".7" fill="currentColor"/>',
 };
 
 /** Inline SVG icon (currentColor). Unknown names fall back to 'question'. */
