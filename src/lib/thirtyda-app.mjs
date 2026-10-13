@@ -2331,6 +2331,12 @@ export async function handleThirtyDaApp(req, res, url) {
     // The pages Google and Facebook ask for (their addresses are on the admin Code page).
     // In 5 languages: ?lang=en|km|zh|ko|ja, else the browser's language, else English.
     const docHeaders = { "Cache-Control": "no-cache", Vary: "Accept-Language" };
+    // TikTok checks that the website is ours (URL prefix https://ecom.ggmt.sg/30da/): a public, non-secret file.
+    if (path === `${BASE}/tiktokW03cvSBvhBWjIUvBNbumExjZmgY8sW1r.txt`) {
+      res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-cache" })
+        .end("tiktok-developers-site-verification=W03cvSBvhBWjIUvBNbumExjZmgY8sW1r");
+      return;
+    }
     if (path === `${BASE}/privacy`) return sendPage(req, res, 200, privacyPage({ lang: requestLang(req, url) }), docHeaders);
     if (path === `${BASE}/delete-data`) return sendPage(req, res, 200, deleteDataPage({ lang: requestLang(req, url) }), docHeaders);
     // The client loads its modules relative to /30da/, so the bare path gets a slash.
