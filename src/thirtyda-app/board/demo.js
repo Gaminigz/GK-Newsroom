@@ -893,6 +893,10 @@
     if (body.name !== undefined) set.name = checkName(body.name);
     if (body.lang !== undefined) set.lang = checkLang(body.lang);
     if (body.role !== undefined) set.role = checkRole(body.role);
+    if (body.gender !== undefined) {
+      if (!['man', 'woman', 'other'].includes(body.gender)) throw invalid('Choose male, female or other.', { field: 'gender' });
+      set.gender = body.gender;
+    }
     // Set once: at sign-up, or once on #/me for a profile made before it was asked.
     if (body.birthYear !== undefined) {
       if (Number.isInteger(u.birthYear)) throw fail(409, 'birth_year_set', 'Your birth year is already set.', { field: 'birthYear' });

@@ -899,6 +899,10 @@ async function patchMe(ctx) {
   if (body.name !== undefined) set.name = checkName(body.name);
   if (body.lang !== undefined) Object.assign(set, { lang: checkLang(body.lang), language: LANG_ENGLISH[body.lang] });
   if (body.role !== undefined) set.role = checkRole(body.role);
+  if (body.gender !== undefined) {
+    if (!GENDERS.includes(body.gender)) throw invalid("Choose male, female or other.", { field: "gender" });
+    set.gender = body.gender;
+  }
   // The birth year is set once: at sign-up, or here once for a profile made before it was asked.
   if (body.birthYear !== undefined) {
     if (Number.isInteger(me.birthYear)) throw birthYearSet();

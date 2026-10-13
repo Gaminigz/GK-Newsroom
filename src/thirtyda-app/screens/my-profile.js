@@ -351,6 +351,31 @@ screen('/me', async ({ root }) => {
     go('/opening', { replace: true });
   });
 
+  // --- I am: Male / Female / Other, saved on tap
+  const GENDER_KEYS = ['man', 'woman', 'other'];
+  const paintGender = () => genderBtns.forEach((b, i) => b.setAttribute('aria-pressed', String(GENDER_KEYS[i] === me.gender)));
+  const genderBtns = GENDER_KEYS.map((g) => el('button', {
+    type: 'button', 'aria-pressed': String(me.gender === g),
+    on: {
+      click: async () => {
+        if (me.gender === g) return;
+        genderBtns.forEach((b) => { b.disabled = true; });
+        try {
+          const r = await api.patch('/me', { gender: g });
+          setMe(r.user);
+          me.gender = r.user.gender;
+          toast(t('me_saved'));
+        } catch (err) {
+          toast(errText(err));
+        } finally {
+          genderBtns.forEach((b) => { b.disabled = false; });
+          paintGender();
+        }
+      },
+    },
+  }, t(`cp_gender_${g}`)));
+  const genderSeg = el('div', { class: 'seg', role: 'group', 'aria-label': t('cp_i_am') }, genderBtns);
+
   const place = [me.area, me.city].filter((x, i, a) => x && a.indexOf(x) === i).join(', ');
   const section = (labelText, ...kids) => el('section', { class: 'section' }, labelText ? el('span', { class: 'label ink' }, labelText) : null, kids);
 
@@ -368,7 +393,7 @@ screen('/me', async ({ root }) => {
           nameInput),
         yearCell,
         saveId),
-      nameErr, yearErr, roleSel, truthNote()), // the job sits right under name · year, then the warning
+      nameErr, yearErr, genderSeg, roleSel, truthNote()), // Male/Female/Other and the job under name · year, then the warning
     section(t('me_verified_with'), chips, phoneBlock),
     section(t('me_hearts'), el('div', { class: 'row', style: { '--gap': '12px' } }, heartPills(me.hearts, 'lg')),
       place ? el('p', { class: 'kv' }, icon('pin', 16), el('span', {}, place)) : null),
