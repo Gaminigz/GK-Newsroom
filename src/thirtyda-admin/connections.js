@@ -91,34 +91,33 @@ function telegramStatus(c) {
 function tokenLine(c) {
   if (c.set && !c.readable) {
     return [h('b', { text: `Saved ${when(c.updatedAt)}, but this server cannot read it.` }),
-      ' THIRTYDA_SECRET_KEY has changed since it was saved. Save the token again.'];
+      ' The server\'s lock key changed since it was saved. Paste and save the token again.'];
   }
   if (c.set) {
     return [h('b', { text: 'Set' }), ' · token ends ', h('code', { class: 'cx-mono', text: `…${c.last4}` }),
       ` · saved ${when(c.updatedAt)} · ${c.updatedBy || 'superadmin'}`];
   }
   if (c.envFallback) {
-    return [h('b', { text: 'Not set here' }), ' · using the server\'s THIRTYDA_TG_TOKEN (ends ',
+    return [h('b', { text: 'Not set here' }), ' · using a token set on the server (ends ',
       h('code', { class: 'cx-mono', text: `…${c.envFallback.last4}` }), ') until a token is saved here.'];
   }
   return [h('b', { text: 'Not set' })];
 }
 
 function appLine(c, { testCodes }) {
-  if (c.live) return 'People who pick Telegram get a real code in Telegram. No code is shown on screen, on any channel, while Telegram is set up.';
+  if (c.live) return 'Working: people who pick Telegram get their code in Telegram.';
   if (c.set) return 'No codes go out and none are shown on screen until the token is saved again.';
-  if (testCodes) return 'Test mode: the code is shown on screen (THIRTYDA_DEV_AUTH=1) until a token is saved.';
+  if (testCodes) return 'Test mode: the code shows on the screen until a token is saved.';
   return 'People cannot get a code by Telegram until a token is saved.';
 }
 
 /** Red, whenever test mode is on: on-screen codes let anyone sign in as any number. */
 function devWarning(data) {
   if (!data.devAuth) return '';
-  const where = data.onRailway ? 'This is the live server: turn it off now' : 'Turn it off on the live server';
   if (data.testCodes) {
-    return `Test mode is on (THIRTYDA_DEV_AUTH=1). Sign-in codes are shown on screen, so anyone can sign in as any phone number. ${where} (Railway variables: remove THIRTYDA_DEV_AUTH) before saving a token or letting real people in.`;
+    return 'Test mode is on: codes show on the screen, so anyone can sign in with any number. Ask your developer to turn test mode off before real people join.';
   }
-  return `Test mode is on (THIRTYDA_DEV_AUTH=1). While Telegram is set up no code is shown on screen on any channel, but the Google and Facebook test buttons still mark people as checked without checking. ${where} (Railway variables: remove THIRTYDA_DEV_AUTH).`;
+  return 'Test mode is still on, so the Google and Facebook buttons let people in without checking. Ask your developer to turn test mode off.';
 }
 
 function lastSendLine(s) {
@@ -282,7 +281,7 @@ function telegramCard(c, data) {
 
 async function removeToken() {
   const devAuth = state.data?.devAuth;
-  const question = `Remove the Telegram token?\n\nCodes by Telegram stop until a new token is saved.${devAuth ? ' Test mode (THIRTYDA_DEV_AUTH=1) then shows codes on screen instead, on every channel.' : ''}`;
+  const question = `Remove the Telegram token?\n\nTelegram codes stop until a new token is saved.${devAuth ? ' In test mode codes then show on the screen instead.' : ''}`;
   if (!confirm(question)) return;
   const r = await call('DELETE', `${API}/telegram`, {});
   if (!r.ok) return toast(r.data.error || 'Could not remove the token.');
@@ -295,11 +294,11 @@ async function removeToken() {
 const NEXT = {
   whatsapp: {
     sub: 'Sign-in codes by WhatsApp message',
-    note: 'People can already pick WhatsApp on the phone step. Until it is set up they are asked to use Telegram (a test code shows only in test mode while no channel is set up).',
+    note: 'Next to set up. Until then people are asked to use Telegram.',
     field: 'WhatsApp access token',
   },
-  google: { sub: 'Sign in with a Google account', note: 'Comes after WhatsApp. Today the app\'s Google button only works in test mode.', field: 'Google OAuth client ID' },
-  facebook: { sub: 'Sign in with a Facebook account', note: 'Comes after Google. Today the app\'s Facebook button only works in test mode.', field: 'Facebook app ID' },
+  google: { sub: 'Sign in with a Google account', note: 'Comes after WhatsApp.', field: 'Google client ID' },
+  facebook: { sub: 'Sign in with a Facebook account', note: 'Comes after Google.', field: 'Facebook app ID' },
 };
 function nextCard(c) {
   const n = NEXT[c.id] || { sub: '', note: '', field: 'Token' };
@@ -321,7 +320,7 @@ function render(data) {
   const tg = data.connections.find((c) => c.id === 'telegram');
   $('key-banner').hidden = data.keyReady;
   $('key-banner').textContent = data.keyReady ? ''
-    : 'THIRTYDA_SECRET_KEY is missing or is not 64 hex characters on this server, so tokens cannot be saved. Set it on the server (Railway variables), then reload.';
+    : 'The server\'s lock key is missing, so tokens cannot be saved yet. Ask your developer to set it, then reload.';
   const warning = devWarning(data);
   $('dev-banner').hidden = !warning;
   $('dev-banner').textContent = warning;
