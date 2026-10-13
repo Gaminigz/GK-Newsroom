@@ -17,6 +17,7 @@ const SCREENS = [
   ['level-answer', () => import('./screens/level-answer.js')],
   ['level-wait', () => import('./screens/level-wait.js')],
   ['chat', () => import('./screens/chat.js')],
+  ['conversation', () => import('./screens/conversation.js')],
 ];
 
 const OPEN_PATHS = new Set(['/opening', '/create']);

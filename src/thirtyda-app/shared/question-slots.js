@@ -1,5 +1,5 @@
 // 30+DA question slots: what people pick from when they ask.
-// Level 1 has 4 picked questions, Level 2 has 2 (LEVEL_RULES.pick). Each picked question
+// Level 1 has 4 picked questions, Level 2 has 3 (LEVEL_RULES.pick). Each picked question
 // ("Question 1", "Question 2", …) has its OWN list of exactly 5 choices, set by the super admin
 // (stored in Mongo `thirtyda_questions`, one doc per level). Until the admin saves a level, its
 // choices are dealt from the bank in shared/questions.js, keeping the bank keys.
@@ -37,6 +37,37 @@ export function defaultSlots(level) {
   if (!rules) return [];
   return dealSlots(SYSTEM_QUESTIONS[level], rules.pick)
     .map((slot) => slot.map((q) => ({ key: q.key, text: { ...q.text } })));
+}
+
+/**
+ * A level saved when it picked fewer questions (Level 2 picked 2 before it became 3): the stored lists
+ * stay exactly as they are, and each missing list is filled from the built-in choices nobody uses yet
+ * (not the same key, not the same text in any language) — that position's built-in list first, then
+ * the rest of the bank. Fresh copies; a level that already has all its lists comes back as it is.
+ */
+export function fillSlots(slots, level) {
+  const rules = LEVEL_RULES[level];
+  const lists = (Array.isArray(slots) ? slots : [])
+    .map((slot) => (Array.isArray(slot) ? slot : []).map((c) => ({ key: c?.key, text: { ...(c?.text || {}) } })));
+  if (!rules || lists.length >= rules.pick) return lists;
+  const usedKeys = new Set(lists.flat().map((c) => c.key));
+  const usedText = new Set();
+  const markText = (text) => { for (const l of LANGS) if (text?.[l]) usedText.add(`${l}:${sameKey(text[l])}`); };
+  lists.flat().forEach((c) => markText(c.text));
+  const free = (q) => !usedKeys.has(q.key) && !LANGS.some((l) => usedText.has(`${l}:${sameKey(q.text[l])}`));
+  const builtIn = defaultSlots(level);
+  for (let i = lists.length; i < rules.pick; i++) {
+    const list = [];
+    for (const q of [...(builtIn[i] || []), ...(SYSTEM_QUESTIONS[level] || [])]) {
+      if (list.length === QUESTION_CHOICES) break;
+      if (!free(q)) continue;
+      list.push({ key: q.key, text: { ...q.text } });
+      usedKeys.add(q.key);
+      markText(q.text);
+    }
+    lists.push(list);
+  }
+  return lists;
 }
 
 /**

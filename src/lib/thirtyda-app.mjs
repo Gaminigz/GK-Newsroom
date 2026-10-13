@@ -13,6 +13,12 @@
  * Blocked users are locked out and their pairs are frozen. A pair's stage is
  * recomputed lazily from its timestamps, so no timers run on the server.
  *
+ * A conversation (shared/conversation.js): Level 1 and Level 2 each run both ways. Each person sends
+ * the other ONE set of 5 lines per level, in any order, and replies to the set they got line by line
+ * (PUT /pairs/:id/replies saves one reply at a time; a reply can change until all 5 are in). A level is
+ * done when both sets are complete; the next one opens after the wait. Level 3 is the chat.
+ * GET /pairs/:id/conversation is the one read model the conversation screen lives on.
+ *
  * Collections: thirtyda_users, thirtyda_user_sessions, thirtyda_otps,
  * thirtyda_pairs, thirtyda_sets, thirtyda_chats, thirtyda_flags, thirtyda_counters; reads the
  * admin's question choices from thirtyda_questions (src/lib/thirtyda-questions.mjs).
@@ -34,6 +40,10 @@ import {
   LEVEL_RULES, L1_ANSWERS, l1Answers, ROLES, questionText, answerText,
 } from "../thirtyda-app/shared/questions.js";
 import { questionConfig, slotsView, flatView } from "./thirtyda-questions.mjs";
+import {
+  convStage, L1_STAGES, openSetLevel, currentSetLevel, levelState, repliedCount, allReplied, levelComplete,
+  nextStep, isMyTurn,
+} from "../thirtyda-app/shared/conversation.js";
 
 const BASE = "/30da";
 const API = "/30da/api";
@@ -69,7 +79,6 @@ const C = {
 };
 
 const ID_PREFIX = { user: "U-", pair: "P-", set: "S-", msg: "M-", flag: "f" };
-const STAGE_LEVEL = { l1_ask: 1, l1_answer: 1, l2_wait: 1, l2_open: 2, l3_wait: 2, l3_open: 3 };
 const REPORT_REASONS = { rude: "rude message", scam: "scam or money", sexual: "sexual message", other: "other" };
 const GENDERS = ["man", "woman", "other"]; // Male / Female / Other
 
@@ -350,54 +359,49 @@ function photosFor(owner, { isOwner = false, openLevel = 1 } = {}) {
 
 const unseenNotices = (u) => (u.notices || []).filter((n) => !n.seenAt);
 
-function nextStep(stage, out, inc) {
-  switch (stage) {
-    case "l1_ask": return "ask";
-    case "l1_answer": return inc && !inc.completedAt ? "answer" : "wait_them";
-    case "l2_wait":
-    case "l3_wait": return "wait_timer";
-    case "l2_open": {
-      const ask = !out;
-      const answer = Boolean(inc && !inc.completedAt);
-      return ask && answer ? "ask_answer" : ask ? "ask" : answer ? "answer" : "wait_them";
-    }
-    default: return "chat";
-  }
+/**
+ * A pair nobody has sent anything in yet is a draft of whoever opened it. Old pairs: 'l1_ask' was the
+ * draft and 'l1_answer' had a Level 1 set; new pairs are 'l1' until `startedAt` (the first set sent).
+ */
+const isDraft = (pair) => pair.stage === "l1_ask" || (pair.stage === "l1" && !pair.startedAt);
+
+/** The pair's stage as the conversation sees it ('l1' for old 'l1_ask' / 'l1_answer'). */
+const stageOf = (pair) => convStage(pair.stage);
+
+/** { mine, theirs } at `level` from this pair's sets: the set I sent and the set sent to me. */
+function setsAt(sets, level, meId, otherId) {
+  if (!level) return { mine: null, theirs: null };
+  return {
+    mine: sets.find((s) => s.level === level && s.from === meId) ?? null,
+    theirs: sets.find((s) => s.level === level && s.from === otherId) ?? null,
+  };
 }
 
-/** PairView for `me`. `sets` = this pair's sets (questions/answers may be projected away). */
+/**
+ * PairView for `me`. `sets` = this pair's sets (questions/answers may be projected to their `n`).
+ * next: 'send' | 'reply' | 'send_reply' | 'wait_them' | 'wait_timer' | 'chat' | 'frozen' (shared/conversation.js);
+ * turn = my turn (I can send my set for the open level, their set to me has lines without my reply, or
+ * the chat's last line is theirs) — the red dot and the heartbeat's actions.
+ */
 function pairView(pair, me, other, sets) {
-  // An unsent Level 1 (l1_ask) is a draft of whoever opened it: each side sees it as their own
-  // ("a", opened when they tapped Ask), so nothing tells B that A tapped first.
-  const draft = pair.stage === "l1_ask";
+  // A draft is shown to each side as their own ("a", opened when they tapped), so nothing tells B that A tapped first.
+  const draft = isDraft(pair);
   const role = draft || pair.a === me._id ? "a" : "b";
   const otherId = pair.a === me._id ? pair.b : pair.a;
-  const level = STAGE_LEVEL[pair.stage] ?? 1;
-  const find = (lvl, from) => sets.find((s) => s.level === lvl && s.from === from) ?? null;
-  const out = level < 3 ? find(level, me._id) : null;
-  const inc = level < 3 ? find(level, otherId) : null;
-  const status = (s) => ({ sent: Boolean(s), answered: Boolean(s?.completedAt) });
-  const received = (s) => ({ received: Boolean(s), answered: Boolean(s?.completedAt) });
-
-  let myOutgoing = null;
-  let myIncoming = null;
-  if (level === 1) {
-    // Level 1 runs one way: whoever sends first asks, the other answers.
-    if (pair.stage === "l1_ask" || role === "a") myOutgoing = status(out);
-    if (pair.stage !== "l1_ask" && role === "b") myIncoming = received(inc);
-  } else if (level === 2) {
-    myOutgoing = status(out);
-    myIncoming = received(inc);
-  }
-
-  const answeredIn = (list) => list.reduce((n, s) => n + (s.answers?.length ?? 0), 0);
-  const l1 = sets.filter((s) => s.level === 1);
-  const l2 = sets.filter((s) => s.level === 2);
+  const stage = stageOf(pair);
+  const frozen = !other || Boolean(other.blocked);
+  const open = setsAt(sets, openSetLevel(stage), me._id, otherId);
+  const cur = setsAt(sets, currentSetLevel(stage), me._id, otherId);
+  const total = (s) => s?.questions?.length || 5;
+  const next = nextStep({ stage, mine: open.mine, theirs: open.theirs, frozen });
+  const lastFrom = pair.lastChat ? (pair.lastChat.from === me._id ? "me" : "them") : null;
+  const curLevel = currentSetLevel(stage);
+  const replies = (level) => sets.filter((s) => s.level === level).reduce((n, s) => n + repliedCount(s), 0);
 
   return {
     id: pair._id,
-    stage: pair.stage,
-    level: pair.level ?? level,
+    stage,
+    level: pair.level ?? stageOpenLevel(stage),
     role,
     other: other
       ? { id: other._id, name: other.name, gender: other.gender ?? null, lang: other.lang ?? "en", photo: other.blocked ? null : photoUrl(other.photos?.[0]) }
@@ -405,17 +409,23 @@ function pairView(pair, me, other, sets) {
     l2OpensAt: pair.l2OpensAt ?? null,
     l3OpensAt: pair.l3OpensAt ?? null,
     remind: Boolean(pair.remind?.[me._id]),
-    next: !other || other.blocked ? "frozen" : nextStep(pair.stage, out, inc),
-    myOutgoing,
-    myIncoming,
-    recap: { l1: { answered: answeredIn(l1), total: 5 }, l2: { answered: answeredIn(l2), total: 10 } },
-    lastFrom: pair.lastChat ? (pair.lastChat.from === me._id ? "me" : "them") : null,
+    next,
+    turn: !frozen && isMyTurn(next, lastFrom),
+    // The current level (the open one, or the one just finished while waiting); null at Level 3.
+    myOutgoing: curLevel
+      ? { level: curLevel, sent: Boolean(cur.mine), answered: Boolean(cur.mine?.completedAt), replied: repliedCount(cur.mine), total: total(cur.mine) }
+      : null,
+    myIncoming: curLevel
+      ? { level: curLevel, received: Boolean(cur.theirs), answered: Boolean(cur.theirs?.completedAt), replied: repliedCount(cur.theirs), total: total(cur.theirs) }
+      : null,
+    recap: { l1: { answered: replies(1), total: 10 }, l2: { answered: replies(2), total: 10 } },
+    lastFrom,
     updatedAt: draft ? pair.opened?.[me._id] ?? pair.createdAt : pair.updatedAt,
   };
 }
 
-/** An l1_ask pair is a draft: hidden from the other person until they open it themselves (tap Ask). */
-const hiddenFrom = (pair, me) => pair.stage === "l1_ask" && pair.a !== me._id && !pair.opened?.[me._id];
+/** A draft is hidden from the other person until they open it themselves (tap Start a conversation). */
+const hiddenFrom = (pair, me) => isDraft(pair) && pair.a !== me._id && !pair.opened?.[me._id];
 
 /** Move l2_wait → l2_open and l3_wait → l3_open once their time has come. */
 async function settle(d, pair) {
@@ -465,7 +475,7 @@ async function openLevelBetween(d, viewerId, ownerId) {
   return pair ? stageOpenLevel((await settle(d, pair)).stage) : 1;
 }
 
-const SET_SUMMARY = { pairId: 1, level: 1, from: 1, to: 1, completedAt: 1, "answers.n": 1 };
+const SET_SUMMARY = { pairId: 1, level: 1, from: 1, to: 1, completedAt: 1, "answers.n": 1, "questions.n": 1 };
 const OTHER_FIELDS = { name: 1, gender: 1, lang: 1, photos: 1, blocked: 1 };
 
 async function viewsFor(d, me, pairs) {
@@ -1110,8 +1120,7 @@ async function heartbeat(ctx) {
   const pairs = await d.collection(C.pairs).find({ members: me._id }).sort({ updatedAt: -1 }).limit(100).toArray();
   const views = await viewsFor(d, me, pairs.filter((p) => !hiddenFrom(p, me)));
   await syncLevel(d, me); // keeps users.level (the admin's column, the photo slots) on the pairs
-  const actions = views.filter((v) =>
-    ["ask", "answer", "ask_answer"].includes(v.next) || (v.next === "chat" && v.lastFrom === "them"));
+  const actions = views.filter((v) => v.turn);
   return { actions, notices: unseenNotices(me) };
 }
 
@@ -1232,7 +1241,7 @@ async function createPair(ctx) {
     const id = await nextId(d, "pair");
     const at = nowIso();
     const doc = {
-      _id: id, id, key, a: me._id, b: to, members: [me._id, to], level: 1, stage: "l1_ask",
+      _id: id, id, key, a: me._id, b: to, members: [me._id, to], level: 1, stage: "l1", startedAt: null,
       l2OpensAt: null, l3OpensAt: null, remind: {}, opened: { [me._id]: at }, lastChat: null, createdAt: at, updatedAt: at,
     };
     try {
@@ -1284,10 +1293,9 @@ async function sendSet(ctx) {
   const level = levelParam(body.level);
   const { pair, other } = await pairFor(ctx, params[0], { write: true });
   const sets = d.collection(C.sets);
-  if (level === 1 && pair.stage !== "l1_ask") throw notYourTurn();
-  if (level === 2 && (pair.stage !== "l2_open" || (await sets.findOne({ pairId: pair._id, level: 2, from: me._id })))) {
-    throw notYourTurn();
-  }
+  // Either person sends ONE set per level, while that level is open, in any order.
+  if (openSetLevel(pair.stage) !== level) throw notYourTurn();
+  if (await sets.findOne({ pairId: pair._id, level, from: me._id }, { projection: { _id: 1 } })) throw notYourTurn();
 
   const list = Array.isArray(body.questions) ? body.questions : [];
   // A contact detail is recorded for the admin even when the rest of the set is incomplete.
@@ -1345,16 +1353,13 @@ async function sendSet(ctx) {
   }
 
   const pairs = d.collection(C.pairs);
-  if (level === 1) {
-    // Whoever sends Level 1 first is `a`; the other is asked.
-    const moved = await pairs.updateOne(
-      { _id: pair._id, stage: "l1_ask" },
-      { $set: { stage: "l1_answer", a: me._id, b: other._id, members: [me._id, other._id], updatedAt: at } },
-    );
-    if (!moved.modifiedCount) {
-      await sets.deleteOne({ _id: setId });
-      throw notYourTurn();
-    }
+  // The first set ever sent starts the conversation: its sender is `a` (the admin's chat log reads a/b)
+  // and the pair stops being a draft, so the other person sees it too. Old 'l1_ask' drafts become 'l1'.
+  const started = await pairs.updateOne(
+    { _id: pair._id, $or: [{ stage: "l1_ask" }, { stage: "l1", startedAt: null }] },
+    { $set: { stage: "l1", startedAt: at, a: me._id, b: other._id, members: [me._id, other._id], updatedAt: at } },
+  );
+  if (started.modifiedCount) {
     pair.a = me._id;
     pair.b = other._id;
     await d.collection(C.chats).updateOne({ _id: pair._id }, { $set: { a: me._id, b: other._id } });
@@ -1368,7 +1373,8 @@ async function sendSet(ctx) {
     english: lang === "en" ? null : q.translations.en ?? null, translations: q.translations, hit: null, flagId: null, stopped: false,
   })));
   ctx.status = 201;
-  return { pair: await viewOf(d, me, await pairs.findOne({ _id: pair._id })) };
+  const fresh = await pairs.findOne({ _id: pair._id });
+  return { pair: await viewOf(d, me, fresh), conversation: await conversationFor(d, me, fresh, other) };
 }
 
 function questionView(q, level, lang, titles = []) {
@@ -1395,10 +1401,105 @@ function answerView(a, level, lang) {
   return { n: a.n, key: null, text: tr ?? a.text, original: a.text, originalLang: a.lang, translated: Boolean(tr) };
 }
 
+// ---------------------------------------------------------------- the conversation (one read model)
+
+/** A set's replies in line order (stored in the order they were last saved). */
+const byLine = (answers) => [...(answers || [])].sort((x, y) => x.n - y.n);
+
+/** A reply as its line shows it: the words in my language (Level 1: the option's text), the replier's own words, when. */
+function replyView(a, level, lang) {
+  if (!a) return null;
+  if (level === 1 || a.key) {
+    return {
+      key: a.key ?? null, text: answerText(a.key, lang) ?? a.text ?? "", original: answerText(a.key, a.lang) ?? a.text ?? "",
+      translated: a.lang !== lang, at: a.at ?? null,
+    };
+  }
+  const tr = a.lang === lang ? null : a.translations?.[lang] ?? null;
+  return { key: null, text: tr ?? a.text, original: a.text, translated: Boolean(tr), at: a.at ?? null };
+}
+
+/**
+ * SetView: one set of 5 lines with the replies so far. from 'me' = the set I sent (its replies are theirs:
+ * the sender sees "2 of 5" and the words as they come); 'them' = the set sent to me (the replies are mine,
+ * and `canReply` while the level is open and the set is not complete). Level 1 lines I reply to carry their
+ * `options` (a written line: Yes / No only). Stopped texts are never saved, so they never show.
+ */
+function setView(set, meId, lang, titles, { open }) {
+  const level = set.level;
+  const from = set.from === meId ? "me" : "them";
+  const byN = new Map((set.answers || []).map((a) => [a.n, a]));
+  const lines = [...(set.questions || [])].sort((x, y) => x.n - y.n).map((q) => {
+    const v = questionView(q, level, lang, titles);
+    const line = {
+      n: v.n, source: v.source, topic: v.topic ?? null, text: v.text, original: v.original, originalLang: v.originalLang,
+      translated: v.translated, reply: replyView(byN.get(q.n), level, lang),
+    };
+    if (level === 1 && from === "them") line.options = l1Answers(q.source).map((o) => ({ key: o.key, text: o.text[lang] || o.text.en }));
+    return line;
+  });
+  return {
+    id: set._id, level, from, sentAt: set.sentAt, completedAt: set.completedAt ?? null,
+    replied: repliedCount(set), total: lines.length, canReply: from === "them" && open && !set.completedAt, lines,
+  };
+}
+
+/**
+ * GET /pairs/:id/conversation for `me`:
+ * { pair: PairView, other: { id, name, gender, lang, photos, lockedPhotos }, levels: [{ level: 1|2,
+ *   state: 'open'|'wait'|'done'|'locked', opensAt, rules: { pick, write }, mine: SetView|null, theirs: SetView|null }],
+ *   canSend: { level, pick, write, slots } | null, chat: { open, opensAt, phoneNeeded }, next }.
+ * `sets` may be passed when already loaded (full documents).
+ */
+async function conversationFor(d, me, pair, other, sets = null) {
+  const lang = me.lang ?? "en";
+  sets ??= await d.collection(C.sets).find({ pairId: pair._id }).toArray();
+  await Promise.all(sets.map((s) => backfillSet(d, s, lang)));
+  const otherId = pair.a === me._id ? pair.b : pair.a;
+  const stage = stageOf(pair);
+  const frozen = !other || Boolean(other.blocked);
+  const [c1, c2] = await Promise.all([questionConfig(d, 1), questionConfig(d, 2)]);
+  const config = { 1: c1, 2: c2 };
+  const rulesOf = (level) => ({ pick: LEVEL_RULES[level].pick, write: LEVEL_RULES[level].write });
+
+  const levels = [1, 2].map((level) => {
+    const { mine, theirs } = setsAt(sets, level, me._id, otherId);
+    const state = levelState(level, stage);
+    const view = (s) => (s ? setView(s, me._id, lang, config[level].titles || [], { open: state === "open" && !frozen }) : null);
+    return {
+      level, state, opensAt: level === 2 ? pair.l2OpensAt ?? null : null, rules: rulesOf(level), mine: view(mine), theirs: view(theirs),
+    };
+  });
+
+  const openLevel = openSetLevel(stage);
+  const open = setsAt(sets, openLevel, me._id, otherId);
+  const canSend = !frozen && openLevel && !open.mine
+    ? { level: openLevel, ...rulesOf(openLevel), slots: slotsView(config[openLevel].slots, lang, config[openLevel].titles) }
+    : null;
+
+  const view = pairView(pair, me, other, sets);
+  const seen = other ? photosFor(other, { openLevel: stageOpenLevel(stage) }) : { photos: [], lockedPhotos: [] };
+  return {
+    pair: view,
+    other: other
+      ? { id: other._id, name: other.name, gender: other.gender ?? null, lang: other.lang ?? "en", photos: seen.photos, lockedPhotos: seen.lockedPhotos }
+      : { id: otherId, name: "", gender: null, lang: "en", photos: [], lockedPhotos: [] },
+    levels,
+    canSend,
+    chat: { open: stage === "l3_open", opensAt: pair.l3OpensAt ?? null, phoneNeeded: !me.verified?.phone },
+    next: view.next,
+  };
+}
+
+async function getConversation(ctx) {
+  const { pair, other } = await pairFor(ctx, ctx.params[0]);
+  return conversationFor(ctx.d, ctx.me, pair, other);
+}
+
 async function setFor(ctx, direction) {
   const { d, me, url, params } = ctx;
   const { pair, other } = await pairFor(ctx, params[0]);
-  const level = url.searchParams.has("level") ? levelParam(url.searchParams.get("level")) : Math.min(2, STAGE_LEVEL[pair.stage]);
+  const level = url.searchParams.has("level") ? levelParam(url.searchParams.get("level")) : currentSetLevel(pair.stage) ?? 2;
   const query = direction === "in" ? { to: me._id } : { from: me._id };
   const set = await d.collection(C.sets).findOne({ pairId: pair._id, level, ...query });
   if (!set) throw fail(404, "no_set", direction === "in" ? "Nothing for you to reply to yet." : "You have not started this conversation yet.");
@@ -1418,19 +1519,142 @@ async function setFor(ctx, direction) {
       answered,
       sentAt: set.sentAt,
       completedAt: set.completedAt,
-      ...(answered ? { answers: set.answers.map((a) => answerView(a, level, lang)) } : {}),
+      // Replies are saved one at a time (a changed one goes to the end of the stored list): in line order here.
+      ...(answered ? { answers: byLine(set.answers).map((a) => answerView(a, level, lang)) } : {}),
     },
   };
 }
 
+/**
+ * The set sent to me at `level` that I may still reply to: the level must be open and the set not complete.
+ * 409 not_your_turn otherwise.
+ */
+async function replyableSet(d, pair, me, level) {
+  if (openSetLevel(pair.stage) !== level) throw notYourTurn();
+  const set = await d.collection(C.sets).findOne({ pairId: pair._id, level, to: me._id });
+  if (!set) throw fail(409, "not_your_turn", "There is nothing to reply to yet.");
+  if (set.completedAt) throw fail(409, "not_your_turn", "Your replies to these lines are already sent.");
+  return set;
+}
+
+/**
+ * A set got its last reply: the admin's chat log gets the 5 replies (once), and when both sets of the
+ * level are complete the level is done and the next one opens after the wait.
+ */
+async function onSetComplete(d, pair, set) {
+  const at = set.completedAt;
+  const answers = byLine(set.answers);
+  const msgIds = await nextIds(d, "msg", answers.length);
+  await appendMessages(d, pair, answers.map((a, i) => ({
+    id: msgIds[i], from: set.to, at, kind: "answer", level: set.level, n: a.n,
+    text: a.key ? answerText(a.key, a.lang) : a.text, lang: a.lang,
+    english: a.lang === "en" ? null : a.translations?.en ?? null, translations: a.translations ?? {}, hit: null, flagId: null, stopped: false,
+  })));
+  const back = await d.collection(C.sets).findOne({ pairId: pair._id, level: set.level, from: set.to });
+  if (!levelComplete(set, back)) return;
+  const opensAt = new Date(Date.now() + WAIT_MS).toISOString();
+  const pairs = d.collection(C.pairs);
+  if (set.level === 1) {
+    await pairs.updateOne({ _id: pair._id, stage: { $in: L1_STAGES } }, { $set: { stage: "l2_wait", l2OpensAt: opensAt, updatedAt: at } });
+  } else {
+    await pairs.updateOne({ _id: pair._id, stage: "l2_open" }, { $set: { stage: "l3_wait", l3OpensAt: opensAt, updatedAt: at } });
+  }
+}
+
+/**
+ * A contact detail spread over my replies to one set ("012 887" on one line, "766" on the next): my
+ * saved replies and the new one are read together in line order, and a hit that reaches into the new
+ * reply stops it. The joined text is kept as one stopped message, so the admin sees the whole attempt.
+ */
+async function stopSplitReply(ctx, pair, other, set, n, text) {
+  const ordered = [...set.questions].sort((x, y) => x.n - y.n);
+  const parts = ordered.map((q) => (q.n === n ? text : set.answers?.find((a) => a.n === q.n && a.text)?.text ?? null));
+  const used = parts.map((x, i) => (x ? i : -1)).filter((i) => i >= 0);
+  const k = used.indexOf(ordered.findIndex((q) => q.n === n));
+  if (used.length < 2 || k < 0) return;
+  const c = findContactDetailsAcross(used.map((i) => parts[i]));
+  if (c.ok) return;
+  const hits = c.hits.filter((h) => h.index <= k && k <= h.lastIndex);
+  if (!hits.length) return;
+  const reason = CONTACT_REASONS[hits[0].type] ?? c.reason;
+  await recordStopped(ctx, pair, other, { text: c.text, level: set.level, kind: "answer", hits, reason });
+  throw fail(422, "contact_detail", reason || "Contact details are not allowed.", { n, hits: plainHits(hits), reason });
+}
+
+/**
+ * PUT /pairs/:id/replies { level, n, key } (Level 1) | { level, n, text } (Level 2) → { conversation }.
+ * One reply, saved on its own; it can be changed until the set is complete (all 5 replied). A contact
+ * detail is refused (422 + a stopped flag) and nothing is saved.
+ */
+async function saveReply(ctx) {
+  const { d, me, body, params } = ctx;
+  const level = levelParam(body.level);
+  const { pair, other } = await pairFor(ctx, params[0], { write: true });
+  const set = await replyableSet(d, pair, me, level);
+  const n = Number(body.n);
+  const q = set.questions.find((x) => x.n === n);
+  if (!q) throw invalid("Reply to one of the lines.", { field: "n", n: body.n ?? null });
+
+  const lang = me.lang ?? "en";
+  const at = nowIso();
+  let reply;
+  if (level === 1) {
+    if (!l1Answers(q.source).some((x) => x.key === body.key)) {
+      throw invalid(q.source === "written" ? "Reply to this line with Yes or No." : "Pick one of the replies.", { field: "key", n });
+    }
+    reply = { n, key: body.key, text: null, lang, translations: bankTranslations((l) => answerText(body.key, l)), at };
+  } else {
+    const text = String(body.text ?? "").trim();
+    const c = findContactDetails(text);
+    if (!c.ok) {
+      await recordStopped(ctx, pair, other, { text, level, kind: "answer", hits: c.hits, reason: c.reason });
+      throw fail(422, "contact_detail", c.reason || "Contact details are not allowed.", { n, hits: c.hits, reason: c.reason });
+    }
+    await stopSplitReply(ctx, pair, other, set, n, text);
+    const r = checkWrittenAnswer(text);
+    if (!r.ok) throw invalid(ERROR_TEXT[r.error] || "Check this reply.", { field: "text", n, reason: r.error });
+    const { translations } = await translateAll(text, lang);
+    reply = { n, key: null, text, lang, translations, at };
+  }
+
+  const sets = d.collection(C.sets);
+  // Replace this line's reply in one atomic update, only while the set is still open ($literal: the
+  // words are data, never a field path, even when they start with "$").
+  let saved = await sets.findOneAndUpdate(
+    { _id: set._id, completedAt: null },
+    [{
+      $set: {
+        answers: {
+          $concatArrays: [
+            { $filter: { input: { $ifNull: ["$answers", []] }, cond: { $ne: ["$$this.n", n] } } },
+            [{ $literal: reply }],
+          ],
+        },
+      },
+    }],
+    { returnDocument: "after" },
+  );
+  if (!saved) throw fail(409, "not_your_turn", "Your replies to these lines are already sent.");
+  if (allReplied(saved)) {
+    const done = await sets.findOneAndUpdate({ _id: set._id, completedAt: null }, { $set: { completedAt: at } }, { returnDocument: "after" });
+    if (done) {
+      saved = done;
+      await onSetComplete(d, pair, done);
+    }
+  }
+  const pairs = d.collection(C.pairs);
+  await pairs.updateOne({ _id: pair._id }, { $set: { updatedAt: at } });
+  const fresh = await settle(d, await pairs.findOne({ _id: pair._id }));
+  return { conversation: await conversationFor(d, me, fresh, other) };
+}
+
+/** POST /pairs/:id/answers — all replies to a set at once (the older screens). Same rules as saveReply. */
 async function sendAnswers(ctx) {
   const { d, me, body, params } = ctx;
   const level = levelParam(body.level);
   const { pair, other } = await pairFor(ctx, params[0], { write: true });
   const sets = d.collection(C.sets);
-  const set = await sets.findOne({ pairId: pair._id, level, to: me._id });
-  if (!set || set.completedAt) throw notYourTurn();
-  if (pair.stage !== (level === 1 ? "l1_answer" : "l2_open")) throw notYourTurn();
+  const set = await replyableSet(d, pair, me, level);
 
   const list = Array.isArray(body.answers) ? body.answers : [];
   if (level === 2) {
@@ -1467,30 +1691,16 @@ async function sendAnswers(ctx) {
       return { n: Number(a.n), key: null, text, lang, translations, at };
     }),
   );
-  const saved = await sets.updateOne({ _id: set._id, completedAt: null }, { $set: { answers, completedAt: at } });
-  if (!saved.modifiedCount) throw notYourTurn();
-
-  const msgIds = await nextIds(d, "msg", answers.length);
-  await appendMessages(d, pair, answers.map((a, i) => {
-    const text = level === 1 ? answerText(a.key, lang) : a.text;
-    return {
-      id: msgIds[i], from: me._id, at, kind: "answer", level, n: a.n, text, lang,
-      english: lang === "en" ? null : a.translations.en ?? null, translations: a.translations, hit: null, flagId: null, stopped: false,
-    };
-  }));
+  const saved = await sets.findOneAndUpdate(
+    { _id: set._id, completedAt: null }, { $set: { answers, completedAt: at } }, { returnDocument: "after" },
+  );
+  if (!saved) throw notYourTurn();
+  await onSetComplete(d, pair, saved);
 
   const pairs = d.collection(C.pairs);
-  const opensAt = new Date(Date.now() + WAIT_MS).toISOString();
-  if (level === 1) {
-    await pairs.updateOne({ _id: pair._id, stage: "l1_answer" }, { $set: { stage: "l2_wait", l2OpensAt: opensAt, updatedAt: at } });
-  } else {
-    const done = await sets.countDocuments({ pairId: pair._id, level: 2, completedAt: { $ne: null } });
-    await pairs.updateOne(
-      { _id: pair._id, stage: "l2_open" },
-      { $set: done >= 2 ? { stage: "l3_wait", l3OpensAt: opensAt, updatedAt: at } : { updatedAt: at } },
-    );
-  }
-  return { pair: await viewOf(d, me, await pairs.findOne({ _id: pair._id })) };
+  await pairs.updateOne({ _id: pair._id }, { $set: { updatedAt: at } });
+  const fresh = await settle(d, await pairs.findOne({ _id: pair._id }));
+  return { pair: await viewOf(d, me, fresh), conversation: await conversationFor(d, me, fresh, other) };
 }
 
 async function remind(ctx) {
@@ -1629,6 +1839,8 @@ const ROUTES = [
   ["POST", /^\/pairs$/, createPair],
   ["GET", /^\/pairs$/, listPairs],
   ["GET", /^\/pairs\/(P-\d+)$/, getPair],
+  ["GET", /^\/pairs\/(P-\d+)\/conversation$/, getConversation],
+  ["PUT", /^\/pairs\/(P-\d+)\/replies$/, saveReply],
   ["GET", /^\/questions$/, questions],
   ["POST", /^\/pairs\/(P-\d+)\/sets$/, sendSet],
   ["GET", /^\/pairs\/(P-\d+)\/incoming$/, (ctx) => setFor(ctx, "in")],

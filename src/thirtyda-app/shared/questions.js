@@ -93,8 +93,9 @@ export const SYSTEM_QUESTIONS = {
   ],
 };
 
-// Every set has 5 questions: Level 1 pick 4 from the bank + write 1, Level 2 pick 2 + write 3.
-export const LEVEL_RULES = { 1: { pick: 4, write: 1 }, 2: { pick: 2, write: 3 } };
+// Every set has 5 lines: Level 1 pick 4 + write 1, Level 2 pick 3 + write 2 (Gamini 2026-10-13: "3 system
+// given + 2 text"). Level 2 sets sent earlier with pick 2 + write 3 keep their own lines and still read back.
+export const LEVEL_RULES = { 1: { pick: 4, write: 1 }, 2: { pick: 3, write: 2 } };
 
 // One tap per Level 1 question.
 export const L1_ANSWERS = [

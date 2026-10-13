@@ -867,3 +867,76 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .blocked p { color: var(--on-dark-soft); line-height: 1.55; }
 .blocked a { color: #fff; font-weight: 700; overflow-wrap: anywhere; }
 .blocked .btn { margin-top: 10px; }
+
+/* =====================================================================
+   Conversation (#/c/:pairId, screens/conversation.js): Level 1–2 lines + replies as one chat-like
+   history, the "send your 5" panel at the bottom, the Level 3 chat under the history. The screen
+   shell (header, scroll body, foot) is the chat's (.chat / .chat-body / .chat-scroll / .chat-foot).
+   ===================================================================== */
+.conv .chat-scroll > .thread { min-height: 0; }
+.conv-thread { display: flex; flex-direction: column; gap: 8px; }
+.conv-history { margin-bottom: 10px; }
+.conv-sub { display: inline-flex; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 4px; }
+.conv-sub > span { white-space: nowrap; } /* "LEVEL 2/3" stays whole; the bar drops under it when the photos take the room */
+.conv-divider { margin: 12px 0 2px; }
+.conv-divider .label { white-space: nowrap; }
+.conv-thread > .conv-divider:first-child { margin-top: 2px; }
+/* "SOPHEA · TODAY 10:42" over a set of 5. */
+.conv-cap { align-self: center; margin-top: 6px; text-align: center; }
+.conv-line { display: flex; flex-direction: column; gap: 5px; }
+.conv-line + .conv-line { margin-top: 6px; }
+.conv-topic { display: block; margin-bottom: 3px; font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.bubble.mine .conv-topic { color: rgb(255 255 255 / 0.62); }
+:lang(km) .conv-topic, :lang(zh) .conv-topic, :lang(ko) .conv-topic, :lang(ja) .conv-topic { letter-spacing: 0.02em; }
+:lang(km) .conv-topic { font-size: 10.5px; }
+.conv-reply { font-weight: 600; }
+/* My reply, while it can still change: tap it to open the choices / the box again. */
+button.bubble { display: block; text-align: left; font-size: 15px; line-height: 1.4; }
+.bubble.can-change { cursor: pointer; }
+.bubble.can-change:active { background: var(--navy-2); }
+.conv-chips { align-self: flex-end; justify-content: flex-end; max-width: 100%; }
+/* Under my line until their reply comes: faint. */
+.conv-pending { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: 999px; border: 1.5px dashed var(--line); color: var(--muted-2); font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; }
+:lang(km) .conv-pending, :lang(zh) .conv-pending, :lang(ko) .conv-pending, :lang(ja) .conv-pending { letter-spacing: 0.02em; font-size: 10.5px; }
+/* "Sophea replied 2 of 5" under a set. */
+.conv-progress { align-self: center; display: flex; flex-direction: column; align-items: center; gap: 3px; margin: 4px 0 8px; text-align: center; }
+.conv-progress-line { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.conv-progress.ok .conv-progress-line { color: var(--green); }
+.conv-hint { max-width: 32ch; font-size: 12px; line-height: 1.4; color: var(--muted); }
+/* Level 2: my reply in words, right-aligned like my bubbles; saves as I type. */
+.conv-edit { align-self: flex-end; width: 88%; display: flex; flex-direction: column; gap: 5px; }
+.conv-edit-row { display: flex; align-items: flex-end; gap: 8px; }
+.conv-box { flex: 1; min-width: 0; min-height: 64px; border-radius: 16px; border-bottom-right-radius: 5px; border-color: var(--line); background: #fff; font-size: 16px; resize: none; }
+.conv-box:focus { border-color: var(--navy); box-shadow: 0 0 0 3px rgb(11 28 63 / 0.08); }
+.conv-send { width: 40px; height: 40px; }
+.conv-send[aria-disabled="true"] { background: var(--disabled-bg); border-color: var(--disabled-bg); color: var(--disabled-ink); cursor: default; }
+.conv-save-state { align-self: flex-end; display: inline-flex; align-items: center; gap: 4px; margin-right: 48px; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted-2); }
+.conv-save-state:empty { display: none; }
+.conv-edit .field-error { justify-content: flex-end; text-align: right; margin-right: 48px; }
+/* Nothing sent yet at this level. */
+.conv-intro { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px 12px 6px; text-align: center; font-size: 14px; line-height: 1.5; color: var(--muted); }
+.conv-intro-icon { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: var(--field); color: var(--navy); }
+/* "Level 2 opens in 23:59:12 · Remind me". */
+.conv-wait { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; padding: 10px 10px 10px 12px; border-radius: var(--radius-lg); background: var(--navy); color: #fff; }
+.conv-wait-icon { flex: none; display: grid; place-items: center; color: var(--on-dark-muted); }
+.conv-wait-text { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; line-height: 1.35; }
+.conv-wait-text b { font-family: var(--display); font-weight: 900; font-stretch: 112%; font-size: 16px; letter-spacing: 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.conv-remind { flex: none; background: #fff; color: var(--navy); }
+.conv-remind.on { background: rgb(255 255 255 / 0.14); color: #fff; }
+/* Bottom: the send panel (folds), or one status line. */
+.conv-foot { max-height: 74%; }
+.conv-status { display: flex; align-items: center; gap: 8px; min-height: 40px; font-size: 13.5px; font-weight: 600; line-height: 1.35; }
+.conv-status > .icon { flex: none; color: var(--muted); }
+.conv-status .link { flex: none; font-size: 13px; }
+.conv-panel { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+.conv-panel-head { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; text-align: left; }
+.conv-panel-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.conv-panel-title strong { font-size: 15.5px; font-weight: 800; line-height: 1.25; }
+.conv-panel-head > .icon { flex: none; transform: rotate(180deg); transition: transform 0.15s; }
+.conv-panel-head[aria-expanded="true"] > .icon { transform: none; }
+.conv-panel-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 10px; margin: 0 calc(var(--gutter) * -1); padding: 4px var(--gutter) 2px; }
+.conv-compose .qlist { gap: 12px; }
+.conv-compose .ask-actions { margin-top: 14px; }
+@media (prefers-reduced-motion: reduce) { .conv-panel-head > .icon { transition: none; } }
+/* Toasts sit above the conversation's bottom line, not on it. */
+body:has(.screen.conv) .toast { bottom: calc(84px + env(safe-area-inset-bottom)); }

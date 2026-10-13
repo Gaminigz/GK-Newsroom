@@ -79,7 +79,8 @@ test('the bank itself passes the rules it enforces', () => {
 });
 
 test('level rules: always 5 questions', () => {
-  assert.deepEqual(LEVEL_RULES, { 1: { pick: 4, write: 1 }, 2: { pick: 2, write: 3 } });
+  // Level 2 = 3 picked + 2 written (Gamini 2026-10-13: "3 system given + 2 text").
+  assert.deepEqual(LEVEL_RULES, { 1: { pick: 4, write: 1 }, 2: { pick: 3, write: 2 } });
   for (const level of [1, 2]) {
     assert.equal(LEVEL_RULES[level].pick + LEVEL_RULES[level].write, 5);
     assert.ok(SYSTEM_QUESTIONS[level].length >= LEVEL_RULES[level].pick);

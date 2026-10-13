@@ -114,6 +114,8 @@ screen('/nearby', ({ root }) => {
   let pairs = [];
   function paintWaiting() {
     const mine = new Map((state.actions || []).filter((p) => p?.other).map((p) => [p.id, p]));
+    // GET /pairs says it too (PairView.turn), so the dot is there on the first paint, before the heartbeat.
+    for (const p of pairs) if (p?.other && p.turn === true && !mine.has(p.id)) mine.set(p.id, p);
     const items = [...pairs.filter((p) => p?.other && !mine.has(p.id)), ...mine.values()];
     items.sort((a, b) => Number(mine.has(b.id)) - Number(mine.has(a.id))); // my turn first
     waiting.hidden = !items.length;

@@ -2,13 +2,18 @@
  *
  * frame.html loads this classic script BEFORE /30da/app.js. It answers every fetch('/30da/api/…')
  * from an in-memory world built for one scenario, copying the response shapes and the level state
- * machine of src/lib/thirtyda-app.mjs, and it uses the real shared rules + question bank
- * (/30da/shared/rules.js, questions.js) for every check, question and translation. Nothing reaches
+ * machine of src/lib/thirtyda-app.mjs, and it uses the real shared modules (/30da/shared/rules.js,
+ * questions.js, question-slots.js, conversation.js) for every check, line, state and translation. Nothing reaches
  * the server: no sign-up, no heartbeat, no location. localStorage is a per-frame memory copy, so the
  * twelve frames on the board never share a language or a filter. Every load starts the scenario fresh.
  *
  *   ?s=N     scenario 1–12 (SCENARIOS below)
  *   ?fast=1  the 24-hour waits last 10 seconds
+ *
+ * Screens 5–12 are the ONE conversation screen (#/c/P-1) in different states: Level 1 and Level 2 run both
+ * ways (each person sends their own 5 and replies to the other's line by line), Level 3 is the chat with
+ * everything before it above. The other person is simulated: after you act they reply one line at a time
+ * and send their own 5 when they have not yet.
  *
  * Photos: no real images. Single photo fields (Nearby faces, the big profile photo, PairView) are null
  * so the app draws its grey silhouette; photo LISTS (my slots, the profile strip, the chat header) are
@@ -31,20 +36,24 @@
   const DARA = 'U-10232';
   const PAIR = 'P-1';
 
-  // me: whose phone this is · lang: its UI language · stage: the pair Dara ⇄ Sophea (none = no pair)
+  // me: whose phone this is · lang: its UI language · stage: the pair Dara ⇄ Sophea (none = no pair) ·
+  // sets: what is already in the conversation, `${level}${from}` (d = Dara, s = Sophea) → how many replies it
+  // has (5 = complete). Screens 5–12 all live on the conversation screen #/c/P-1.
+  const CONV = `/c/${PAIR}`;
+  const L1_DONE = { '1d': 5, '1s': 5 };
   const SCENARIOS = {
     1: { hash: '/opening', lang: 'en', me: null, session: false },
     2: { hash: '/create', lang: 'en', me: null, session: true },
     3: { hash: '/nearby', lang: 'en', me: DARA },
     4: { hash: `/person/${SOPHEA}`, lang: 'en', me: DARA },
-    5: { hash: `/ask/${PAIR}/1`, lang: 'en', me: DARA, stage: 'l1_ask' },
-    6: { hash: `/answer/${PAIR}/1`, lang: 'en', me: SOPHEA, stage: 'l1_answer' },
-    7: { hash: `/wait/${PAIR}/2`, lang: 'en', me: DARA, stage: 'l2_wait', opensIn: DAY - 27e3 },
-    8: { hash: `/ask/${PAIR}/2`, lang: 'en', me: DARA, stage: 'l2_open' },
-    9: { hash: `/answer/${PAIR}/2`, lang: 'en', me: SOPHEA, stage: 'l2_open' },
-    10: { hash: `/wait/${PAIR}/3`, lang: 'en', me: DARA, stage: 'l3_wait', opensIn: DAY - 161e3 },
-    11: { hash: `/chat/${PAIR}`, lang: 'en', me: DARA, stage: 'l3_open' },
-    12: { hash: `/chat/${PAIR}`, lang: 'km', me: SOPHEA, stage: 'l3_open' },
+    5: { hash: CONV, lang: 'en', me: DARA, stage: 'l1', sets: {} },
+    6: { hash: CONV, lang: 'en', me: SOPHEA, stage: 'l1', sets: { '1d': 2 } },
+    7: { hash: CONV, lang: 'en', me: DARA, stage: 'l2_wait', sets: L1_DONE, opensIn: DAY - 27e3 },
+    8: { hash: CONV, lang: 'en', me: DARA, stage: 'l2_open', sets: { ...L1_DONE, '2s': 0 } },
+    9: { hash: CONV, lang: 'en', me: SOPHEA, stage: 'l2_open', sets: { ...L1_DONE, '2d': 2, '2s': 3 } },
+    10: { hash: CONV, lang: 'en', me: DARA, stage: 'l3_wait', sets: { ...L1_DONE, '2d': 5, '2s': 5 }, opensIn: DAY - 161e3 },
+    11: { hash: CONV, lang: 'en', me: DARA, stage: 'l3_open', sets: { ...L1_DONE, '2d': 5, '2s': 5 } },
+    12: { hash: CONV, lang: 'km', me: SOPHEA, stage: 'l3_open', sets: { ...L1_DONE, '2d': 5, '2s': 5 } },
   };
   const SC = SCENARIOS[S];
 
@@ -187,11 +196,13 @@
   // ------------------------------------------------------------------ shared modules (the real ones)
 
   let R = null;
-  const ready = Promise.all([import('/30da/shared/rules.js'), import('/30da/shared/questions.js')])
-    .then(([rules, questions]) => {
-      R = { ...rules, ...questions };
-      build();
-    });
+  const ready = Promise.all([
+    import('/30da/shared/rules.js'), import('/30da/shared/questions.js'),
+    import('/30da/shared/question-slots.js'), import('/30da/shared/conversation.js'),
+  ]).then(([rules, questions, slots, conversation]) => {
+    R = { ...rules, ...questions, ...slots, ...conversation };
+    build();
+  });
 
   // ------------------------------------------------------------------ people (design hearts)
 
@@ -234,21 +245,19 @@
 
   // ------------------------------------------------------------------ texts written by Dara and Sophea
 
-  // Written questions (original + translation; the bank covers the system ones in all 5 languages).
-  const Q_NOISY = 'l1_noisy'; // Dara's own Level 1 question reads exactly like this bank question
+  // Written lines (original + translation; the bank covers the picked ones in all 5 languages).
+  // Level 1: 4 picked + 1 written (Yes / No reply); Level 2: 3 picked + 2 written (replies in words).
+  // Picked line k is always one of list k's 5 choices (see linesOf).
+  const Q_NOISY = 'l1_noisy'; // Dara's own Level 1 line reads exactly like this bank line
+  const SOPHEA_L1 = { km: 'តើអ្នកចូលចិត្តផឹកកាហ្វេទេ?', en: 'Do you like coffee?' };
   const DARA_L2 = [
-    { en: 'What’s your favourite place nearby?', km: 'តើកន្លែងណានៅជិតអ្នកដែលអ្នកចូលចិត្តជាងគេ?', answer: 'place' },
     { en: 'What does your morning look like?', km: 'តើពេលព្រឹករបស់អ្នកជាធម្មតាយ៉ាងដូចម្ដេច?', answer: 'morning' },
     { en: 'What will you do this evening?', km: 'តើល្ងាចនេះអ្នកនឹងធ្វើអ្វី?', answer: 'evening' },
   ];
   const SOPHEA_L2 = [
     { km: 'តើអ្នកចូលចិត្តភ្លៀង ឬថ្ងៃក្តៅជាង?', en: 'Do you prefer rain or hot days?', answer: 'rain' },
     { km: 'តើសៀវភៅចុងក្រោយដែលអ្នកបានអានគឺជាអ្វី?', en: 'What was the last book you read?', answer: 'book' },
-    { km: 'តើអ្នកចូលចិត្តតន្ត្រីបែបណា?', en: 'What kind of music do you like?', answer: 'music' },
   ];
-  const DARA_L2_KEYS = ['l2_window', 'l2_weather'];
-  const SOPHEA_L2_KEYS = ['l2_fav_food', 'l2_weekend'];
-  const L1_KEYS = ['l1_rain', 'l1_busy', 'l1_outside', 'l1_quiet_day'];
   const L1_REPLIES = ['yes', 'not_really', 'no', 'maybe', 'yes']; // 5th = the written line: Yes / No only
 
   // Level 2 answers in words: by system key, or by which written question they answer.
@@ -256,6 +265,7 @@
     l2_window: { en: 'A small park and lots of motorbikes.', km: 'សួនតូចមួយ និងម៉ូតូច្រើនណាស់។' },
     l2_weather: { en: 'Sunny and very hot today.', km: 'មានពន្លឺថ្ងៃ ហើយក្តៅខ្លាំងណាស់ថ្ងៃនេះ។' },
     l2_fav_place: { en: 'A small café near the pagoda.', km: 'ហាងកាហ្វេតូចមួយក្បែរវត្ត។' },
+    l2_morning_drink: { en: 'Iced coffee with milk.', km: 'កាហ្វេទឹកកកទឹកដោះគោ។' },
     l2_morning: { en: 'A short walk and a milk coffee.', km: 'ដើរលេងបន្តិច ហើយផឹកកាហ្វេទឹកដោះគោ។' },
     l2_evening: { en: 'Cook dinner and watch a film.', km: 'ចម្អិនម្ហូប ហើយមើលភាពយន្ត។' },
     l2_fav_food: { en: 'Fish amok, and my mum’s soup.', km: 'អាម៉ុកត្រី និងសម្លរបស់ម្ដាយខ្ញុំ។' },
@@ -296,7 +306,6 @@
 
   // ------------------------------------------------------------------ the world
 
-  const STAGE_LEVEL = { l1_ask: 1, l1_answer: 1, l2_wait: 1, l2_open: 2, l3_wait: 2, l3_open: 3 };
   const REPORT_REASONS = { rude: 'rude message', scam: 'scam or money', sexual: 'sexual message', other: 'other' };
   const ERROR_TEXT = {
     empty: 'Write something first.',
@@ -327,7 +336,7 @@
   }
 
   const bankQ = (level, key, n, lang) => ({
-    n, source: 'system', key, text: R.questionText(level, key, lang), lang,
+    n, source: 'system', key, slot: n, text: R.questionText(level, key, lang), lang,
     translations: bankTr((l) => R.questionText(level, key, l)),
   });
   const writtenQ = (n, tr, lang) => ({ n, source: 'written', key: null, text: tr[lang] ?? tr.en, lang, translations: fullTr(tr) });
@@ -340,14 +349,24 @@
     return set;
   }
 
-  /** The 5 Level 2 questions a person sends: Dara's set from the design, otherwise Sophea's. */
-  function l2QuestionsOf(user) {
+  /** The admin's lists for a level (the built-in ones in the demo): [[{ key, text }] × pick]. */
+  const slotsFor = (level) => R.defaultSlots(level);
+
+  /**
+   * The 5 lines a person sends at a level: Dara picks choice 1 of each list; Sophea choice 3 at Level 1
+   * (choice 2 of list 1 reads like Dara's own written line) and choice 2 at Level 2.
+   */
+  function linesOf(user, level) {
     const lang = user.lang === 'km' ? 'km' : 'en';
-    const [keys, written] = user.id === DARA ? [DARA_L2_KEYS, DARA_L2] : [SOPHEA_L2_KEYS, SOPHEA_L2];
-    return [...keys.map((k, i) => bankQ(2, k, i + 1, lang)), ...written.map((w, j) => writtenQ(keys.length + j + 1, w, lang))];
+    const choice = user.id === DARA ? 0 : level === 1 ? 2 : 1;
+    const picks = slotsFor(level).map((list) => list[choice].key);
+    const written = level === 1
+      ? [user.id === DARA ? bankTr((l) => R.questionText(1, Q_NOISY, l)) : SOPHEA_L1]
+      : (user.id === DARA ? DARA_L2 : SOPHEA_L2);
+    return [...picks.map((k, i) => bankQ(level, k, i + 1, lang)), ...written.map((w, j) => writtenQ(picks.length + j + 1, w, lang))];
   }
 
-  /** What a person answers to one Level 2 question (by key, by the written text, else a friendly line). */
+  /** What a person replies to one Level 2 line (by key, by the written text, else a friendly line). */
   function answerTextFor(q, i) {
     if (q.source === 'system' && ANSWERS[q.key]) return ANSWERS[q.key];
     const norm = (s) => String(s ?? '').trim().toLowerCase();
@@ -356,12 +375,16 @@
     return known ? ANSWERS[known.answer] : GENERIC_ANSWERS[i % GENERIC_ANSWERS.length];
   }
 
-  function answerSet(set, user, at) {
+  /** `user`'s reply to line `q` (the i-th) of a set. */
+  function botReply(set, q, i, user, at) {
     const lang = user.lang === 'km' ? 'km' : 'en';
-    set.answers = set.questions.map((q, i) => (set.level === 1
-      ? l1Answer(q.n, L1_REPLIES[i % L1_REPLIES.length], user.lang, at)
-      : l2Answer(q.n, answerTextFor(q, i), lang, at)));
-    set.completedAt = at;
+    return set.level === 1 ? l1Answer(q.n, L1_REPLIES[i % L1_REPLIES.length], user.lang, at) : l2Answer(q.n, answerTextFor(q, i), lang, at);
+  }
+
+  /** The first `count` lines of a set get `user`'s replies; all 5 = complete. */
+  function replySet(set, user, count, at) {
+    set.answers = set.questions.slice(0, count).map((q, i) => botReply(set, q, i, user, at));
+    if (count >= set.questions.length) set.completedAt = at;
   }
 
   function build() {
@@ -371,15 +394,11 @@
 
     if (SC.stage) {
       const st = SC.stage;
-      const order = ['l1_ask', 'l1_answer', 'l2_wait', 'l2_open', 'l3_wait', 'l3_open'];
-      const past = (s) => order.indexOf(st) > order.indexOf(s);
-      const at = (s) => order.indexOf(st) >= order.indexOf(s);
-      const dara = W.users.get(DARA);
-      const sophea = W.users.get(SOPHEA);
       const created = now - 3 * DAY;
+      const sets = SC.sets || {};
       const pair = {
         id: PAIR, key: [DARA, SOPHEA].sort().join('|'), a: DARA, b: SOPHEA, members: [DARA, SOPHEA],
-        level: STAGE_LEVEL[st] === 3 ? 3 : st === 'l2_open' || st === 'l3_wait' ? 2 : 1, stage: st,
+        level: R.stageOpenLevel(st), stage: st, startedAt: null,
         l2OpensAt: null, l3OpensAt: null, remind: {}, opened: { [DARA]: iso(created) }, lastChat: null,
         createdAt: iso(created), updatedAt: iso(created),
       };
@@ -387,33 +406,35 @@
       W.seq.pair = 1;
       W.chats.set(PAIR, []);
 
-      // Level 1: Dara asked Sophea (4 from the bank + his own "Is it noisy where you are?").
-      if (at('l1_answer')) {
-        const qs = [...L1_KEYS.map((k, i) => bankQ(1, k, i + 1, 'en')),
-          writtenQ(5, bankTr((l) => R.questionText(1, Q_NOISY, l)), 'en')];
-        const s1 = newSet(PAIR, 1, DARA, SOPHEA, qs, iso(created + 3600e3));
-        pair.updatedAt = s1.sentAt;
-        if (at('l2_wait')) {
-          // s7: the wait began 27 s ago; later scenarios: Level 2 opened two days ago.
-          const done = st === 'l2_wait' ? now - (DAY - SC.opensIn) : now - 2 * DAY - 3600e3;
-          answerSet(s1, sophea, iso(done));
-          pair.l2OpensAt = st === 'l2_wait' && FAST ? iso(now + 10e3) : iso(done + DAY);
-          pair.updatedAt = iso(done);
-        }
+      // Level 1, then Level 2: each person's set, sent and replied to as the scenario says. Times run
+      // forward from three days ago; a wait that is on now ends `opensIn` after it began.
+      let t = created + 3600e3;
+      const add = (level, from, to) => {
+        const n = sets[`${level}${from === DARA ? 'd' : 's'}`];
+        if (n === undefined) return null;
+        const set = newSet(PAIR, level, from, to, linesOf(W.users.get(from), level), iso(t));
+        t += 1800e3;
+        if (n > 0) replySet(set, W.users.get(to), n, iso(t));
+        t += 1800e3;
+        pair.startedAt ??= set.sentAt;
+        pair.updatedAt = iso(t);
+        return set;
+      };
+      add(1, DARA, SOPHEA);
+      add(1, SOPHEA, DARA);
+      const waitEnd = (doneAt) => (SC.opensIn && FAST ? iso(now + 10e3) : iso(doneAt + DAY));
+      if (st !== 'l1') {
+        // Level 1 done: the wait for Level 2 began 27 s ago (screen 7), or two days ago.
+        const done = st === 'l2_wait' ? now - (DAY - SC.opensIn) : now - 2 * DAY;
+        pair.l2OpensAt = st === 'l2_wait' ? waitEnd(done) : iso(done + DAY);
+        t = done + DAY + 3600e3;
       }
-      if (past('l2_open') || (st === 'l2_open' && SC.me === SOPHEA)) {
-        // Sophea asked first and Dara answered; then Dara asked her (design screen 9).
-        const sentS = now - DAY - 6 * 3600e3;
-        const s2 = newSet(PAIR, 2, SOPHEA, DARA, l2QuestionsOf(sophea), iso(sentS));
-        answerSet(s2, dara, iso(sentS + 3600e3));
-        const s3 = newSet(PAIR, 2, DARA, SOPHEA, l2QuestionsOf(dara), iso(sentS + 2 * 3600e3));
-        pair.updatedAt = s3.sentAt;
-        if (past('l2_open')) {
-          const done = st === 'l3_wait' ? now - (DAY - SC.opensIn) : now - DAY - 2 * 3600e3;
-          answerSet(s3, sophea, iso(done));
-          pair.l3OpensAt = st === 'l3_wait' && FAST ? iso(now + 10e3) : iso(done + DAY);
-          pair.updatedAt = iso(done);
-        }
+      add(2, SOPHEA, DARA);
+      add(2, DARA, SOPHEA);
+      if (st === 'l3_wait' || st === 'l3_open') {
+        const done = st === 'l3_wait' ? now - (DAY - SC.opensIn) : now - DAY - 2 * 3600e3;
+        pair.l3OpensAt = st === 'l3_wait' ? waitEnd(done) : iso(done + DAY);
+        pair.updatedAt = iso(done);
       }
       if (st === 'l3_open') {
         const log = W.chats.get(PAIR);
@@ -508,51 +529,31 @@
     return { photos, lockedPhotos };
   }
 
-  function nextStep(stage, out, inc) {
-    switch (stage) {
-      case 'l1_ask': return 'ask';
-      case 'l1_answer': return inc && !inc.completedAt ? 'answer' : 'wait_them';
-      case 'l2_wait':
-      case 'l3_wait': return 'wait_timer';
-      case 'l2_open': {
-        const ask = !out;
-        const answer = Boolean(inc && !inc.completedAt);
-        return ask && answer ? 'ask_answer' : ask ? 'ask' : answer ? 'answer' : 'wait_them';
-      }
-      default: return 'chat';
-    }
-  }
-
   const otherIdOf = (pair, u) => (pair.a === u.id ? pair.b : pair.a);
   const setsOf = (pair) => W.sets.filter((s) => s.pairId === pair.id);
   const findSet = (pair, level, from) => W.sets.find((s) => s.pairId === pair.id && s.level === level && s.from === from) ?? null;
+  /** A pair nobody has sent anything in yet: only its opener sees it. */
+  const isDraft = (pair) => R.convStage(pair.stage) === 'l1' && !pair.startedAt;
 
   function pairView(pair, u) {
     settle(pair);
-    const draft = pair.stage === 'l1_ask';
+    const draft = isDraft(pair);
     const role = draft || pair.a === u.id ? 'a' : 'b';
     const otherId = otherIdOf(pair, u);
     const other = W.users.get(otherId);
-    const level = STAGE_LEVEL[pair.stage] ?? 1;
-    const out = level < 3 ? findSet(pair, level, u.id) : null;
-    const inc = level < 3 ? findSet(pair, level, otherId) : null;
-    const status = (s) => ({ sent: Boolean(s), answered: Boolean(s?.completedAt) });
-    const received = (s) => ({ received: Boolean(s), answered: Boolean(s?.completedAt) });
-    let myOutgoing = null;
-    let myIncoming = null;
-    if (level === 1) {
-      if (pair.stage === 'l1_ask' || role === 'a') myOutgoing = status(out);
-      if (pair.stage !== 'l1_ask' && role === 'b') myIncoming = received(inc);
-    } else if (level === 2) {
-      myOutgoing = status(out);
-      myIncoming = received(inc);
-    }
-    const sets = setsOf(pair);
-    const answeredIn = (list) => list.reduce((n, s) => n + (s.answers?.length ?? 0), 0);
+    const stage = R.convStage(pair.stage);
+    const frozen = !other || Boolean(other.blocked);
+    const lvl = R.openSetLevel(stage);
+    const cur = R.currentSetLevel(stage);
+    const next = R.nextStep({ stage, mine: lvl ? findSet(pair, lvl, u.id) : null, theirs: lvl ? findSet(pair, lvl, otherId) : null, frozen });
+    const lastFrom = pair.lastChat ? (pair.lastChat.from === u.id ? 'me' : 'them') : null;
+    const mine = cur ? findSet(pair, cur, u.id) : null;
+    const theirs = cur ? findSet(pair, cur, otherId) : null;
+    const replies = (level) => setsOf(pair).filter((s) => s.level === level).reduce((n, s) => n + R.repliedCount(s), 0);
     return {
       id: pair.id,
-      stage: pair.stage,
-      level: pair.level ?? level,
+      stage,
+      level: pair.level ?? R.stageOpenLevel(stage),
       role,
       other: other
         ? { id: other.id, name: other.name, gender: other.gender ?? null, lang: other.lang ?? 'en', photo: mainPhoto(other) }
@@ -560,19 +561,17 @@
       l2OpensAt: pair.l2OpensAt ?? null,
       l3OpensAt: pair.l3OpensAt ?? null,
       remind: Boolean(pair.remind?.[u.id]),
-      next: !other || other.blocked ? 'frozen' : nextStep(pair.stage, out, inc),
-      myOutgoing,
-      myIncoming,
-      recap: {
-        l1: { answered: answeredIn(sets.filter((s) => s.level === 1)), total: 5 },
-        l2: { answered: answeredIn(sets.filter((s) => s.level === 2)), total: 10 },
-      },
-      lastFrom: pair.lastChat ? (pair.lastChat.from === u.id ? 'me' : 'them') : null,
+      next,
+      turn: !frozen && R.isMyTurn(next, lastFrom),
+      myOutgoing: cur ? { level: cur, sent: Boolean(mine), answered: Boolean(mine?.completedAt), replied: R.repliedCount(mine), total: 5 } : null,
+      myIncoming: cur ? { level: cur, received: Boolean(theirs), answered: Boolean(theirs?.completedAt), replied: R.repliedCount(theirs), total: 5 } : null,
+      recap: { l1: { answered: replies(1), total: 10 }, l2: { answered: replies(2), total: 10 } },
+      lastFrom,
       updatedAt: draft ? pair.opened?.[u.id] ?? pair.createdAt : pair.updatedAt,
     };
   }
 
-  const hiddenFrom = (pair, u) => pair.stage === 'l1_ask' && pair.a !== u.id && !pair.opened?.[u.id];
+  const hiddenFrom = (pair, u) => isDraft(pair) && pair.a !== u.id && !pair.opened?.[u.id];
 
   /** l2_wait → l2_open and l3_wait → l3_open once their time has come (lazily, like the server). */
   function settle(pair) {
@@ -715,46 +714,62 @@
 
   const later = (fn, ms) => setTimeout(() => { try { fn(); } catch (e) { console.warn('[30da demo]', e); } }, ms);
 
-  function l2Done(pair) {
-    if (pair.stage !== 'l2_open') return;
-    const done = setsOf(pair).filter((s) => s.level === 2 && s.completedAt).length;
-    const at = nowIso();
-    if (done >= 2) Object.assign(pair, { stage: 'l3_wait', l3OpensAt: iso(Date.now() + WAIT_MS), updatedAt: at });
-  }
-
-  /** After I act, the other person answers, sends their Level 2 set or replies in the chat. */
-  function botAfterL1(pair, u) {
-    later(() => {
-      const set = findSet(pair, 1, u.id);
-      if (pair.stage !== 'l1_answer' || !set || set.completedAt) return;
-      const at = nowIso();
-      answerSet(set, W.users.get(otherIdOf(pair, u)), at);
+  /** A set got its last reply: when both sets of its level are complete, the level is done and the next one waits. */
+  function onSetComplete(pair, set) {
+    const back = findSet(pair, set.level, set.to);
+    if (!R.levelComplete(set, back)) return;
+    const at = set.completedAt;
+    if (set.level === 1 && R.convStage(pair.stage) === 'l1') {
       Object.assign(pair, { stage: 'l2_wait', l2OpensAt: iso(Date.now() + WAIT_MS), updatedAt: at });
-    }, BOT_MS);
+    } else if (set.level === 2 && pair.stage === 'l2_open') {
+      Object.assign(pair, { stage: 'l3_wait', l3OpensAt: iso(Date.now() + WAIT_MS), updatedAt: at });
+    }
   }
 
-  function botStepL2(pair, u) {
-    settle(pair);
-    if (pair.stage !== 'l2_open') return;
+  /** One reply saved into a set (replacing that line's reply); the 5th completes it. */
+  function putReply(pair, set, reply) {
+    set.answers = R.withReply(set.answers, reply);
+    pair.updatedAt = reply.at;
+    if (!set.completedAt && R.allReplied(set)) {
+      set.completedAt = reply.at;
+      onSetComplete(pair, set);
+    }
+  }
+
+  /**
+   * The other (simulated) person, one step at a time after I act: reply to the next line of my set, or
+   * send their own 5 for the open level when they have not yet (after a couple of replies, so the
+   * screen shows "Sophea replied 2 of 5" first).
+   */
+  const botTimers = new Map(); // pairId → timer
+  function botTick(pair, u) {
+    if (botTimers.has(pair.id)) return;
     const other = W.users.get(otherIdOf(pair, u));
     if (!other) return;
-    const mine = findSet(pair, 2, u.id);
-    if (!findSet(pair, 2, other.id)) {
-      later(() => {
+    botTimers.set(pair.id, setTimeout(() => {
+      botTimers.delete(pair.id);
+      try {
         settle(pair);
-        if (pair.stage !== 'l2_open' || findSet(pair, 2, other.id)) return;
-        newSet(pair.id, 2, other.id, u.id, l2QuestionsOf(other), nowIso());
-        pair.updatedAt = nowIso();
-        botStepL2(pair, u);
-      }, BOT_MS);
-    } else if (mine && !mine.completedAt) {
-      later(() => {
-        if (pair.stage !== 'l2_open' || mine.completedAt) return;
-        answerSet(mine, other, nowIso());
-        pair.updatedAt = nowIso();
-        l2Done(pair);
-      }, BOT_MS);
-    }
+        const lvl = R.openSetLevel(pair.stage);
+        if (!lvl) return;
+        const mine = findSet(pair, lvl, u.id);
+        const theirs = findSet(pair, lvl, other.id);
+        const replied = R.repliedCount(mine);
+        const at = nowIso();
+        if (!theirs && (!mine || replied >= 2 || mine.completedAt)) {
+          newSet(pair.id, lvl, other.id, u.id, linesOf(other, lvl), at);
+          pair.updatedAt = at;
+        } else if (mine && !mine.completedAt) {
+          const i = mine.questions.findIndex((q) => !mine.answers.some((a) => a.n === q.n));
+          if (i >= 0) putReply(pair, mine, botReply(mine, mine.questions[i], i, other, at));
+        } else {
+          return;
+        }
+        botTick(pair, u); // more to do: keep going
+      } catch (e) {
+        console.warn('[30da demo]', e);
+      }
+    }, BOT_MS));
   }
 
   const replies = new Map(); // pairId → how many replies so far
@@ -976,7 +991,7 @@
   function heartbeat() {
     const u = me();
     const views = visiblePairs(u).map((p) => pairView(p, u)).sort((x, y) => String(y.updatedAt).localeCompare(String(x.updatedAt)));
-    const actions = views.filter((v) => ['ask', 'answer', 'ask_answer'].includes(v.next) || (v.next === 'chat' && v.lastFrom === 'them'));
+    const actions = views.filter((v) => v.turn);
     return { actions, notices: [] };
   }
 
@@ -1032,7 +1047,7 @@
     if (!pair) {
       const at = nowIso();
       pair = {
-        id: nextId('pair', 'P-'), key, a: u.id, b: to, members: [u.id, to], level: 1, stage: 'l1_ask',
+        id: nextId('pair', 'P-'), key, a: u.id, b: to, members: [u.id, to], level: 1, stage: 'l1', startedAt: null,
         l2OpensAt: null, l3OpensAt: null, remind: {}, opened: { [u.id]: at }, lastChat: null, createdAt: at, updatedAt: at,
       };
       W.pairs.push(pair);
@@ -1053,14 +1068,17 @@
     return { pair: pairView(pairFor(u, params[0]).pair, u) };
   }
 
+  /** [{ n, title, options:[{ key, text }] }] in `lang`: the lists people pick from (built-in, no topics). */
+  const slotsView = (level, lang) => slotsFor(level).map((list, i) => ({
+    n: i + 1, title: null, options: list.map((c) => ({ key: c.key, text: c.text[lang] || c.text.en })),
+  }));
+
   function questions({ url }) {
     const level = levelParam(url.searchParams.get('level'));
     const lang = me().lang ?? 'en';
     const { pick, write } = R.LEVEL_RULES[level];
-    return {
-      level, pick, write,
-      system: R.SYSTEM_QUESTIONS[level].map((q) => ({ key: q.key, text: R.questionText(level, q.key, lang) ?? q.text.en })),
-    };
+    const slots = slotsView(level, lang);
+    return { level, pick, write, slots, system: R.flattenSlots(slots.map((x) => x.options)) };
   }
 
   function sendSet(ctx) {
@@ -1068,8 +1086,8 @@
     const u = me();
     const level = levelParam(body.level);
     const { pair, other } = pairFor(u, params[0], { write: true });
-    if (level === 1 && pair.stage !== 'l1_ask') throw notYourTurn();
-    if (level === 2 && (pair.stage !== 'l2_open' || findSet(pair, 2, u.id))) throw notYourTurn();
+    // Either person sends ONE set per level, while that level is open, in any order.
+    if (R.openSetLevel(pair.stage) !== level || findSet(pair, level, u.id)) throw notYourTurn();
 
     const list = Array.isArray(body.questions) ? body.questions : [];
     const written = list.map((q) => (q?.source === 'written' ? String(q.text ?? '').trim() : null));
@@ -1078,13 +1096,12 @@
 
     const { pick, write } = R.LEVEL_RULES[level];
     if (list.length !== pick + write) throw invalid(`Send exactly ${pick + write} lines.`, { index: Math.min(list.length, pick + write - 1) });
-    const keys = new Set();
+    const slots = slotsFor(level);
     let picked = 0;
     list.forEach((q, i) => {
       if (q?.source === 'system') {
-        if (!R.SYSTEM_QUESTIONS[level].some((x) => x.key === q.key)) throw invalid('Pick a line from the list.', { index: i });
-        if (keys.has(q.key)) throw invalid('That line is already in your list.', { index: i });
-        keys.add(q.key);
+        if (picked >= pick) throw invalid(`Pick ${pick} and write ${write}.`, { index: i });
+        if (!slots[picked].some((c) => c.key === q.key)) throw invalid(`Pick line ${picked + 1} from its own list.`, { index: i, slot: picked + 1 });
         picked++;
       } else if (q?.source === 'written') {
         const r = R.checkWrittenQuestion(String(q.text ?? '').trim(), level);
@@ -1096,20 +1113,17 @@
     if (picked !== pick) throw invalid(`Pick ${pick} and write ${write}.`, { index: 0 });
 
     const lang = u.lang ?? 'en';
+    let k = 0;
     const qs = list.map((q, i) => (q.source === 'system'
-      ? bankQ(level, q.key, i + 1, lang)
+      ? { ...bankQ(level, q.key, i + 1, lang), slot: ++k }
       : writtenQ(i + 1, { [lang]: String(q.text).trim() }, lang)));
     const at = nowIso();
     newSet(pair.id, level, u.id, other.id, qs, at);
-    if (level === 1) {
-      Object.assign(pair, { stage: 'l1_answer', a: u.id, b: other.id, members: [u.id, other.id], updatedAt: at });
-      botAfterL1(pair, u);
-    } else {
-      pair.updatedAt = at;
-      botStepL2(pair, u);
-    }
+    if (!pair.startedAt) Object.assign(pair, { stage: 'l1', startedAt: at, a: u.id, b: other.id, members: [u.id, other.id] });
+    pair.updatedAt = at;
+    botTick(pair, u);
     ctx.status = 201;
-    return { pair: pairView(pair, u) };
+    return { pair: pairView(pair, u), conversation: conversationOf(pair, u) };
   }
 
   function questionView(q, level, lang) {
@@ -1134,7 +1148,7 @@
   function setFor({ url, params }, direction) {
     const u = me();
     const { pair, other } = pairFor(u, params[0]);
-    const level = url.searchParams.has('level') ? levelParam(url.searchParams.get('level')) : Math.min(2, STAGE_LEVEL[pair.stage]);
+    const level = url.searchParams.has('level') ? levelParam(url.searchParams.get('level')) : R.currentSetLevel(pair.stage) ?? 2;
     const set = W.sets.find((s) => s.pairId === pair.id && s.level === level && (direction === 'in' ? s.to === u.id : s.from === u.id));
     if (!set) throw fail(404, 'no_set', direction === 'in' ? 'Nothing for you to reply to yet.' : 'You have not started this conversation yet.');
     const lang = u.lang ?? 'en';
@@ -1156,14 +1170,21 @@
     };
   }
 
+  /** The set sent to `u` at `level` that `u` may still reply to (the level open, the set not complete). */
+  function replyableSet(pair, u, level) {
+    if (R.openSetLevel(pair.stage) !== level) throw notYourTurn();
+    const set = W.sets.find((s) => s.pairId === pair.id && s.level === level && s.to === u.id);
+    if (!set) throw fail(409, 'not_your_turn', 'There is nothing to reply to yet.');
+    if (set.completedAt) throw fail(409, 'not_your_turn', 'Your replies to these lines are already sent.');
+    return set;
+  }
+
+  /** POST /pairs/:id/answers — all replies at once (older screens). */
   function sendAnswers({ body, params }) {
     const u = me();
     const level = levelParam(body.level);
     const { pair, other } = pairFor(u, params[0], { write: true });
-    const set = W.sets.find((s) => s.pairId === pair.id && s.level === level && s.to === u.id);
-    if (!set || set.completedAt) throw notYourTurn();
-    if (pair.stage !== (level === 1 ? 'l1_answer' : 'l2_open')) throw notYourTurn();
-
+    const set = replyableSet(pair, u, level);
     const list = Array.isArray(body.answers) ? body.answers : [];
     if (level === 2) {
       const texts = list.map((a) => String(a?.text ?? '').trim());
@@ -1186,22 +1207,111 @@
         if (!r.ok) throw invalid(ERROR_TEXT[r.error] || 'Check this reply.', { index: i, reason: r.error });
       }
     });
-
     const lang = u.lang ?? 'en';
     const at = nowIso();
-    set.answers = [...list].sort((x, y) => Number(x.n) - Number(y.n)).map((a) => (level === 1
-      ? l1Answer(Number(a.n), a.key, lang, at)
-      : l2Answer(Number(a.n), { [lang]: String(a.text).trim() }, lang, at)));
-    set.completedAt = at;
-
-    if (level === 1) {
-      Object.assign(pair, { stage: 'l2_wait', l2OpensAt: iso(Date.now() + WAIT_MS), updatedAt: at });
-    } else {
-      pair.updatedAt = at;
-      l2Done(pair);
-      botStepL2(pair, u);
+    for (const a of [...list].sort((x, y) => Number(x.n) - Number(y.n))) {
+      putReply(pair, set, level === 1 ? l1Answer(Number(a.n), a.key, lang, at) : l2Answer(Number(a.n), { [lang]: String(a.text).trim() }, lang, at));
     }
-    return { pair: pairView(pair, u) };
+    botTick(pair, u);
+    return { pair: pairView(pair, u), conversation: conversationOf(pair, u) };
+  }
+
+  // ---------------------------------------------------------------- the conversation (as the server builds it)
+
+  function replyView(a, level, lang) {
+    if (!a) return null;
+    if (level === 1 || a.key) {
+      return { key: a.key ?? null, text: R.answerText(a.key, lang) ?? '', original: R.answerText(a.key, a.lang) ?? '', translated: a.lang !== lang, at: a.at ?? null };
+    }
+    const tr = a.lang === lang ? null : a.translations?.[lang] ?? null;
+    return { key: null, text: tr ?? a.text, original: a.text, translated: Boolean(tr), at: a.at ?? null };
+  }
+
+  function setView(set, u, lang, open) {
+    const level = set.level;
+    const from = set.from === u.id ? 'me' : 'them';
+    const lines = [...set.questions].sort((x, y) => x.n - y.n).map((q) => {
+      const v = questionView(q, level, lang);
+      const line = {
+        n: v.n, source: v.source, topic: null, text: v.text, original: v.original, originalLang: v.originalLang, translated: v.translated,
+        reply: replyView(set.answers.find((a) => a.n === q.n), level, lang),
+      };
+      if (level === 1 && from === 'them') line.options = R.l1Answers(q.source).map((o) => ({ key: o.key, text: o.text[lang] || o.text.en }));
+      return line;
+    });
+    return {
+      id: set.id, level, from, sentAt: set.sentAt, completedAt: set.completedAt ?? null,
+      replied: R.repliedCount(set), total: lines.length, canReply: from === 'them' && open && !set.completedAt, lines,
+    };
+  }
+
+  function conversationOf(pair, u) {
+    settle(pair);
+    const lang = u.lang ?? 'en';
+    const otherId = otherIdOf(pair, u);
+    const other = W.users.get(otherId) ?? null;
+    const stage = R.convStage(pair.stage);
+    const frozen = !other || Boolean(other.blocked);
+    const levels = [1, 2].map((level) => {
+      const state = R.levelState(level, stage);
+      const view = (s) => (s ? setView(s, u, lang, state === 'open' && !frozen) : null);
+      return {
+        level, state, opensAt: level === 2 ? pair.l2OpensAt ?? null : null, rules: R.setRules(level),
+        mine: view(findSet(pair, level, u.id)), theirs: view(findSet(pair, level, otherId)),
+      };
+    });
+    const lvl = R.openSetLevel(stage);
+    const canSend = !frozen && lvl && !findSet(pair, lvl, u.id) ? { level: lvl, ...R.setRules(lvl), slots: slotsView(lvl, lang) } : null;
+    const view = pairView(pair, u);
+    const seen = other ? photosFor(other, { openLevel: R.stageOpenLevel(stage) }) : { photos: [], lockedPhotos: [] };
+    return {
+      pair: view,
+      other: other
+        ? { id: other.id, name: other.name, gender: other.gender ?? null, lang: other.lang ?? 'en', photos: seen.photos, lockedPhotos: seen.lockedPhotos }
+        : { id: otherId, name: '', gender: null, lang: 'en', photos: [], lockedPhotos: [] },
+      levels,
+      canSend,
+      chat: { open: stage === 'l3_open', opensAt: pair.l3OpensAt ?? null, phoneNeeded: !u.verified?.phone },
+      next: view.next,
+    };
+  }
+
+  function getConversation({ params }) {
+    const u = me();
+    return conversationOf(pairFor(u, params[0]).pair, u);
+  }
+
+  /** PUT /pairs/:id/replies { level, n, key } | { level, n, text } — one reply, changeable until all 5 are in. */
+  function saveReply({ body, params }) {
+    const u = me();
+    const level = levelParam(body.level);
+    const { pair, other } = pairFor(u, params[0], { write: true });
+    const set = replyableSet(pair, u, level);
+    const n = Number(body.n);
+    const q = set.questions.find((x) => x.n === n);
+    if (!q) throw invalid('Reply to one of the lines.', { field: 'n', n: body.n ?? null });
+    const lang = u.lang ?? 'en';
+    const at = nowIso();
+    let reply;
+    if (level === 1) {
+      if (!R.l1Answers(q.source).some((x) => x.key === body.key)) {
+        throw invalid(q.source === 'written' ? 'Reply to this line with Yes or No.' : 'Pick one of the replies.', { field: 'key', n });
+      }
+      reply = l1Answer(n, body.key, lang, at);
+    } else {
+      const text = String(body.text ?? '').trim();
+      const c = R.findContactDetails(text);
+      if (!c.ok) {
+        recordStopped(u, pair, other, { text, level, kind: 'answer', hits: c.hits, reason: c.reason });
+        throw fail(422, 'contact_detail', c.reason || 'Contact details are not allowed.', { n, hits: c.hits, reason: c.reason });
+      }
+      const r = R.checkWrittenAnswer(text);
+      if (!r.ok) throw invalid(ERROR_TEXT[r.error] || 'Check this reply.', { field: 'text', n, reason: r.error });
+      reply = l2Answer(n, { [lang]: text }, lang, at);
+    }
+    putReply(pair, set, reply);
+    botTick(pair, u);
+    return { conversation: conversationOf(pair, u) };
   }
 
   function remind({ body, params }) {
@@ -1286,6 +1396,8 @@
     ['POST', /^\/pairs$/, createPair],
     ['GET', /^\/pairs$/, listPairs],
     ['GET', /^\/pairs\/(P-\d+)$/, getPair],
+    ['GET', /^\/pairs\/(P-\d+)\/conversation$/, getConversation],
+    ['PUT', /^\/pairs\/(P-\d+)\/replies$/, saveReply],
     ['GET', /^\/questions$/, questions],
     ['POST', /^\/pairs\/(P-\d+)\/sets$/, sendSet],
     ['GET', /^\/pairs\/(P-\d+)\/incoming$/, (ctx) => setFor(ctx, 'in')],
@@ -1354,10 +1466,11 @@
 
   // ------------------------------------------------------------------ design state: text already typed
 
-  // Screen 5 shows Dara's own question typed in; screen 9 shows 2 of Sophea's 5 answers written.
+  // Screen 5 shows Dara's own Level 1 line typed in; screen 8 his two Level 2 lines (the composer of the
+  // conversation screen). Screen 9's replies so far are part of the world itself.
   const PREFILL = {
-    5: { hash: `#/ask/${PAIR}/1`, selector: '.level-ask .qlist input.input', values: ['Is it noisy where you are?'] },
-    9: { hash: `#/answer/${PAIR}/2`, selector: '.level-answer textarea', values: ['A small park and lots of motorbikes.', 'Sunny and very hot today.'] },
+    5: { hash: `#${CONV}`, selector: '.conv-compose .qlist input.input', values: ['Is it noisy where you are?'] },
+    8: { hash: `#${CONV}`, selector: '.conv-compose .qlist input.input', values: [DARA_L2[0].en, DARA_L2[1].en] },
   };
   const pre = PREFILL[S];
   if (pre) {

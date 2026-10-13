@@ -521,35 +521,35 @@ export function modal(content, { sheet = false, dismissible = true, label = '', 
   return handle;
 }
 
-/** 1 for l1_*, 2 for l2_*, 3 for l3_* — the level the stage belongs to (wait stages: the level about to open). */
+/** 1 for l1 / l1_*, 2 for l2_*, 3 for l3_* — the level the stage belongs to (wait stages: the level about to open). */
 export function stageLevel(pair) {
   const s = String(pair?.stage || '');
   return s.startsWith('l3') ? 3 : s.startsWith('l2') ? 2 : 1;
 }
 
-/** Where a pair's `next` step lives. */
+/**
+ * PairView.next in the conversation's words: 'send' (I can send my 5), 'reply' (their lines wait for my
+ * replies), 'send_reply' (both), 'wait_them', 'wait_timer', 'chat', 'frozen'. Older servers said
+ * 'ask' / 'answer' / 'ask_answer'.
+ */
+export function nextKind(next) {
+  return { ask: 'send', answer: 'reply', ask_answer: 'send_reply' }[next] || next || null;
+}
+
+/** Every pair lives on one conversation screen (#/c/:pairId): sending, replying, waiting and the chat. */
 export function pairRoute(pair) {
-  if (!pair) return '/nearby';
-  const id = encodeURIComponent(pair.id);
-  const lvl = stageLevel(pair);
-  switch (pair.next) {
-    case 'ask': return `/ask/${id}/${lvl}`;
-    case 'answer': return `/answer/${id}/${lvl}`;
-    case 'ask_answer': return pair.myOutgoing?.sent ? `/answer/${id}/${lvl}` : `/ask/${id}/${lvl}`;
-    case 'wait_timer': return `/wait/${id}/${lvl}`;
-    case 'chat': return `/chat/${id}`;
-    default: return pair.other?.id ? `/person/${encodeURIComponent(pair.other.id)}` : '/nearby';
-  }
+  if (!pair?.id) return '/nearby';
+  return `/c/${encodeURIComponent(pair.id)}`;
 }
 
 /** One short line for a pair that needs me ("Dara started a conversation", "Level 2 is open — your turn", "Chat with Sophea"). */
 export function actionLabel(pair) {
   const name = pair?.other?.name || '';
   const lvl = stageLevel(pair);
-  switch (pair?.next) {
-    case 'answer': return lvl >= 2 ? t('act_reply', { name }) : t('act_answer', { name });
-    case 'ask': return lvl >= 2 ? t('act_level_open', { n: lvl }) : t('act_ask', { name });
-    case 'ask_answer': return t('act_level_open', { n: lvl });
+  switch (nextKind(pair?.next)) {
+    case 'reply': return lvl >= 2 ? t('act_reply', { name }) : t('act_answer', { name });
+    case 'send': return lvl >= 2 ? t('act_level_open', { n: lvl }) : t('act_ask', { name });
+    case 'send_reply': return lvl >= 2 ? t('act_level_open', { n: lvl }) : t('act_answer', { name });
     case 'chat': return t('act_chat', { name });
     case 'wait_timer': return t('act_level_soon', { n: lvl });
     case 'wait_them': return t('act_waiting', { name });

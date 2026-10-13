@@ -45,11 +45,15 @@ const AGES = {
   'U-10242': 37, 'U-10243': 40, 'U-10244': 49, 'U-10245': 43, 'U-10246': 32, 'U-10247': 58, 'U-10248': 52,
 };
 
-// The design's example questions, looked up by their English text.
+// The design's example lines (choice 1 of each list), looked up by their English text.
 const L1_EXAMPLES = [
   'Is it raining where you are?', 'Is it busy around you right now?', 'Are you outside right now?', 'Is it a quiet day for you?',
 ];
-const L2_EXAMPLES = ['What can you see from your window?', 'What is the weather like there?'];
+const L2_EXAMPLES = ['What can you see from your window?', 'What is the weather like there?', 'What is your favourite place near you?'];
+// Choice 2 of each Level 2 list, so the two people in a pair do not send the very same lines.
+const L2_SECOND = ['How did your morning start today?', 'What are your plans for this evening?', 'What is your favourite food?'];
+// Level 2 sets sent before it picked 3 had 2 picked + 3 written lines; P-3 keeps that shape (it still reads back).
+const L2_OLD = L2_EXAMPLES.slice(0, 2);
 const keyOf = (level, en, i) => (SYSTEM_QUESTIONS[level].find((q) => q.text.en === en) ?? SYSTEM_QUESTIONS[level][i]).key;
 
 // Hand-written lines: { <writer lang>: original, en, <reader lang> }.
@@ -94,6 +98,46 @@ const T = {
   sopheaRelax: { km: 'ខ្ញុំស្តាប់តន្ត្រី ហើយធ្វើម្ហូប។', en: 'I listen to music and cook.' },
   sopheaSeason: { km: 'រដូវត្រជាក់ នៅខែធ្នូ។', en: 'The cool season, in December.' },
   sopheaTrip: { km: 'ទៅកែប ហើយញ៉ាំក្តាម។', en: 'Going to Kep and eating crab.' },
+  // Level 1 + 2 both ways (owner's model 2026-10-13): each person sends their own 5 and replies to the other's.
+  visalRice: { km: 'តើអ្នកចូលចិត្តបាយឆាទេ?', en: 'Do you like fried rice?', zh: '你喜欢吃炒饭吗？' },
+  visalWindow: { km: 'ខ្ញុំឃើញផ្លូវ និងហាងកាហ្វេមួយ។', en: 'I see the road and a café.', zh: '我看到马路和一家咖啡店。' },
+  visalWeather: { km: 'ក្តៅ ហើយមានពពកបន្តិច។', en: 'Hot, with a few clouds.', zh: '很热，有一点云。' },
+  daraTea: { en: 'Do you drink tea in the morning?', km: 'តើអ្នកផឹកតែនៅពេលព្រឹកទេ?' },
+  sopheaMorning: { km: 'ខ្ញុំក្រោកពីព្រលឹម ហើយធ្វើបាយ។', en: 'I woke up early and made breakfast.' },
+  sopheaNight: { km: 'ញ៉ាំបាយជាមួយគ្រួសារ។', en: 'Dinner with my family.' },
+  sopheaFood: { km: 'សម្លម្ជូរ និងបាយក្តៅៗ។', en: 'Sour soup and hot rice.' },
+  jihoFood: { ko: '한국 음식 좋아하세요?', en: 'Do you like Korean food?', zh: '你喜欢韩国菜吗？' },
+  lingTea: { zh: '你喜欢喝茶吗？', en: 'Do you like tea?', ko: '차 좋아하세요?' },
+  rithyMarket: { km: 'តើអ្នកចូលចិត្តទៅផ្សាររាត្រីទេ?', en: 'Do you like going to the night market?' },
+  bophaBike: { km: 'តើអ្នកជិះកង់ទេ?', en: 'Do you ride a bicycle?' },
+  minjunCoffee: { ko: '커피 좋아하세요?', en: 'Do you like coffee?', km: 'តើអ្នកចូលចិត្តកាហ្វេទេ?' },
+  kanhaRain: { km: 'តើអ្នកចូលចិត្តភ្លៀងទេ?', en: 'Do you like the rain?', ko: '비 좋아하세요?' },
+  minjunWork: { ko: '요즘 일은 어때요?', en: 'How is work these days?', km: 'ការងារថ្មីៗនេះយ៉ាងម៉េចដែរ?' },
+  minjunSunday: { ko: '일요일에는 보통 뭐 해요?', en: 'What do you usually do on Sundays?', km: 'ជាធម្មតាអ្នកធ្វើអ្វីនៅថ្ងៃអាទិត្យ?' },
+  kanhaWindow: { km: 'ខ្ញុំឃើញដើមដូង និងផ្ទះអ្នកជិតខាង។', en: 'A coconut tree and my neighbour’s house.', ko: '야자나무와 이웃집이 보여요.' },
+  kanhaWeather: { km: 'ភ្លៀងតិចៗពេលល្ងាច។', en: 'Light rain in the evening.', ko: '저녁에 비가 조금 와요.' },
+  kanhaPlace: { km: 'ផ្សាររុស្ស៊ីនៅព្រឹកថ្ងៃអាទិត្យ។', en: 'The Russian Market on Sunday morning.', ko: '일요일 아침의 러시안 마켓이요.' },
+  kanhaWork: { km: 'រវល់ ប៉ុន្តែល្អ។', en: 'Busy, but good.', ko: '바쁘지만 좋아요.' },
+  kanhaSunday: { km: 'ទៅលេងម្ដាយខ្ញុំ។', en: 'I visit my mother.', ko: '어머니를 뵈러 가요.' },
+  kanhaAmok: { km: 'តើអ្នកធ្លាប់ញ៉ាំអាម៉ុកទេ?', en: 'Have you tried amok?', ko: '아목 먹어 봤어요?' },
+  kanhaHome: { km: 'តើអ្នកនឹកស្រុកកំណើតទេ?', en: 'Do you miss your home town?', ko: '고향이 그리워요?' },
+  minjunMorning: { ko: '운동하고 커피를 마셨어요.', en: 'I worked out and had coffee.', km: 'ខ្ញុំហាត់ប្រាណ ហើយផឹកកាហ្វេ។' },
+  minjunEvening: { ko: '친구들과 저녁을 먹을 거예요.', en: 'Dinner with friends.', km: 'ញ៉ាំអាហារពេលល្ងាចជាមួយមិត្តភក្តិ។' },
+  minjunFood: { ko: '김치찌개가 제일 좋아요.', en: 'Kimchi stew is my favourite.', km: 'ស៊ុបគីមឈីជាម្ហូបដែលខ្ញុំចូលចិត្តជាងគេ។' },
+  minjunAmok: { ko: '네, 정말 맛있었어요.', en: 'Yes, it was really good.', km: 'បាទ វាឆ្ងាញ់ណាស់។' },
+  minjunHome: { ko: '가끔요, 특히 겨울에요.', en: 'Sometimes, mostly in winter.', km: 'ពេលខ្លះ ជាពិសេសនៅរដូវរងា។' },
+  sakuraWalk: { ja: '散歩は好きですか？', en: 'Do you like walking?' },
+  jamesCats: { en: 'Do you like cats?', ja: '猫は好きですか？' },
+  sakuraBook: { ja: '最近読んだ本は何ですか？', en: 'What book did you read recently?' },
+  sakuraHome: { ja: 'どこの出身ですか？', en: 'Where are you from?' },
+  jamesWindow: { en: 'A busy street and a pagoda roof.', ja: 'にぎやかな通りとお寺の屋根です。' },
+  jamesWeekend: { en: 'What are you doing this weekend?', ja: '今週末は何をしますか？' },
+  jamesKhmer: { en: 'Are you learning any Khmer?', ja: 'クメール語を勉強していますか？' },
+  sakuraMorning: { ja: 'ヨガをしてからコーヒーを飲みました。', en: 'Yoga, then coffee.' },
+  sakuraEvening: { ja: '友だちと夕ご飯を食べます。', en: 'Dinner with a friend.' },
+  sakuraFood: { ja: 'お寿司とクメールカレーです。', en: 'Sushi and Khmer curry.' },
+  sakuraWeekend: { ja: '川沿いを散歩するつもりです。', en: 'A walk by the river, I think.' },
+  harutoSpicy: { ja: '辛い料理は好きですか？', en: 'Do you like spicy food?', km: 'តើអ្នកចូលចិត្តម្ហូបហឹរទេ?' },
   // A2 chat lines.
   linaCoffee: { km: 'តើអ្នកចូលចិត្តកាហ្វេដែរទេ?', en: 'Do you like coffee too?', zh: '你也喜欢咖啡吗？' },
   chenMornings: { zh: '喜欢，我每天早上都喝。', en: 'Yes, I drink it every morning.', km: 'ចូលចិត្ត ខ្ញុំផឹករាល់ព្រឹក។' },
@@ -121,103 +165,148 @@ export function buildDemo(now = Date.now()) {
   const langOf = (id) => users.find((u) => u._id === id).lang;
 
   let setSeq = 0;
-  let msgSeq = 0;
   const sets = [];
   const sysQ = (level, key, n, lang) => ({
-    n, source: 'system', key, text: questionText(level, key, lang), lang,
+    n, source: 'system', key, slot: n, text: questionText(level, key, lang), lang,
     translations: Object.fromEntries(LANGS.map((l) => [l, questionText(level, key, l)])),
   });
-  const writtenQ = (map, n, lang) => ({ n, source: 'written', key: null, text: map[lang], lang, translations: all(map) });
+  const writtenQ = (map, n, lang) => ({ n, source: 'written', key: null, text: map[lang] ?? map.en, lang, translations: all(map) });
+  const l1Reply = (n, key, lang, at) => ({
+    n, key, text: null, lang, translations: Object.fromEntries(LANGS.map((l) => [l, answerText(key, l)])), at,
+  });
+  const l2Reply = (n, map, lang, at) => ({ n, key: null, text: map[lang] ?? map.en, lang, translations: all(map), at });
 
-  function addSet({ pairId, level, from, to, written, answers = null, sentMin, doneMin = null }) {
+  /**
+   * One set of 5 lines from `from` to `to`, sent `sentMin` minutes ago. `sys` = the picked lines by their
+   * English text (default: the design's examples); `replies` = the receiver's replies to lines 1, 2, … in
+   * order (Level 1: option keys, Level 2: texts), one minute apart, the last one `replyMin` minutes ago.
+   * All 5 replies = complete (completedAt = the last reply); fewer = still replying.
+   */
+  function addSet({ pairId, level, from, to, sys, written, replies = [], sentMin, replyMin = null }) {
     const lang = langOf(from);
-    const answerLang = langOf(to);
-    const sys = level === 1 ? L1_EXAMPLES.map((en, i) => keyOf(1, en, i)) : L2_EXAMPLES.map((en, i) => keyOf(2, en, i));
-    const questions = [...sys.map((k, i) => sysQ(level, k, i + 1, lang)), ...written.map((m, i) => writtenQ(m, sys.length + i + 1, lang))];
+    const replyLang = langOf(to);
+    const picks = (sys ?? (level === 1 ? L1_EXAMPLES : L2_EXAMPLES)).map((en, i) => keyOf(level, en, i));
+    const questions = [...picks.map((k, i) => sysQ(level, k, i + 1, lang)), ...written.map((m, i) => writtenQ(m, picks.length + i + 1, lang))];
+    const answers = replies.map((r, i) => {
+      const at = ago(replyMin + (replies.length - 1 - i));
+      return level === 1 ? l1Reply(i + 1, r, replyLang, at) : l2Reply(i + 1, r, replyLang, at);
+    });
     const id = `S-${++setSeq}`;
     sets.push({
-      _id: id, id, pairId, level, from, to, questions,
-      answers: (answers || []).map((a, i) => (level === 1
-        ? { n: i + 1, key: a, text: null, lang: answerLang, translations: Object.fromEntries(LANGS.map((l) => [l, answerText(a, l)])), at: ago(doneMin) }
-        : { n: i + 1, key: null, text: a[answerLang], lang: answerLang, translations: all(a), at: ago(doneMin) })),
-      sentAt: ago(sentMin), completedAt: answers ? ago(doneMin) : null,
+      _id: id, id, pairId, level, from, to, questions, answers, sentAt: ago(sentMin),
+      completedAt: answers.length >= questions.length ? ago(replyMin) : null,
     });
   }
 
-  // P-1 Mei → Visal: Level 1 done, Level 2 open; Visal tried to share his Telegram.
-  addSet({ pairId: 'P-1', level: 1, from: 'U-10644', to: 'U-10418', written: [T.meiCoffee], answers: ['no', 'yes', 'yes', 'maybe', 'yes'], sentMin: 3000, doneMin: 2900 });
-  addSet({ pairId: 'P-1', level: 2, from: 'U-10644', to: 'U-10418', written: [T.meiWeekend, T.meiYears, T.meiFood], sentMin: 10 });
-  // P-2 Tom → Anna: Level 1 questions waiting for Anna.
+  // P-1 Mei ⇄ Visal · Level 2 open: Level 1 done both ways; Mei sent her Level 2 and Visal has replied 2 of 5
+  // (he tried to share his Telegram on the next one); Visal has not sent his yet.
+  addSet({ pairId: 'P-1', level: 1, from: 'U-10644', to: 'U-10418', written: [T.meiCoffee], replies: ['no', 'yes', 'yes', 'maybe', 'yes'], sentMin: 3000, replyMin: 2950 });
+  addSet({ pairId: 'P-1', level: 1, from: 'U-10418', to: 'U-10644', written: [T.visalRice], replies: ['yes', 'not_really', 'no', 'yes', 'yes'], sentMin: 2990, replyMin: 2900 });
+  addSet({ pairId: 'P-1', level: 2, from: 'U-10644', to: 'U-10418', written: [T.meiWeekend, T.meiYears], replies: [T.visalWindow, T.visalWeather], sentMin: 10, replyMin: 5 });
+  // P-2 Tom → Anna · Level 1: Tom sent his 5; Anna can reply and send her own.
   addSet({ pairId: 'P-2', level: 1, from: 'U-10507', to: 'U-10702', written: [T.tomNew], sentMin: 16 });
-  // P-3 Lina ↔ Chen: Level 3 chat; Lina reported Chen.
-  addSet({ pairId: 'P-3', level: 1, from: 'U-10735', to: 'U-10611', written: [T.linaWalks], answers: ['yes', 'ok', 'no', 'yes', 'yes'], sentMin: 7200, doneMin: 7100 });
-  addSet({ pairId: 'P-3', level: 2, from: 'U-10735', to: 'U-10611', written: [T.linaWork, T.linaFood, T.linaCame], answers: [T.chenWindow, T.chenWeather, T.chenWork, T.chenFood, T.chenCame], sentMin: 5600, doneMin: 5300 });
-  addSet({ pairId: 'P-3', level: 2, from: 'U-10611', to: 'U-10735', written: [T.chenWeekend, T.chenMusic, T.chenMorning], answers: [T.linaWindow, T.linaWeather, T.linaWeekend, T.linaMusic, T.linaMorning], sentMin: 5550, doneMin: 4400 });
-  // P-5 Sophea ↔ Dara: Level 3 open, nothing said yet.
-  addSet({ pairId: 'P-5', level: 1, from: 'U-10231', to: 'U-10232', written: [T.sopheaDogs], answers: ['yes', 'not_really', 'yes', 'ok', 'yes'], sentMin: 8000, doneMin: 7900 });
-  addSet({ pairId: 'P-5', level: 2, from: 'U-10231', to: 'U-10232', written: [T.sopheaCook, T.sopheaPlace, T.sopheaEvening], answers: [T.daraWindow, T.daraWeather, T.daraCook, T.daraPlace, T.daraEvening], sentMin: 6400, doneMin: 6000 });
-  addSet({ pairId: 'P-5', level: 2, from: 'U-10232', to: 'U-10231', written: [T.daraRelax, T.daraSeason, T.daraTrip], answers: [T.sopheaWindow, T.sopheaWeather, T.sopheaRelax, T.sopheaSeason, T.sopheaTrip], sentMin: 6300, doneMin: 5900 });
+  // P-3 Lina ⇄ Chen · Level 3 chat (Lina reported Chen). An older pair: Level 1 went one way only, and its
+  // Level 2 sets have the old shape (2 picked + 3 written). Both still read back.
+  addSet({ pairId: 'P-3', level: 1, from: 'U-10735', to: 'U-10611', written: [T.linaWalks], replies: ['yes', 'ok', 'no', 'yes', 'yes'], sentMin: 7200, replyMin: 7100 });
+  addSet({ pairId: 'P-3', level: 2, from: 'U-10735', to: 'U-10611', sys: L2_OLD, written: [T.linaWork, T.linaFood, T.linaCame], replies: [T.chenWindow, T.chenWeather, T.chenWork, T.chenFood, T.chenCame], sentMin: 5600, replyMin: 5300 });
+  addSet({ pairId: 'P-3', level: 2, from: 'U-10611', to: 'U-10735', sys: L2_OLD, written: [T.chenWeekend, T.chenMusic, T.chenMorning], replies: [T.linaWindow, T.linaWeather, T.linaWeekend, T.linaMusic, T.linaMorning], sentMin: 5550, replyMin: 4400 });
+  // P-5 Sophea ⇄ Dara · Level 3 open, nothing said yet; Level 1 and Level 2 both ways above it.
+  addSet({ pairId: 'P-5', level: 1, from: 'U-10231', to: 'U-10232', written: [T.sopheaDogs], replies: ['yes', 'not_really', 'yes', 'maybe', 'yes'], sentMin: 8000, replyMin: 7950 });
+  addSet({ pairId: 'P-5', level: 1, from: 'U-10232', to: 'U-10231', written: [T.daraTea], replies: ['no', 'yes', 'maybe', 'yes', 'no'], sentMin: 7990, replyMin: 7900 });
+  addSet({ pairId: 'P-5', level: 2, from: 'U-10231', to: 'U-10232', written: [T.sopheaCook, T.sopheaEvening], replies: [T.daraWindow, T.daraWeather, T.daraPlace, T.daraCook, T.daraEvening], sentMin: 6400, replyMin: 6000 });
+  addSet({ pairId: 'P-5', level: 2, from: 'U-10232', to: 'U-10231', sys: L2_SECOND, written: [T.daraRelax, T.daraTrip], replies: [T.sopheaMorning, T.sopheaNight, T.sopheaFood, T.sopheaRelax, T.sopheaTrip], sentMin: 6300, replyMin: 5900 });
+  // P-6 Ji-ho ⇄ Ling · Level 1 done both ways; Level 2 opens in about 20 hours.
+  addSet({ pairId: 'P-6', level: 1, from: 'U-10790', to: 'U-10245', written: [T.jihoFood], replies: ['yes', 'no', 'yes', 'not_really', 'yes'], sentMin: 390, replyMin: 300 });
+  addSet({ pairId: 'P-6', level: 1, from: 'U-10245', to: 'U-10790', written: [T.lingTea], replies: ['maybe', 'yes', 'no', 'yes', 'no'], sentMin: 380, replyMin: 240 });
+  // P-7 Rithy ⇄ Bopha · Level 1 both sent: Rithy replied to all of Bopha's, Bopha has 2 replies left.
+  addSet({ pairId: 'P-7', level: 1, from: 'U-10233', to: 'U-10240', written: [T.rithyMarket], replies: ['yes', 'no', 'maybe'], sentMin: 180, replyMin: 30 });
+  addSet({ pairId: 'P-7', level: 1, from: 'U-10240', to: 'U-10233', written: [T.bophaBike], replies: ['no', 'yes', 'yes', 'not_really', 'no'], sentMin: 150, replyMin: 60 });
+  // P-8 Min-jun ⇄ Kanha · Level 1 and 2 done both ways; the chat opens in about 21 hours.
+  addSet({ pairId: 'P-8', level: 1, from: 'U-10243', to: 'U-10242', written: [T.minjunCoffee], replies: ['yes', 'yes', 'no', 'maybe', 'yes'], sentMin: 4900, replyMin: 4800 });
+  addSet({ pairId: 'P-8', level: 1, from: 'U-10242', to: 'U-10243', written: [T.kanhaRain], replies: ['not_really', 'yes', 'yes', 'no', 'yes'], sentMin: 4850, replyMin: 4700 });
+  addSet({ pairId: 'P-8', level: 2, from: 'U-10243', to: 'U-10242', written: [T.minjunWork, T.minjunSunday], replies: [T.kanhaWindow, T.kanhaWeather, T.kanhaPlace, T.kanhaWork, T.kanhaSunday], sentMin: 3200, replyMin: 2000 });
+  addSet({ pairId: 'P-8', level: 2, from: 'U-10242', to: 'U-10243', sys: L2_SECOND, written: [T.kanhaAmok, T.kanhaHome], replies: [T.minjunMorning, T.minjunEvening, T.minjunFood, T.minjunAmok, T.minjunHome], sentMin: 3100, replyMin: 180 });
+  // P-9 Sakura ⇄ James · Level 2 open, both sets sent, both still replying (James 1 of 5, Sakura 4 of 5).
+  addSet({ pairId: 'P-9', level: 1, from: 'U-10246', to: 'U-10247', written: [T.sakuraWalk], replies: ['yes', 'yes', 'no', 'maybe', 'yes'], sentMin: 3400, replyMin: 3300 });
+  addSet({ pairId: 'P-9', level: 1, from: 'U-10247', to: 'U-10246', written: [T.jamesCats], replies: ['yes', 'not_really', 'yes', 'yes', 'yes'], sentMin: 3350, replyMin: 3000 });
+  addSet({ pairId: 'P-9', level: 2, from: 'U-10246', to: 'U-10247', written: [T.sakuraBook, T.sakuraHome], replies: [T.jamesWindow], sentMin: 600, replyMin: 500 });
+  addSet({ pairId: 'P-9', level: 2, from: 'U-10247', to: 'U-10246', sys: L2_SECOND, written: [T.jamesWeekend, T.jamesKhmer], replies: [T.sakuraMorning, T.sakuraEvening, T.sakuraFood, T.sakuraWeekend], sentMin: 550, replyMin: 20 });
+  // P-10 Haruto → Chenda · an older one-way Level 1 pair ('l1_answer'): Chenda can reply and send hers now.
+  addSet({ pairId: 'P-10', level: 1, from: 'U-10244', to: 'U-10248', written: [T.harutoSpicy], sentMin: 80 });
 
-  const pair = (id, a, b, stage, level, { l2 = null, l3 = null, updated, created, lastChat = null }) => ({
-    _id: id, id, key: [a, b].sort().join('|'), a, b, members: [a, b], level, stage,
+  // Minutes ago (a negative number = still to come). `started` = the first set sent (null: a draft that only
+  // its opener sees); `legacy` keeps an older pair exactly as it was stored (no startedAt field).
+  const pair = (id, a, b, stage, { l2 = null, l3 = null, updated, created, started = null, lastChat = null, legacy = false }) => ({
+    _id: id, id, key: [a, b].sort().join('|'), a, b, members: [a, b], level: stageOpenLevel(stage), stage,
+    ...(legacy ? {} : { startedAt: started === null ? null : ago(started) }),
     l2OpensAt: l2 === null ? null : ago(l2), l3OpensAt: l3 === null ? null : ago(l3),
-    remind: {}, lastChat, createdAt: ago(created), updatedAt: ago(updated),
+    remind: {}, opened: { [a]: ago(created) }, lastChat, createdAt: ago(created), updatedAt: ago(updated),
   });
   const pairs = [
-    pair('P-1', 'U-10644', 'U-10418', 'l2_open', 2, { l2: 1460, updated: 2, created: 3010 }),
-    pair('P-2', 'U-10507', 'U-10702', 'l1_answer', 1, { updated: 14, created: 20 }),
-    pair('P-3', 'U-10735', 'U-10611', 'l3_open', 3, { l2: 5660, l3: 2960, updated: 25, created: 7300, lastChat: { from: 'U-10611', at: ago(25) } }),
-    pair('P-4', 'U-10507', 'U-10812', 'l1_ask', 1, { updated: 41, created: 45 }),
-    pair('P-5', 'U-10231', 'U-10232', 'l3_open', 3, { l2: 6460, l3: 4460, updated: 4460, created: 8100 }),
+    pair('P-1', 'U-10644', 'U-10418', 'l2_open', { l2: 1460, updated: 5, created: 3010, started: 3000 }),
+    pair('P-2', 'U-10507', 'U-10702', 'l1', { updated: 16, created: 20, started: 16 }),
+    pair('P-3', 'U-10735', 'U-10611', 'l3_open', { l2: 5660, l3: 2960, updated: 25, created: 7300, started: 7200, lastChat: { from: 'U-10611', at: ago(25) } }),
+    pair('P-4', 'U-10507', 'U-10812', 'l1', { updated: 45, created: 45 }),
+    pair('P-5', 'U-10231', 'U-10232', 'l3_open', { l2: 6460, l3: 4460, updated: 4460, created: 8100, started: 8000 }),
+    pair('P-6', 'U-10790', 'U-10245', 'l2_wait', { l2: 240 - 1440, updated: 240, created: 400, started: 390 }),
+    pair('P-7', 'U-10233', 'U-10240', 'l1', { updated: 30, created: 200, started: 180 }),
+    pair('P-8', 'U-10243', 'U-10242', 'l3_wait', { l2: 3260, l3: 180 - 1440, updated: 180, created: 5000, started: 4900 }),
+    pair('P-9', 'U-10246', 'U-10247', 'l2_open', { l2: 1560, updated: 20, created: 3500, started: 3400 }),
+    pair('P-10', 'U-10244', 'U-10248', 'l1_answer', { updated: 80, created: 90, legacy: true }),
   ];
   // users.level follows the pairs exactly: l2_open / l3_wait → 2, l3_open → 3, else 1 (photo slots unlock by it).
   for (const u of users) {
     u.level = pairs.filter((p) => p.members.includes(u._id)).reduce((m, p) => Math.max(m, stageOpenLevel(p.stage)), 1);
   }
 
-  // Chat log lines: [from, minutesAgo, kind, level, line, hit?, flagId?]. A hit means the app stopped it.
-  const line = ([from, min, kind, level, t, hit = null, flagId = null]) => {
-    const lang = langOf(from);
-    const text = typeof t === 'string' ? t : t[lang];
-    return {
-      id: `M-${++msgSeq}`, from, at: ago(min), kind, level, text, lang,
-      english: lang === 'en' ? null : (typeof t === 'string' ? null : t.en ?? null),
-      translations: typeof t === 'string' ? { [lang]: t } : all(t),
-      hit, flagId, stopped: Boolean(hit), // a reported line was delivered; only rule hits are stopped
-    };
-  };
-  const chat = (id, level, rows) => {
-    const p = pairs.find((x) => x._id === id);
-    return { _id: id, id, a: p.a, b: p.b, level, messages: rows.map(line) };
-  };
-  const chats = [
-    chat('P-1', 2, [
-      ['U-10644', 9, 'question', 2, T.meiWeekend],
-      ['U-10418', 4, 'answer', 2, T.visalRiver],
-      ['U-10418', 2, 'answer', 2, { km: 'បន្ថែមខ្ញុំនៅ Telegram @visal88', en: 'Add me on Telegram @visal88' }, 'Telegram @visal88', 'f1'],
-    ]),
-    chat('P-2', 1, [
-      ['U-10507', 16, 'question', 1, T.tomNew],
-      ['U-10507', 14, 'question', 1, 'Can I call you? 012 88 77 66', '012 88 77 66', 'f2'],
-    ]),
-    chat('P-3', 3, [
+  // The admin's chat log, as the app writes it: a set's 5 lines when it is sent and its 5 replies once all 5
+  // are in, plus the rows below — [from, minutesAgo, kind, level, line, hit?, flagId?]; a hit = stopped by the app.
+  const EXTRA = {
+    'P-1': [['U-10418', 3, 'answer', 2, { km: 'បន្ថែមខ្ញុំនៅ Telegram @visal88', en: 'Add me on Telegram @visal88' }, 'Telegram @visal88', 'f1']],
+    'P-2': [['U-10507', 14, 'question', 1, 'Can I call you? 012 88 77 66', '012 88 77 66', 'f2']],
+    'P-3': [
       ['U-10735', 40, 'chat', 3, T.linaCoffee],
       ['U-10611', 38, 'chat', 3, T.chenMornings],
       ['U-10735', 30, 'chat', 3, T.linaAge],
       ['U-10611', 25, 'chat', 3, T.chenRude, null, 'f3'],
-    ]),
-    chat('P-4', 1, [
-      ['U-10507', 41, 'question', 1, 'Email me at tom.k88@mail.com', 'tom.k88@mail.com', 'f4'],
-    ]),
-    chat('P-5', 3, []),
-  ];
+    ],
+    'P-4': [['U-10507', 41, 'question', 1, 'Email me at tom.k88@mail.com', 'tom.k88@mail.com', 'f4']],
+  };
+  const row = ({ from, at, kind, level, n = null, text, lang, translations, hit = null, flagId = null }) => ({
+    from, at, kind, level, ...(n ? { n } : {}), text, lang, english: lang === 'en' ? null : translations?.en ?? null,
+    translations, hit, flagId, stopped: Boolean(hit), // a reported line was delivered; only rule hits are stopped
+  });
+  const rowsOf = (pairId) => {
+    const rows = [];
+    for (const s of sets.filter((x) => x.pairId === pairId)) {
+      for (const q of s.questions) rows.push(row({ from: s.from, at: s.sentAt, kind: 'question', level: s.level, n: q.n, text: q.text, lang: q.lang, translations: q.translations }));
+      if (!s.completedAt) continue;
+      for (const a of s.answers) {
+        rows.push(row({
+          from: s.to, at: s.completedAt, kind: 'answer', level: s.level, n: a.n,
+          text: a.key ? answerText(a.key, a.lang) : a.text, lang: a.lang, translations: a.translations,
+        }));
+      }
+    }
+    for (const [from, min, kind, level, t, hit = null, flagId = null] of EXTRA[pairId] || []) {
+      const lang = langOf(from);
+      const text = typeof t === 'string' ? t : t[lang];
+      rows.push(row({ from, at: ago(min), kind, level, text, lang, translations: typeof t === 'string' ? { [lang]: t } : all(t), hit, flagId }));
+    }
+    return rows.sort((x, y) => x.at.localeCompare(y.at)); // stable: a set's lines keep their order
+  };
+  let msgSeq = 0;
+  const chats = pairs.map((p) => ({
+    _id: p._id, id: p._id, a: p.a, b: p.b, level: p.level,
+    messages: rowsOf(p._id).map((m) => ({ id: `M-${++msgSeq}`, ...m })),
+  }));
 
   // kind: 'stopped' = the app caught it before sending; 'reported' = delivered, then reported.
   const flag = (id, chatId, from, to, min, reason, kind) => ({
     _id: id, id, chatId, from, to, at: ago(min), reason, kind, status: 'open', warned: false,
   });
   const flags = [
-    flag('f1', 'P-1', 'U-10418', 'U-10644', 2, 'Chat handle shared', 'stopped'),
+    flag('f1', 'P-1', 'U-10418', 'U-10644', 3, 'Chat handle shared', 'stopped'),
     flag('f2', 'P-2', 'U-10507', 'U-10702', 14, 'Phone number shared', 'stopped'),
     flag('f3', 'P-3', 'U-10611', 'U-10735', 25, 'Reported by Lina · rude message', 'reported'),
     flag('f4', 'P-4', 'U-10507', 'U-10812', 41, 'Email address shared', 'stopped'),
@@ -237,13 +326,23 @@ export function buildDemo(now = Date.now()) {
 
 /** Short notes printed next to each dev login. */
 export const DEMO_NOTES = {
-  'U-10231': 'Level 3 chat open with Dara',
-  'U-10232': 'Level 3 chat open with Sophea',
-  'U-10418': 'Level 2 open with Mei: answer her 5 + ask 5',
-  'U-10644': 'Level 2 open with Visal: ask him 5',
-  'U-10702': 'Tom asked you 5 (Level 1)',
+  'U-10231': 'Level 3 chat with Dara (Level 1 + 2 above it, both ways)',
+  'U-10232': 'Level 3 chat with Sophea (Level 1 + 2 above it, both ways)',
+  'U-10418': 'Level 2 with Mei: reply to her 5 (2 done) + send yours',
+  'U-10644': 'Level 2 with Visal: he replied 2 of 5',
+  'U-10702': 'Tom sent you 5 (Level 1): reply + send yours',
   'U-10507': 'waiting for Anna; draft to Yuki',
-  'U-10611': 'Level 3 chat with Lina (reported)',
+  'U-10611': 'Level 3 chat with Lina (reported; older one-way Level 1)',
   'U-10735': 'Level 3 chat with Chen',
+  'U-10790': 'Level 2 with Ling opens in ~20 h',
+  'U-10245': 'Level 2 with Ji-ho opens in ~20 h',
+  'U-10233': 'Level 1 with Bopha: waiting for her last 2 replies',
+  'U-10240': 'Level 1 with Rithy: 2 replies left',
+  'U-10243': 'Level 3 with Kanha opens in ~21 h',
+  'U-10242': 'Level 3 with Min-jun opens in ~21 h',
+  'U-10246': 'Level 2 with James: both replying (you: 1 left)',
+  'U-10247': 'Level 2 with Sakura: both replying (you: 4 left)',
+  'U-10248': 'Haruto sent you 5 (older one-way pair): reply + send yours',
+  'U-10244': 'waiting for Chenda',
   'U-10377': 'BLOCKED',
 };

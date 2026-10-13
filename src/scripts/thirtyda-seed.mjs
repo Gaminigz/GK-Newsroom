@@ -5,7 +5,9 @@
  * Wipes the app's thirtyda_* collections in that database (the admin's
  * sessions and audit log are kept; the admin's question choices go back to the
  * built-in ones), then inserts 21 demo people around BKK1
- * plus the A2 design's sample pairs, chats and flags, and prints the dev
+ * plus the A2 design's sample pairs, chats and flags, and pairs in every
+ * conversation state (Level 1 and 2 both ways, partial replies, the waits,
+ * Level 3 with its history, an older one-way pair), and prints the dev
  * login phones. Demo people have no photos (the app shows a silhouette).
  *
  * Usage:
@@ -52,7 +54,7 @@ try {
   await d.collection("thirtyda_counters").insertMany(demo.counters);
   await ensureThirtyDaIndexes(d);
 
-  console.log(`Seeded ${dbName}: ${demo.users.length} people, ${demo.pairs.length} pairs, ${demo.sets.length} question sets, ${demo.flags.length} open flags.`);
+  console.log(`Seeded ${dbName}: ${demo.users.length} people, ${demo.pairs.length} conversations, ${demo.sets.length} sets of 5 lines, ${demo.flags.length} open flags.`);
   console.log("\nDev logins (THIRTYDA_DEV_AUTH=1: send-code returns the code):");
   for (const u of demo.users) {
     const note = DEMO_NOTES[u._id] ? ` · ${DEMO_NOTES[u._id]}` : "";

@@ -1,9 +1,10 @@
 // Screen 4 · Profile view — verified chips, big photo, hearts, "You and Sophea · Level n/3", the photos this
 // viewer may see (slot 2 from Level 2, slots 3–4 from Level 3; the rest as locked placeholders) and one
-// primary action driven by pair.next (start the conversation / reply / wait / chat).
+// primary action driven by pair.next. Every state opens the one conversation screen (#/c/:pairId):
+// start, reply, see where it is while waiting, or chat.
 import {
   screen, el, icon, t, go, api, toast, modal, state, topBar, levelBar, avatar, countdown, pronoun, fmtKm,
-  pairRoute, stageLevel, registerStrings, morePhotosPrompt, stageOpenLevel, roleLabel,
+  pairRoute, stageLevel, nextKind, registerStrings, morePhotosPrompt, stageOpenLevel, roleLabel,
 } from '../core.js';
 
 function viewPhoto(url, name) {
@@ -57,6 +58,8 @@ function actionButton(person, pair, { reload, stops }) {
     iconName ? icon(iconName, 18) : null, el('span', {}, label), icon('arrow', 18));
   const disabled = (label, iconName) => el('button', { type: 'button', class: 'btn btn-primary', disabled: true },
     icon(iconName, 18), el('span', {}, label));
+  const secondary = (label, iconName, onClick) => el('button', { type: 'button', class: 'btn btn-secondary', on: { click: onClick } },
+    icon(iconName, 18), el('span', {}, label));
   const open = () => go(pairRoute(pair));
   // Level 1: start the conversation; Level 2: carry it on.
   const startLabel = () => (stageLevel(pair) >= 2 ? t('pf_continue', { name }) : t(`pf_ask5_${pr}`, { name }));
@@ -67,7 +70,7 @@ function actionButton(person, pair, { reload, stops }) {
       b.disabled = true;
       try {
         const r = await api.post('/pairs', { to: person.id });
-        go(r.pair.next === 'ask' ? `/ask/${encodeURIComponent(r.pair.id)}/1` : pairRoute(r.pair));
+        go(pairRoute(r.pair));
       } catch (err) {
         b.disabled = false;
         if (err.status !== 401 && err.code !== 'blocked') toast(pairError(err));
@@ -76,15 +79,15 @@ function actionButton(person, pair, { reload, stops }) {
     return b;
   }
 
-  switch (pair.next) {
-    case 'ask':
+  switch (nextKind(pair.next)) {
+    case 'send':
       return primary(startLabel(), 'chat', open);
-    case 'answer':
-      return primary(t('pf_answer', { name }), null, open);
-    case 'ask_answer':
-      return primary(pair.myOutgoing?.sent ? t('pf_answer', { name }) : startLabel(), 'chat', open);
+    case 'reply':
+    case 'send_reply':
+      return primary(t('pf_answer', { name }), 'chat', open);
     case 'wait_them':
-      return disabled(t('pf_waiting_for', { name }), 'clock');
+      // Nothing to do but wait: the conversation still opens, to read what was said.
+      return secondary(t('pf_waiting_for', { name }), 'clock', open);
     case 'wait_timer': {
       const lvl = stageLevel(pair);
       const until = lvl === 3 ? pair.l3OpensAt : pair.l2OpensAt;

@@ -5,7 +5,7 @@ import { SYSTEM_QUESTIONS, LEVEL_RULES } from './questions.js';
 import { LANGS } from './rules.js';
 import {
   QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS, dealSlots, flattenSlots, defaultSlots, checkQuestionChoice, checkQuestionSlots,
-  checkQuestionTitle, checkQuestionTitles, hasTitle,
+  checkQuestionTitle, checkQuestionTitles, hasTitle, fillSlots,
 } from './question-slots.js';
 
 const tx = (en, extra = {}) => ({ en, km: `${en} ខ្មែរ`, zh: `${en} 中文`, ko: `${en} 한국어`, ja: `${en} 日本語`, ...extra });
@@ -34,19 +34,21 @@ test('flattenSlots undoes dealSlots (choice 1 of every slot first)', () => {
   }
 });
 
-test('defaultSlots: Level 1 = 4 × 5 from the whole bank, Level 2 = 2 × 5 from its first 10', () => {
+test('defaultSlots: Level 1 = 4 × 5 from the whole bank, Level 2 = 3 × 5 from its first 15', () => {
   const l1 = defaultSlots(1);
   const l2 = defaultSlots(2);
   assert.equal(l1.length, LEVEL_RULES[1].pick);
   assert.equal(l2.length, LEVEL_RULES[2].pick);
   for (const slots of [l1, l2]) for (const slot of slots) assert.equal(slot.length, QUESTION_CHOICES);
   assert.deepEqual(l1.flat().map((q) => q.key).sort(), SYSTEM_QUESTIONS[1].slice(0, 20).map((q) => q.key).sort());
-  assert.deepEqual(l2.flat().map((q) => q.key).sort(), SYSTEM_QUESTIONS[2].slice(0, 10).map((q) => q.key).sort());
+  assert.deepEqual(l2.flat().map((q) => q.key).sort(), SYSTEM_QUESTIONS[2].slice(0, 15).map((q) => q.key).sort());
   // The design's examples are choice 1 of each slot, so the ask screen opens exactly like the design.
   assert.deepEqual(l1.map((s) => s[0].text.en), [
     'Is it raining where you are?', 'Is it busy around you right now?', 'Are you outside right now?', 'Is it a quiet day for you?',
   ]);
-  assert.deepEqual(l2.map((s) => s[0].text.en), ['What can you see from your window?', 'What is the weather like there?']);
+  assert.deepEqual(l2.map((s) => s[0].text.en), [
+    'What can you see from your window?', 'What is the weather like there?', 'What is your favourite place near you?',
+  ]);
   // Bank keys are kept, so sets already in the database still resolve.
   assert.equal(l1[0][0].key, 'l1_rain');
   assert.equal(l2[1][0].key, 'l2_weather');
@@ -153,7 +155,7 @@ test('question topics: optional, all five languages once started, 2–40 charact
   // No topics at all, or every topic blank: fine.
   assert.deepEqual(checkQuestionTitles(undefined, 1), { ok: true, problems: [] });
   assert.deepEqual(checkQuestionTitles([null, null, null, null], 1), { ok: true, problems: [] });
-  assert.equal(checkQuestionTitles([{ en: '', km: '', zh: '', ko: '', ja: '' }, null], 2).ok, true);
+  assert.equal(checkQuestionTitles([{ en: '', km: '', zh: '', ko: '', ja: '' }, null, null], 2).ok, true);
   // A topic in all five languages.
   const comm = tx('Communication');
   assert.equal(checkQuestionTitles([comm, null, null, null], 1).ok, true);
@@ -164,9 +166,38 @@ test('question topics: optional, all five languages once started, 2–40 charact
     [2, null, 'title', 'zh', 'empty'], [2, null, 'title', 'ko', 'empty'], [2, null, 'title', 'ja', 'empty'],
   ]);
   assert.match(problems[0].message, /^Topic · Chinese text is missing/);
-  assert.equal(checkQuestionTitles([tx('Add me on Telegram'), null], 2).problems[0].error, 'contact');
+  assert.equal(checkQuestionTitles([tx('Add me on Telegram'), null, null], 2).problems[0].error, 'contact');
+  assert.equal(checkQuestionTitles([null, null], 2).problems[0].error, 'shape'); // Level 2 has 3 lists now
   // Shape: one entry per picked question.
   assert.equal(checkQuestionTitles([comm], 1).problems[0].error, 'shape');
   assert.equal(checkQuestionTitles('Communication', 1).problems[0].error, 'shape');
   assert.equal(checkQuestionTitles([], 3).problems[0].error, 'level');
+});
+
+test('fillSlots: a Level 2 saved with 2 lists gets a third from built-in choices nobody uses yet', () => {
+  // The admin's own two lists, as saved when Level 2 picked 2.
+  const mine = [
+    [tx('What is on your desk?'), tx('What did you eat today?'), tx('What is your street like?'), tx('Which song is stuck in your head?'), tx('What made you smile today?')]
+      .map((text, j) => ({ key: `q2_aa${j}`, text })),
+    defaultSlots(2)[1].map((c) => ({ key: c.key, text: { ...c.text } })), // list 2 = the built-in list 2
+  ];
+  const filled = fillSlots(mine, 2);
+  assert.equal(filled.length, LEVEL_RULES[2].pick);
+  assert.deepEqual(filled.slice(0, 2), mine); // the stored lists stay exactly as they are
+  assert.equal(filled[2].length, QUESTION_CHOICES);
+  const used = new Set([...mine[0], ...mine[1]].map((c) => c.key));
+  for (const c of filled[2]) assert.ok(!used.has(c.key), `${c.key} is new`);
+  assert.equal(new Set(filled.flat().map((c) => c.key)).size, 15); // no key twice
+  assert.equal(checkQuestionSlots(filled, 2).ok, true);
+  // Built-in list 3 comes first when it is free.
+  assert.deepEqual(filled[2].map((c) => c.key), defaultSlots(2)[2].map((c) => c.key));
+  // A choice whose text is already used (any language) is skipped.
+  const clash = [mine[0], mine[1].map((c, j) => (j === 0 ? { key: 'q2_x', text: { ...defaultSlots(2)[2][0].text } } : c))];
+  assert.ok(!fillSlots(clash, 2)[2].some((c) => c.text.en === defaultSlots(2)[2][0].text.en));
+  // Already complete, or Level 1: unchanged (fresh copies).
+  const full = defaultSlots(2);
+  const same = fillSlots(full, 2);
+  assert.deepEqual(same, full);
+  assert.notEqual(same[0], full[0]);
+  assert.deepEqual(fillSlots(defaultSlots(1), 1), defaultSlots(1));
 });

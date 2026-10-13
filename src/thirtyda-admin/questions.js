@@ -1,5 +1,5 @@
 // 30+DA super admin · Questions — the choices people pick from when they ask.
-// Level 1: Question 1–4, Level 2: Question 1–2, each with its own 5 choices in all five languages and
+// Level 1: Question 1–4, Level 2: Question 1–3, each with its own 5 choices in all five languages and
 // an optional topic ("Question 1 · Communication" in the app). The same rules the server enforces
 // (shared/question-slots.js) run live here; the server is the authority.
 import { checkQuestionSlots, checkQuestionTitles } from '/30da/shared/question-slots.js';

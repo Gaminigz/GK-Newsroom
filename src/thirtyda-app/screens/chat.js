@@ -1,9 +1,11 @@
-// Screens 11 + 12 · Level 3 text chat (#/chat/:pairId). Both phones run this same module: each person
-// reads the thread in their own UI language, the other person's words as original / translation.
-// The 20–30 character rule and the contact-detail check run live here (shared/rules.js) and again on
-// the server, which also keeps every stopped attempt for the admin.
+// Screens 11 + 12 · Level 3 text chat. It runs at the bottom of the conversation screen (#/c/:pairId,
+// screens/conversation.js), under the Level 1 and Level 2 history; the old #/chat/:pairId route only
+// redirects there. Both phones run this same module: each person reads the thread in their own UI
+// language, the other person's words as original / translation. The 20–30 character rule and the
+// contact-detail check run live here (shared/rules.js) and again on the server, which also keeps every
+// stopped attempt for the admin.
 import {
-  screen, el, icon, t, go, api, toast, modal, state, topBar, avatar, langPair, pairRoute, errorText,
+  screen, el, icon, t, go, api, toast, modal, state, topBar, avatar, langPair, errorText,
   registerStrings, checkChatMessage, CHAT_MIN, CHAT_MAX, SPEECH_LOCALE, PHOTO_MAX,
 } from '../core.js';
 
@@ -74,7 +76,7 @@ const RULES = [
 ];
 
 let styled = false;
-function ensureStyles() {
+export function ensureStyles() {
   if (styled) return;
   styled = true;
   try {
@@ -130,7 +132,7 @@ function dayKey(value) {
 }
 
 /** "Today", "Yesterday", or a short local date ("Mon, 12 Oct"). */
-function dayLabel(iso) {
+export function dayLabel(iso) {
   const d = new Date(iso);
   const now = new Date();
   if (dayKey(d) === dayKey(now)) return t('chat_today');
@@ -140,7 +142,7 @@ function dayLabel(iso) {
   return fmtDate(d, opts);
 }
 
-const fmtTime = (iso) => fmtDate(new Date(iso), { hour: 'numeric', minute: '2-digit' });
+export const fmtTime = (iso) => fmtDate(new Date(iso), { hour: 'numeric', minute: '2-digit' });
 
 /** Localised reason for a contact-detail verdict (the client check or the server's 422 data). */
 function contactText(r) {
@@ -235,9 +237,54 @@ function dictation(button, input, onChange) {
   };
 }
 
+function square(url) {
+  const a = avatar(url, 34);
+  a.classList.add('square');
+  return a;
+}
+
+/**
+ * Header row of a conversation: back, the partner's photos (only the ones I may see; a tap opens them),
+ * name over `sub` (text or a node), and the translation chip (EN⇄KM; a tap says who writes in what).
+ */
+export function partnerHeader({ name = '', photos = [], myLang = 'en', theirLang = 'en', sub = null }) {
+  let photoBtns;
+  if (photos.length > 1) {
+    photoBtns = [el('button', {
+      type: 'button', class: 'chat-stack', 'aria-label': t('chat_photos_of', { name, n: photos.length }),
+      on: { click: () => viewPhotos(photos, 0, name) },
+    }, photos.map((url, i) => el('span', { class: 'chat-photo', style: { zIndex: String(photos.length - i) } }, square(url))))];
+  } else {
+    photoBtns = photos.length
+      ? [el('button', {
+        type: 'button', class: 'chat-photo', 'aria-label': t('chat_photo_n', { name, n: 1 }),
+        on: { click: () => viewPhotos(photos, 0, name) },
+      }, square(photos[0]))]
+      : [el('span', { class: 'chat-photo' }, square(null))];
+  }
+  const langNote = () => {
+    const mine = t(`chat_lang_${myLang}`);
+    if (myLang === theirLang) return t('chat_lang_same', { name, mine });
+    return t('chat_lang_note', { name, mine, theirs: t(`chat_lang_${theirLang}`) });
+  };
+  const pairCode = langPair(myLang, theirLang);
+  const chip = el('button', {
+    type: 'button', class: 'chip chip-sm chip-outline chat-lang', 'aria-label': t('chat_lang_aria', { pair: pairCode }),
+    on: { click: () => toast(langNote()) },
+  }, icon('translate', 14), pairCode);
+  const bar = topBar({ left: 'back', title: el('span', { class: 'chat-name' }, name), sub, right: chip });
+  bar.insertBefore(el('div', { class: 'chat-photos' }, photoBtns), bar.querySelector('.topbar-title'));
+  return bar;
+}
+
 // ---------------------------------------------------------------- the chat
 
-function mountChat(root, { pair, data, gate }) {
+/**
+ * Mount the Level 3 chat into `root` (a <main class="screen chat">). `history` (optional) is shown in the
+ * same scroll area above the messages (the conversation's Level 1 and 2); `header` replaces the default
+ * header row. Returns the cleanup fn.
+ */
+export function mountChat(root, { pair, data, gate, history = null, header: headerNode = null }) {
   const pid = pair.id;
   const base = `/pairs/${encodeURIComponent(pid)}`;
   const other = { ...pair.other, ...(data?.other || {}) };
@@ -266,46 +313,11 @@ function mountChat(root, { pair, data, gate }) {
   let reportOpen = false;
 
   // --- header: back, the partner's photos, name + LEVEL 3, translation chip
-  function header() {
-    let photoBtns;
-    if (photos.length > 1) {
-      photoBtns = [el('button', {
-        type: 'button', class: 'chat-stack', 'aria-label': t('chat_photos_of', { name, n: photos.length }),
-        on: { click: () => viewPhotos(photos, 0, name) },
-      }, photos.map((url, i) => el('span', { class: 'chat-photo', style: { zIndex: String(photos.length - i) } }, square(url))))];
-    } else {
-      photoBtns = photos.length
-        ? [el('button', {
-          type: 'button', class: 'chat-photo', 'aria-label': t('chat_photo_n', { name, n: 1 }),
-          on: { click: () => viewPhotos(photos, 0, name) },
-        }, square(photos[0]))]
-        : [el('span', { class: 'chat-photo' }, square(null))];
-    }
-    const pairCode = langPair(myLang, theirLang);
-    const chip = el('button', {
-      type: 'button', class: 'chip chip-sm chip-outline chat-lang', 'aria-label': t('chat_lang_aria', { pair: pairCode }),
-      on: { click: () => toast(langNote()) },
-    }, icon('translate', 14), pairCode);
-    const bar = topBar({ left: 'back', title: el('span', { class: 'chat-name' }, name), sub: t('chat_level3'), right: chip });
-    bar.insertBefore(el('div', { class: 'chat-photos' }, photoBtns), bar.querySelector('.topbar-title'));
-    return bar;
-  }
-
-  function square(url) {
-    const a = avatar(url, 34);
-    a.classList.add('square');
-    return a;
-  }
-
-  function langNote() {
-    const mine = t(`chat_lang_${myLang}`);
-    if (myLang === theirLang) return t('chat_lang_same', { name, mine });
-    return t('chat_lang_note', { name, mine, theirs: t(`chat_lang_${theirLang}`) });
-  }
+  const header = () => partnerHeader({ name, photos, myLang, theirLang, sub: t('chat_level3') });
 
   // --- thread
   const thread = el('div', { class: 'thread', role: 'log', 'aria-live': 'polite', 'aria-relevant': 'additions' });
-  const scroller = el('div', { class: 'chat-scroll' }, thread);
+  const scroller = el('div', { class: 'chat-scroll' }, history, thread);
   const jump = el('button', { type: 'button', class: 'chat-jump', hidden: true, on: { click: () => toBottom(true) } },
     icon('chevron', 14), el('span', {}, t('chat_new_messages')));
   const body = el('div', { class: 'chat-body' }, scroller, jump);
@@ -652,8 +664,9 @@ function mountChat(root, { pair, data, gate }) {
     }
   }
 
+  // The server says the chat is not open (yet): show the conversation as it is now.
   function toWait() {
-    if (alive) go(`/wait/${encodeURIComponent(pid)}/3`, { replace: true });
+    if (alive) go(`/c/${encodeURIComponent(pid)}`, { replace: true });
   }
 
   // --- polling: every 3 s while visible, `after=` the newest message seen (with a little overlap)
@@ -728,12 +741,13 @@ function mountChat(root, { pair, data, gate }) {
     msgs.push(m);
   }
   renderThread();
-  root.replaceChildren(
-    header(),
-    el('div', { class: 'banner', role: 'note' }, icon('shield', 16), el('span', {}, t('chat_text_only'))),
+  // With history above, the "text only" note sits in it (under LEVEL 3) instead of under the header.
+  root.replaceChildren(...[
+    headerNode || header(),
+    history ? null : el('div', { class: 'banner', role: 'note' }, icon('shield', 16), el('span', {}, t('chat_text_only'))),
     body,
     foot,
-  );
+  ].filter(Boolean));
   setMode(gate);
   if (!mode) {
     toBottom(false);
@@ -751,36 +765,9 @@ function mountChat(root, { pair, data, gate }) {
   };
 }
 
-screen('/chat/:pairId', async ({ params, root }) => {
-  ensureStyles();
-  root.classList.add('chat');
-  root.append(topBar({ left: 'back' }), el('p', { class: 'loading' }, t('core_loading')));
-
-  const base = `/pairs/${encodeURIComponent(params.pairId)}`;
-  const [pairRes, msgRes] = await Promise.allSettled([api.get(base), api.get(`${base}/messages`)]);
-  if (!root.isConnected) return null; // the user already moved on
-  if (pairRes.status === 'rejected') throw pairRes.reason;
-  const { pair } = pairRes.value;
-
-  // Not open yet: the wait screen for Level 3, otherwise wherever this pair's next step lives.
-  if (pair.stage !== 'l3_open') {
-    go(pair.stage === 'l3_wait' ? `/wait/${encodeURIComponent(pair.id)}/3` : pairRoute(pair), { replace: true });
-    return null;
-  }
-
-  let data = null;
-  let gate = pair.next === 'frozen' ? 'closed' : null;
-  if (msgRes.status === 'fulfilled') {
-    data = msgRes.value;
-  } else if (msgRes.reason?.code === 'phone_needed') {
-    gate = 'phone';
-  } else if (msgRes.reason?.code === 'chat_closed') {
-    go(`/wait/${encodeURIComponent(pair.id)}/3`, { replace: true });
-    return null;
-  } else {
-    throw msgRes.reason;
-  }
-  return mountChat(root, { pair, data, gate });
+// The chat lives at the bottom of the conversation screen now.
+screen('/chat/:pairId', ({ params }) => {
+  go(`/c/${encodeURIComponent(params.pairId)}`, { replace: true });
 });
 
 // ---------------------------------------------------------------- strings
