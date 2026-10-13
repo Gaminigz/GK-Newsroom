@@ -223,7 +223,7 @@ test('WhatsApp failures in plain words with Meta\'s own message, never with the 
   const meta = (code, message, extra = {}) => ({ error: { message, type: 'OAuthException', code, fbtrace_id: 'AbC', ...extra } });
   const cases = [
     [{ status: 401, body: meta(190, 'Invalid OAuth access token - Cannot parse access token') }, 'bad_token', /did not accept the access token/, /Invalid access token - Cannot parse access token \(code 190\)/],
-    [{ status: 400, body: meta(131030, 'Recipient phone number not in allowed list', { error_data: { details: 'Recipient phone number +85512345678 not in allowed list' } }) }, 'not_on_whatsapp', /may not be on WhatsApp/, /not in allowed list.*\(code 131030\)/],
+    [{ status: 400, body: meta(131030, 'Recipient phone number not in allowed list', { error_data: { details: 'Recipient phone number +85512345678 not in allowed list' } }) }, 'not_allowed', /still Meta's test number.*API setup.*'To' list/, /not in allowed list.*\(code 131030\)/],
     [{ status: 400, body: meta(131026, 'Message undeliverable') }, 'not_on_whatsapp', /may not be on WhatsApp/, /Message undeliverable/],
     [{ status: 404, body: meta(132001, 'Template name does not exist in the translation', { error_data: { details: 'template name (login_code) does not exist in en_US' } }) }, 'template', /template/, /does not exist in en_US/],
     [{ status: 400, body: meta(132015, 'Template is paused') }, 'template', /approved/, /paused/],

@@ -61,6 +61,7 @@ const NAMES = { telegram: 'Telegram', whatsapp: 'WhatsApp', google: 'Google', fa
 const REASON_WORDS = {
   not_on_telegram: 'number not on Telegram',
   not_on_whatsapp: 'number not on WhatsApp',
+  not_allowed: 'phone not on the test number\'s list',
   template: 'template not approved',
   bad_token: 'bad token',
   no_balance: 'no balance',

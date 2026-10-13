@@ -164,6 +164,9 @@ async function loadMethods() {
   }
 }
 
+/** true only when GET /auth/methods said Google or Facebook sign-in works (unknown → false). */
+export const signinWorks = (m) => SIGN_INS.some(([provider]) => m?.signin?.[provider] === true);
+
 // What the user typed → E.164-ish ("+855" + digits, leading zeros dropped), or null when too short.
 function fullPhone(model) {
   const raw = model.phone.trim();
@@ -173,10 +176,15 @@ function fullPhone(model) {
   return local.length >= 6 && local.length <= 12 ? `${model.cc}${local}` : null;
 }
 
-function sendErrorText(err, channel) {
+/**
+ * otherOn: the other code channel can still be offered (it works and has not failed here). When it cannot,
+ * the words never name it ("…Please try again in a little while."), so nobody is sent round in a circle.
+ */
+function sendErrorText(err, channel, otherOn = true) {
   const names = { channel: channelName(channel), other: channelName(otherChannel(channel)) };
-  if (err.code === 'channel_failed') return t(/^not_on_/.test(err.data?.reason || '') ? 'cp_ch_not_on' : 'cp_ch_failed', names);
-  if (err.code === 'channel_unavailable') return t('cp_ch_off', names);
+  const only = otherOn ? '' : '_only';
+  if (err.code === 'channel_failed') return t(`${/^not_on_/.test(err.data?.reason || '') ? 'cp_ch_not_on' : 'cp_ch_failed'}${only}`, names);
+  if (err.code === 'channel_unavailable') return t(`cp_ch_off${only}`, names);
   if (err.code === 'sms_unavailable') return t('cp_sms_off');
   if (err.code === 'too_soon') return t('cp_resend_in', { s: err.data?.resendIn ?? 30 });
   if (err.status === 429) return t('cp_too_many');
@@ -201,8 +209,10 @@ function verifyErrorText(err) {
  * Facebook / Google say "Coming soon" until their sign-in is built (test mode keeps its test sign-in).
  * `model` (see blankPhone) keeps the state across re-renders. onVerified(response) after a good code.
  * signin: { verified: () => ({ gmail, facebook }), onVerified(verified) } — what the session has proved.
+ * onMethods(methods) once GET /auth/methods has answered (not called when it failed), so the screen can word
+ * its own notes from the same answer (see signinWorks).
  */
-export function phoneVerifier(model, { onVerified, onChange, signin = null } = {}) {
+export function phoneVerifier(model, { onVerified, onChange, onMethods, signin = null } = {}) {
   model.channel ||= 'telegram';
   model.failed ||= [];
   const uid = `pv${++verifierSeq}`;
@@ -234,10 +244,16 @@ export function phoneVerifier(model, { onVerified, onChange, signin = null } = {
   const codeOn = (key) => methods?.code?.[key] !== false;
   const signinOn = (provider) => methods?.signin?.[provider] !== false;
 
+  /** The other code channel can still be offered: it works and has not failed here already. */
+  const otherWorks = (channel) => {
+    const other = otherChannel(channel);
+    return codeOn(other) && !model.failed.includes(other);
+  };
+
   /** After a channel could not send: offer the other one, unless it failed too or does not work. */
   function offerOther(channel) {
     const other = otherChannel(channel);
-    if (model.failed.includes(other) || !codeOn(other)) return null;
+    if (!otherWorks(channel)) return null;
     return {
       label: t('cp_ch_try', { channel: channelName(other) }),
       run: () => { model.channel = other; render(); send(); },
@@ -247,7 +263,7 @@ export function phoneVerifier(model, { onVerified, onChange, signin = null } = {
   function pickChannel(key) {
     if (!codeOn(key)) {
       showError(null);
-      showNote(t('cp_ch_off', { channel: channelName(key), other: channelName(otherChannel(key)) }));
+      showNote(t(otherWorks(key) ? 'cp_ch_off' : 'cp_ch_off_only', { channel: channelName(key), other: channelName(otherChannel(key)) }));
       return;
     }
     if (model.channel === key) return;
@@ -299,7 +315,7 @@ export function phoneVerifier(model, { onVerified, onChange, signin = null } = {
       if (err.code === 'too_soon' && model.codeSent) model.resendAt = Date.now() + (Number(err.data?.resendIn) || 30) * 1000;
       const channelProblem = err.code === 'channel_failed' || err.code === 'channel_unavailable';
       if (channelProblem && !model.failed.includes(channel)) model.failed.push(channel);
-      showError(sendErrorText(err, channel), channelProblem ? offerOther(channel) : null);
+      showError(sendErrorText(err, channel, otherWorks(channel)), channelProblem ? offerOther(channel) : null);
     } finally {
       sending = false;
       render();
@@ -438,8 +454,7 @@ export function phoneVerifier(model, { onVerified, onChange, signin = null } = {
       if (model.devCode) codeBox.append(el('p', { class: 'dev-note' }, t('cp_test_code', { code: model.devCode })));
     }
     // "Google or Facebook is enough to start…" only once one of them is known to work.
-    const signinNote = signin && methods && SIGN_INS.some(([provider]) => signinOn(provider))
-      ? el('p', { class: 'help' }, t('cp_social_note')) : null;
+    const signinNote = signin && signinWorks(methods) ? el('p', { class: 'help' }, t('cp_social_note')) : null;
     node.replaceChildren(...[waysRow(), note, hint, el('div', { class: 'phone-row' }, ccSel, phoneInput, sendBtn), codeBox, error, signinNote]
       .filter(Boolean));
   }
@@ -448,6 +463,7 @@ export function phoneVerifier(model, { onVerified, onChange, signin = null } = {
   loadMethods().then((m) => {
     if (!alive || !m) return;
     methods = m;
+    onMethods?.(m);
     // The chosen channel does not work but the other one does: start there (unless a code is already out).
     if (!model.codeSent && !codeOn(model.channel) && codeOn(otherChannel(model.channel))) model.channel = otherChannel(model.channel);
     const focused = node.contains(document.activeElement) ? document.activeElement : null;
@@ -513,6 +529,8 @@ screen('/create', ({ root }) => {
     draft.verified.facebook ||= Boolean(pending.verified.facebook);
   }
   let saving = false;
+  // Google / Facebook known to work (GET /auth/methods, via the phone step): only then do the notes name them.
+  let signinOk = false;
 
   root.append(
     el('header', { class: 'brandbar' },
@@ -607,6 +625,7 @@ screen('/create', ({ root }) => {
   // --- phone, or Facebook / Google: one row of 4 round buttons (Telegram · WhatsApp · Facebook · Google)
   const phone = phoneVerifier(draft.phone, {
     onChange: () => update(),
+    onMethods: (m) => { signinOk = signinWorks(m); update(); },
     onVerified: (r) => {
       if (r.existing && r.user) {
         draft = blankDraft();
@@ -624,7 +643,7 @@ screen('/create', ({ root }) => {
   // --- continue
   const contText = el('span', { class: 'btn-text' }, t('cp_continue'));
   const cont = el('button', { type: 'button', class: 'btn btn-primary', on: { click: () => submit() } }, contText, icon('arrow', 18));
-  const contNote = el('p', { class: 'help center' }, t('cp_need_all'));
+  const contNote = el('p', { class: 'help center' }, t('cp_need_all_phone'));
   const ready = () => Boolean(draft.photo && checkAppName(draft.name).ok && checkBirthYear(draft.birthYear).ok
     && charCount(draft.realName.trim()) >= 2
     && draft.gender && draft.role && (draft.phone.verified || draft.verified.gmail || draft.verified.facebook));
@@ -632,6 +651,7 @@ screen('/create', ({ root }) => {
     const ok = ready();
     cont.disabled = !ok || saving;
     contNote.hidden = ok || saving;
+    contNote.textContent = t(signinOk ? 'cp_need_all' : 'cp_need_all_phone');
   }
 
   async function submit() {
@@ -681,7 +701,7 @@ screen('/create', ({ root }) => {
       Object.assign(draft.phone, blankPhone(), { phone: draft.phone.phone, cc: draft.phone.cc });
       draft.verified = { gmail: false, facebook: false };
       state.pending = null;
-      toast(t('cp_verify_again'));
+      toast(t(signinOk ? 'cp_verify_again' : 'cp_verify_again_phone'));
       go('/create', { replace: true });
     } else if (err.code === 'profile_exists') {
       go('/nearby', { replace: true });
@@ -775,14 +795,19 @@ registerStrings({
     cp_ch_failed: '{channel} codes are not working right now. Try {other}.',
     cp_ch_off: 'Codes by {channel} are not available yet. Try {other}.',
     cp_ch_try: 'Send by {channel}',
+    cp_ch_not_on_only: 'We could not send a {channel} code to this number. Check the number.',
+    cp_ch_failed_only: '{channel} codes are not working right now. Please try again in a little while.',
+    cp_ch_off_only: 'Codes by {channel} are not available yet.',
     cp_phone_in_use: 'This phone number already has a profile.',
     cp_verified: 'Verified',
     cp_social_note: 'Google or Facebook is enough to start. Your phone is needed before you can chat at Level 3.',
     cp_continue: 'Continue',
     cp_need_all: 'Add your photo, fill in every field and verify your phone, Google or Facebook.',
+    cp_need_all_phone: 'Add your photo, fill in every field and verify your phone.',
     cp_saving: 'Saving…',
     cp_locating: 'Finding people near you…',
     cp_verify_again: 'Please verify your phone, Google or Facebook again.',
+    cp_verify_again_phone: 'Please verify your phone again.',
     cp_welcome_back: 'Welcome back, {name}',
   },
   km: {
@@ -843,14 +868,19 @@ registerStrings({
     cp_ch_failed: 'ការផ្ញើលេខកូដតាម {channel} មិនដំណើរការនៅពេលនេះទេ។ សូមសាកល្បង {other}។',
     cp_ch_off: 'លេខកូដតាម {channel} មិនទាន់អាចប្រើបាននៅឡើយទេ។ សូមសាកល្បង {other}។',
     cp_ch_try: 'ផ្ញើតាម {channel}',
+    cp_ch_not_on_only: 'យើងមិនអាចផ្ញើលេខកូដតាម {channel} ទៅលេខនេះបានទេ។ សូមពិនិត្យលេខ។',
+    cp_ch_failed_only: 'ការផ្ញើលេខកូដតាម {channel} មិនដំណើរការនៅពេលនេះទេ។ សូមព្យាយាមម្ដងទៀតក្នុងពេលបន្តិចទៀត។',
+    cp_ch_off_only: 'លេខកូដតាម {channel} មិនទាន់អាចប្រើបាននៅឡើយទេ។',
     cp_phone_in_use: 'លេខទូរស័ព្ទនេះមានប្រវត្តិរូបរួចហើយ។',
     cp_verified: 'បានផ្ទៀងផ្ទាត់',
     cp_social_note: 'Google ឬ Facebook គ្រប់គ្រាន់ដើម្បីចាប់ផ្ដើម។ ត្រូវការលេខទូរស័ព្ទ មុនពេលអ្នកអាចជជែកនៅកម្រិត 3។',
     cp_continue: 'បន្ត',
     cp_need_all: 'សូមបន្ថែមរូបថត បំពេញគ្រប់ចន្លោះ ហើយផ្ទៀងផ្ទាត់ទូរស័ព្ទ Google ឬ Facebook។',
+    cp_need_all_phone: 'សូមបន្ថែមរូបថត បំពេញគ្រប់ចន្លោះ ហើយផ្ទៀងផ្ទាត់ទូរស័ព្ទ។',
     cp_saving: 'កំពុងរក្សាទុក…',
     cp_locating: 'កំពុងស្វែងរកមនុស្សនៅជិតអ្នក…',
     cp_verify_again: 'សូមផ្ទៀងផ្ទាត់ទូរស័ព្ទ Google ឬ Facebook ម្ដងទៀត។',
+    cp_verify_again_phone: 'សូមផ្ទៀងផ្ទាត់ទូរស័ព្ទម្ដងទៀត។',
     cp_welcome_back: 'សូមស្វាគមន៍ការត្រឡប់មកវិញ {name}',
   },
   zh: {
@@ -911,14 +941,19 @@ registerStrings({
     cp_ch_failed: '{channel} 验证码暂时无法发送，请改用 {other}。',
     cp_ch_off: '{channel} 验证码暂未开通，请改用 {other}。',
     cp_ch_try: '改用 {channel} 发送',
+    cp_ch_not_on_only: '无法通过 {channel} 向这个号码发送验证码。请检查号码。',
+    cp_ch_failed_only: '{channel} 验证码暂时无法发送，请稍后再试。',
+    cp_ch_off_only: '{channel} 验证码暂未开通。',
     cp_phone_in_use: '这个手机号已经有资料了。',
     cp_verified: '已验证',
     cp_social_note: '用 Google 或 Facebook 即可开始；到等级 3 聊天前需要验证手机号。',
     cp_continue: '继续',
     cp_need_all: '请添加照片、填写所有信息，并验证手机、Google 或 Facebook。',
+    cp_need_all_phone: '请添加照片、填写所有信息，并验证手机号。',
     cp_saving: '保存中…',
     cp_locating: '正在寻找你附近的人…',
     cp_verify_again: '请重新验证手机、Google 或 Facebook。',
+    cp_verify_again_phone: '请重新验证手机号。',
     cp_welcome_back: '欢迎回来，{name}',
   },
   ko: {
@@ -979,14 +1014,19 @@ registerStrings({
     cp_ch_failed: '지금은 {channel} 코드를 보낼 수 없어요. {other}(으)로 받아 보세요.',
     cp_ch_off: '{channel} 코드는 아직 쓸 수 없어요. {other}(으)로 받아 보세요.',
     cp_ch_try: '{channel}(으)로 받기',
+    cp_ch_not_on_only: '이 번호로는 {channel} 코드를 보낼 수 없어요. 번호를 확인해 주세요.',
+    cp_ch_failed_only: '지금은 {channel} 코드를 보낼 수 없어요. 잠시 후 다시 시도해 주세요.',
+    cp_ch_off_only: '{channel} 코드는 아직 쓸 수 없어요.',
     cp_phone_in_use: '이 전화번호로 이미 만든 프로필이 있어요.',
     cp_verified: '인증됨',
     cp_social_note: 'Google 또는 Facebook으로 시작할 수 있어요. 레벨 3에서 채팅하려면 전화번호 인증이 필요해요.',
     cp_continue: '계속',
     cp_need_all: '사진을 올리고 모든 항목을 채운 뒤 전화번호, Google 또는 Facebook으로 인증해 주세요.',
+    cp_need_all_phone: '사진을 올리고 모든 항목을 채운 뒤 전화번호를 인증해 주세요.',
     cp_saving: '저장 중…',
     cp_locating: '근처에 있는 사람을 찾는 중…',
     cp_verify_again: '전화번호, Google 또는 Facebook으로 다시 인증해 주세요.',
+    cp_verify_again_phone: '전화번호를 다시 인증해 주세요.',
     cp_welcome_back: '다시 오신 걸 환영해요, {name}님',
   },
   ja: {
@@ -1047,14 +1087,19 @@ registerStrings({
     cp_ch_failed: '現在{channel}でコードを送れません。{other}をお試しください。',
     cp_ch_off: '{channel}でのコード送信はまだ利用できません。{other}をお試しください。',
     cp_ch_try: '{channel}で送る',
+    cp_ch_not_on_only: 'この番号には{channel}でコードを送れませんでした。番号を確認してください。',
+    cp_ch_failed_only: '現在{channel}でコードを送れません。しばらくしてからもう一度お試しください。',
+    cp_ch_off_only: '{channel}でのコード送信はまだ利用できません。',
     cp_phone_in_use: 'この電話番号のプロフィールはすでにあります。',
     cp_verified: '確認済み',
     cp_social_note: 'GoogleまたはFacebookで始められます。レベル3でチャットするには電話番号の確認が必要です。',
     cp_continue: '次へ',
     cp_need_all: '写真を追加してすべての項目を入力し、電話番号・Google・Facebookのいずれかで確認してください。',
+    cp_need_all_phone: '写真を追加してすべての項目を入力し、電話番号を確認してください。',
     cp_saving: '保存中…',
     cp_locating: '近くの人を探しています…',
     cp_verify_again: '電話番号・Google・Facebookのいずれかでもう一度確認してください。',
+    cp_verify_again_phone: '電話番号をもう一度確認してください。',
     cp_welcome_back: 'おかえりなさい、{name}さん',
   },
 });

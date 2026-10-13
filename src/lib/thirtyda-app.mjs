@@ -754,10 +754,13 @@ function takeGiveBack(phone, now) {
   return true;
 }
 
-/** Who gets the code where: the person picks Telegram (default) or WhatsApp on the phone step. */
+/**
+ * Who gets the code where: the person picks Telegram (default) or WhatsApp on the phone step. `other` is the
+ * other channel's name only when it really works; null → the words never send people to a channel that is off.
+ */
 const CHANNEL_FAILED_TEXT = {
-  not_on: (name, other) => `We could not send a ${name} code to this number. Check the number, or get the code by ${other}.`,
-  unavailable: (name, other) => `${name} codes are not working right now. Try ${other}.`,
+  not_on: (name, other) => `We could not send a ${name} code to this number. Check the number${other ? `, or get the code by ${other}` : ""}.`,
+  unavailable: (name, other) => `${name} codes are not working right now. ${other ? `Try ${other}.` : "Please try again in a little while."}`,
 };
 
 /**
@@ -783,7 +786,8 @@ async function authMethods(ctx) {
  * returned, test mode or not. The new code is claimed PENDING: verify-code checks nothing against it (nor
  * against the number's older code) until Telegram / WhatsApp has accepted it, so a send that fails was never
  * guessable. If delivery fails → 422 channel_failed { channel, reason: 'not_on_telegram' | 'not_on_whatsapp' |
- * 'unavailable', message } (never a devCode, never the provider's own words): the number's older code comes back
+ * 'unavailable' (everything else, incl. WhatsApp's not_allowed: a setup problem, not the person's number),
+ * message } (never a devCode, never the provider's own words): the number's older code comes back
  * exactly as it was (its tries already used stay used), and the send itself is given back (no 30 s wait,
  * no use of its 3 per 15 minutes) at most OTP_GIVE_BACKS times per number per 15 minutes; after that a
  * failed send counts like a sent one. The address's count always stays used.
@@ -797,7 +801,7 @@ async function sendCode(ctx) {
   const channel = body.channel == null || body.channel === "" ? DEFAULT_CHANNEL : body.channel;
   if (!CODE_CHANNELS.includes(channel)) throw invalid("Choose Telegram or WhatsApp.", { field: "channel" });
   const name = CHANNEL_NAMES[channel];
-  const other = CHANNEL_NAMES[CODE_CHANNELS.find((c) => c !== channel)];
+  const otherKey = CODE_CHANNELS.find((c) => c !== channel);
   const live = await channelLive(d, channel);
   if (!live && !(await testCodesAllowed(d, DEV_AUTH))) {
     throw fail(503, "channel_unavailable", `Codes by ${name} are not available yet.`, { channel });
@@ -843,6 +847,8 @@ async function sendCode(ctx) {
     console.warn(`[30da api] ${channel} code not delivered: ${sent.reason}${sent.detail ? ` (${sent.detail})` : ""}${givenBack ? "" : " · send counted"}`);
     const notOn = sent.reason === "not_on_telegram" || sent.reason === "not_on_whatsapp";
     const reason = notOn ? sent.reason : "unavailable";
+    // This channel is live, so test codes are off: the other one works only if it is live too.
+    const other = (await channelLive(d, otherKey).catch(() => false)) ? CHANNEL_NAMES[otherKey] : null;
     throw fail(422, "channel_failed", CHANNEL_FAILED_TEXT[notOn ? "not_on" : "unavailable"](name, other), { channel, reason });
   }
   // Not live (test mode with no channel set up, checked above): the code comes back for the "Test code" note.

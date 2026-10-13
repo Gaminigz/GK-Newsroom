@@ -17,8 +17,9 @@
  *     template:{ name, language:{ code }, components:[ { type:'body', parameters:[{ type:'text', text:code }] },
  *                                                      { type:'button', sub_type:'url', index:'0', parameters:[{ type:'text', text:code }] } ] } }
  *   → { messages:[{ id }] } | { error:{ message, code, error_subcode, … } }
- * Failures come back in plain words (bad token / number not on WhatsApp / template not approved / payment
- * problem / other) with Meta's own message as the detail. The token is never logged or returned.
+ * Failures come back in plain words (bad token / number not on WhatsApp / number not on the test number's
+ * list / template not approved / payment problem / other) with Meta's own message as the detail. The token
+ * is never logged or returned.
  *
  * Telegram Gateway API (https://core.telegram.org/gateway/api):
  *   POST https://gatewayapi.telegram.org/sendVerificationMessage
@@ -141,14 +142,18 @@ export function whatsappRequest({ token, phoneNumberId, templateName, templateLa
 }
 
 /**
- * Meta's error ({ code, error_subcode }) + HTTP status → bad_token | not_on_whatsapp | template | no_balance | other.
+ * Meta's error ({ code, error_subcode }) + HTTP status →
+ *   bad_token | not_on_whatsapp | not_allowed | template | no_balance | other.
+ * not_allowed (131030, "Recipient phone number not in allowed list"): the sender is still Meta's test number
+ * and the recipient was never added to its list — the person IS on WhatsApp, so it is not not_on_whatsapp.
  * https://developers.facebook.com/docs/whatsapp/cloud-api/support/error-codes
  */
 export function classifyWhatsAppError(error, status = 200) {
   const code = Number(error?.code);
   if ([190, 102, 463, 467, 10].includes(code) || (code >= 200 && code <= 299) || status === 401) return "bad_token";
   if (code >= 132000 && code <= 132999) return "template";
-  if ([131026, 131030].includes(code)) return "not_on_whatsapp";
+  if (code === 131030) return "not_allowed";
+  if (code === 131026) return "not_on_whatsapp";
   if (code === 131042) return "no_balance";
   if (status === 403) return "bad_token";
   return "other";
@@ -217,6 +222,7 @@ export function classifyTelegramError(detail, status = 200) {
 const WA_TEXT = {
   bad_token: "WhatsApp did not accept the access token. Make a new permanent token in Meta (Business settings → System users → Generate token) and save it again.",
   not_on_whatsapp: "WhatsApp cannot send a code to this number. It may not be on WhatsApp.",
+  not_allowed: "This WhatsApp number is still Meta's test number: add the phone you are sending to in Meta → WhatsApp → API setup → 'To' list, or use your real business number.",
   template: "WhatsApp did not accept the message template. Check the template name and language, and that Meta has approved it (WhatsApp Manager → Message templates).",
   no_balance: "WhatsApp cannot send because of a payment problem on the Meta business account. Add or fix the payment method in Meta Business settings.",
   not_set: "WhatsApp is not set up yet.",
