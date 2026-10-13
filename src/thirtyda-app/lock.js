@@ -152,7 +152,9 @@ export function setPinSteps({ title, text, onDone, onFirst = null, light = false
     restart(problem);
   }
   paint();
-  return { node: el('div', { class: 'pin-body' }, titleEl, textEl, pad.node, err.node), focus: () => pad.focus() };
+  // Owner (2026-10-13): say it under the 4 boxes — the app covers itself after 30 s without a touch or a move.
+  const idle = el('p', { class: 'pin-idle-note' }, t('pin_idle_note'));
+  return { node: el('div', { class: 'pin-body' }, titleEl, textEl, pad.node, err.node, idle), focus: () => pad.focus() };
 }
 
 // ---------------------------------------------------------------- the cover
@@ -542,6 +544,7 @@ registerStrings({
     pin_old_text: 'Type the PIN you use now.',
     pin_changed: 'PIN changed',
     pin_saved: 'PIN saved',
+    pin_idle_note: 'Locks after 30 seconds without touch or movement.',
   },
   km: {
     pin_aria: 'លេខ PIN 4 ខ្ទង់',
@@ -567,6 +570,7 @@ registerStrings({
     pin_old_text: 'វាយលេខ PIN ដែលអ្នកកំពុងប្រើ។',
     pin_changed: 'បានប្ដូរលេខ PIN',
     pin_saved: 'បានរក្សាទុកលេខ PIN',
+    pin_idle_note: 'ចាក់សោក្រោយ 30 វិនាទី បើគ្មានការប៉ះ ឬចលនា។',
   },
   zh: {
     pin_aria: 'PIN 码，4 位数字',
@@ -592,6 +596,7 @@ registerStrings({
     pin_old_text: '输入你现在用的 PIN 码。',
     pin_changed: 'PIN 码已更改',
     pin_saved: 'PIN 码已保存',
+    pin_idle_note: '30 秒没有触摸或移动就会锁定。',
   },
   ko: {
     pin_aria: 'PIN, 숫자 4개',
@@ -617,6 +622,7 @@ registerStrings({
     pin_old_text: '지금 쓰는 PIN을 입력하세요.',
     pin_changed: 'PIN을 바꿨어요',
     pin_saved: 'PIN을 저장했어요',
+    pin_idle_note: '30초 동안 터치나 움직임이 없으면 잠겨요.',
   },
   ja: {
     pin_aria: 'PIN、数字4桁',
@@ -642,5 +648,6 @@ registerStrings({
     pin_old_text: '今使っているPINを入力してください。',
     pin_changed: 'PINを変更しました',
     pin_saved: 'PINを保存しました',
+    pin_idle_note: '30秒間タッチや操作がないとロックされます。',
   },
 });

@@ -113,3 +113,6 @@ body.pin-locked .toast { display: none; }
   .pin-pad.shake { animation: none; }
   .pin-cell, .pin-cell > i { transition: none; }
 }
+
+/* Under the 4 boxes: the app covers itself after 30 s without a touch or a move. */
+.pin-idle-note { margin: 12px 0 0; font-size: 13px; line-height: 1.4; text-align: center; opacity: 0.75; }
