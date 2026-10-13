@@ -443,8 +443,10 @@ screen('/me', async ({ root, query }) => {
 
   body.replaceChildren(
     // Language first: it decides what everything below (and every chat) is shown in.
-    // Owner (2026-10-13): hearts at the top, not hidden at the bottom.
-    el('div', { class: 'me-hearts-top' }, el('span', { class: 'label' }, t('me_hearts')), heartPills(me.hearts, 'lg')),
+    // Owner (2026-10-13): hearts (left) and where I am (right) at the top, not hidden at the bottom.
+    el('div', { class: 'me-hearts-top' },
+      el('div', { class: 'me-hearts-left' }, el('span', { class: 'label' }, t('me_hearts')), heartPills(me.hearts, 'lg')),
+      place ? el('span', { class: 'me-place' }, icon('pin', 14), el('span', {}, place)) : null),
     section(t('me_language'), el('div', { class: 'lang-grid' }, langBtns), el('p', { class: 'help' }, t('me_language_note'))),
     el('section', { class: 'section' },
       el('div', { class: 'section-head' }, el('span', { class: 'label ink' }, t('me_photos')), slotCount),
@@ -462,7 +464,6 @@ screen('/me', async ({ root, query }) => {
         el('span', { class: 'tag' }, icon('lock', 11), t('me_real_tag'))),
       realInput, truthNote()), // gender, job, real name (shown at Level 3), then the warning
     section(t('me_verified_with'), phoneBlock),
-    place ? el('p', { class: 'kv' }, icon('pin', 16), el('span', {}, place)) : null,
     me.pinSet ? changePin : null,
     signOut,
     el('p', { class: 'label me-foot' }, `30+DA · ${me.id}`));

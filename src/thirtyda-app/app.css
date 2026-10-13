@@ -1090,3 +1090,6 @@ dialog.verify-sheet { overflow-y: auto; }
 
 /* Me page: hearts on top (owner 2026-10-13). */
 .me-hearts-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-radius: 14px; background: var(--field, #eef1f6); }
+.me-hearts-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.me-place { display: inline-flex; align-items: center; gap: 4px; min-width: 0; font-size: 13px; color: var(--ink); text-align: right; }
+.me-place > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
