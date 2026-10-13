@@ -17,7 +17,8 @@
 import { LANGS, LANG_NATIVE, LANG_FLAG } from "../thirtyda-app/shared/rules.js";
 
 export const CONTACT_EMAIL = "gk.smart@ggmt.sg";
-export const POLICY_DATE = "13 October 2026";
+/** The day the privacy policy last changed (YYYY-MM-DD): the one place to change it. Each language writes it its own way (policyDate). */
+export const POLICY_DATE = "2026-10-13";
 /** The subject a deletion email asks for (English in every language: the team reads it; the mail link fills it in). */
 export const DELETE_SUBJECT = "Delete my 30+DA account";
 const NAMES = { google: "Google", facebook: "Facebook" };
@@ -63,12 +64,12 @@ export const PAGE_STRINGS = {
     language: "Language",
     questions: "Questions:",
     priv_title: "Privacy policy",
-    priv_date: "Updated 13 Oct 2026",
+    priv_date: "Updated {date}",
     priv_lede: "30+DA is a dating app for people aged 30 and over.",
     priv_keep_k: "We keep:",
     priv_keep: "your profile, photos, phone number, rough area and messages.",
     priv_social_k: "From Google or Facebook:",
-    priv_social: "only your account number and email.",
+    priv_social: "we keep only your account number and email.",
     priv_why_k: "Why:",
     priv_why: "to sign you in, show you people nearby and keep everyone safe.",
     priv_who_k: "Who sees it:",
@@ -114,12 +115,12 @@ export const PAGE_STRINGS = {
     language: "ភាសា",
     questions: "សំណួរ៖",
     priv_title: "គោលការណ៍ឯកជនភាព",
-    priv_date: "កែថ្មី 13 តុលា 2026",
+    priv_date: "កែថ្មី {date}",
     priv_lede: "30+DA ជាកម្មវិធីណាត់ជួប សម្រាប់អ្នកដែលមានអាយុពី 30 ឆ្នាំឡើងទៅ។",
     priv_keep_k: "យើងរក្សាទុក៖",
     priv_keep: "ប្រវត្តិរូប រូបថត លេខទូរស័ព្ទ តំបន់ប្រហាក់ប្រហែល និងសាររបស់អ្នក។",
     priv_social_k: "ពី Google ឬ Facebook៖",
-    priv_social: "តែលេខគណនី និងអ៊ីមែលរបស់អ្នកប៉ុណ្ណោះ។",
+    priv_social: "យើងរក្សាទុកតែលេខគណនី និងអ៊ីមែលរបស់អ្នកប៉ុណ្ណោះ។",
     priv_why_k: "ហេតុអ្វី៖",
     priv_why: "ដើម្បីឲ្យអ្នកចូលបាន បង្ហាញមនុស្សនៅជិតអ្នក និងរក្សាសុវត្ថិភាពគ្រប់គ្នា។",
     priv_who_k: "អ្នកណាឃើញ៖",
@@ -165,12 +166,12 @@ export const PAGE_STRINGS = {
     language: "语言",
     questions: "联系我们：",
     priv_title: "隐私政策",
-    priv_date: "更新于 2026 年 10 月 13 日",
+    priv_date: "更新于 {date}",
     priv_lede: "30+DA 是为 30 岁及以上人士打造的交友应用。",
     priv_keep_k: "我们保存：",
     priv_keep: "你的资料、照片、手机号、大致位置和消息。",
     priv_social_k: "来自 Google 或 Facebook：",
-    priv_social: "只有你的账号编号和邮箱。",
+    priv_social: "我们只保存你的账号编号和邮箱。",
     priv_why_k: "用途：",
     priv_why: "让你登录、为你显示附近的人，并保障大家的安全。",
     priv_who_k: "谁能看到：",
@@ -216,12 +217,12 @@ export const PAGE_STRINGS = {
     language: "언어",
     questions: "문의:",
     priv_title: "개인정보 처리방침",
-    priv_date: "2026년 10월 13일 업데이트",
+    priv_date: "{date} 업데이트",
     priv_lede: "30+DA는 30세 이상을 위한 만남 앱이에요.",
     priv_keep_k: "보관하는 정보:",
     priv_keep: "프로필, 사진, 전화번호, 대략적인 지역, 메시지.",
     priv_social_k: "Google·Facebook에서:",
-    priv_social: "계정 번호와 이메일만 받아요.",
+    priv_social: "계정 번호와 이메일만 보관해요.",
     priv_why_k: "이유:",
     priv_why: "로그인, 근처 사람 보여 주기, 모두의 안전을 위해서예요.",
     priv_who_k: "누가 보나요:",
@@ -267,12 +268,12 @@ export const PAGE_STRINGS = {
     language: "言語",
     questions: "お問い合わせ：",
     priv_title: "プライバシーポリシー",
-    priv_date: "2026年10月13日 更新",
+    priv_date: "{date} 更新",
     priv_lede: "30+DA は、30歳以上の方のための出会いアプリです。",
     priv_keep_k: "保存するもの：",
     priv_keep: "プロフィール、写真、電話番号、おおよその地域、メッセージ。",
     priv_social_k: "Google・Facebook から：",
-    priv_social: "アカウント番号とメールアドレスだけ。",
+    priv_social: "アカウント番号とメールアドレスだけを保存します。",
     priv_why_k: "目的：",
     priv_why: "ログイン、近くの人の表示、みんなの安全のため。",
     priv_who_k: "見える人：",
@@ -317,6 +318,21 @@ export const PAGE_STRINGS = {
 };
 
 const ok = (lang) => (LANGS.includes(lang) ? lang : "en");
+
+const EN_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const KM_MONTHS = ["មករា", "កុម្ភៈ", "មីនា", "មេសា", "ឧសភា", "មិថុនា", "កក្កដា", "សីហា", "កញ្ញា", "តុលា", "វិច្ឆិកា", "ធ្នូ"];
+/** POLICY_DATE (or any YYYY-MM-DD) as each language writes it: 13 Oct 2026 · 13 តុលា 2026 · 2026 年 10 月 13 日 · 2026년 10월 13일 · 2026年10月13日. */
+export function policyDate(lang, iso = POLICY_DATE) {
+  const [y, m, d] = String(iso).split("-").map(Number);
+  return {
+    en: `${d} ${EN_MONTHS[m - 1]} ${y}`,
+    km: `${d} ${KM_MONTHS[m - 1]} ${y}`,
+    zh: `${y} 年 ${m} 月 ${d} 日`,
+    ko: `${y}년 ${m}월 ${d}일`,
+    ja: `${y}年${m}月${d}日`,
+  }[ok(lang)];
+}
+
 const mailLink = `<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>`;
 const deleteMailLink = `<a href="mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(DELETE_SUBJECT)}">${CONTACT_EMAIL}</a>`;
 
@@ -366,7 +382,7 @@ export function privacyPage({ lang: want } = {}) {
   const t = PAGE_STRINGS[lang];
   const point = (k) => `        <li><b>${t[`${k}_k`]}</b> ${t[k]}</li>`;
   const body = `      <h1>${t.priv_title}</h1>
-      <p class="doc-date">${t.priv_date}</p>
+      <p class="doc-date">${fill(t.priv_date, { date: policyDate(lang) })}</p>
       <p class="doc-lede">${t.priv_lede}</p>
       <ul class="facts">
 ${["priv_keep", "priv_social", "priv_why", "priv_who", "priv_team", "priv_codes"].map(point).join("\n")}

@@ -7,6 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import {
   SIGNIN_STATES, STATE_TTL_MS, GOOGLE, FACEBOOK, authorizeUrl, createSigninState, takeSigninState, stateCookie, readStateCookie,
   stateHash, adminSessionAlive, googleTokenRequest, googleUserinfoRequest, facebookTokenRequest, facebookMeRequest, appsecretProof,
@@ -18,7 +19,7 @@ import {
   deliverCode, channelOffer, channelOffered, channelKeyMark, noteChannelOutcome, isLastingFailure, LASTING_REASONS,
 } from './thirtyda-code-send.mjs';
 import { testFetchAllowed, redactCall, makeTestFetch, TEST_FETCH_COLLECTION } from './thirtyda-test-fetch.mjs';
-import { tryResultPage, privacyPage, deleteDataPage, esc, pickLang, requestLang, PAGE_STRINGS } from './thirtyda-pages.mjs';
+import { tryResultPage, privacyPage, deleteDataPage, esc, pickLang, requestLang, PAGE_STRINGS, POLICY_DATE, policyDate } from './thirtyda-pages.mjs';
 
 const KEY_HEX = crypto.randomBytes(32).toString('hex');
 const G_KEYS = { id: '1234567890-abcdefghij.apps.googleusercontent.com', secret: 'GOCSPX-FAKEsecret0123456789_Ab12' };
@@ -489,6 +490,32 @@ test('privacy + delete-data: short, plain, in each language, flags on top, what 
   assert.ok(privacyPage({ lang: 'xx' }).includes('<html lang="en">'));
   assert.ok(shown(privacyPage()).length < 900, `privacy (en) stays short: ${shown(privacyPage()).length} characters`);
   assert.ok(shown(deleteDataPage()).length < 500, `delete-data (en) stays short: ${shown(deleteDataPage()).length} characters`);
+});
+
+test('privacy: the date comes from POLICY_DATE alone, written each language\'s way; Google / Facebook line says what we keep', () => {
+  assert.match(POLICY_DATE, /^\d{4}-\d{2}-\d{2}$/);
+  const want = { en: '13 Oct 2026', km: '13 តុលា 2026', zh: '2026 年 10 月 13 日', ko: '2026년 10월 13일', ja: '2026年10月13日' };
+  for (const lang of PAGE_LANGS) {
+    assert.equal(policyDate(lang, '2026-10-13'), want[lang], `${lang}: date format`);
+    assert.ok(PAGE_STRINGS[lang].priv_date.includes('{date}'), `${lang}: priv_date is filled from POLICY_DATE`);
+    assert.ok(!/\d/.test(PAGE_STRINGS[lang].priv_date), `${lang}: no date typed into the words`);
+    const date = `<p class="doc-date">${PAGE_STRINGS[lang].priv_date.replace('{date}', policyDate(lang))}</p>`;
+    assert.ok(privacyPage({ lang }).includes(date), `privacy ${lang}: shows ${policyDate(lang)}`);
+  }
+  assert.equal(policyDate('en', '2027-01-05'), '5 Jan 2027', 'change POLICY_DATE → every language follows');
+  assert.equal(policyDate('km', '2027-01-05'), '5 មករា 2027');
+  assert.equal(policyDate('xx', '2027-01-05'), '5 Jan 2027');
+  // The app asks Google / Facebook for name + email but keeps only the account number + email: say "keep".
+  assert.equal(PAGE_STRINGS.en.priv_social, 'we keep only your account number and email.');
+  assert.ok(PAGE_STRINGS.km.priv_social.includes('រក្សាទុក') && PAGE_STRINGS.zh.priv_social.includes('保存')
+    && PAGE_STRINGS.ko.priv_social.includes('보관') && PAGE_STRINGS.ja.priv_social.includes('保存'), 'every language says "keep"');
+});
+
+test('pages.css: the flag row fits phones narrower than 380 px (no sideways scroll at 360 / 320)', () => {
+  const css = readFileSync(new URL('../thirtyda-app/pages.css', import.meta.url), 'utf8');
+  const narrow = css.match(/@media \(max-width: 379px\) \{([\s\S]*?)\n\}/)?.[1] || '';
+  assert.match(narrow, /\.langs \{[^}]*padding: 8px 6px;[^}]*gap: 0;/);
+  assert.match(narrow, /\.langs a \{[^}]*padding: 0 4px;/);
 });
 
 test('try page: big "Works ✓", "Google: name (email)" escaped, one short line; failures one line what to fix; 5 languages', () => {
