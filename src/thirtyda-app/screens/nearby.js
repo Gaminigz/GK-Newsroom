@@ -77,11 +77,11 @@ screen('/nearby', ({ root }) => {
   }
 
   // --- distance
-  const within = el('span', { class: 'within' });
+  const within = el('span', { class: 'label ink within' }); // the current distance, in the middle of the scale
   const range = el('input', { type: 'range', class: 'range', min: '1', max: '50', step: '1', value: String(km), 'aria-label': t('nb_distance') });
   function paintRange() {
     const text = t('nb_within', { km });
-    within.textContent = text;
+    within.textContent = fmtKm(km, { whole: true });
     range.setAttribute('aria-valuetext', text);
     range.style.setProperty('--pct', `${((km - 1) / 49) * 100}%`);
   }
@@ -171,9 +171,8 @@ screen('/nearby', ({ root }) => {
 
   root.append(
     el('section', { class: 'distance' },
-      el('div', { class: 'dist-head' }, el('span', { class: 'label ink' }, t('nb_distance')), within),
       range,
-      el('div', { class: 'ticks', 'aria-hidden': 'true' }, [1, 25, 50].map((n) => el('span', { class: 'label' }, fmtKm(n, { whole: true }))))),
+      el('div', { class: 'ticks' }, el('span', { class: 'label' }, fmtKm(1, { whole: true })), within, el('span', { class: 'label' }, fmtKm(50, { whole: true })))),
     el('div', { class: 'seg', role: 'group', 'aria-label': t('nb_show') }, segBtns),
     waiting,
     countLine,

@@ -734,7 +734,8 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .gps-card .btn-light { margin-top: 6px; }
 .gps-card .icon-btn { width: 42px; height: 42px; border-color: rgb(255 255 255 / 0.55); color: #fff; background: transparent; }
 .gps-card .icon-btn.busy .icon { animation: spin 1s linear infinite; }
-.distance { margin-top: 20px; }
+.distance { margin-top: 6px; }
+.ticks .within { font-size: 12px; font-weight: 700; }
 .dist-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .within { font-size: 14px; font-weight: 700; }
 .range { --pct: 18%; display: block; width: 100%; height: 30px; margin: 4px 0 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; }
