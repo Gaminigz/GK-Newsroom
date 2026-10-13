@@ -39,6 +39,12 @@
  *                       once a day. "/help" → the help line (it says they can ask here).
  *   Replies are in the check's language (en/km/zh/ko/ja), else the person's Telegram language, else English. No reply
  *   ever carries a phone number.
+ *   The back button (owner 2026-10-14: the "◀ 30+DA" corner link iOS draws in Telegram is far too small for 30+ eyes):
+ *   after the "done" and the "mismatch" reply (both unchanged, still removing the keyboard) the bot sends ONE more short
+ *   message, "Tap the button to go back to 30+DA.", with a big inline URL button "⬅️ Back to 30+DA" (backReply). Telegram
+ *   takes only http(s) there, so it opens <the site>/30da/back (src/lib/thirtyda-pages.mjs backPage), which opens the
+ *   app on a phone, else the web app. The site: the saved webhook's https origin, else https://ecom.ggmt.sg. The app's
+ *   name comes from APP_NAME alone (GKVerify will serve other GK apps later).
  * Never stored: the shared contact's number (only compared) or a check token (only its hash). The Telegram user id is
  * kept on the check (it binds the check to one person), and once verified in thirtyda_tg_links next to the number that
  * was typed in the app (so support can name their 30+DA profile). Never logged, returned or audited: the bot key, the webhook
@@ -568,6 +574,57 @@ export function botReply(kind, lang, chatId, vars = null) {
   return { chat_id: chatId, text, reply_markup: askAgain ? button : { remove_keyboard: true } };
 }
 
+// ---------------------------------------------------------------- the back button
+
+/** The app GKVerify sends people back to: the one place its name lives (the bot will serve other GK apps later). */
+export const APP_NAME = "30+DA";
+/** The page the back button opens (src/lib/thirtyda-app.mjs → src/lib/thirtyda-pages.mjs backPage). */
+export const BACK_PATH = "/30da/back";
+/** The live site, when the saved webhook address does not name an https one. */
+export const DEFAULT_ORIGIN = "https://ecom.ggmt.sg";
+/** The replies that end a check: each is followed by the back button, as a second message. */
+export const BACK_AFTER = ["done", "mismatch"];
+
+/**
+ * The back message's words in the 5 languages: one short line and the button. {app} is APP_NAME. Never a number:
+ * Telegram draws the button big, across the whole message (an inline keyboard, not the reply keyboard).
+ */
+export const BACK_TEXT = {
+  en: { text: "Tap the button to go back to {app}.", button: "⬅️ Back to {app}" },
+  km: { text: "ចុចប៊ូតុងខាងក្រោម ដើម្បីត្រឡប់ទៅ {app} វិញ។", button: "⬅️ ត្រឡប់ទៅ {app}" },
+  zh: { text: "点下面的按钮，返回 {app}。", button: "⬅️ 返回 {app}" },
+  ko: { text: "버튼을 눌러 {app} 앱으로 돌아가세요.", button: "⬅️ {app} 앱으로 돌아가기" },
+  ja: { text: "ボタンを押して、{app} に戻ってください。", button: "⬅️ {app} に戻る" },
+};
+
+/**
+ * The site the bot belongs to, from its saved webhook address (https://ecom.ggmt.sg/30da/api/telegram/hook →
+ * https://ecom.ggmt.sg): only an https address with a host and nothing else in front; otherwise DEFAULT_ORIGIN.
+ */
+export function siteOrigin(savedHookUrl) {
+  try {
+    const u = new URL(String(savedHookUrl ?? ""));
+    if (u.protocol === "https:" && u.hostname && !u.username && !u.password) return u.origin;
+  } catch {
+    // not an address: the default below
+  }
+  return DEFAULT_ORIGIN;
+}
+
+/** <origin>/30da/back — where the back button goes. */
+export const backUrl = (origin = DEFAULT_ORIGIN) => `${origin}${BACK_PATH}`;
+
+/** The sendMessage parameters for the back message: the line + one inline URL button to backUrl(origin). */
+export function backReply(lang, chatId, origin = DEFAULT_ORIGIN) {
+  const T = BACK_TEXT[lang] ?? BACK_TEXT.en;
+  const named = (s) => s.replaceAll("{app}", APP_NAME);
+  return {
+    chat_id: chatId,
+    text: named(T.text),
+    reply_markup: { inline_keyboard: [[{ text: named(T.button), url: backUrl(origin) }]] },
+  };
+}
+
 /**
  * What one update does to the checks, and which reply it gets → { kind, lang, vars? } | null (no reply). An ask
  * carries vars (askVars: the time, the sign) so the person can tell it is their own sign-in before sharing.
@@ -688,6 +745,10 @@ export async function handleTelegramHook(req, res, { db, fetchImpl = fetch, now 
           const doc = await settingDoc(d);
           if (doc?.box?.iv) await noteBotOutcome(d, doc.box.iv, { ok: false, reason: "bad_token", detail: sent.description }, { by: "reply" });
         }
+      } else if (BACK_AFTER.includes(plan.kind)) {
+        // The check is over: a big button back to the app, as its own message (the reply above stays as it is).
+        const back = await botCall(cfg.token, "sendMessage", backReply(plan.lang, u.chatId, siteOrigin(cfg.hookUrl)), { fetchImpl });
+        if (!back.ok) console.warn(`[30da telegram] the back button was not sent: ${back.reason}`);
       }
     }
     return end(200);

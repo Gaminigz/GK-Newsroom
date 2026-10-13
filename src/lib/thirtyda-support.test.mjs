@@ -10,7 +10,7 @@ import { Readable } from 'node:stream';
 import { clearSettingsCache } from './thirtyda-settings.mjs';
 import {
   BOT_TEXT, BOT_LANGS, SECRET_HEADER, TG_LINKS, saveBot, tryBot, startCheck, newBrowserKey, parseUpdate, processUpdate,
-  botReply, askVars, handleTelegramHook, looksLikePhone, windowLimiter,
+  botReply, askVars, handleTelegramHook, looksLikePhone, windowLimiter, BACK_TEXT,
 } from './thirtyda-telegram-bot.mjs';
 import {
   SUPPORT, SUPPORT_CHATS, SUPPORT_PER_HOUR, recordSupport, listSupportChats, supportThread, sendSupportReply,
@@ -165,16 +165,19 @@ test('a shared contact is deleted from the chat (verified, mismatch, someone els
     const ctx = await readyBot();
     const { token } = await startCheck(ctx.d, { phone: PHONE, browser: newBrowserKey() });
     await hook(ctx, msg(111, { text: `/start ${token}` }));
+    // [said, then the back button?] done is followed by the big "Back to 30+DA" message (its own sendMessage).
+    const back = BACK_TEXT.en.text.replace('{app}', '30+DA');
     const cases = [
-      [{ user_id: 999, phone_number: '85512345678' }, BOT_TEXT.en.not_own],
-      [{ user_id: 111, phone_number: '85512345678' }, BOT_TEXT.en.done],
-      [{ user_id: 111, phone_number: '85512345678' }, BOT_TEXT.en.help], // the check is over: help, still deleted
+      [{ user_id: 999, phone_number: '85512345678' }, [BOT_TEXT.en.not_own]],
+      [{ user_id: 111, phone_number: '85512345678' }, [BOT_TEXT.en.done, back]],
+      [{ user_id: 111, phone_number: '85512345678' }, [BOT_TEXT.en.help]], // the check is over: help, still deleted
     ];
     for (const [contact, said] of cases) {
       const u = msg(111, { contact: { first_name: 'S', ...contact } });
+      const before = sentTexts(ctx.api).length;
       assert.equal(await hook(ctx, u), 200);
       assert.deepEqual(ctx.api.of('deleteMessage').at(-1).body, { chat_id: 111, message_id: u.message.message_id }, 'chat_id + message_id');
-      assert.equal(sentTexts(ctx.api).at(-1), said);
+      assert.deepEqual(sentTexts(ctx.api).slice(before), said);
     }
     assert.equal(BOT_TEXT.en.done, 'Number verified ✓ You are now logged in to the 30+DA app. Go back to it.\nWe never ask for bank, card or payment details — there is nothing to pay in this app.');
     // A mismatch: deleted too, and the reply says how to type it (never the number).
@@ -183,7 +186,8 @@ test('a shared contact is deleted from the chat (verified, mismatch, someone els
     const mm = msg(222, { contact: { user_id: 222, phone_number: '85599999999' } });
     await hook(ctx, mm);
     assert.equal(ctx.api.of('deleteMessage').at(-1).body.message_id, mm.message.message_id);
-    assert.match(sentTexts(ctx.api).at(-1), /country code/);
+    assert.match(sentTexts(ctx.api).at(-2), /country code/);
+    assert.equal(sentTexts(ctx.api).at(-1), back, 'then the back button');
     // A delete Telegram refuses changes nothing else: 200 and the reply goes.
     const failing = fakeBotApi({ override: { deleteMessage: { status: 400, body: { ok: false, error_code: 400, description: 'Bad Request: message can\'t be deleted' } } } });
     const before = failing.calls.length;

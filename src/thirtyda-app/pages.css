@@ -1,4 +1,4 @@
-/* 30+DA small pages (privacy policy, delete your data, the admin's "Try sign-in" result) — served from
+/* 30+DA small pages (privacy policy, delete your data, the admin's "Try sign-in" result, GKVerify's back page) — served from
    src/lib/thirtyda-pages.mjs. Same tokens and type as the app (app.css): navy wordmark band, Archivo, a centred
    column on a soft desk, the Me page's little flag row. Short and big enough for tired eyes.
    No script, no inline style (the page CSP allows only this file and Google Fonts). */
@@ -68,6 +68,10 @@ p { margin: 0 0 10px; }
   display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 20px;
   border-radius: 8px; background: var(--navy); color: #fff; text-decoration: none; font-weight: 700;
 }
+/* GKVerify's back page (/30da/back): one button as wide as the column and big enough to hit without glasses,
+   the "Open in the browser" link centred under it. */
+.doc-btn-big { display: flex; width: 100%; min-height: 72px; padding: 12px 20px; border-radius: 14px; font-size: 24px; font-weight: 800; text-align: center; }
+.doc-web { margin-top: 18px; text-align: center; font-size: 17px; }
 
 /* Privacy: one plain line per point. */
 .facts { list-style: none; margin: 16px 0 0; padding: 0; }

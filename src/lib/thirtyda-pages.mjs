@@ -6,6 +6,8 @@
  *   GET /30da/terms          the terms of service (TikTok asks for its address): 30+ only, honest, no contact
  *                            details, respect, we may remove accounts that break the rules, contact
  *   the admin's "Try sign-in" result (the end of GET /30da/api/auth/<provider>/callback for a test)
+ *   GET /30da/back           where GKVerify's big "⬅️ Back to 30+DA" Telegram button lands (backPage): opens the app
+ *                            on an iPhone / Android phone, else the web app
  *
  * Short and sweet (owner 2026-10-13): a few plain one-line points, in the app's 5 languages, with the same small
  * flag row as the app's Me page at the top. The language: ?lang=en|km|zh|ko|ja, else the browser's
@@ -17,6 +19,7 @@
  * escaped. Pure: no database, no request.
  */
 import { LANGS, LANG_NATIVE, LANG_FLAG } from "../thirtyda-app/shared/rules.js";
+import { APP_SCHEME, APP_PACKAGE } from "./thirtyda-signin.mjs";
 
 export const CONTACT_EMAIL = "gk.smart@ggmt.sg";
 /** The day the privacy policy last changed (YYYY-MM-DD): the one place to change it. Each language writes it its own way (policyDate). */
@@ -139,6 +142,9 @@ export const PAGE_STRINGS = {
     app_bad: "Sign-in did not finish. Open 30+DA to go back.",
     app_open: "Open 30+DA",
     app_link: "Not opening? Use this link.",
+    // GKVerify's back button page (backPage): the big button says app_open.
+    back_lede: "If 30+DA did not open by itself, tap the big button.",
+    back_web: "Open 30+DA in the browser",
   },
   km: {
     language: "ភាសា",
@@ -217,6 +223,9 @@ export const PAGE_STRINGS = {
     app_bad: "ការចូលមិនទាន់បានបញ្ចប់ទេ។ បើក 30+DA ដើម្បីត្រឡប់ទៅវិញ។",
     app_open: "បើក 30+DA",
     app_link: "មិនបើកទេ? ប្រើតំណនេះ។",
+    // GKVerify's back button page (backPage): the big button says app_open.
+    back_lede: "បើ 30+DA មិនបើកដោយខ្លួនឯងទេ សូមចុចប៊ូតុងធំ។",
+    back_web: "បើក 30+DA នៅក្នុង browser",
   },
   zh: {
     language: "语言",
@@ -295,6 +304,9 @@ export const PAGE_STRINGS = {
     app_bad: "登录未完成。打开 30+DA 返回。",
     app_open: "打开 30+DA",
     app_link: "没有打开？请使用此链接。",
+    // GKVerify's back button page (backPage): the big button says app_open.
+    back_lede: "如果 30+DA 没有自动打开，请点大按钮。",
+    back_web: "在浏览器中打开 30+DA",
   },
   ko: {
     language: "언어",
@@ -373,6 +385,9 @@ export const PAGE_STRINGS = {
     app_bad: "로그인이 끝나지 않았어요. 30+DA를 열어 돌아가세요.",
     app_open: "30+DA 열기",
     app_link: "열리지 않나요? 이 링크를 쓰세요.",
+    // GKVerify's back button page (backPage): the big button says app_open.
+    back_lede: "30+DA가 저절로 열리지 않으면 큰 버튼을 누르세요.",
+    back_web: "브라우저에서 30+DA 열기",
   },
   ja: {
     language: "言語",
@@ -451,6 +466,9 @@ export const PAGE_STRINGS = {
     app_bad: "ログインは完了していません。30+DA を開いて戻ってください。",
     app_open: "30+DA を開く",
     app_link: "開かない場合は、このリンクを使ってください。",
+    // GKVerify's back button page (backPage): the big button says app_open.
+    back_lede: "30+DA が自動で開かない場合は、大きなボタンを押してください。",
+    back_web: "ブラウザで 30+DA を開く",
   },
 };
 
@@ -660,4 +678,59 @@ export function appReturnPage({ ok: done, provider = null, intentUrl, schemeUrl,
   const order = [...LANGS.filter((c) => c !== first), first];
   const inner = order.map((code) => `<div class="tr${code === first ? " on" : ""}" id="${code}" lang="${code}">\n${column(code)}\n</div>`).join("\n");
   return page({ title: PAGE_STRINGS[first].app_title, lang: first, inner, robots: "noindex", kind: "try", script: "/30da/app-return.js" });
+}
+
+// ---------- GKVerify's back button: GET /30da/back ----------
+
+/** The web app, for a computer and for people without the app. */
+export const WEB_APP_PATH = "/30da/";
+
+/**
+ * Which way back, from the browser's User-Agent: iPhone / iPad / iPod → 'ios', Android → 'android', anything else
+ * (a computer, Telegram Desktop's browser, no header) → 'web'. An iPad that asks for the desktop site says "Macintosh"
+ * and gets the web app (its "Open 30+DA in the browser" is the same place).
+ */
+export function backPlatform(userAgent) {
+  const ua = String(userAgent ?? "").slice(0, 512);
+  if (/\b(?:iPhone|iPad|iPod)\b/.test(ua)) return "ios";
+  if (/\bAndroid\b/i.test(ua)) return "android";
+  return "web";
+}
+
+/**
+ * The big button's link for a platform: the app's own scheme on iOS (sg.ggmt.thirtyda://open); on Android Chrome's
+ * intent:// link to the app's package, which falls back to <origin>/30da/ when the app is not there; else /30da/.
+ * The scheme and package are fixed (src/lib/thirtyda-signin.mjs APP_SCHEME): never taken from the request. `origin`
+ * is the site's own (publicOrigin), encoded whole as the fallback address.
+ */
+export function backHref(platform, origin) {
+  if (platform === "ios") return `${APP_SCHEME}://open`;
+  if (platform === "android") {
+    const fallback = encodeURIComponent(`${origin}${WEB_APP_PATH}`);
+    return `intent://open#Intent;scheme=${APP_SCHEME};package=${APP_PACKAGE};S.browser_fallback_url=${fallback};end`;
+  }
+  return WEB_APP_PATH;
+}
+
+/**
+ * The page GKVerify's "⬅️ Back to 30+DA" Telegram button opens (src/lib/thirtyda-telegram-bot.mjs backReply):
+ * one big "Open 30+DA" button (href: backHref) and, under it, a small "Open 30+DA in the browser" link to /30da/ for
+ * people without the app. /30da/back.js tries the button once by itself (no inline script: the page's CSP allows
+ * none). All 5 languages are in the page, the flags switch with #links (no reload, so the auto-try does not run
+ * again); `lang` (?lang= / Accept-Language) picks the one shown first.
+ */
+export function backPage({ href = WEB_APP_PATH, lang: want = "en" } = {}) {
+  const first = ok(want);
+  const column = (code) => {
+    const t = PAGE_STRINGS[code];
+    const body = `      <h1>${t.app_title}</h1>
+      <p class="doc-lede">${t.back_lede}</p>
+      <p class="doc-actions"><a class="doc-btn doc-btn-big" data-back-open href="${esc(href)}">${t.app_open}</a></p>
+      <p class="doc-web"><a href="${WEB_APP_PATH}">${t.back_web}</a></p>`;
+    return docColumn({ lang: code, flags: flagRow(code, (c) => `#${c}`), body, tag: "section" });
+  };
+  // The first-shown language goes last: a chosen #link (:target) earlier in the page hides it (pages.css).
+  const order = [...LANGS.filter((c) => c !== first), first];
+  const inner = order.map((code) => `<div class="tr${code === first ? " on" : ""}" id="${code}" lang="${code}">\n${column(code)}\n</div>`).join("\n");
+  return page({ title: PAGE_STRINGS[first].app_title, lang: first, inner, robots: "noindex", kind: "back", script: "/30da/back.js" });
 }

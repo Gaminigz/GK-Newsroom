@@ -59,7 +59,8 @@
  * (verify-code 409 phone_in_use, Telegram status { state:'in_use' }, Google / Facebook / TikTok → 302
  * /30da/#/verified?signin=<provider>&error=in_use). Its other sign-ins come back to /30da/#/verified?…&ok=1 | &error=….
  * Public pages Google / Facebook / TikTok ask for: GET /30da/privacy, GET /30da/delete-data, GET /30da/terms
- * (src/lib/thirtyda-pages.mjs).
+ * (src/lib/thirtyda-pages.mjs). GET /30da/back: where GKVerify's big "⬅️ Back to 30+DA" Telegram button lands —
+ * opens the app on an iPhone / Android phone (by User-Agent), else the web app; always 200 (sendBackPage).
  *
  * "Delete my account" (owner 2026-10-13, src/lib/thirtyda-delete.mjs): POST /me/delete { pin? } (unlocked only, the PIN
  * checked by checkPinTry) deletes everything of the person at once and clears the cookie; every conversation with them
@@ -80,7 +81,7 @@ import {
   createSigninState, takeSigninState, stateCookie, readStateCookie, adminSessionAlive, signinPerson, callbackError,
   signinUserFilter, planSignin, pkcePair,
   stateHash, APP_TICKETS, APP_ERRORS, platformOf, newBinder, appCookie, readAppCookie, createAppTicket, takeAppTicket, appReturnQuery,
-  appSchemeUrl, appIntentUrl,
+  appSchemeUrl, appIntentUrl, publicOrigin,
 } from "./thirtyda-signin.mjs";
 import { noteSecretUse } from "./thirtyda-settings.mjs";
 import { outboundFetch } from "./thirtyda-test-fetch.mjs";
@@ -93,7 +94,9 @@ import {
   legacyLockFields, activityAt, backgroundCall, passiveCall, nextActiveAt, whileLocked, pinSetPlan, afterWrongPin,
   pinHashStale,
 } from "./thirtyda-pin.mjs";
-import { privacyPage, deleteDataPage, termsPage, tryResultPage, appReturnPage, requestLang } from "./thirtyda-pages.mjs";
+import {
+  privacyPage, deleteDataPage, termsPage, tryResultPage, appReturnPage, requestLang, backPage, backPlatform, backHref,
+} from "./thirtyda-pages.mjs";
 import {
   canTalk, talksToSomeone, SIGNUP_LIMITS, claimSignup, releaseSignup, verifyBackPath, ATTACH_FROM, phoneViaOf, withPhoneVia, signinsOf,
 } from "./thirtyda-verify.mjs";
@@ -1364,6 +1367,20 @@ function appReturn(req, res, platform, { ticket = null, error = null, provider =
   return sendPage(req, res, 200, appReturnPage({
     ok: Boolean(ticket), provider, intentUrl: appIntentUrl(query), schemeUrl: appSchemeUrl(query), lang: requestLang(req),
   }), { "Content-Security-Policy": CSP_APP_RETURN, "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex", Vary: "Accept-Language" });
+}
+
+/**
+ * GET /30da/back — where GKVerify's "⬅️ Back to 30+DA" Telegram button lands (src/lib/thirtyda-telegram-bot.mjs
+ * backReply). Always 200: one big button to the app (iPhone / iPad: sg.ggmt.thirtyda://open; Android: Chrome's intent://
+ * link, falling back to the web app) or, on anything else, to /30da/; /30da/back.js tries it once. The same strict CSP
+ * as the Android return page (no inline script). It differs by User-Agent and language, so nothing keeps a copy.
+ */
+function sendBackPage(req, res, url) {
+  const href = backHref(backPlatform(req.headers["user-agent"]), publicOrigin(req));
+  return sendPage(req, res, 200, backPage({ href, lang: requestLang(req, url) }), {
+    "Content-Security-Policy": CSP_APP_RETURN, "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex",
+    Vary: "User-Agent, Accept-Language",
+  });
 }
 
 /**
@@ -2982,6 +2999,8 @@ export async function handleThirtyDaApp(req, res, url) {
     if (path === `${BASE}/delete-data`) return sendPage(req, res, 200, deleteDataPage({ lang: requestLang(req, url) }), docHeaders);
     // The terms of service TikTok asks for (same look, same 5 languages).
     if (path === `${BASE}/terms`) return sendPage(req, res, 200, termsPage({ lang: requestLang(req, url) }), docHeaders);
+    // GKVerify's big "⬅️ Back to 30+DA" button (the Telegram bot): back into the app, else the web app.
+    if (path === `${BASE}/back`) return sendBackPage(req, res, url);
     // The client loads its modules relative to /30da/, so the bare path gets a slash.
     if (path === BASE) {
       res.writeHead(302, { ...BASE_HEADERS, Location: `${BASE}/${url.search}` }).end();

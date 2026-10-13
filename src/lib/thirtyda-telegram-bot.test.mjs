@@ -15,6 +15,7 @@ import {
   checkBotToken, saveBot, tryBot, removeBot, botOffer, botOffered, botView, botConfig, startCheck, pollCheck, checkId,
   newBrowserKey, readCheckCookie, checkCookie, hookSecretOk, parseUpdate, contactVerdict, phoneDigits, processUpdate,
   botReply, handleTelegramHook, startLink, cleanDescription, windowLimiter,
+  APP_NAME, BACK_PATH, BACK_TEXT, BACK_AFTER, DEFAULT_ORIGIN, backReply, backUrl, siteOrigin,
 } from './thirtyda-telegram-bot.mjs';
 
 const KEY_HEX = crypto.randomBytes(32).toString('hex');
@@ -542,10 +543,11 @@ test('webhook: a wrong or missing secret header → 401, nothing read, nothing s
     await handleTelegramHook(hookReq({ [SECRET_HEADER]: hookSecret }, contactUpdate(111, { user_id: 5, phone_number: '85512345678' })), hookRes(), { db: async () => d, fetchImpl: api });
     assert.equal(api.state.sent.at(-1).text, BOT_TEXT.km.not_own);
     assert.equal((await pollCheck(d, browser)).state, 'waiting');
-    // Their own: done.
+    // Their own: done — the reply as before, then the big back button as a second message.
     await handleTelegramHook(hookReq({ [SECRET_HEADER]: hookSecret }, contactUpdate(111, { user_id: 111, phone_number: '85512345678' })), hookRes(), { db: async () => d, fetchImpl: api });
-    assert.equal(api.state.sent.at(-1).text, BOT_TEXT.km.done);
-    assert.deepEqual(api.state.sent.at(-1).reply_markup, { remove_keyboard: true });
+    assert.equal(api.state.sent.at(-2).text, BOT_TEXT.km.done);
+    assert.deepEqual(api.state.sent.at(-2).reply_markup, { remove_keyboard: true });
+    assert.deepEqual(api.state.sent.at(-1), backReply('km', 111, ORIGIN));
     // With no bot saved every update is refused.
     await removeBot(d, { fetchImpl: api });
     const gone = hookRes();
@@ -574,4 +576,133 @@ test('Telegram\'s words never carry the key; limits count per key', () => {
   assert.equal(lim.over('k', 2, 2), true);
   assert.equal(lim.over('j', 2, 2), false);
   assert.equal(lim.over('k', 2, 1500), false, 'the window slides');
+});
+
+// ---------------------------------------------------------------- the back button (owner 2026-10-14)
+
+test('back message: one short line + ONE big inline URL button to <origin>/30da/back, 5 languages, never a number', () => {
+  assert.equal(APP_NAME, '30+DA');
+  assert.equal(BACK_PATH, '/30da/back');
+  assert.equal(DEFAULT_ORIGIN, 'https://ecom.ggmt.sg');
+  assert.deepEqual(BACK_AFTER, ['done', 'mismatch'], 'only the replies that end a check');
+  assert.equal(backUrl(ORIGIN), 'https://ggmt.sg/30da/back');
+  assert.deepEqual(Object.keys(BACK_TEXT), BOT_LANGS);
+  const en = backReply('en', 77, ORIGIN);
+  assert.deepEqual(en, {
+    chat_id: 77,
+    text: 'Tap the button to go back to 30+DA.',
+    reply_markup: { inline_keyboard: [[{ text: '⬅️ Back to 30+DA', url: 'https://ggmt.sg/30da/back' }]] },
+  });
+  const texts = new Set();
+  const buttons = new Set();
+  for (const lang of BOT_LANGS) {
+    // The app's name lives in APP_NAME alone (GKVerify will serve other GK apps): the words hold {app}.
+    for (const k of ['text', 'button']) {
+      assert.ok(BACK_TEXT[lang][k].includes('{app}'), `${lang}.${k} has {app}`);
+      assert.ok(!BACK_TEXT[lang][k].includes('30+DA'), `${lang}.${k}: the name comes from APP_NAME`);
+    }
+    const r = backReply(lang, 77, ORIGIN);
+    assert.deepEqual(Object.keys(r), ['chat_id', 'text', 'reply_markup'], `${lang}: no parse_mode, nothing else`);
+    assert.deepEqual(Object.keys(r.reply_markup), ['inline_keyboard'], `${lang}: an inline button, the reply keyboard untouched`);
+    assert.equal(r.reply_markup.inline_keyboard.length, 1);
+    assert.equal(r.reply_markup.inline_keyboard[0].length, 1, `${lang}: ONE button, the whole width`);
+    const [button] = r.reply_markup.inline_keyboard[0];
+    assert.deepEqual(Object.keys(button), ['text', 'url'], `${lang}: a URL button`);
+    assert.equal(button.url, `${ORIGIN}/30da/back`, `${lang}: Telegram takes only http(s) — our page`);
+    assert.ok(button.text.startsWith('⬅️ ') && button.text.includes(APP_NAME), `${lang}: ${button.text}`);
+    assert.ok(r.text.includes(APP_NAME) && !r.text.includes('\n'), `${lang}: one line naming the app`);
+    assert.ok(!/[{}]/.test(r.text + button.text + button.url), `${lang}: no {placeholder} left`);
+    assert.ok(!/\d{3,}/.test(JSON.stringify(r)), `${lang}: no run of 3+ digits anywhere (never a phone number)`);
+    texts.add(r.text);
+    buttons.add(button.text);
+  }
+  assert.equal(texts.size, 5, 'each language its own line');
+  assert.equal(buttons.size, 5, 'each language its own button');
+  assert.deepEqual(backReply('xx', 77, ORIGIN), en, 'an unknown language → English');
+  assert.equal(backReply('en', 77).reply_markup.inline_keyboard[0][0].url, 'https://ecom.ggmt.sg/30da/back', 'no origin → the live site');
+});
+
+test('back message: the site comes from the saved webhook address (https only), else https://ecom.ggmt.sg', () => {
+  assert.equal(siteOrigin(`${ORIGIN}${HOOK_PATH}`), ORIGIN);
+  assert.equal(siteOrigin('https://ecom.ggmt.sg/30da/api/telegram/hook'), 'https://ecom.ggmt.sg');
+  assert.equal(siteOrigin('https://ECOM.ggmt.sg:8443/30da/api/telegram/hook'), 'https://ecom.ggmt.sg:8443', 'the host as saved, lower case');
+  for (const bad of [undefined, null, '', 'not an address', 'http://localhost:8096/30da/api/telegram/hook', 'javascript:alert(1)',
+    'tg://resolve?domain=x', 'https://someone:secret@evil.example/30da/api/telegram/hook', 'ftp://ggmt.sg/x']) {
+    assert.equal(siteOrigin(bad), DEFAULT_ORIGIN, String(bad));
+  }
+});
+
+test('webhook: done and mismatch are each followed by the back button (a second message); the replies themselves are unchanged', async () => {
+  await withKey(async () => {
+    const { d, api, hookSecret } = await readyBot();
+    const send = (update, fetchImpl = api) => handleTelegramHook(hookReq({ [SECRET_HEADER]: hookSecret }, update), hookRes(), { db: async () => d, fetchImpl });
+    const sentSince = (n) => api.state.sent.slice(n);
+    // Small chat ids, so a whole message can be checked for runs of 3+ digits.
+    const { token } = await startCheck(d, { phone: PHONE, lang: 'zh', browser: newBrowserKey() });
+    let n = api.state.sent.length;
+    await send(startUpdate(token, 41));
+    assert.equal(sentSince(n).length, 1, 'ask: the reply only');
+    assert.ok(sentSince(n)[0].reply_markup.keyboard, 'the share keyboard, no inline button');
+    n = api.state.sent.length;
+    await send(contactUpdate(41, { user_id: 5, phone_number: '85512345678' }));
+    assert.deepEqual(sentSince(n), [botReply('not_own', 'zh', 41)], 'not_own: the reply only');
+    n = api.state.sent.length;
+    await send(contactUpdate(41, { user_id: 41, phone_number: '85512345678' }));
+    const done = sentSince(n);
+    assert.equal(done.length, 2, 'done → the reply, then the back button');
+    assert.deepEqual(done[0], { chat_id: 41, text: BOT_TEXT.zh.done, reply_markup: { remove_keyboard: true } }, 'the done reply as before');
+    assert.deepEqual(done[0], botReply('done', 'zh', 41));
+    assert.deepEqual(done[1], backReply('zh', 41, ORIGIN));
+    assert.equal(done[1].reply_markup.inline_keyboard[0][0].url, 'https://ggmt.sg/30da/back', 'the site the bot was saved on');
+    for (const m of done) assert.ok(!/\d{3,}/.test(JSON.stringify(m)), `never a number: ${m.text}`);
+    // After the check: help, the reply only.
+    n = api.state.sent.length;
+    await send(textUpdate(41, '/help'));
+    assert.deepEqual(sentSince(n), [botReply('help', 'en', 41)]);
+    // Mismatch (their own number, not the typed one): the reply as before, then the back button.
+    const { token: t2 } = await startCheck(d, { phone: PHONE, lang: 'ja', browser: newBrowserKey() });
+    await send(startUpdate(t2, 42));
+    n = api.state.sent.length;
+    await send(contactUpdate(42, { user_id: 42, phone_number: '85587654321' }));
+    const mm = sentSince(n);
+    assert.deepEqual(mm, [
+      { chat_id: 42, text: BOT_TEXT.ja.mismatch, reply_markup: { remove_keyboard: true } },
+      backReply('ja', 42, ORIGIN),
+    ]);
+    for (const m of mm) assert.ok(!/\d{3,}/.test(JSON.stringify(m)), `never a number: ${m.text}`);
+    // An expired link: the reply only.
+    n = api.state.sent.length;
+    await send(startUpdate('C'.repeat(32), 43, 'ko'));
+    assert.deepEqual(sentSince(n), [botReply('expired', 'ko', 43)]);
+    // The reply did not go (blocked, revoked): no back button either.
+    const { token: t3 } = await startCheck(d, { phone: PHONE, lang: 'en', browser: newBrowserKey() });
+    await send(startUpdate(t3, 44));
+    const blocked = fakeBotApi({ override: { sendMessage: { status: 403, body: { ok: false, error_code: 403, description: 'Forbidden: bot was blocked by the user' } } } });
+    await send(contactUpdate(44, { user_id: 44, phone_number: '85512345678' }), blocked);
+    assert.deepEqual(blocked.calls.filter((c) => c.method === 'sendMessage').map((c) => c.body.text), [BOT_TEXT.en.done], 'one try, no back button');
+  });
+});
+
+test('webhook: a back button Telegram refuses changes nothing — still 200, the check stays verified', async () => {
+  await withKey(async () => {
+    const { d, hookSecret } = await readyBot();
+    const browser = newBrowserKey();
+    const { token } = await startCheck(d, { phone: PHONE, browser });
+    // The first sendMessage (the reply) goes, the second (the back button) is refused.
+    const inner = fakeBotApi();
+    let sends = 0;
+    const flaky = async (url, init) => (String(url).endsWith('/sendMessage') && ++sends === 2
+      ? { status: 400, json: async () => ({ ok: false, error_code: 400, description: 'Bad Request: BUTTON_URL_INVALID' }) }
+      : inner(url, init));
+    const opts = { db: async () => d, fetchImpl: flaky };
+    await handleTelegramHook(hookReq({ [SECRET_HEADER]: hookSecret }, startUpdate(token, 45)), hookRes(), opts);
+    sends = 0;
+    const res = hookRes();
+    await handleTelegramHook(hookReq({ [SECRET_HEADER]: hookSecret }, contactUpdate(45, { user_id: 45, phone_number: '85512345678' })), res, opts);
+    assert.equal(res.status, 200);
+    assert.equal(sends, 2);
+    assert.equal(inner.state.sent.at(-1).text, BOT_TEXT.en.done);
+    assert.equal((await d.collection(TG_CHECKS).findOne({ _id: checkId(token) })).state, 'verified');
+    assert.equal(await botOffered(d), true, 'a refused button does not stop the bot');
+  });
 });
