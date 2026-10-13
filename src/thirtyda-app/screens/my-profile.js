@@ -205,12 +205,22 @@ screen('/me', async ({ root }) => {
   let picked = '';
   const yearSet = () => Number.isInteger(state.me?.birthYear);
   const nameChanged = () => nameInput.value.trim().replace(/\s+/g, ' ') !== me.name;
+  // Real name: kept private until Level 3, then shown to that person.
+  const realInput = el('input', {
+    class: 'input', id: 'me-real', type: 'text', maxlength: '60', autocomplete: 'name', value: me.realName || '', placeholder: t('me_real_ph'),
+  });
+  const realValue = () => realInput.value.trim().replace(/\s+/g, ' ');
+  const realChanged = () => realValue() !== (me.realName || '');
+  const realOk = () => [...realValue()].length >= 2;
   const paintSave = () => {
     const nameOk = nameChanged() && !(nameInput.value.trim() ? nameProblem(nameInput.value) : true);
     const yearOk = !yearSet() && Boolean(picked);
     const nameBad = nameChanged() && !nameOk;
-    saveId.disabled = nameBad || !(nameOk || yearOk);
+    const realBad = realChanged() && !realOk();
+    realInput.classList.toggle('is-error', realBad);
+    saveId.disabled = nameBad || realBad || !(nameOk || yearOk || (realChanged() && realOk()));
   };
+  realInput.addEventListener('input', () => paintSave());
   const paintName = () => {
     const value = nameInput.value;
     const problem = value.trim() ? nameProblem(value) : t('me_name_length');
@@ -243,6 +253,7 @@ screen('/me', async ({ root }) => {
   saveId.addEventListener('click', async () => {
     const body = {};
     if (nameChanged()) body.name = nameInput.value.trim().replace(/\s+/g, ' ');
+    if (realChanged() && realOk()) body.realName = realValue();
     if (!yearSet() && picked) body.birthYear = Number(picked);
     if (!Object.keys(body).length) return;
     saveId.disabled = true;
@@ -251,6 +262,8 @@ screen('/me', async ({ root }) => {
       setMe(r.user);
       me.name = r.user.name;
       nameInput.value = r.user.name;
+      me.realName = r.user.realName || '';
+      realInput.value = me.realName;
       picked = '';
       paintYear();
       paintName();
@@ -394,7 +407,10 @@ screen('/me', async ({ root }) => {
           nameInput),
         yearCell,
         saveId),
-      nameErr, yearErr, genderSeg, roleSel, truthNote()), // Male/Female/Other and the job under name · year, then the warning
+      nameErr, yearErr, genderSeg, roleSel,
+      el('div', { class: 'field-head' }, el('label', { class: 'label ink', for: 'me-real' }, t('me_real_name')),
+        el('span', { class: 'tag' }, icon('lock', 11), t('me_real_tag'))),
+      realInput, truthNote()), // gender, job, real name (shown at Level 3), then the warning
     section(t('me_verified_with'), chips, phoneBlock),
     section(t('me_hearts'), el('div', { class: 'row', style: { '--gap': '12px' } }, heartPills(me.hearts, 'lg')),
       place ? el('p', { class: 'kv' }, icon('pin', 16), el('span', {}, place)) : null),
@@ -433,6 +449,9 @@ registerStrings({
     me_photo_changed: 'Your photos changed. Try again.',
     me_app_name: 'App name',
     me_tag_shown: 'Shown',
+    me_real_name: 'Real name',
+    me_real_tag: 'Shown at Level 3',
+    me_real_ph: 'First and last name',
     me_name_length: 'Use 2 to 7 characters.',
     me_name_ph: 'Name',
     me_birth_year: 'Birth year',
@@ -482,6 +501,9 @@ registerStrings({
     me_photo_changed: 'រូបថតរបស់អ្នកបានផ្លាស់ប្តូរ។ សូមព្យាយាមម្តងទៀត។',
     me_app_name: 'ឈ្មោះក្នុងកម្មវិធី',
     me_tag_shown: 'បង្ហាញ',
+    me_real_name: 'ឈ្មោះពិត',
+    me_real_tag: 'បង្ហាញនៅកម្រិត 3',
+    me_real_ph: 'នាមខ្លួន និងនាមត្រកូល',
     me_name_length: 'សូមប្រើពី 2 ដល់ 7 តួអក្សរ។',
     me_name_ph: 'ឈ្មោះ',
     me_birth_year: 'ឆ្នាំកំណើត',
@@ -531,6 +553,9 @@ registerStrings({
     me_photo_changed: '你的照片已有变化，请再试一次。',
     me_app_name: '应用昵称',
     me_tag_shown: '公开',
+    me_real_name: '真实姓名',
+    me_real_tag: '等级 3 时可见',
+    me_real_ph: '名字和姓氏',
     me_name_length: '请使用 2 到 7 个字符。',
     me_name_ph: '昵称',
     me_birth_year: '出生年份',
@@ -580,6 +605,9 @@ registerStrings({
     me_photo_changed: '사진이 바뀌었어요. 다시 시도해 주세요.',
     me_app_name: '앱 이름',
     me_tag_shown: '공개',
+    me_real_name: '실명',
+    me_real_tag: '레벨 3에서 공개',
+    me_real_ph: '이름과 성',
     me_name_length: '2~7자로 입력해 주세요.',
     me_name_ph: '이름',
     me_birth_year: '출생 연도',
@@ -629,6 +657,9 @@ registerStrings({
     me_photo_changed: '写真が変更されました。もう一度お試しください。',
     me_app_name: 'アプリ名',
     me_tag_shown: '表示',
+    me_real_name: '本名',
+    me_real_tag: 'レベル3で表示',
+    me_real_ph: '名前と姓',
     me_name_length: '2〜7文字で入力してください。',
     me_name_ph: '名前',
     me_birth_year: '生まれ年',
