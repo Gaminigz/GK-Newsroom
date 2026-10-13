@@ -36,6 +36,9 @@
   const SOPHEA = 'U-10231';
   const DARA = 'U-10232';
   const PAIR = 'P-1';
+  // Every demo person's PIN (the app lock, src/lib/thirtyda-pin.mjs): the same as the dev seed's.
+  const DEMO_PIN = '2580';
+  const IN_FRAME = window.top !== window;
 
   // me: whose phone this is · lang: its UI language · stage: the pair Dara ⇄ Sophea (none = no pair) ·
   // sets: what is already in the conversation, `${level}${from}` (d = Dara, s = Sophea) → how many replies it
@@ -78,6 +81,13 @@
   } catch {
     try { window.localStorage.setItem('thirtyda_lang', seed.thirtyda_lang); } catch { /* storage blocked: the app falls back to en */ }
   }
+  // The PIN chosen right after the language waits in sessionStorage (lock.js): per frame as well. Screen 2
+  // (Create profile) starts as if that step was just done, so it shows Create profile, not the PIN step.
+  try {
+    // '30da_back': each load starts the scenario as if just signed in (no PIN first).
+    const tabSeed = { '30da_back': String(Date.now()), ...(S === 2 ? { '30da_pin_wait': DEMO_PIN } : {}) };
+    Object.defineProperty(window, 'sessionStorage', { value: memoryStorage(tabSeed), configurable: true });
+  } catch { /* the real one: fine when the demo is opened on its own */ }
 
   // Per-frame history: the twelve frames on the board share the board tab's session history, so a real
   // pushState / back() in one phone would step a different phone back (and fill the tab's Back button).
@@ -199,9 +209,9 @@
   let R = null;
   const ready = Promise.all([
     import('/30da/shared/rules.js'), import('/30da/shared/questions.js'),
-    import('/30da/shared/question-slots.js'), import('/30da/shared/conversation.js'),
-  ]).then(([rules, questions, slots, conversation]) => {
-    R = { ...rules, ...questions, ...slots, ...conversation };
+    import('/30da/shared/question-slots.js'), import('/30da/shared/conversation.js'), import('/30da/shared/pin.js'),
+  ]).then(([rules, questions, slots, conversation, pin]) => {
+    R = { ...rules, ...questions, ...slots, ...conversation, ...pin };
     build();
   });
 
@@ -309,7 +319,7 @@
       verified: { phone: v.includes('p'), gmail: v.includes('g'), facebook: v.includes('f') },
       photos: Array.from({ length: photos }, (_, i) => silhouette(i)), seeded: true,
       location: { lat: BKK1.latitude, lng: BKK1.longitude }, km, area: 'BKK1', city: 'Phnom Penh',
-      hearts: { red, orange }, level: 1, blocked: false, notices: [],
+      hearts: { red, orange }, level: 1, blocked: false, notices: [], pin: DEMO_PIN, pinTries: 0,
     };
   }
 
@@ -424,7 +434,10 @@
     if (SC.me) {
       const me = W.users.get(SC.me);
       me.lang = SC.lang;
-      W.session = { userId: me.id, phone: me.phone, phoneVerified: true, verified: { gmail: me.verified.gmail, facebook: me.verified.facebook } };
+      W.session = {
+        userId: me.id, phone: me.phone, phoneVerified: true, verified: { gmail: me.verified.gmail, facebook: me.verified.facebook },
+        pinOk: true, pinTries: 0,
+      };
       syncLevel(me);
       // My own photos: as many as my level allows (1 → 1, 2 → 2, 3 → 4).
       me.photos = Array.from({ length: R.photoSlotsFor(me.level) }, (_, i) => silhouette(i));
@@ -486,6 +499,7 @@
       hearts: heartsOf(u),
       level: u.level ?? 1,
       blocked: Boolean(u.blocked),
+      pinSet: Boolean(u.pin),
     };
   }
 
@@ -774,29 +788,113 @@
 
   // ------------------------------------------------------------------ handlers
 
+  // The app lock, as on the server (src/lib/thirtyda-pin.mjs): a profile's session is open after a sign-in or the
+  // PIN; POST /me/lock closes it; while closed every data route answers 423. On the board the phones never cover
+  // themselves (coverMs 0: twelve frames left alone must stay readable); opened on its own (▷ Play) the demo
+  // covers after 30 s like the app. The demo has no 2-minute server timer: nothing here runs on its own.
+  const lockInfo = () => ({ coverMs: IN_FRAME ? 0 : R.IDLE_COVER_MS, idleMs: R.LOCK_IDLE_MS, tries: R.PIN_TRIES });
+  const lockedNow = () => Boolean(me() && W.session && W.session.pinOk !== true);
+  function whileLocked(method, sub) {
+    if (method === 'POST' && /^\/auth\/(send-code|verify-code|verify-social)$/.test(sub)) return 'signin';
+    if ((method === 'POST' && sub === '/auth/telegram/start') || (method === 'GET' && sub === '/auth/telegram/status')) return 'signin';
+    if (/^\/auth\//.test(sub)) return 'open';
+    if (method === 'POST' && /^\/me\/(lock|unlock|pin|pin\/forgot)$/.test(sub)) return 'open';
+    return null;
+  }
+  const lockedError = (u) => fail(423, 'locked', 'Enter your PIN.', { pin: Boolean(u?.pin), lock: lockInfo() });
+  function newPinOrFail(raw, field = 'pin') {
+    const c = R.checkNewPin(R.pinDigits(raw));
+    if (c.ok) return c.pin;
+    if (c.error === 'format') throw invalid('A PIN is 4 digits.', { field });
+    throw fail(422, 'weak_pin', 'Choose a PIN that is harder to guess.', { field, reason: c.error });
+  }
+  const waitingPinOf = (body) => (body?.pin === undefined || body?.pin === null || body?.pin === '' ? null : newPinOrFail(body.pin));
+
   function getMe({ url }) {
     const u = me();
     if (!W.session) {
-      if (url.searchParams.get('probe') === '1') return { user: null, notices: [], session: null };
+      if (url.searchParams.get('probe') === '1') return { user: null, notices: [], session: null, lock: lockInfo() };
       throw fail(401, 'signed_out', 'Please sign in.');
     }
     if (!u) {
       const s = W.session;
-      return { user: null, notices: [], session: { phone: s.phone ?? null, phoneVerified: Boolean(s.phoneVerified), verified: s.verified ?? { gmail: false, facebook: false } } };
+      return { user: null, notices: [], session: { phone: s.phone ?? null, phoneVerified: Boolean(s.phoneVerified), verified: s.verified ?? { gmail: false, facebook: false } }, lock: lockInfo() };
     }
     syncLevel(u);
-    return { user: meView(u), notices: [] };
+    return { user: meView(u), notices: [], lock: lockInfo() };
   }
 
-  function startSession(fields) {
-    const s = W.session;
+  /** A sign-in: a new session (open, may set a new PIN once); a sign-in on a locked phone carries nothing over. */
+  function startSession(fields, { carry = true } = {}) {
+    const s = carry ? W.session : null;
     W.session = {
       userId: s?.userId ?? null,
       phone: s?.phone ?? null,
       phoneVerified: Boolean(s?.phoneVerified),
       verified: { gmail: Boolean(s?.verified?.gmail), facebook: Boolean(s?.verified?.facebook) },
       ...fields,
+      pinOk: true, pinTries: 0, pinResetUntil: Date.now() + 15 * 60e3,
     };
+    const u = me();
+    if (u) u.pinTries = 0;
+  }
+
+  /** One PIN check: both counts go up first; right → both cleared; the 5th wrong ends the session (401 pin_tries). */
+  function checkPinTry(u, pin) {
+    const s = W.session;
+    s.pinTries = (s.pinTries || 0) + 1;
+    u.pinTries = (u.pinTries || 0) + 1;
+    if (R.pinDigits(pin) === u.pin && s.pinTries <= R.PIN_TRIES && u.pinTries <= R.PIN_TRIES) {
+      s.pinTries = 0;
+      u.pinTries = 0;
+      return;
+    }
+    const left = R.pinTriesLeft(s.pinTries, u.pinTries);
+    if (left > 0) throw fail(400, 'wrong_pin', 'That PIN is not right.', { triesLeft: left });
+    u.pinTries = 0;
+    W.session = null;
+    throw fail(401, 'pin_tries', 'Too many wrong PINs. Sign in again to set a new PIN.', { signedOut: true });
+  }
+
+  function lockMe() {
+    W.session.pinOk = false;
+    return { ok: true, locked: true };
+  }
+
+  function unlockMe({ body }) {
+    const u = me();
+    if (!u.pin) throw fail(409, 'no_pin', 'Sign in again to set a PIN.');
+    const pin = R.pinDigits(body.pin);
+    if (pin.length !== R.PIN_LENGTH) throw invalid('Enter your 4-digit PIN.', { field: 'pin' });
+    checkPinTry(u, pin);
+    W.session.pinOk = true;
+    return { ok: true, user: meView(syncLevel(u)), notices: [], lock: lockInfo() };
+  }
+
+  function setPin({ body, locked }) {
+    const u = me();
+    const pin = newPinOrFail(body.pin);
+    const hasOld = body.old !== undefined && body.old !== null && body.old !== '';
+    if (!u.pin) {
+      if (locked) throw lockedError(u);
+    } else if (hasOld) {
+      const old = R.pinDigits(body.old);
+      if (old.length !== R.PIN_LENGTH) throw invalid('Type your old 4-digit PIN.', { field: 'old' });
+      checkPinTry(u, old);
+    } else if (!locked && W.session.pinResetUntil > Date.now()) {
+      W.session.pinResetUntil = 0;
+    } else {
+      if (locked) throw lockedError(u);
+      throw fail(403, 'old_pin_needed', 'Type your old PIN first.', { field: 'old' });
+    }
+    u.pin = pin;
+    Object.assign(W.session, { pinOk: true, pinTries: 0, pinResetUntil: 0 });
+    return { ok: true, user: meView(syncLevel(u)), lock: lockInfo() };
+  }
+
+  function forgotPin() {
+    W.session = null;
+    return { ok: true, signedOut: true };
   }
 
   // The server's channels (src/lib/thirtyda-code-send.mjs). The demo never delivers: no channel is set up,
@@ -807,7 +905,48 @@
 
   // Which of the phone step's 4 buttons work (server: GET /auth/methods). The demo is the server's test mode
   // with nothing set up: every button works (a test code on screen; Facebook / Google sign in at once).
-  const authMethods = () => ({ code: { telegram: true, whatsapp: true }, signin: { google: true, facebook: true } });
+  // telegram: 'code' — the server's test mode: Telegram brings a (test) code; 'bot' would be the free 30+DA bot.
+  const authMethods = () => ({ code: { telegram: true, whatsapp: true }, telegram: 'code', signin: { google: true, facebook: true, tiktok: true } });
+
+  // The free Telegram bot (server: src/lib/thirtyda-telegram-bot.mjs), mirrored so every server route answers here
+  // too. The demo is in code mode above, so the app does not use it; when called, the simulated person opens the bot
+  // after a moment and shares their own number a little later. Never a real Telegram link: t.me/ThirtyDA_demo_bot.
+  function telegramStart({ body }) {
+    const phone = normalizePhone(body.phone);
+    if (!phone) throw invalid('That phone number does not look right.', { field: 'phone' });
+    const newPin = waitingPinOf(body);
+    W.tgCheck = { phone, newPin, at: Date.now(), state: 'waiting' };
+    return { ok: true, phone, link: 'https://t.me/ThirtyDA_demo_bot?start=demo', bot: 'ThirtyDA_demo_bot', expiresIn: 600, pollMs: 2000 };
+  }
+
+  function telegramStatus({ locked }) {
+    const c = W.tgCheck;
+    if (!c) return { state: 'none' };
+    const age = Date.now() - c.at;
+    if (age > 600e3) {
+      W.tgCheck = null;
+      return { state: 'expired' };
+    }
+    if (age < BOT_MS * 2) return { state: 'waiting', opened: age > BOT_MS, expiresIn: Math.ceil((600e3 - age) / 1000) };
+    // Shared: exactly what a good code does (verifyCode), once.
+    W.tgCheck = null;
+    const current = locked ? null : me();
+    let user = [...W.users.values()].find((x) => x.phone === c.phone) ?? null;
+    const byPhone = Boolean(user);
+    if (!user && current) {
+      current.phone = c.phone;
+      current.verified.phone = true;
+      user = current;
+    } else if (user && !user.verified?.phone) {
+      user.verified.phone = true;
+    }
+    startSession({ userId: user?.id ?? null, phone: c.phone, phoneVerified: true }, { carry: !locked });
+    if (byPhone && c.newPin) {
+      user.pin = c.newPin;
+      W.session.pinResetUntil = 0;
+    }
+    return { ok: true, existing: Boolean(user), user: user ? meView(syncLevel(user)) : null, state: 'verified' };
+  }
 
   function sendCode({ body }) {
     const phone = normalizePhone(body.phone);
@@ -829,18 +968,20 @@
     return { ok: true, phone, channel, live: false, resendIn: 30, devCode: code };
   }
 
-  function verifyCode({ body }) {
+  function verifyCode({ body, locked }) {
     const phone = normalizePhone(body.phone);
     const code = String(body.code ?? '').replace(/\D/g, '');
     if (!phone || code.length !== 6) throw invalid('Enter the 6-digit code.', { field: 'code' });
+    const newPin = waitingPinOf(body);
     const otp = W.otps.get(phone);
     if (!otp || otp.expires <= Date.now()) throw fail(400, 'code_expired', 'That code has expired. Ask for a new one.');
     if (otp.attempts >= 5) throw fail(429, 'too_many_attempts', 'Too many tries. Ask for a new code.');
     otp.attempts += 1;
     if (otp.code !== code) throw fail(400, 'wrong_code', 'That code is not right.', { attemptsLeft: Math.max(0, 5 - otp.attempts) });
     W.otps.delete(phone);
-    const current = me();
+    const current = locked ? null : me();
     let user = [...W.users.values()].find((x) => x.phone === phone) ?? null;
+    const byPhone = Boolean(user);
     if (!user && current) {
       current.phone = phone;
       current.verified.phone = true;
@@ -848,17 +989,21 @@
     } else if (user && !user.verified?.phone) {
       user.verified.phone = true;
     }
-    startSession({ userId: user?.id ?? null, phone, phoneVerified: true });
+    startSession({ userId: user?.id ?? null, phone, phoneVerified: true }, { carry: !locked });
+    if (byPhone && newPin) {
+      user.pin = newPin;
+      W.session.pinResetUntil = 0;
+    }
     return { ok: true, existing: Boolean(user), user: user ? meView(syncLevel(user)) : null };
   }
 
-  function verifySocial({ body }) {
-    const key = { google: 'gmail', facebook: 'facebook' }[body.provider];
-    if (!key) throw invalid('Choose Google or Facebook.', { field: 'provider' });
-    const s = W.session;
-    const verified = { gmail: Boolean(s?.verified?.gmail), facebook: Boolean(s?.verified?.facebook), [key]: true };
-    const current = me();
-    startSession({ verified });
+  function verifySocial({ body, locked }) {
+    const key = { google: 'gmail', facebook: 'facebook', tiktok: 'tiktok' }[body.provider];
+    if (!key) throw invalid('Choose Google, Facebook or TikTok.', { field: 'provider' });
+    const s = locked ? null : W.session;
+    const verified = { gmail: Boolean(s?.verified?.gmail), facebook: Boolean(s?.verified?.facebook), tiktok: Boolean(s?.verified?.tiktok), [key]: true };
+    const current = locked ? null : me();
+    startSession({ verified }, { carry: !locked });
     if (current) current.verified[key] = true;
     return { ok: true, verified };
   }
@@ -871,7 +1016,7 @@
   function createProfile({ body }) {
     if (me()) throw fail(409, 'profile_exists', 'You already have a profile.');
     const s = W.session;
-    if (!s.phoneVerified && !s.verified?.gmail && !s.verified?.facebook) throw fail(403, 'not_verified', 'Verify your phone, Google or Facebook first.');
+    if (!s.phoneVerified && !s.verified?.gmail && !s.verified?.facebook && !s.verified?.tiktok) throw fail(403, 'not_verified', 'Verify your phone, Google, Facebook or TikTok first.');
     const name = checkName(body.name);
     const birthYear = checkBirth(body.birthYear);
     const realName = String(body.realName ?? '').trim().replace(/\s+/g, ' ');
@@ -879,18 +1024,19 @@
     const role = checkRole(body.role);
     if (!['man', 'woman', 'other'].includes(body.gender)) throw invalid('Choose male, female or other.', { field: 'gender' });
     const lang = checkLang(body.lang);
+    const newPin = waitingPinOf(body);
     const phone = s.phoneVerified ? s.phone : null;
     if (phone && [...W.users.values()].some((x) => x.phone === phone)) throw fail(409, 'phone_in_use', 'This phone number already has a profile.');
     const photo = checkPhoto(body.photo);
     const id = nextId('user', 'U-');
     const user = {
       id, name, realName, birthYear, role, gender: body.gender, lang, phone,
-      verified: { phone: Boolean(phone), gmail: Boolean(s.verified?.gmail), facebook: Boolean(s.verified?.facebook) },
+      verified: { phone: Boolean(phone), gmail: Boolean(s.verified?.gmail), facebook: Boolean(s.verified?.facebook), tiktok: Boolean(s.verified?.tiktok) },
       photos: [photo], seeded: false, location: null, km: 0, area: '', city: '', hearts: { red: 0, orange: 0 },
-      level: 1, blocked: false, notices: [],
+      level: 1, blocked: false, notices: [], pin: newPin, pinTries: 0,
     };
     W.users.set(id, user);
-    s.userId = id;
+    Object.assign(s, { userId: id, pinOk: true, pinTries: 0, pinResetUntil: 0 });
     return { user: meView(user) };
   }
 
@@ -1395,6 +1541,8 @@
     ['POST', /^\/auth\/send-code$/, sendCode, { auth: 'none' }],
     ['POST', /^\/auth\/verify-code$/, verifyCode, { auth: 'none' }],
     ['POST', /^\/auth\/verify-social$/, verifySocial, { auth: 'none' }],
+    ['POST', /^\/auth\/telegram\/start$/, telegramStart, { auth: 'none' }],
+    ['GET', /^\/auth\/telegram\/status$/, telegramStatus, { auth: 'none' }],
     ['POST', /^\/auth\/signout$/, signout, { auth: 'none' }],
     ['POST', /^\/profile$/, createProfile, { auth: 'session' }],
     ['GET', /^\/me$/, getMe, { auth: 'none' }],
@@ -1404,6 +1552,10 @@
     ['DELETE', /^\/me\/photos\/([0-3])$/, removePhoto],
     ['POST', /^\/me\/location$/, setLocation],
     ['POST', /^\/me\/heartbeat$/, heartbeat],
+    ['POST', /^\/me\/lock$/, lockMe, { auth: 'session' }],
+    ['POST', /^\/me\/unlock$/, unlockMe],
+    ['POST', /^\/me\/pin$/, setPin],
+    ['POST', /^\/me\/pin\/forgot$/, forgotPin, { auth: 'none' }],
     ['POST', /^\/notices\/([\w-]{1,64})\/seen$/, () => ({ ok: true })],
     ['GET', /^\/nearby$/, nearby],
     ['GET', /^\/people\/(U-\d+)$/, person],
@@ -1433,6 +1585,12 @@
       if (hit) { found = { fn, opts }; ctx.params = hit.slice(1); break; }
     }
     if (!found) throw fail(404, 'not_found', 'No such endpoint.');
+    // The lock (as on the server): only the sign-in steps and the PIN routes while locked.
+    if (lockedNow()) {
+      const may = whileLocked(method, sub);
+      if (!may) throw lockedError(me());
+      ctx.locked = true;
+    }
     const auth = found.opts.auth ?? 'user';
     if (auth !== 'none' && !W.session) throw fail(401, 'signed_out', 'Please sign in.');
     if (auth === 'user' && !me()) throw fail(401, 'no_profile', 'Create your profile first.');
@@ -1517,7 +1675,7 @@
       const note = document.createElement('a');
       note.href = '/30da/board/';
       // Lines break only between the · parts (no-break spaces inside each part).
-      note.textContent = ['30+DA demo', `screen ${S}`, 'nothing is saved', '← all screens'].map((x) => x.replace(/ /g, '\u00a0')).join(' · ');
+      note.textContent = ['30+DA demo', `screen ${S}`, 'nothing is saved', `PIN ${DEMO_PIN}`, '← all screens'].map((x) => x.replace(/ /g, '\u00a0')).join(' · ');
       note.style.cssText = `position:fixed;left:${NOTE_GAP}px;bottom:${NOTE_GAP}px;z-index:5;box-sizing:border-box;`
         + 'padding:7px 12px;border-radius:14px;background:#0b1c3f;color:#fff;'
         + 'font:600 11px/1.35 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.04em;'

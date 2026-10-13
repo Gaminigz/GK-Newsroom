@@ -68,8 +68,10 @@ function fakeFetch(reply) {
 
 // ---------- settings: several fields in one sealed box ----------
 
-test('fields settings: whatsapp / google / facebook, each with its secret marked', () => {
-  assert.deepEqual(Object.keys(FIELD_SETTINGS).sort(), ['facebook', 'google', 'whatsapp']);
+test('fields settings: whatsapp / google / facebook (+ the Telegram bot), each with its secret marked', () => {
+  assert.deepEqual(Object.keys(FIELD_SETTINGS).sort(), ['facebook', 'google', 'telegram_bot', 'tiktok', 'whatsapp']);
+  assert.equal(FIELD_SETTINGS.telegram_bot.token.secret, true);
+  assert.ok(FIELD_SETTINGS.telegram_bot.hookSecret.secret && FIELD_SETTINGS.telegram_bot.hookSecret.hidden, 'the webhook secret is never shown');
   assert.equal(FIELD_SETTINGS.whatsapp.token.secret, true);
   assert.equal(FIELD_SETTINGS.google.clientSecret.secret, true);
   assert.equal(FIELD_SETTINGS.facebook.appSecret.secret, true);
@@ -316,7 +318,7 @@ test('sign-in keys: Google client ID + secret, Facebook app ID + secret; an empt
     assert.ok(!/THIRTYDA_|OAuth|Railway/.test(r.error), 'plain words');
   }
   assert.equal(checkSigninFields('twitter', {}).ok, false);
-  assert.deepEqual(SIGNIN_WIRED, { google: true, facebook: true }, 'the sign-in is built: saved keys make the buttons work');
+  assert.deepEqual(SIGNIN_WIRED, { google: true, facebook: true, tiktok: true }, 'the sign-in is built: saved keys make the buttons work');
 });
 
 test('sign-in keys save sealed and masked; signinKeysSaved', async () => {

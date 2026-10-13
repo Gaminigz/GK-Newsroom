@@ -1,8 +1,10 @@
 /**
  * 30+DA small pages, served by src/lib/thirtyda-app.mjs in the app's look (src/thirtyda-app/pages.css):
  *
- *   GET /30da/privacy        the privacy policy (Google and Facebook ask for its address)
+ *   GET /30da/privacy        the privacy policy (Google, Facebook and TikTok ask for its address)
  *   GET /30da/delete-data    how to have your data deleted (Facebook asks for its address)
+ *   GET /30da/terms          the terms of service (TikTok asks for its address): 30+ only, honest, no contact
+ *                            details, respect, we may remove accounts that break the rules, contact
  *   the admin's "Try sign-in" result (the end of GET /30da/api/auth/<provider>/callback for a test)
  *
  * Short and sweet (owner 2026-10-13): a few plain one-line points, in the app's 5 languages, with the same small
@@ -21,9 +23,9 @@ export const CONTACT_EMAIL = "gk.smart@ggmt.sg";
 export const POLICY_DATE = "2026-10-13";
 /** The subject a deletion email asks for (English in every language: the team reads it; the mail link fills it in). */
 export const DELETE_SUBJECT = "Delete my 30+DA account";
-const NAMES = { google: "Google", facebook: "Facebook" };
-/** The two boxes of each sign-in card, by their labels on the (English) Code page and in Google / Meta. */
-const KEY_LABELS = { google: ["Client ID", "Client secret"], facebook: ["App ID", "App secret"] };
+const NAMES = { google: "Google", facebook: "Facebook", tiktok: "TikTok" };
+/** The two boxes of each sign-in card, by their labels on the (English) Code page and in Google / Meta / TikTok. */
+const KEY_LABELS = { google: ["Client ID", "Client secret"], facebook: ["App ID", "App secret"], tiktok: ["Client key", "Client secret"] };
 
 /** HTML-escape any text that did not come from this file. */
 export function esc(v) {
@@ -68,7 +70,7 @@ export const PAGE_STRINGS = {
     priv_lede: "30+DA is a dating app for people aged 30 and over.",
     priv_keep_k: "We keep:",
     priv_keep: "your profile, photos, phone number, rough area and messages.",
-    priv_social_k: "From Google or Facebook:",
+    priv_social_k: "From Google, Facebook or TikTok:",
     priv_social: "we keep only your account number and email.",
     priv_why_k: "Why:",
     priv_why: "to sign you in, show you people nearby and keep everyone safe.",
@@ -85,7 +87,7 @@ export const PAGE_STRINGS = {
     del_title: "Delete your data",
     del_lede: "Ask any time — we delete everything.",
     del_step1: "Email {mail} with the subject {subject}.",
-    del_step2: "Tell us your app name and how you sign in (phone, Google or Facebook).",
+    del_step2: "Tell us your app name and how you sign in (phone, Google, Facebook or TikTok).",
     del_step3: "We delete it all and email you back — within 30 days.",
     del_signout: "Signing out does not delete anything.",
     try_title_ok: "{name} sign-in works",
@@ -110,6 +112,21 @@ export const PAGE_STRINGS = {
     fix_admin_gone: "Your admin sign-in ended. Sign in again, then try.",
     fix_too_many: "Too many tries. Wait 15 minutes.",
     fix_other: "{name} said no. Check the {id}, {secret} and Redirect address.",
+    try_others_tiktok: "Others can sign in once TikTok approves the app.",
+    fix_not_live_tiktok: "Submit the app for review in TikTok (with Login Kit), then try again.",
+    terms_title: "Terms of service",
+    terms_lede: "Using 30+DA means you agree to these few rules.",
+    terms_age_k: "Age:",
+    terms_age: "only for people aged 30 and over.",
+    terms_honest_k: "Be honest:",
+    terms_honest: "your own photos, your real age and your real name.",
+    terms_contact_k: "No contact details:",
+    terms_contact: "numbers, links and social accounts are stopped at every level.",
+    terms_respect_k: "Respect:",
+    terms_respect: "be kind. No insults, threats, spam or selling.",
+    terms_team_k: "Our team:",
+    terms_team: "may warn, block or remove accounts that break these rules.",
+    terms_data_k: "Your data:",
   },
   km: {
     language: "ភាសា",
@@ -119,7 +136,7 @@ export const PAGE_STRINGS = {
     priv_lede: "30+DA ជាកម្មវិធីណាត់ជួប សម្រាប់អ្នកដែលមានអាយុពី 30 ឆ្នាំឡើងទៅ។",
     priv_keep_k: "យើងរក្សាទុក៖",
     priv_keep: "ប្រវត្តិរូប រូបថត លេខទូរស័ព្ទ តំបន់ប្រហាក់ប្រហែល និងសាររបស់អ្នក។",
-    priv_social_k: "ពី Google ឬ Facebook៖",
+    priv_social_k: "ពី Google, Facebook ឬ TikTok៖",
     priv_social: "យើងរក្សាទុកតែលេខគណនី និងអ៊ីមែលរបស់អ្នកប៉ុណ្ណោះ។",
     priv_why_k: "ហេតុអ្វី៖",
     priv_why: "ដើម្បីឲ្យអ្នកចូលបាន បង្ហាញមនុស្សនៅជិតអ្នក និងរក្សាសុវត្ថិភាពគ្រប់គ្នា។",
@@ -136,7 +153,7 @@ export const PAGE_STRINGS = {
     del_title: "លុបទិន្នន័យរបស់អ្នក",
     del_lede: "ស្នើបានគ្រប់ពេល — យើងលុបទាំងអស់។",
     del_step1: "ផ្ញើអ៊ីមែលទៅ {mail} ដោយដាក់ចំណងជើង {subject}។",
-    del_step2: "ប្រាប់ឈ្មោះក្នុងកម្មវិធី និងរបៀបដែលអ្នកចូល (ទូរស័ព្ទ Google ឬ Facebook)។",
+    del_step2: "ប្រាប់ឈ្មោះក្នុងកម្មវិធី និងរបៀបដែលអ្នកចូល (ទូរស័ព្ទ Google, Facebook ឬ TikTok)។",
     del_step3: "យើងលុបទាំងអស់ ហើយផ្ញើអ៊ីមែលប្រាប់អ្នក ក្នុងរយៈពេល 30 ថ្ងៃ។",
     del_signout: "ការចាកចេញពីកម្មវិធី មិនលុបអ្វីទាំងអស់ទេ។",
     try_title_ok: "ការចូលតាម {name} ដំណើរការ",
@@ -161,6 +178,21 @@ export const PAGE_STRINGS = {
     fix_admin_gone: "ការចូល admin របស់អ្នកបានផុតកំណត់។ សូមចូលម្ដងទៀត រួចសាកម្ដងទៀត។",
     fix_too_many: "សាកច្រើនដងពេក។ សូមរង់ចាំ 15 នាទី។",
     fix_other: "{name} មិនអនុញ្ញាតទេ។ សូមពិនិត្យ {id} {secret} និង Redirect address។",
+    try_others_tiktok: "អ្នកដទៃអាចចូលបាន ពេល TikTok អនុម័តកម្មវិធី។",
+    fix_not_live_tiktok: "សូមដាក់កម្មវិធីឲ្យ TikTok ពិនិត្យ (មាន Login Kit) រួចសាកម្ដងទៀត។",
+    terms_title: "លក្ខខណ្ឌប្រើប្រាស់",
+    terms_lede: "ការប្រើ 30+DA មានន័យថា អ្នកយល់ព្រមនឹងច្បាប់ខ្លីៗទាំងនេះ។",
+    terms_age_k: "អាយុ៖",
+    terms_age: "សម្រាប់តែអ្នកដែលមានអាយុពី 30 ឆ្នាំឡើងទៅ។",
+    terms_honest_k: "ស្មោះត្រង់៖",
+    terms_honest: "រូបថតរបស់អ្នកផ្ទាល់ អាយុពិត និងឈ្មោះពិត។",
+    terms_contact_k: "គ្មានព័ត៌មានទំនាក់ទំនង៖",
+    terms_contact: "លេខទូរស័ព្ទ តំណភ្ជាប់ និងគណនីបណ្ដាញសង្គម ត្រូវបានរារាំងគ្រប់កម្រិត។",
+    terms_respect_k: "ការគោរព៖",
+    terms_respect: "សូមមានចិត្តល្អ។ គ្មានការជេរប្រមាថ ការគំរាមកំហែង សារឥតបានការ ឬការលក់ដូរ។",
+    terms_team_k: "ក្រុមការងាររបស់យើង៖",
+    terms_team: "អាចព្រមាន បិទ ឬលុបគណនីដែលបំពានច្បាប់ទាំងនេះ។",
+    terms_data_k: "ទិន្នន័យរបស់អ្នក៖",
   },
   zh: {
     language: "语言",
@@ -170,7 +202,7 @@ export const PAGE_STRINGS = {
     priv_lede: "30+DA 是为 30 岁及以上人士打造的交友应用。",
     priv_keep_k: "我们保存：",
     priv_keep: "你的资料、照片、手机号、大致位置和消息。",
-    priv_social_k: "来自 Google 或 Facebook：",
+    priv_social_k: "来自 Google、Facebook 或 TikTok：",
     priv_social: "我们只保存你的账号编号和邮箱。",
     priv_why_k: "用途：",
     priv_why: "让你登录、为你显示附近的人，并保障大家的安全。",
@@ -187,7 +219,7 @@ export const PAGE_STRINGS = {
     del_title: "删除你的数据",
     del_lede: "随时都可以申请，我们会全部删除。",
     del_step1: "发邮件到 {mail}，标题写 {subject}。",
-    del_step2: "告诉我们你的昵称和登录方式（手机、Google 或 Facebook）。",
+    del_step2: "告诉我们你的昵称和登录方式（手机、Google、Facebook 或 TikTok）。",
     del_step3: "我们会全部删除并回邮件告诉你，30 天内完成。",
     del_signout: "退出登录不会删除任何数据。",
     try_title_ok: "{name} 登录成功",
@@ -212,6 +244,21 @@ export const PAGE_STRINGS = {
     fix_admin_gone: "你的管理员登录已过期。请重新登录后再试。",
     fix_too_many: "尝试次数太多。请等 15 分钟。",
     fix_other: "{name} 拒绝了登录。请检查 {id}、{secret} 和 Redirect address。",
+    try_others_tiktok: "TikTok 审核通过应用后，其他人也能登录。",
+    fix_not_live_tiktok: "请在 TikTok 添加 Login Kit 并提交应用审核，然后再试。",
+    terms_title: "服务条款",
+    terms_lede: "使用 30+DA，即表示你同意以下几条规则。",
+    terms_age_k: "年龄：",
+    terms_age: "仅限 30 岁及以上人士。",
+    terms_honest_k: "诚实：",
+    terms_honest: "用你自己的照片、真实年龄和真实姓名。",
+    terms_contact_k: "不留联系方式：",
+    terms_contact: "号码、链接和社交账号在每个级别都会被拦截。",
+    terms_respect_k: "尊重：",
+    terms_respect: "友善待人。禁止辱骂、威胁、垃圾信息和推销。",
+    terms_team_k: "我们的团队：",
+    terms_team: "可对违反规则的账号发出警告、封禁或删除。",
+    terms_data_k: "你的数据：",
   },
   ko: {
     language: "언어",
@@ -221,7 +268,7 @@ export const PAGE_STRINGS = {
     priv_lede: "30+DA는 30세 이상을 위한 만남 앱이에요.",
     priv_keep_k: "보관하는 정보:",
     priv_keep: "프로필, 사진, 전화번호, 대략적인 지역, 메시지.",
-    priv_social_k: "Google·Facebook에서:",
+    priv_social_k: "Google·Facebook·TikTok에서:",
     priv_social: "계정 번호와 이메일만 보관해요.",
     priv_why_k: "이유:",
     priv_why: "로그인, 근처 사람 보여 주기, 모두의 안전을 위해서예요.",
@@ -238,7 +285,7 @@ export const PAGE_STRINGS = {
     del_title: "내 데이터 삭제",
     del_lede: "언제든 요청하면 모두 삭제해 드려요.",
     del_step1: "{mail}로 메일을 보내 주세요. 제목: {subject}",
-    del_step2: "앱 이름과 로그인 방법(전화번호, Google, Facebook)을 알려 주세요.",
+    del_step2: "앱 이름과 로그인 방법(전화번호, Google, Facebook, TikTok)을 알려 주세요.",
     del_step3: "30일 안에 모두 삭제하고 메일로 알려 드려요.",
     del_signout: "로그아웃만으로는 아무것도 삭제되지 않아요.",
     try_title_ok: "{name} 로그인 성공",
@@ -263,6 +310,21 @@ export const PAGE_STRINGS = {
     fix_admin_gone: "관리자 로그인이 끝났어요. 다시 로그인한 뒤 시도하세요.",
     fix_too_many: "시도가 너무 많아요. 15분 기다려 주세요.",
     fix_other: "{name}에서 로그인을 거부했어요. {id}, {secret}, Redirect address를 확인하세요.",
+    try_others_tiktok: "TikTok이 앱을 승인하면 다른 사람도 로그인할 수 있어요.",
+    fix_not_live_tiktok: "TikTok에서 Login Kit을 추가하고 앱 심사를 제출한 뒤 다시 시도하세요.",
+    terms_title: "서비스 약관",
+    terms_lede: "30+DA를 사용하면 아래 몇 가지 규칙에 동의하는 거예요.",
+    terms_age_k: "나이:",
+    terms_age: "30세 이상만 이용할 수 있어요.",
+    terms_honest_k: "정직:",
+    terms_honest: "본인 사진, 실제 나이, 실명을 사용하세요.",
+    terms_contact_k: "연락처 금지:",
+    terms_contact: "전화번호, 링크, SNS 계정은 모든 단계에서 차단돼요.",
+    terms_respect_k: "존중:",
+    terms_respect: "친절하게 대해 주세요. 욕설, 협박, 스팸, 판매는 안 돼요.",
+    terms_team_k: "운영팀:",
+    terms_team: "규칙을 어긴 계정은 경고, 차단 또는 삭제할 수 있어요.",
+    terms_data_k: "내 데이터:",
   },
   ja: {
     language: "言語",
@@ -272,7 +334,7 @@ export const PAGE_STRINGS = {
     priv_lede: "30+DA は、30歳以上の方のための出会いアプリです。",
     priv_keep_k: "保存するもの：",
     priv_keep: "プロフィール、写真、電話番号、おおよその地域、メッセージ。",
-    priv_social_k: "Google・Facebook から：",
+    priv_social_k: "Google・Facebook・TikTok から：",
     priv_social: "アカウント番号とメールアドレスだけを保存します。",
     priv_why_k: "目的：",
     priv_why: "ログイン、近くの人の表示、みんなの安全のため。",
@@ -289,7 +351,7 @@ export const PAGE_STRINGS = {
     del_title: "データの削除",
     del_lede: "いつでも依頼できます。すべて削除します。",
     del_step1: "{mail} に、件名 {subject} でメールしてください。",
-    del_step2: "アプリ名とログイン方法（電話番号・Google・Facebook）を書いてください。",
+    del_step2: "アプリ名とログイン方法（電話番号・Google・Facebook・TikTok）を書いてください。",
     del_step3: "30日以内にすべて削除し、メールでお知らせします。",
     del_signout: "ログアウトしても、何も削除されません。",
     try_title_ok: "{name} ログイン成功",
@@ -314,6 +376,21 @@ export const PAGE_STRINGS = {
     fix_admin_gone: "管理者ログインが切れました。もう一度ログインしてから試してください。",
     fix_too_many: "試行回数が多すぎます。15分待ってください。",
     fix_other: "{name} がログインを拒否しました。{id}・{secret}・Redirect address を確認してください。",
+    try_others_tiktok: "TikTok がアプリを承認すると、他の人もログインできます。",
+    fix_not_live_tiktok: "TikTok で Login Kit を追加してアプリを審査に出してから、もう一度試してください。",
+    terms_title: "利用規約",
+    terms_lede: "30+DA を使うと、次のいくつかのルールに同意したことになります。",
+    terms_age_k: "年齢：",
+    terms_age: "30歳以上の方のみ。",
+    terms_honest_k: "正直に：",
+    terms_honest: "ご本人の写真、本当の年齢、本名を使ってください。",
+    terms_contact_k: "連絡先は禁止：",
+    terms_contact: "電話番号・リンク・SNS アカウントは、どの段階でも止められます。",
+    terms_respect_k: "思いやり：",
+    terms_respect: "親切に。暴言・脅し・スパム・販売は禁止です。",
+    terms_team_k: "運営チーム：",
+    terms_team: "ルールに違反したアカウントは、警告・ブロック・削除することがあります。",
+    terms_data_k: "あなたのデータ：",
   },
 };
 
@@ -414,6 +491,29 @@ export function deleteDataPage({ lang: want } = {}) {
     title: `${t.del_title} · 30+DA`,
     lang,
     inner: docColumn({ lang, flags: flagRow(lang, (c) => `/30da/delete-data?lang=${c}`), body }),
+  });
+}
+
+/**
+ * GET /30da/terms[?lang=] — the few rules, true to what the app does: 30 and over only, honest profile, contact
+ * details stopped at every level (src/thirtyda-app/shared/rules.js), respect, the team may warn / block / remove.
+ */
+export function termsPage({ lang: want } = {}) {
+  const lang = ok(want);
+  const t = PAGE_STRINGS[lang];
+  const point = (k) => `        <li><b>${t[`${k}_k`]}</b> ${t[k]}</li>`;
+  const body = `      <h1>${t.terms_title}</h1>
+      <p class="doc-date">${fill(t.priv_date, { date: policyDate(lang) })}</p>
+      <p class="doc-lede">${t.terms_lede}</p>
+      <ul class="facts">
+${["terms_age", "terms_honest", "terms_contact", "terms_respect", "terms_team"].map(point).join("\n")}
+        <li><b>${t.terms_data_k}</b> <a href="/30da/privacy?lang=${lang}">${t.priv_title}</a></li>
+      </ul>
+      <p class="doc-contact">${t.questions} ${mailLink}</p>`;
+  return page({
+    title: `${t.terms_title} · 30+DA`,
+    lang,
+    inner: docColumn({ lang, flags: flagRow(lang, (c) => `/30da/terms?lang=${c}`), body }),
   });
 }
 

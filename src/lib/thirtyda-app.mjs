@@ -28,13 +28,26 @@
  * channels' settings from thirtyda_settings (src/lib/thirtyda-code-send.mjs: Telegram / WhatsApp codes are
  * real once the admin saves their keys on the admin Code page — and offered only once a test code went through,
  * see channelOffer). GET /auth/methods tells the phone step which of its 4 buttons work (Telegram, WhatsApp,
- * Facebook, Google).
+ * Facebook, Google), and which Telegram it is (telegram: 'bot' | 'code' | null).
  *
- * Google / Facebook sign-in (src/lib/thirtyda-signin.mjs): GET /30da/api/auth/<provider>/start → the provider →
+ * The free Telegram bot (owner 2026-10-13, src/lib/thirtyda-telegram-bot.mjs): no code is typed. POST
+ * /auth/telegram/start { phone, lang?, pin? } → { link: https://t.me/<bot>?start=<token> } + a browser cookie; the
+ * person shares their own number with the bot (POST /30da/api/telegram/hook, Telegram's secret header); GET
+ * /auth/telegram/status from the SAME browser → { state: waiting | verified | mismatch | expired | none }, and
+ * verified signs in exactly like a good verify-code (signInWithPhone, the waiting PIN carried), once.
+ *
+ * Google / Facebook / TikTok sign-in (src/lib/thirtyda-signin.mjs): GET /30da/api/auth/<provider>/start → the provider →
  * GET /30da/api/auth/<provider>/callback → 302 to /30da/#/create (new person) or /30da/#/nearby (returning person),
  * or back to the phone step with ?signin=<provider>&error=<cancelled|expired|unavailable|failed|too_many>.
  * The admin's "Try sign-in" ends on a small result page instead and makes no user or session.
- * Public pages Google / Facebook ask for: GET /30da/privacy, GET /30da/delete-data (src/lib/thirtyda-pages.mjs).
+ *
+ * The PIN lock (owner 2026-10-13, src/lib/thirtyda-pin.mjs): a 4-digit PIN locks the app. A profile's session
+ * is open only after a sign-in or the PIN, and only while the person really uses the app (2 minutes without
+ * real activity → locked; the app itself covers after 30 s and POSTs /me/lock). While locked, every data
+ * route answers 423 { error:'locked' }: POST /me/unlock { pin }, POST /me/pin { pin, old? } (set / change),
+ * POST /me/pin/forgot (signs out) and /auth/* stay open. 5 wrong PINs end the session.
+ * Public pages Google / Facebook / TikTok ask for: GET /30da/privacy, GET /30da/delete-data, GET /30da/terms
+ * (src/lib/thirtyda-pages.mjs).
  */
 
 import crypto from "node:crypto";
@@ -48,11 +61,19 @@ import { CODE_CHANNELS, DEFAULT_CHANNEL, CHANNEL_NAMES, channelOffered, testCode
 import {
   SIGNIN_PROVIDERS, SIGNIN_WIRED, VERIFIED_KEY, SIGNIN_STATES, signinKeys, signinKeysSaved, signinRedirect, authorizeUrl,
   createSigninState, takeSigninState, stateCookie, readStateCookie, adminSessionAlive, signinPerson, callbackError,
-  signinUserFilter, planSignin,
+  signinUserFilter, planSignin, pkcePair,
 } from "./thirtyda-signin.mjs";
 import { noteSecretUse } from "./thirtyda-settings.mjs";
 import { outboundFetch } from "./thirtyda-test-fetch.mjs";
-import { privacyPage, deleteDataPage, tryResultPage, requestLang } from "./thirtyda-pages.mjs";
+import {
+  TG_CHECKS, CHECK_TTL_MS, POLL_MS, botOffered, botConfig, startCheck, startLink, pollCheck, checkCookie, readCheckCookie,
+  newBrowserKey, handleTelegramHook, windowLimiter,
+} from "./thirtyda-telegram-bot.mjs";
+import {
+  PIN_LENGTH, INPUT_AGE_HEADER, checkNewPin, pinDigits, hashPin, verifyPin, lockState, lockInfo, freshSigninFields,
+  legacyLockFields, activityAt, backgroundCall, nextActiveAt, whileLocked, pinSetPlan, afterWrongPin,
+} from "./thirtyda-pin.mjs";
+import { privacyPage, deleteDataPage, termsPage, tryResultPage, requestLang } from "./thirtyda-pages.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
   PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
@@ -138,6 +159,10 @@ export async function ensureThirtyDaIndexes(d) {
     ...SIGNIN_PROVIDERS.map((p) => d.collection(C.users).createIndex(
       { [`signin.${p}.id`]: 1 }, { unique: true, partialFilterExpression: { [`signin.${p}.id`]: { $exists: true } } })),
     d.collection(SIGNIN_STATES).createIndex({ expires: 1 }, { expireAfterSeconds: 0 }),
+    // Telegram bot checks: gone 30 minutes after they expire; found by browser (status) and by Telegram user (the bot).
+    d.collection(TG_CHECKS).createIndex({ purgeAt: 1 }, { expireAfterSeconds: 0 }),
+    d.collection(TG_CHECKS).createIndex({ browser: 1, created: -1 }),
+    d.collection(TG_CHECKS).createIndex({ tgUserId: 1, openedAt: -1 }, { sparse: true }),
     d.collection(C.sessions).createIndex({ expires: 1 }, { expireAfterSeconds: 0 }),
     d.collection(C.otps).createIndex({ expires: 1 }, { expireAfterSeconds: 0 }),
     d.collection(C.pairs).createIndex({ key: 1 }, { unique: true, sparse: true }),
@@ -301,25 +326,35 @@ async function loadSession(d, req) {
   return d.collection(C.sessions).findOne({ _id: token, expires: { $gt: new Date() } });
 }
 
-/** Every sign-in step gets a fresh token (no session fixation); what the old session proved carries over. */
+/**
+ * Every sign-in step gets a fresh token (no session fixation); what the old session proved carries over —
+ * unless it was LOCKED (ctx.lockedSession, see handleApi): then nothing carries over, so a sign-in on a locked
+ * phone never lends that profile to the new session. A sign-in is open (no PIN needed right now) and may set a
+ * new PIN without the old one for a while (freshSigninFields); it clears the profile's wrong-PIN count.
+ */
 async function startSession(ctx, fields) {
   const { d, session } = ctx;
+  const old = session ?? ctx.lockedSession ?? null;
   const token = crypto.randomBytes(32).toString("hex");
+  const now = Date.now();
   const doc = {
     _id: token,
     userId: session?.userId ?? null,
     phone: session?.phone ?? null,
     phoneVerified: Boolean(session?.phoneVerified),
-    verified: { gmail: Boolean(session?.verified?.gmail), facebook: Boolean(session?.verified?.facebook) },
+    verified: { gmail: Boolean(session?.verified?.gmail), facebook: Boolean(session?.verified?.facebook), tiktok: Boolean(session?.verified?.tiktok) },
     // The Google / Facebook account(s) this browser proved, kept until Create profile puts them on the profile.
     ...(session?.signin ? { signin: session.signin } : {}),
     ...fields,
-    created: new Date(),
-    expires: new Date(Date.now() + SESSION_DAYS * 864e5),
+    ...freshSigninFields(now),
+    created: new Date(now),
+    expires: new Date(now + SESSION_DAYS * 864e5),
   };
   await d.collection(C.sessions).insertOne(doc);
-  if (session) await d.collection(C.sessions).deleteOne({ _id: session._id });
+  if (old) await d.collection(C.sessions).deleteOne({ _id: old._id });
+  if (doc.userId) await d.collection(C.users).updateOne({ _id: doc.userId }, { $set: { pinTries: 0 } });
   ctx.session = doc;
+  ctx.lockedSession = null;
   ctx.headers["Set-Cookie"] = cookieFor(ctx.req, token, SESSION_DAYS * 86400);
   return doc;
 }
@@ -354,9 +389,11 @@ function meView(u) {
     gender: u.gender ?? null,
     lang: u.lang ?? "en",
     phone: u.phone ?? null,
+    // Typed on Create profile but never proved by a code (only its owner sees it; chat still needs verified.phone).
+    phoneUnverified: u.phone ? null : u.phoneUnverified ?? null,
     // Set once (sign-up, or once on #/me for profiles made before the rule); only ever shown to its owner.
     birthYear: Number.isInteger(u.birthYear) ? u.birthYear : null,
-    verified: { phone: Boolean(u.verified?.phone), gmail: Boolean(u.verified?.gmail), facebook: Boolean(u.verified?.facebook) },
+    verified: { phone: Boolean(u.verified?.phone), gmail: Boolean(u.verified?.gmail), facebook: Boolean(u.verified?.facebook), tiktok: Boolean(u.verified?.tiktok) },
     // Slot-aligned: photos[i] is slot i+1's url, or null for an empty slot (trailing empty slots left out).
     photos: slotUrls(u),
     // Slots unlock by level (1 → 1, 2 → 2, 3 → 4). Photos kept from before the rule stay even past `allowed`.
@@ -367,6 +404,8 @@ function meView(u) {
     hearts: heartsOf(u),
     level: u.level ?? 1,
     blocked: Boolean(u.blocked),
+    // A PIN locks the app on this phone (the PIN itself and its hash never leave the server).
+    pinSet: Boolean(u.pinHash),
   };
 }
 
@@ -792,18 +831,24 @@ async function signinReady(d, provider) {
 
 /**
  * GET /auth/methods → which of the phone step's buttons work right now:
- *   { code: { telegram, whatsapp }, signin: { google, facebook }, signinTest: { google, facebook } } (booleans).
+ *   { code: { telegram, whatsapp }, signin: { google, facebook, tiktok }, signinTest: { google, facebook, tiktok } } (booleans).
  * A code channel works when it is OFFERED (live and a test code went through since its keys were saved, and no
  * lasting failure since — channelOffer), or (test mode only) while no channel is set up at all — the same rule
  * send-code applies. Google / Facebook work once their keys are saved (the real sign-in: the app goes to
  * /auth/<provider>/start); in test mode without keys they keep the instant test sign-in (signinTest: the app
  * calls POST /auth/verify-social). Otherwise the app shows "Coming soon". Nothing here is secret.
+ * telegram: which Telegram the button is — 'bot' (the free 30+DA bot is saved and its Try passed: no code, the
+ * person shares their number with the bot, /auth/telegram/start), 'code' (a 6-digit code: the Gateway passed its
+ * test, or test mode) or null (off). The bot wins when both work.
  */
 async function authMethods(ctx) {
   const { d } = ctx;
   const testCodes = await testCodesAllowed(d, DEV_AUTH);
   const code = {};
   for (const channel of CODE_CHANNELS) code[channel] = testCodes || (await channelOffered(d, channel));
+  const bot = await botOffered(d).catch(() => false);
+  const telegram = bot ? "bot" : code.telegram ? "code" : null;
+  code.telegram = Boolean(telegram);
   const signin = {};
   const signinTest = {};
   for (const provider of SIGNIN_PROVIDERS) {
@@ -811,7 +856,7 @@ async function authMethods(ctx) {
     signin[provider] = real || DEV_AUTH;
     signinTest[provider] = !real && DEV_AUTH;
   }
-  return { code, signin, signinTest };
+  return { code, telegram, signin, signinTest };
 }
 
 /**
@@ -964,6 +1009,8 @@ async function verifyCode(ctx) {
   const phone = normalizePhone(body.phone);
   const code = String(body.code ?? "").replace(/\D/g, "");
   if (!phone || code.length !== 6) throw invalid("Enter the 6-digit code.", { field: "code" });
+  // The PIN chosen before signing in (it waited on the phone): checked before the code is used up.
+  const newPin = waitingPin(body);
 
   const now = Date.now();
   const ip = clientIp(req);
@@ -991,28 +1038,97 @@ async function verifyCode(ctx) {
   const k = list.indexOf(now);
   if (k >= 0) list.splice(k, 1); // a right code does not count against the address
   await otps.deleteOne({ _id: phone, codeHash: otp.codeHash });
+  return signInWithPhone(ctx, phone, { newPin });
+}
 
+/**
+ * What a PROVED phone number does — a good code (verify-code) or Telegram's own-number check (the bot's status):
+ * the profile with this number is signed in; a signed-in profile without one adds it; otherwise a session that
+ * carries the verified number (Create profile comes next). A returning person's waiting PIN (newPin, or already
+ * hashed: newPinHash) becomes their PIN. → { ok, existing, user }.
+ */
+async function signInWithPhone(ctx, phone, { newPin = null, newPinHash = null } = {}) {
+  const { d, me } = ctx;
   const users = d.collection(C.users);
   let user = await users.findOne({ phone });
+  const signedInByPhone = Boolean(user);
   if (!user && me) {
-    // A signed-in profile (made with Google/Facebook) adds or changes its phone.
-    await users.updateOne({ _id: me._id }, { $set: { phone, "verified.phone": true } });
+    // A signed-in profile (made with Google/Facebook) adds or changes its phone; the verified number replaces
+    // the one typed on Create profile without a code (phoneUnverified).
+    await users.updateOne({ _id: me._id }, { $set: { phone, "verified.phone": true }, $unset: { phoneUnverified: "" } });
     user = await users.findOne({ _id: me._id });
   } else if (user && !user.verified?.phone) {
     await users.updateOne({ _id: user._id }, { $set: { "verified.phone": true } });
     user.verified = { ...user.verified, phone: true };
   }
   await startSession(ctx, { userId: user?._id ?? null, phone, phoneVerified: true });
+  // A sign-in by phone plus a waiting PIN sets (or replaces) that profile's PIN: the person just proved who they are.
+  if (signedInByPhone && (newPin || newPinHash)) user = await savePin(ctx, user, newPin, newPinHash);
   return { ok: true, existing: Boolean(user), user: user ? meView(user) : null };
+}
+
+// ---------------------------------------------------------------- the free Telegram bot (owner 2026-10-13)
+
+const TG_STARTS = 30; // checks started per address per 15 minutes (loose, like send-code: NAT)
+const TG_PHONE_STARTS = 6; // per typed number per 15 minutes
+const TG_POLLS = 3000; // status calls per address per 15 minutes (every 2 s while waiting; many phones behind one NAT)
+const TG_BROWSER_POLLS = 600; // per browser per 15 minutes (2 s polling for 10 minutes is 300, plus coming back)
+const tgLimits = windowLimiter(OTP_WINDOW_MS);
+
+/**
+ * POST /auth/telegram/start { phone, lang?, pin? } — the bot must be saved and its Try passed (else 503
+ * channel_unavailable). A new check (10 minutes) bound to this browser by a fresh cookie; the waiting PIN is checked
+ * first and kept only hashed. → { ok, phone, link: https://t.me/<bot>?start=<token>, bot, expiresIn, pollMs }.
+ */
+async function telegramStart(ctx) {
+  const { d, body, req } = ctx;
+  const phone = normalizePhone(body.phone);
+  if (!phone) throw invalid("That phone number does not look right.", { field: "phone" });
+  const newPin = waitingPin(body);
+  const cfg = (await botOffered(d)) ? await botConfig(d) : null;
+  if (!cfg) throw fail(503, "channel_unavailable", "Telegram is not available yet.", { channel: "telegram" });
+  const now = Date.now();
+  if (tgLimits.over(`ip:${clientIp(req)}`, TG_STARTS, now) || tgLimits.over(`phone:${phone}`, TG_PHONE_STARTS, now)) {
+    throw fail(429, "rate_limited", "Too many tries. Try again in 15 minutes.");
+  }
+  const lang = LANGS.includes(body.lang) ? body.lang : LANGS.includes(ctx.me?.lang) ? ctx.me.lang : "en";
+  const browser = newBrowserKey();
+  const { token } = await startCheck(d, {
+    phone, lang, browser, previousBrowser: readCheckCookie(req), pinHash: newPin ? await hashPin(newPin) : null, now,
+  });
+  ctx.headers["Set-Cookie"] = checkCookie(req, browser);
+  return { ok: true, phone, link: startLink(cfg.username, token), bot: cfg.username, expiresIn: CHECK_TTL_MS / 1000, pollMs: POLL_MS };
+}
+
+/**
+ * GET /auth/telegram/status — this browser's check (its cookie): { state: waiting (opened, expiresIn) | verified |
+ * mismatch | expired | none }. verified does exactly what a good verify-code does (signInWithPhone, the waiting PIN
+ * carried), once; the answer then also carries { ok, existing, user } like verify-code's.
+ */
+async function telegramStatus(ctx) {
+  const { d, req } = ctx;
+  const browser = readCheckCookie(req);
+  if (!browser) return { state: "none" };
+  const now = Date.now();
+  if (tgLimits.over(`poll:${clientIp(req)}`, TG_POLLS, now) || tgLimits.over(`browser:${browser}`, TG_BROWSER_POLLS, now)) {
+    throw fail(429, "rate_limited", "Too many tries. Try again in a few minutes.");
+  }
+  const out = await pollCheck(d, browser, {
+    now,
+    onVerified: (check) => signInWithPhone(ctx, check.phone, { newPinHash: check.pinHash ?? null }),
+  });
+  // The check is over (signed in, or said once): the browser drops its cookie, next to the new session's.
+  if (out.state !== "waiting") ctx.headers["Set-Cookie"] = [ctx.headers["Set-Cookie"], checkCookie(req, "", 0)].filter(Boolean);
+  return out;
 }
 
 async function verifySocial(ctx) {
   const { d, body, me } = ctx;
-  const key = { google: "gmail", facebook: "facebook" }[body.provider];
-  if (!key) throw invalid("Choose Google or Facebook.", { field: "provider" });
-  if (!DEV_AUTH) throw fail(503, "oauth_unavailable", "Google and Facebook sign-in are not available yet.");
+  const key = VERIFIED_KEY[body.provider];
+  if (!key) throw invalid("Choose Google, Facebook or TikTok.", { field: "provider" });
+  if (!DEV_AUTH) throw fail(503, "oauth_unavailable", "Google, Facebook and TikTok sign-in are not available yet.");
   const s = ctx.session;
-  const verified = { gmail: Boolean(s?.verified?.gmail), facebook: Boolean(s?.verified?.facebook), [key]: true };
+  const verified = { gmail: Boolean(s?.verified?.gmail), facebook: Boolean(s?.verified?.facebook), tiktok: Boolean(s?.verified?.tiktok), [key]: true };
   await startSession(ctx, { verified });
   if (me) await d.collection(C.users).updateOne({ _id: me._id }, { $set: { [`verified.${key}`]: true } });
   return { ok: true, verified };
@@ -1076,8 +1192,10 @@ async function signinStart(req, res, d, provider) {
   if (overLimit(ipSigninStarts, clientIp(req), SIGNIN_STARTS)) return redirectTo(res, backToPhoneStep(provider, "too_many"));
   const keys = SIGNIN_WIRED[provider] ? await signinKeys(d, provider) : null;
   if (!keys) return redirectTo(res, backToPhoneStep(provider, "unavailable"));
-  const state = await createSigninState(d, provider);
-  redirectTo(res, authorizeUrl(provider, { clientId: keys.id, redirectUri: signinRedirect(req, provider), state }), {
+  // PKCE where the provider uses it (pkcePair): the verifier stays with the state, only its challenge goes out.
+  const pkce = pkcePair(provider);
+  const state = await createSigninState(d, provider, { verifier: pkce?.verifier });
+  redirectTo(res, authorizeUrl(provider, { clientId: keys.id, redirectUri: signinRedirect(req, provider), state, codeChallenge: pkce?.challenge }), {
     "Set-Cookie": stateCookie(req, provider, state),
   });
 }
@@ -1103,7 +1221,7 @@ async function signinCallback(req, res, url, d, provider) {
   const keys = await signinKeys(d, provider);
   if (!keys) return back("unavailable");
 
-  const r = await signinPerson(provider, keys, code, signinRedirect(req, provider), { fetchImpl: outboundFetch() });
+  const r = await signinPerson(provider, keys, code, signinRedirect(req, provider), { fetchImpl: outboundFetch(), verifier: rec?.verifier ?? null });
   if (r.ok || SIGNIN_SETUP_REASONS.has(r.reason)) {
     await noteSecretUse(d, provider, { ok: r.ok, reason: r.ok ? null : r.reason, detail: r.ok ? null : r.detail, kind: "signin" }).catch(() => {});
   }
@@ -1113,6 +1231,11 @@ async function signinCallback(req, res, url, d, provider) {
   }
   const ctx = { d, req, headers: {}, session: await loadSession(d, req) };
   ctx.me = ctx.session?.userId ? await d.collection(C.users).findOne({ _id: ctx.session.userId }) : null;
+  // Coming back to a LOCKED phone: the sign-in starts from nothing (it never attaches to the locked profile).
+  if (ctx.session && ctx.me) {
+    await upgradeSession(d, ctx.session, ctx.me, Date.now());
+    if (lockState(ctx.session).locked) Object.assign(ctx, { lockedSession: ctx.session, session: null, me: null });
+  }
   const { existing } = await completeSignin(ctx, provider, r.person);
   redirectTo(res, existing ? `${BASE}/#/nearby` : `${BASE}/#/create?signin=${provider}&ok=1`, {
     "Set-Cookie": [clear, ctx.headers["Set-Cookie"]].filter(Boolean),
@@ -1184,7 +1307,7 @@ async function signinTry(req, res, d, provider, { rec, stateOk, params, clear })
     await record(r);
     return page(r);
   }
-  const r = await signinPerson(provider, keys, code, signinRedirect(req, provider), { fetchImpl: outboundFetch() });
+  const r = await signinPerson(provider, keys, code, signinRedirect(req, provider), { fetchImpl: outboundFetch(), verifier: rec?.verifier ?? null });
   await record(r);
   return page(r.ok ? { ok: true, person: r.person } : { ok: false, reason: r.reason, detail: r.detail });
 }
@@ -1206,8 +1329,8 @@ async function handleSignin(req, res, url, provider, step) {
 async function createProfile(ctx) {
   const { d, body, session, me } = ctx;
   if (me) throw fail(409, "profile_exists", "You already have a profile.");
-  if (!session.phoneVerified && !session.verified?.gmail && !session.verified?.facebook) {
-    throw fail(403, "not_verified", "Verify your phone, Google or Facebook first.");
+  if (!session.phoneVerified && !session.verified?.gmail && !session.verified?.facebook && !session.verified?.tiktok) {
+    throw fail(403, "not_verified", "Verify your phone, Google, Facebook or TikTok first.");
   }
   const name = checkName(body.name);
   const birthYear = checkBirth(body.birthYear);
@@ -1216,11 +1339,19 @@ async function createProfile(ctx) {
   const role = checkRole(body.role);
   if (!GENDERS.includes(body.gender)) throw invalid("Choose male, female or other.", { field: "gender" });
   const lang = checkLang(body.lang);
+  // The PIN chosen right after the language (it waited on the phone until now). Without one the app asks next.
+  const newPin = waitingPin(body);
 
   const users = d.collection(C.users);
   const phone = session.phoneVerified ? session.phone : null;
   if (phone && (await users.findOne({ phone }))) throw fail(409, "phone_in_use", "This phone number already has a profile.");
+  // A number typed on the phone step but never proved by a code (the person signed in with Google / Facebook):
+  // kept, normalised like `phone`, as `phoneUnverified` — never in `phone` (unique, and a code for it signs in
+  // to that profile) and never verified.phone. A verified session's own number wins; nothing else is checked.
+  const typedPhone = phone || body.phone == null || body.phone === "" ? null : normalizePhone(body.phone);
+  if (!phone && body.phone != null && body.phone !== "" && !typedPhone) throw invalid("That phone number does not look right.", { field: "phone" });
 
+  const pinHash = newPin ? await hashPin(newPin) : null;
   const photoId = await storePhoto(body.photo);
   const id = await nextId(d, "user");
   const user = {
@@ -1234,7 +1365,8 @@ async function createProfile(ctx) {
     lang,
     language: LANG_ENGLISH[lang],
     ...(phone ? { phone } : {}),
-    verified: { phone: Boolean(phone), gmail: Boolean(session.verified?.gmail), facebook: Boolean(session.verified?.facebook) },
+    ...(typedPhone ? { phoneUnverified: typedPhone } : {}),
+    verified: { phone: Boolean(phone), gmail: Boolean(session.verified?.gmail), facebook: Boolean(session.verified?.facebook), tiktok: Boolean(session.verified?.tiktok) },
     // The Google / Facebook account this browser signed in with: its id (+ email when given), never a token.
     ...(signinOf(session) ? { signin: signinOf(session) } : {}),
     photos: [photoId],
@@ -1248,6 +1380,8 @@ async function createProfile(ctx) {
     blocked: false,
     blockResolved: [],
     notices: [],
+    ...(pinHash ? { pinHash, pinAt: new Date() } : {}),
+    pinTries: 0,
     createdAt: new Date(),
   };
   try {
@@ -1255,20 +1389,23 @@ async function createProfile(ctx) {
   } catch (err) {
     await deletePhoto(photoId);
     if (err?.code === 11000 && /signin\./.test(JSON.stringify(err.keyPattern ?? err.message ?? ""))) {
-      throw fail(409, "signin_in_use", "This Google or Facebook account already has a profile. Sign in with it again.");
+      throw fail(409, "signin_in_use", "This Google, Facebook or TikTok account already has a profile. Sign in with it again.");
     }
     if (err?.code === 11000) throw fail(409, "phone_in_use", "This phone number already has a profile.");
     throw err;
   }
-  await d.collection(C.sessions).updateOne({ _id: session._id }, { $set: { userId: id } });
-  return { user: meView(user) };
+  // The new profile starts open: its maker is the one holding the phone (a pending session may be old).
+  await d.collection(C.sessions).updateOne(
+    { _id: session._id }, { $set: { userId: id, pinOk: true, activeAt: new Date(), pinTries: 0 }, $unset: { pinResetUntil: "" } },
+  );
+  return { user: meView(user), lock: lockInfo() };
 }
 
 async function getMe(ctx) {
   const { d, me, session, url } = ctx;
   if (!session) {
     // The app's start-up probe asks without failing, so a signed-out visit logs no error.
-    if (url.searchParams.get("probe") === "1") return { user: null, notices: [], session: null };
+    if (url.searchParams.get("probe") === "1") return { user: null, notices: [], session: null, lock: lockInfo() };
     throw fail(401, "signed_out", "Please sign in.");
   }
   if (!me) {
@@ -1276,13 +1413,15 @@ async function getMe(ctx) {
       user: null,
       notices: [],
       session: { phone: session.phone ?? null, phoneVerified: Boolean(session.phoneVerified), verified: session.verified ?? { gmail: false, facebook: false } },
+      lock: lockInfo(),
     };
   }
+  // A locked session never gets here: handleApi answers 423 first.
   await Promise.all([
     d.collection(C.users).updateOne({ _id: me._id }, { $set: { lastSeenAt: new Date() } }),
     syncLevel(d, me),
   ]);
-  return { user: meView(me), notices: unseenNotices(me) };
+  return { user: meView(me), notices: unseenNotices(me), lock: lockInfo() };
 }
 
 async function patchMe(ctx) {
@@ -1600,7 +1739,7 @@ async function person(ctx) {
       km: kmBetween(me, u, Boolean(view)),
       area: u.area ?? "",
       hearts: heartsOf(u),
-      verified: { phone: Boolean(u.verified?.phone), gmail: Boolean(u.verified?.gmail), facebook: Boolean(u.verified?.facebook) },
+      verified: { phone: Boolean(u.verified?.phone), gmail: Boolean(u.verified?.gmail), facebook: Boolean(u.verified?.facebook), tiktok: Boolean(u.verified?.tiktok) },
       photo,
       photos,
       lockedPhotos,
@@ -2242,6 +2381,176 @@ async function report(ctx) {
   return { ok: true };
 }
 
+// ---------------------------------------------------------------- PIN lock (owner 2026-10-13; rules in src/lib/thirtyda-pin.mjs)
+
+const lockedError = (me) => fail(423, "locked", "Enter your PIN.", { pin: Boolean(me?.pinHash), lock: lockInfo() });
+
+/** A new PIN from the body (4 digits, not 0000-style, not a 1234 / 4321 run) → "1357"; 422 otherwise. */
+function newPinOrFail(raw, field = "pin") {
+  const c = checkNewPin(pinDigits(raw));
+  if (c.ok) return c.pin;
+  if (c.error === "format") throw invalid("A PIN is 4 digits.", { field });
+  throw fail(422, "weak_pin", "Choose a PIN that is harder to guess.", { field, reason: c.error });
+}
+
+/** The PIN that waited on the phone before the account existed (body.pin), or null when none was sent. */
+function waitingPin(body) {
+  const raw = body?.pin;
+  return raw === undefined || raw === null || raw === "" ? null : newPinOrFail(raw);
+}
+
+/**
+ * Keep a new PIN's hash on the profile and leave this session open, with no wrong tries left over. → the profile.
+ * `hashed`: the PIN arrived already hashed (it waited, hashed, on a Telegram bot check).
+ */
+async function savePin(ctx, user, pin, hashed = null) {
+  const { d, session } = ctx;
+  const pinHash = hashed ?? await hashPin(pin);
+  const pinAt = new Date();
+  await d.collection(C.users).updateOne({ _id: user._id }, { $set: { pinHash, pinAt, pinTries: 0 } });
+  if (session) {
+    await d.collection(C.sessions).updateOne(
+      { _id: session._id }, { $set: { pinOk: true, activeAt: new Date(), pinTries: 0 }, $unset: { pinResetUntil: "" } },
+    );
+  }
+  return { ...user, pinHash, pinAt, pinTries: 0 };
+}
+
+/**
+ * Wrong tries ran out: this session ends — every session of the profile when the profile's own count ran out —
+ * and the answer is 401 pin_tries (the app goes to the sign-in step: "Sign in again to set a new PIN.").
+ */
+async function endForTries(ctx, everywhere) {
+  const { d, session, me } = ctx;
+  if (everywhere) {
+    await d.collection(C.sessions).deleteMany({ userId: me._id });
+    await d.collection(C.users).updateOne({ _id: me._id }, { $set: { pinTries: 0 } });
+  } else {
+    await d.collection(C.sessions).deleteOne({ _id: session._id });
+  }
+  ctx.headers["Set-Cookie"] = cookieFor(ctx.req, "", 0);
+  throw fail(401, "pin_tries", "Too many wrong PINs. Sign in again to set a new PIN.", { signedOut: true });
+}
+
+/**
+ * One PIN check, counted BEFORE comparing (parallel guesses cannot get past the limit): the session's and the
+ * profile's wrong tries both go up, and a right PIN clears both. The 5th wrong one (either count) ends the
+ * session (endForTries); a wrong one before that → 400 wrong_pin { triesLeft }.
+ */
+async function checkPinTry(ctx, pin) {
+  const { d, session, me } = ctx;
+  const sessions = d.collection(C.sessions);
+  const users = d.collection(C.users);
+  const [s, u] = await Promise.all([
+    sessions.findOneAndUpdate({ _id: session._id }, { $inc: { pinTries: 1 } }, { returnDocument: "after", projection: { pinTries: 1 } }),
+    users.findOneAndUpdate({ _id: me._id }, { $inc: { pinTries: 1 } }, { returnDocument: "after", projection: { pinTries: 1, pinHash: 1 } }),
+  ]);
+  if (!s || !u) throw fail(401, "signed_out", "Please sign in.");
+  const over = afterWrongPin(s.pinTries - 1, u.pinTries - 1);
+  if (over.end) return endForTries(ctx, over.everywhere); // already out of tries: not even compared
+  if (await verifyPin(pin, u.pinHash)) {
+    await Promise.all([
+      sessions.updateOne({ _id: session._id }, { $set: { pinTries: 0 } }),
+      users.updateOne({ _id: me._id }, { $set: { pinTries: 0 } }),
+    ]);
+    return;
+  }
+  const next = afterWrongPin(s.pinTries, u.pinTries);
+  if (next.end) return endForTries(ctx, next.everywhere);
+  throw fail(400, "wrong_pin", "That PIN is not right.", { triesLeft: next.triesLeft });
+}
+
+/** POST /me/lock — the app covered itself (30 s without a touch, hidden, closed): the PIN is needed again. */
+async function lockMe(ctx) {
+  const { d, session } = ctx;
+  await d.collection(C.sessions).updateOne({ _id: session._id }, { $set: { pinOk: false } });
+  return { ok: true, locked: true };
+}
+
+/** POST /me/unlock { pin } → open again { user, notices, lock } · 400 wrong_pin { triesLeft } · 401 pin_tries · 409 no_pin. */
+async function unlockMe(ctx) {
+  const { d, session, me, body } = ctx;
+  if (!me.pinHash) throw fail(409, "no_pin", "Sign in again to set a PIN.");
+  const pin = pinDigits(body.pin);
+  if (pin.length !== PIN_LENGTH) throw invalid("Enter your 4-digit PIN.", { field: "pin" });
+  await checkPinTry(ctx, pin);
+  await d.collection(C.sessions).updateOne({ _id: session._id }, { $set: { pinOk: true, activeAt: new Date(), pinTries: 0 } });
+  return { ok: true, user: meView(me), notices: unseenNotices(me), lock: lockInfo() };
+}
+
+/**
+ * POST /me/pin { pin, old? } — the first PIN (open session), or a new one: with the old PIN (a wrong one counts
+ * as a wrong try, like on the lock screen), or without it once right after a sign-in (the PIN that waited on the
+ * phone, "Forgot PIN?"). Leaves this session open. → { ok, user, lock }.
+ */
+async function setPin(ctx) {
+  const { d, session, me, body } = ctx;
+  const pin = newPinOrFail(body.pin);
+  const hasOld = body.old !== undefined && body.old !== null && body.old !== "";
+  const plan = pinSetPlan({ hasPin: Boolean(me.pinHash), locked: ctx.locked, hasOld, resetUntil: session.pinResetUntil });
+  if (plan.refuse) {
+    if (plan.refuse.code === "locked") throw lockedError(me);
+    throw fail(plan.refuse.status, plan.refuse.code, "Type your old PIN first.", { field: "old" });
+  }
+  if (plan.kind === "old") {
+    const old = pinDigits(body.old);
+    if (old.length !== PIN_LENGTH) throw invalid("Type your old 4-digit PIN.", { field: "old" });
+    await checkPinTry(ctx, old);
+  } else if (plan.kind === "fresh") {
+    // Used up once, atomically: two parallel sets cannot both skip the old PIN.
+    const r = await d.collection(C.sessions).updateOne({ _id: session._id, pinResetUntil: { $gt: new Date() } }, { $unset: { pinResetUntil: "" } });
+    if (!r.matchedCount) throw fail(403, "old_pin_needed", "Type your old PIN first.", { field: "old" });
+  }
+  const user = await savePin(ctx, me, pin);
+  return { ok: true, user: meView(user), lock: lockInfo() };
+}
+
+/** POST /me/pin/forgot — "Forgot PIN?": this session ends; signing in again (Google / Facebook / phone) sets a new PIN. */
+async function forgotPin(ctx) {
+  if (ctx.session) await ctx.d.collection(C.sessions).deleteOne({ _id: ctx.session._id });
+  ctx.headers["Set-Cookie"] = cookieFor(ctx.req, "", 0);
+  return { ok: true, signedOut: true };
+}
+
+/** A session made before the PIN lock gets its lock fields once (see legacyLockFields). */
+async function upgradeSession(d, session, me, now) {
+  if (session.pinOk !== undefined) return;
+  const fields = legacyLockFields(Boolean(me.pinHash), now);
+  await d.collection(C.sessions).updateOne({ _id: session._id, pinOk: { $exists: false } }, { $set: fields });
+  Object.assign(session, fields);
+}
+
+/**
+ * The lock, before any route runs. A profile's session that is locked may only call whileLocked() routes:
+ * everything else is 423 locked; the sign-in steps run as if signed out (ctx.lockedSession is replaced by the
+ * new session). An open session slides its idle window with real activity (X-30DA-Input-Age; the heartbeat
+ * and photo loads alone never count).
+ */
+async function applyLock(ctx, req, sub) {
+  const { d, session, me } = ctx;
+  ctx.locked = false;
+  if (!session || !me) return;
+  const now = Date.now();
+  await upgradeSession(d, session, me, now);
+  if (lockState(session, now).locked) {
+    ctx.locked = true;
+    const may = whileLocked(req.method, sub);
+    if (!may) throw lockedError(me);
+    if (may === "signin") {
+      ctx.lockedSession = session;
+      ctx.session = null;
+      ctx.me = null;
+    }
+    return;
+  }
+  const at = activityAt(req.headers[INPUT_AGE_HEADER.toLowerCase()], ctx.arrivedAt ?? now, { background: backgroundCall(req.method, sub) });
+  const next = nextActiveAt(session, at);
+  if (next) {
+    await d.collection(C.sessions).updateOne({ _id: session._id }, { $max: { activeAt: next } });
+    session.activeAt = next;
+  }
+}
+
 // ---------------------------------------------------------------- router
 
 // auth: "none" (anyone), "session" (any session, profile optional), "user" (default: a profile).
@@ -2250,6 +2559,9 @@ const ROUTES = [
   ["POST", /^\/auth\/send-code$/, sendCode, { auth: "none" }],
   ["POST", /^\/auth\/verify-code$/, verifyCode, { auth: "none" }],
   ["POST", /^\/auth\/verify-social$/, verifySocial, { auth: "none" }],
+  // The free Telegram bot: start a check, then ask from the same browser until Telegram has the number.
+  ["POST", /^\/auth\/telegram\/start$/, telegramStart, { auth: "none" }],
+  ["GET", /^\/auth\/telegram\/status$/, telegramStatus, { auth: "none" }],
   ["POST", /^\/auth\/signout$/, signout, { auth: "none", blockedOk: true }],
   ["POST", /^\/profile$/, createProfile, { auth: "session" }],
   ["GET", /^\/me$/, getMe, { auth: "none", blockedOk: true }],
@@ -2259,6 +2571,11 @@ const ROUTES = [
   ["DELETE", /^\/me\/photos\/([0-3])$/, removePhoto],
   ["POST", /^\/me\/location$/, setLocation],
   ["POST", /^\/me\/heartbeat$/, heartbeat],
+  // The PIN lock: open while locked (whileLocked in src/lib/thirtyda-pin.mjs); set / change checks for itself.
+  ["POST", /^\/me\/lock$/, lockMe, { auth: "session", blockedOk: true }],
+  ["POST", /^\/me\/unlock$/, unlockMe, { blockedOk: true }],
+  ["POST", /^\/me\/pin$/, setPin],
+  ["POST", /^\/me\/pin\/forgot$/, forgotPin, { auth: "none", blockedOk: true }],
   ["POST", /^\/notices\/([\w-]{1,64})\/seen$/, noticeSeen],
   ["GET", /^\/photos\/([a-f0-9]{32})$/, getPhoto],
   ["GET", /^\/nearby$/, nearby],
@@ -2280,8 +2597,12 @@ const ROUTES = [
   ["POST", /^\/pairs\/(P-\d+)\/messages\/(M-\d+)\/report$/, report],
 ];
 
+/** The route table (method + path pattern only), for the lock's 423 tests (src/lib/thirtyda-pin.test.mjs). */
+export const API_ROUTES = ROUTES.map(([method, re]) => ({ method, re }));
+
 async function handleApi(req, res, url, sub) {
-  const ctx = { req, res, url, headers: {}, status: 200, sent: false };
+  // arrivedAt: when the call came in, before any database lookup (the input age it carries is counted from then).
+  const ctx = { req, res, url, headers: {}, status: 200, sent: false, arrivedAt: Date.now() };
   try {
     let route = null;
     for (const [method, re, fn, opts = {}] of ROUTES) {
@@ -2295,6 +2616,7 @@ async function handleApi(req, res, url, sub) {
     ctx.params = route.params;
     ctx.session = await loadSession(ctx.d, req);
     ctx.me = ctx.session?.userId ? await ctx.d.collection(C.users).findOne({ _id: ctx.session.userId }) : null;
+    await applyLock(ctx, req, sub); // locked → 423, except the sign-in steps and the PIN routes
     const auth = route.opts.auth ?? "user";
     if (auth !== "none" && !ctx.session) throw fail(401, "signed_out", "Please sign in.");
     if (auth === "user" && !ctx.me) throw fail(401, "no_profile", "Create your profile first.");
@@ -2323,9 +2645,11 @@ export async function handleThirtyDaApp(req, res, url) {
     res.writeHead(200, { ...BASE_HEADERS, "Content-Type": "application/json", "Cache-Control": "no-store" }).end(JSON.stringify({ build: BUILD }));
     return;
   }
-  // Google / Facebook sign-in: browser navigations (redirects and pages), not JSON.
-  const sm = req.method === "GET" && path.match(/^\/30da\/api\/auth\/(google|facebook)\/(start|callback)$/);
+  // Google / Facebook / TikTok sign-in: browser navigations (redirects and pages), not JSON.
+  const sm = req.method === "GET" && path.match(/^\/30da\/api\/auth\/(google|facebook|tiktok)\/(start|callback)$/);
   if (sm) return handleSignin(req, res, url, sm[1], sm[2]);
+  // The free Telegram bot's updates: Telegram's secret header, not a session (src/lib/thirtyda-telegram-bot.mjs).
+  if (path === `${API}/telegram/hook`) return handleTelegramHook(req, res, { db, fetchImpl: outboundFetch() });
   if (path === API || path.startsWith(`${API}/`)) return handleApi(req, res, url, path.slice(API.length) || "/");
   if (req.method === "GET" || req.method === "HEAD") {
     // The pages Google and Facebook ask for (their addresses are on the admin Code page).
@@ -2339,6 +2663,8 @@ export async function handleThirtyDaApp(req, res, url) {
     }
     if (path === `${BASE}/privacy`) return sendPage(req, res, 200, privacyPage({ lang: requestLang(req, url) }), docHeaders);
     if (path === `${BASE}/delete-data`) return sendPage(req, res, 200, deleteDataPage({ lang: requestLang(req, url) }), docHeaders);
+    // The terms of service TikTok asks for (same look, same 5 languages).
+    if (path === `${BASE}/terms`) return sendPage(req, res, 200, termsPage({ lang: requestLang(req, url) }), docHeaders);
     // The client loads its modules relative to /30da/, so the bare path gets a slash.
     if (path === BASE) {
       res.writeHead(302, { ...BASE_HEADERS, Location: `${BASE}/${url.search}` }).end();

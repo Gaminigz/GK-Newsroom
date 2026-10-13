@@ -21,6 +21,12 @@
  *   Facebook: https://www.facebook.com/v21.0/dialog/oauth (scope public_profile,email) →
  *             GET https://graph.facebook.com/v21.0/oauth/access_token → GET /v21.0/me?fields=id,name,email with
  *             appsecret_proof = HMAC-SHA256(access token, key = app secret)
+ *   TikTok:   (owner 2026-10-13, Login Kit for Web v2) https://www.tiktok.com/v2/auth/authorize/ (client_key,
+ *             response_type=code, scope user.info.basic) → POST https://open.tiktokapis.com/v2/oauth/token/ (form
+ *             body) → GET https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,display_name,avatar_url
+ *             (Bearer). TikTok gives no email: the person is their open_id (kept), the display name only shows on
+ *             the admin's try page. PKCE: TikTok documents code_verifier for its mobile / desktop apps only, not for
+ *             web, so it is built (pkcePair: a verifier kept with the state, S256 challenge) but OFF (TIKTOK.pkce).
  * The provider's tokens never leave signinPerson(): not stored, not logged, not returned. What is kept is the
  * person's provider id (+ email when given) — see src/lib/thirtyda-app.mjs completeSignin.
  *
@@ -30,12 +36,14 @@
 import crypto from "node:crypto";
 import { readFields } from "./thirtyda-settings.mjs";
 
-export const SIGNIN_PROVIDERS = ["google", "facebook"];
-export const SIGNIN_NAMES = { google: "Google", facebook: "Facebook" };
+export const SIGNIN_PROVIDERS = ["google", "facebook", "tiktok"];
+export const SIGNIN_NAMES = { google: "Google", facebook: "Facebook", tiktok: "TikTok" };
 /** The sign-in is built: with its keys saved a button works (test mode without keys keeps its instant test sign-in). */
-export const SIGNIN_WIRED = { google: true, facebook: true };
+export const SIGNIN_WIRED = { google: true, facebook: true, tiktok: true };
 /** Where a provider's sign-in is marked on the user / session (`verified.gmail` is older than Google sign-in). */
-export const VERIFIED_KEY = { google: "gmail", facebook: "facebook" };
+export const VERIFIED_KEY = { google: "gmail", facebook: "facebook", tiktok: "tiktok" };
+/** The two saved boxes of each sign-in: [the public ID, the secret] (FIELD_SETTINGS in src/lib/thirtyda-settings.mjs). */
+export const KEY_FIELDS = { google: ["clientId", "clientSecret"], facebook: ["appId", "appSecret"], tiktok: ["clientKey", "clientSecret"] };
 
 const RULES = {
   google: {
@@ -62,6 +70,19 @@ const RULES = {
       re: /^[A-Za-z0-9]{16,128}$/,
       empty: "Paste the App secret first.",
       bad: "That does not look like a Facebook App secret (letters and digits, no spaces). Copy it again from App settings → Basic (press Show).",
+    },
+  },
+  tiktok: {
+    clientKey: {
+      re: /^[A-Za-z0-9]{8,64}$/,
+      empty: "Paste the Client key first.",
+      bad: "That does not look like a TikTok Client key (letters and digits, no spaces). Copy it from developers.tiktok.com → Manage apps → your app.",
+    },
+    clientSecret: {
+      secret: true,
+      re: /^[A-Za-z0-9_-]{16,128}$/,
+      empty: "Paste the Client secret first.",
+      bad: "That does not look like a TikTok Client secret (letters and digits, no spaces). Copy it again from the same page.",
     },
   },
 };
@@ -125,17 +146,46 @@ export const FACEBOOK = {
   meUrl: "https://graph.facebook.com/v21.0/me",
   scope: "public_profile,email",
 };
+export const TIKTOK = {
+  authUrl: "https://www.tiktok.com/v2/auth/authorize/",
+  tokenUrl: "https://open.tiktokapis.com/v2/oauth/token/",
+  userInfoUrl: "https://open.tiktokapis.com/v2/user/info/",
+  scope: "user.info.basic",
+  fields: "open_id,union_id,display_name,avatar_url",
+  // TikTok's web flow takes no code_challenge (only its mobile / desktop apps do, and those hash it to hex, not the
+  // RFC's base64url). Built and tested, but off: turn on only after a Try sign-in proves TikTok accepts it.
+  pkce: false,
+};
 
 /** The saved keys of `provider` as { id, secret } (checked), or null: not saved, not readable, or malformed. */
 export async function signinKeys(d, provider) {
   if (!SIGNIN_PROVIDERS.includes(provider) || !d) return null;
   const f = await readFields(d, provider);
   if (!f || !checkSigninFields(provider, f).ok) return null;
-  return provider === "google" ? { id: f.clientId, secret: f.clientSecret } : { id: f.appId, secret: f.appSecret };
+  const [id, secret] = KEY_FIELDS[provider];
+  return { id: f[id], secret: f[secret] };
 }
 
-/** Where the person is sent to sign in (the client ID / app ID is public; never the secret). */
-export function authorizeUrl(provider, { clientId, redirectUri, state }) {
+/**
+ * PKCE (RFC 7636, S256) for a provider that uses it: a fresh verifier — kept server side with the state, never in
+ * the browser — and its challenge for the authorize address. null when the provider does not use it (`on`).
+ */
+export function pkcePair(provider, on = provider === "tiktok" && TIKTOK.pkce) {
+  if (!on) return null;
+  const verifier = crypto.randomBytes(48).toString("base64url"); // 64 characters, inside RFC 7636's 43–128
+  return { verifier, challenge: crypto.createHash("sha256").update(verifier).digest("base64url") };
+}
+
+/** Where the person is sent to sign in (the client ID / app ID / client key is public; never the secret). */
+export function authorizeUrl(provider, { clientId, redirectUri, state, codeChallenge = null }) {
+  if (provider === "tiktok") {
+    const q = new URLSearchParams({ client_key: clientId, response_type: "code", scope: TIKTOK.scope, redirect_uri: redirectUri, state });
+    if (codeChallenge) {
+      q.set("code_challenge", codeChallenge);
+      q.set("code_challenge_method", "S256");
+    }
+    return `${TIKTOK.authUrl}?${q}`;
+  }
   if (provider === "google") {
     const q = new URLSearchParams({
       client_id: clientId, redirect_uri: redirectUri, response_type: "code", scope: GOOGLE.scope, state, prompt: "select_account",
@@ -155,12 +205,14 @@ export const stateHash = sha256;
 /**
  * A fresh state for one sign-in: 32 random bytes (64 hex). Only its SHA-256 is stored, with the provider, the
  * purpose (test: the admin's "Try sign-in", bound to that admin session by `adminHash`) and a 10-minute expiry.
+ * `verifier`: the PKCE verifier of this sign-in (pkcePair), kept with it until the code comes back.
  */
-export async function createSigninState(d, provider, { test = false, adminHash = null, now = Date.now() } = {}) {
+export async function createSigninState(d, provider, { test = false, adminHash = null, verifier = null, now = Date.now() } = {}) {
   if (!SIGNIN_PROVIDERS.includes(provider)) throw new Error("No such sign-in.");
   const state = crypto.randomBytes(32).toString("hex");
   await d.collection(SIGNIN_STATES).insertOne({
     _id: sha256(state), provider, test: Boolean(test), ...(test && adminHash ? { adminHash } : {}),
+    ...(verifier ? { verifier: String(verifier) } : {}),
     created: new Date(now), expires: new Date(now + STATE_TTL_MS),
   });
   return state;
@@ -234,6 +286,23 @@ export function facebookMeRequest(keys, token) {
   return { url: `${FACEBOOK.meUrl}?${q}`, init: { method: "GET", headers: { Accept: "application/json" } } };
 }
 
+/** TikTok's token exchange: a form POST (client_key + client_secret in the body); code_verifier only with PKCE. */
+export function tiktokTokenRequest(keys, code, redirectUri, verifier = null) {
+  const body = new URLSearchParams({
+    client_key: keys.id, client_secret: keys.secret, code: String(code), grant_type: "authorization_code", redirect_uri: redirectUri,
+  });
+  if (verifier) body.set("code_verifier", String(verifier));
+  return {
+    url: TIKTOK.tokenUrl,
+    init: { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" }, body: body.toString() },
+  };
+}
+
+export function tiktokUserInfoRequest(token) {
+  const q = new URLSearchParams({ fields: TIKTOK.fields });
+  return { url: `${TIKTOK.userInfoUrl}?${q}`, init: { method: "GET", headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } } };
+}
+
 // ---- who signed in
 
 const cleanText = (v, max) => String(v ?? "").replace(/[\u0000-\u001f\u007f‪-‮⁦-⁩]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
@@ -256,6 +325,18 @@ export function facebookPerson(info) {
   const id = /^\d{1,32}$/.test(raw) ? raw : null;
   if (!id) return null;
   return { provider: "facebook", id, email: cleanEmail(info.email), name: cleanText(info.name, 100) || null };
+}
+
+/**
+ * TikTok's /v2/user/info/ → { provider, id: open_id, email: null (TikTok gives none), name: display_name }, or null
+ * without a usable open_id. union_id and avatar_url are asked for but never kept.
+ */
+export function tiktokPerson(body) {
+  const user = body?.data?.user;
+  const raw = typeof user?.open_id === "string" ? user.open_id : "";
+  const id = /^[A-Za-z0-9_.:=+/-]{1,128}$/.test(raw) ? raw : null;
+  if (!id) return null;
+  return { provider: "tiktok", id, email: null, name: cleanText(user.display_name, 100) || null };
 }
 
 // ---- why it did not work (plain reasons the app and the admin's page put into words)
@@ -298,6 +379,40 @@ export function classifyFacebookError(error = {}) {
   return "other";
 }
 
+/**
+ * TikTok's error → a reason. `error`: the OAuth code (the callback's ?error=, the token endpoint's { error }) or the
+ * API's error.code (user/info); `description`: their error_description / message; `status`: the HTTP status.
+ */
+export function classifyTiktokError(error, status = 200, description = "") {
+  const e = String(error ?? "").toLowerCase();
+  const msg = String(description ?? "");
+  if (e === "access_denied" || e === "scope_not_authorized") return "cancelled";
+  if (e === "server_error" || e === "temporarily_unavailable" || e === "internal_error" || e === "rate_limit_exceeded") return "provider_error";
+  if (/redirect[_ ]?ur[il]/i.test(msg)) return "redirect";
+  if (e === "invalid_client" || e === "unauthorized_client" || /client[_ ]?(key|secret)/i.test(msg)) return "bad_keys";
+  if (e === "invalid_scope" || e === "scope_permission_missed" || /not (been )?(approved|live|available)|under review|sandbox|target user/i.test(msg)) return "not_live";
+  if (e === "invalid_grant" || /code (has )?(been used|expired)|authorization code.*(expired|invalid|used)/i.test(msg)) return "expired";
+  if (status === 401 && e !== "access_token_invalid") return "bad_keys";
+  return "other";
+}
+
+/**
+ * TikTok's own error from an answer: the OAuth shape { error: "invalid_client", error_description } or the API
+ * shape { error: { code, message, log_id } } (code "ok" = no error) → { code, said } ("" when it said nothing).
+ * The log_id is left out.
+ */
+function tiktokSaid(body) {
+  const e = body?.error;
+  if (e && typeof e === "object") {
+    const code = typeof e.code === "string" && e.code !== "ok" ? e.code.replace(/[^\w.-]/g, "").slice(0, 60) : "";
+    const msg = typeof e.message === "string" ? e.message : "";
+    return { code, said: code ? (msg ? `${code}: ${msg}` : code) : "" };
+  }
+  const code = typeof e === "string" ? e.replace(/[^\w.-]/g, "").slice(0, 60) : "";
+  const msg = typeof body?.error_description === "string" ? body.error_description : "";
+  return { code, said: code ? (msg ? `${code}: ${msg}` : code) : "" };
+}
+
 /** A short, safe note of what the provider said: never the secret, the code or a token; no long digit runs. */
 function providerDetail(text, hide = []) {
   let s = cleanText(text, 300);
@@ -336,11 +451,32 @@ const failed = (reason, said, hide) => ({ ok: false, reason, detail: said ? prov
  * they said nothing — a timeout, no connection, a bare HTTP error. Never a token, the code or the secret).
  * A 5xx / 429 that names no setup problem is provider_error (their side: try again), not a refusal.
  * 10 s per request (`timeoutMs`). The token never leaves this function.
+ * TikTok: `verifier` = the PKCE verifier kept with the state (only when pkcePair made one).
  */
-export async function signinPerson(provider, keys, code, redirectUri, { fetchImpl = fetch, timeoutMs = TIMEOUT_MS } = {}) {
+export async function signinPerson(provider, keys, code, redirectUri, { fetchImpl = fetch, timeoutMs = TIMEOUT_MS, verifier = null } = {}) {
   if (!SIGNIN_PROVIDERS.includes(provider) || !keys?.id || !keys?.secret) return { ok: false, reason: "bad_keys", detail: null };
-  const hide = [keys.secret, code];
+  const hide = [keys.secret, code, verifier];
   try {
+    if (provider === "tiktok") {
+      const t = await getJson(fetchImpl, tiktokTokenRequest(keys, code, redirectUri, verifier), timeoutMs);
+      const token = typeof t.body.access_token === "string" && t.body.access_token ? t.body.access_token : null;
+      if (t.status < 200 || t.status >= 300 || !token) {
+        const { code: err, said } = tiktokSaid(t.body);
+        const reason = classifyTiktokError(err, t.status, said);
+        return failed(reason === "other" && temporaryStatus(t.status) ? "provider_error" : reason, said, hide);
+      }
+      hide.push(token, typeof t.body.refresh_token === "string" ? t.body.refresh_token : null);
+      const u = await getJson(fetchImpl, tiktokUserInfoRequest(token), timeoutMs);
+      const { code: err, said } = tiktokSaid(u.body);
+      const person = u.status >= 200 && u.status < 300 && !err ? tiktokPerson(u.body) : null;
+      if (!person) {
+        const reason = classifyTiktokError(err, u.status, said);
+        return failed(reason === "other" && temporaryStatus(u.status) ? "provider_error" : reason, said, hide);
+      }
+      // The token was issued for one person (its open_id): user/info must have answered for that same person.
+      if (typeof t.body.open_id === "string" && t.body.open_id && t.body.open_id !== person.id) return failed("other", null, hide);
+      return { ok: true, person };
+    }
     if (provider === "google") {
       const t = await getJson(fetchImpl, googleTokenRequest(keys, code, redirectUri), timeoutMs);
       const token = typeof t.body.access_token === "string" ? t.body.access_token : null;
@@ -390,12 +526,13 @@ export function callbackError(provider, params) {
   const error = params.get("error");
   if (!error) return null;
   if (provider === "google") return classifyGoogleError(error);
+  if (provider === "tiktok") return classifyTiktokError(error, 200, params.get("error_description") || "");
   return classifyFacebookError({ error, error_reason: params.get("error_reason"), message: params.get("error_description") || params.get("error_message") || "" });
 }
 
 // ---- what a good sign-in does (pure; src/lib/thirtyda-app.mjs completeSignin carries it out)
 
-/** The Mongo filter for the profile that signed in with this Google / Facebook account before. */
+/** The Mongo filter for the profile that signed in with this Google / Facebook / TikTok account before. */
 export const signinUserFilter = (provider, id) => ({ [`signin.${provider}.id`]: String(id) });
 
 /**
@@ -417,7 +554,10 @@ export function planSignin({ provider, person, user = null, me = null, session =
   const key = VERIFIED_KEY[provider];
   if (!key || !person?.id) throw new Error("No such sign-in.");
   const link = { id: String(person.id), ...(person.email ? { email: person.email } : {}) };
-  const proved = (u) => ({ gmail: Boolean(u?.verified?.gmail), facebook: Boolean(u?.verified?.facebook), [key]: true });
+  // TikTok (added later) shows up only once proved, so the older { gmail, facebook } shape stays as it was.
+  const proved = (u) => ({
+    gmail: Boolean(u?.verified?.gmail), facebook: Boolean(u?.verified?.facebook), ...(u?.verified?.tiktok ? { tiktok: true } : {}), [key]: true,
+  });
   if (user) {
     return {
       kind: "returning",

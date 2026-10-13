@@ -581,6 +581,20 @@ textarea.input.q-in {
 .cx-try .cx-help { margin: 0 0 10px; }
 a.btn.cx-try-btn { display: inline-flex; align-items: center; height: 40px; color: var(--ink); text-decoration: none; }
 .btn.cx-try-btn[disabled] { opacity: 0.45; cursor: default; }
+/* Telegram card: the free bot, then the paid Gateway — two parts, each with its own status pill */
+.cx-part { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.cx-part-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cx-part-head h3 { margin: 0; font-size: 15px; font-weight: 800; color: var(--ink); }
+.cx-part > .cx-help { margin: 4px 0 0; }
+.cx-part .cx-status { margin-top: 12px; }
+.cx-part .cx-split { margin-top: 14px; }
+.cx-part .cx-test > .btn.cx-test-btn { min-width: 150px; }
+.cx-part .cx-row dd a { color: var(--ink); font-weight: 700; text-underline-offset: 2px; }
+.cx-free {
+  display: inline-block; margin-left: 4px; padding: 1px 7px; border-radius: 999px; vertical-align: 2px;
+  background: #e3f5ea; color: var(--green); font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
 @media (max-width: 1000px) {
   .cx-split, .cx-pair { grid-template-columns: 1fr; }
 }

@@ -16,15 +16,19 @@
  *   GET  /30da/admin/connections  (= /30da/admin/code)   the "Code" page: how people get their code / sign in
  *   GET  /30da/admin/api/connections      { keyReady, devAuth, testCodes, onRailway, connections:[{ id, name, set, last4, updatedAt, updatedBy, live, … }] }
  *   PUT  /30da/admin/api/connections/telegram        { token } → saved (encrypted) | 422 bad format | 503 no key
+ *   PUT  /30da/admin/api/connections/telegram-bot    { token } the free bot's key: getMe + setWebhook, then saved (encrypted)
+ *   POST /30da/admin/api/connections/telegram-bot/try   getMe + getWebhookInfo → the app offers the bot (or stops it)
+ *   DELETE /30da/admin/api/connections/telegram-bot  deleteWebhook + remove (src/lib/thirtyda-telegram-bot.mjs)
  *   PUT  /30da/admin/api/connections/whatsapp        { token?, phoneNumberId, templateName, templateLang? } (empty token = keep the saved one)
  *   PUT  /30da/admin/api/connections/google          { clientId, clientSecret? }   (empty secret = keep the saved one)
  *   PUT  /30da/admin/api/connections/facebook        { appId, appSecret? }
- *   DELETE /30da/admin/api/connections/:id           remove what is saved for telegram | whatsapp | google | facebook
+ *   PUT  /30da/admin/api/connections/tiktok          { clientKey, clientSecret? }
+ *   DELETE /30da/admin/api/connections/:id           remove what is saved for telegram | whatsapp | google | facebook | tiktok
  *   POST /30da/admin/api/connections/telegram|whatsapp/test   { phone } → a real code to that phone, or why not.
  *        A test that goes through turns the channel on in the app (src/lib/thirtyda-code-send.mjs channelOffer);
  *        the answer carries the page's fresh data (`view`) so the card can say so at once.
- *   GET  /30da/admin/api/connections/google|facebook/try    (a new tab) the real sign-in with a test state bound to
- *        this admin session → Google / Facebook → the app's callback, which ends on a small "Works ✓ / Did not work"
+ *   GET  /30da/admin/api/connections/google|facebook|tiktok/try    (a new tab) the real sign-in with a test state bound to
+ *        this admin session → Google / Facebook / TikTok → the app's callback, which ends on a small "Works ✓ / Did not work"
  *        page and makes no user or session (src/lib/thirtyda-app.mjs signinTry)
  *
  * Secrets (src/lib/thirtyda-settings.mjs) are sealed with THIRTYDA_SECRET_KEY and never sent back:
@@ -54,8 +58,10 @@ import {
 } from "./thirtyda-code-send.mjs";
 import {
   checkSigninFields, signinRedirect, signinKeys, publicOrigin, createSigninState, authorizeUrl, stateCookie, stateHash, SIGNIN_WIRED,
+  pkcePair,
 } from "./thirtyda-signin.mjs";
 import { outboundFetch } from "./thirtyda-test-fetch.mjs";
+import { botView, saveBot, tryBot, removeBot } from "./thirtyda-telegram-bot.mjs";
 import { tryResultPage, requestLang } from "./thirtyda-pages.mjs";
 import { normalizePhone } from "./thirtyda-app.mjs";
 import { QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS } from "../thirtyda-app/shared/question-slots.js";
@@ -126,8 +132,10 @@ async function overview() {
       openFlags: open.length,
       blocked: users.length - live.length,
     },
-    users: users.map(({ blockResolved, location, locOffset, locMoves, locAt, notices, ...u }) => ({
+    // The PIN's hash and its wrong-try count never leave the server (the admin sees only whether one is set).
+    users: users.map(({ blockResolved, location, locOffset, locMoves, locAt, notices, pinHash, pinAt, pinTries, ...u }) => ({
       ...u,
+      pinSet: Boolean(pinHash),
       openFlags: open.filter((f) => f.from === u.id).length,
     })),
     flags: open.map((f) => {
@@ -317,12 +325,14 @@ async function connectionsView(d, req) {
   const envToken = String(process.env.THIRTYDA_TG_TOKEN ?? "").trim();
   const { readable, lastSend, ...view } = tg;
   const devAuth = process.env.THIRTYDA_DEV_AUTH === "1";
-  const [wa, google, facebook] = await Promise.all(["whatsapp", "google", "facebook"].map((n) => fieldsStatus(d, n)));
+  const [wa, google, facebook, tiktok] = await Promise.all(["whatsapp", "google", "facebook", "tiktok"].map((n) => fieldsStatus(d, n)));
   const [tgOffer, waOffer] = await Promise.all(["telegram", "whatsapp"].map((c) => channelOffer(d, c)));
   // Whether the app offers the channel: only once a test code went through (and no lasting failure since).
   const offer = ({ offered, state, reason, detail, at }) => ({ offered, offer: { state, reason, detail, at } });
   const origin = publicOrigin(req);
-  const keysOk = { google: Boolean(await signinKeys(d, "google")), facebook: Boolean(await signinKeys(d, "facebook")) };
+  const keysOk = {
+    google: Boolean(await signinKeys(d, "google")), facebook: Boolean(await signinKeys(d, "facebook")), tiktok: Boolean(await signinKeys(d, "tiktok")),
+  };
   const signin = (id, name, st) => ({
     id, name, kind: "signin", ...st,
     // Live = the app's button really signs people in (the same rule as GET /auth/methods).
@@ -331,6 +341,7 @@ async function connectionsView(d, req) {
     redirect: signinRedirect(req, id),
     privacyUrl: `${origin}/30da/privacy`,
     deleteUrl: `${origin}/30da/delete-data`,
+    termsUrl: `${origin}/30da/terms`,
     tryUrl: `${BASE}/api/connections/${id}/try`,
   });
   return {
@@ -352,11 +363,14 @@ async function connectionsView(d, req) {
         envFallback: envToken ? { last4: envToken.slice(-4) } : null,
         live: (view.set && readable) || Boolean(envToken),
         ...offer(tgOffer),
+        // The free 30+DA bot (src/lib/thirtyda-telegram-bot.mjs): key …last4, @username, offered after a good Try.
+        bot: await botView(d),
       },
       // Live once all four fields are saved and readable (channelLive); offered once a test code went through.
       { id: "whatsapp", name: "WhatsApp", kind: "code", ...wa, live: await channelLive(d, "whatsapp"), ...offer(waOffer) },
       signin("google", "Google sign-in", google),
       signin("facebook", "Facebook sign-in", facebook),
+      signin("tiktok", "TikTok sign-in", tiktok),
     ],
   };
 }
@@ -366,8 +380,9 @@ const FIELD_CHECKS = {
   whatsapp: (input, current) => checkWhatsAppFields(input, current),
   google: (input, current) => checkSigninFields("google", input, current),
   facebook: (input, current) => checkSigninFields("facebook", input, current),
+  tiktok: (input, current) => checkSigninFields("tiktok", input, current),
 };
-const CONNECTION_NAMES = { telegram: "Telegram", whatsapp: "WhatsApp", google: "Google", facebook: "Facebook" };
+const CONNECTION_NAMES = { telegram: "Telegram", whatsapp: "WhatsApp", google: "Google", facebook: "Facebook", tiktok: "TikTok" };
 const TESTABLE = ["telegram", "whatsapp"];
 
 /** One level as the Questions page edits it. */
@@ -388,6 +403,58 @@ function questionsView(level, config) {
     isDefault: config.isDefault,
     matchesDefault: config.matchesDefault,
   };
+}
+
+/**
+ * The free Telegram bot on the Telegram card (src/lib/thirtyda-telegram-bot.mjs):
+ *   PUT    { token }  Save: getMe (→ @username) + setWebhook to this site → sealed; the answer is the page's fresh data.
+ *   POST   /try       getMe + getWebhookInfo: a pass turns the bot on in the app, a failure stops it → { ok, …, view }.
+ *   DELETE           deleteWebhook + remove (open checks end).
+ * Never the key or the webhook secret in an answer or the audit (only the key's last 4 and the bot's @username).
+ */
+async function telegramBotRoute(req, res, isTry) {
+  if (writeLimited(req)) {
+    req.resume();
+    return json(res, 429, { error: "Too many changes. Try again in a few minutes." });
+  }
+  const d = await db();
+  const fetchImpl = outboundFetch();
+  if (isTry) {
+    req.resume();
+    if (testLimited(req)) return json(res, 429, { error: `That is ${MAX_TESTS} tries in 15 minutes. Try again later.` });
+    const r = await tryBot(d, { fetchImpl });
+    await audit(req, "connection_test", { connection: "telegram-bot", ok: r.ok, ...(r.ok ? { username: r.username } : { reason: r.reason }) });
+    const view = await connectionsView(d, req);
+    if (!r.ok) return json(res, r.status || 422, { ok: false, error: r.error, reason: r.reason, detail: r.detail ?? null, view });
+    return json(res, 200, { ok: true, username: r.username, view });
+  }
+  if (req.method === "DELETE") {
+    req.resume();
+    const r = await removeBot(d, { fetchImpl });
+    await audit(req, "connection_remove", { connection: "telegram-bot", removed: r.removed, webhookDeleted: r.webhookDeleted });
+    return json(res, 200, await connectionsView(d, req));
+  }
+  const body = await readJsonBody(req, 1e4);
+  if (body.tooLarge) return json(res, 413, { error: "That is far too long to save." });
+  if (body.bad) return json(res, 400, { error: "Send { token }." });
+  try {
+    const r = await saveBot(d, body.value.token, { origin: publicOrigin(req), fetchImpl, by: "superadmin" });
+    if (!r.ok) {
+      if (r.reason !== "format") await audit(req, "connection_save_refused", { connection: "telegram-bot", reason: r.reason });
+      return json(res, r.status, { error: r.error, field: r.field, reason: r.reason, detail: r.detail });
+    }
+    await audit(req, "connection_save", { connection: "telegram-bot", last4: r.last4, username: r.username });
+  } catch (err) {
+    if (err instanceof SettingsError && err.code === "no_key") {
+      await audit(req, "connection_save_refused", { connection: "telegram-bot", reason: "no_key" });
+      return json(res, 503, {
+        error: "The server's lock key is missing, so the bot key cannot be saved yet. Ask your developer to set it, then save again.",
+        reason: "no_key",
+      });
+    }
+    throw err;
+  }
+  return json(res, 200, await connectionsView(d, req));
 }
 
 export async function handleThirtyDaAdmin(req, res, url) {
@@ -455,8 +522,8 @@ export async function handleThirtyDaAdmin(req, res, url) {
     return serveFile(res, "connections.html");
   }
 
-  // "Try sign-in" (Google / Facebook card): opened in a new tab, so it answers with pages and redirects, not JSON.
-  const tryM = req.method === "GET" && sub.match(/^\/api\/connections\/(google|facebook)\/try$/);
+  // "Try sign-in" (Google / Facebook / TikTok card): opened in a new tab, so it answers with pages and redirects, not JSON.
+  const tryM = req.method === "GET" && sub.match(/^\/api\/connections\/(google|facebook|tiktok)\/try$/);
   if (tryM) {
     if (!me) return send(res, 302, "", { Location: BASE });
     const provider = tryM[1];
@@ -468,10 +535,11 @@ export async function handleThirtyDaAdmin(req, res, url) {
     const keys = await signinKeys(d, provider);
     if (!keys) return page("no_keys");
     // The test state is bound to this admin session (its token's hash): the callback checks it is still signed in.
-    const state = await createSigninState(d, provider, { test: true, adminHash: stateHash(tokenOf(req)) });
+    const pkce = pkcePair(provider);
+    const state = await createSigninState(d, provider, { test: true, adminHash: stateHash(tokenOf(req)), verifier: pkce?.verifier });
     await audit(req, "signin_try_start", { connection: provider });
     return send(res, 302, "", {
-      Location: authorizeUrl(provider, { clientId: keys.id, redirectUri: signinRedirect(req, provider), state }),
+      Location: authorizeUrl(provider, { clientId: keys.id, redirectUri: signinRedirect(req, provider), state, codeChallenge: pkce?.challenge }),
       "Set-Cookie": stateCookie(req, provider, state),
       "Cache-Control": "no-store",
     });
@@ -536,6 +604,12 @@ export async function handleThirtyDaAdmin(req, res, url) {
   }
 
   if (req.method === "GET" && sub === "/api/connections") return json(res, 200, await connectionsView(await db(), req));
+
+  // The free Telegram bot: PUT { token } (Save) · POST …/try · DELETE (Remove).
+  m = sub.match(/^\/api\/connections\/telegram-bot(\/try)?$/);
+  if (m && ((m[1] && req.method === "POST") || (!m[1] && (req.method === "PUT" || req.method === "DELETE")))) {
+    return telegramBotRoute(req, res, Boolean(m[1]));
+  }
 
   m = sub.match(/^\/api\/connections\/([a-z]+)(\/test)?$/);
   if (m && ((m[2] && req.method === "POST") || (!m[2] && (req.method === "PUT" || req.method === "DELETE")))) {

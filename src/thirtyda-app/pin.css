@@ -1,0 +1,115 @@
+/* 30+DA PIN lock (lock.js, screens/pin.js): the PIN screen that covers the app, its 4 boxes, #/pin (set the
+   PIN right after the language) and Change PIN on #/me. Loaded after app.css; uses its tokens. Fits 390 px. */
+
+/* ---------- the cover: over everything, the screen under it already taken down ---------- */
+.pin-cover {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--navy);
+  color: var(--on-dark);
+}
+body.pin-locked { overflow: hidden; }
+body.pin-locked .toast { display: none; }
+
+/* ---------- one PIN screen (cover and #/pin) ---------- */
+.pin-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  width: 100%;
+  max-width: 430px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 28px 24px calc(28px + env(safe-area-inset-bottom));
+  text-align: center;
+}
+.pin-head { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.pin-mark { font-size: 34px; }
+.pin-lock-icon {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid rgb(255 255 255 / 0.4);
+}
+.pin-body { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
+.pin-title { font-family: var(--display); font-weight: 900; font-stretch: 112%; font-size: 28px; line-height: 1.12; }
+:lang(km) .pin-title { font-size: 25px; line-height: 1.45; }
+.pin-text { max-width: 31ch; font-size: 15.5px; line-height: 1.5; color: var(--on-dark-soft); }
+:lang(km) .pin-text { line-height: 1.7; }
+.pin-error { min-height: 1.5em; max-width: 32ch; font-size: 14.5px; font-weight: 700; line-height: 1.45; color: #ffb4ab; }
+:lang(km) .pin-error { line-height: 1.7; }
+.pin-foot { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; }
+.pin-screen .link { color: #fff; }
+.pin-forgot { min-height: 44px; padding: 0 12px; font-size: 15.5px; }
+.pin-foot .btn { max-width: 320px; }
+
+/* #/pin: a back button over the screen (the screen itself is centred like the cover). */
+.screen.pin-route { position: relative; padding: 0; }
+.pin-route-top { position: absolute; top: 12px; left: var(--gutter); z-index: 1; }
+
+/* ---------- the 4 boxes: one real input on top (transparent), the boxes paint the dots ---------- */
+.pin-pad { position: relative; margin: 12px 0 2px; }
+.pin-cells { display: flex; gap: 14px; }
+.pin-cell {
+  width: 62px;
+  height: 70px;
+  border-radius: 14px;
+  border: 2px solid rgb(255 255 255 / 0.45);
+  display: grid;
+  place-items: center;
+  background: rgb(255 255 255 / 0.06);
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.pin-cell > i { width: 16px; height: 16px; border-radius: 50%; background: currentColor; transform: scale(0); transition: transform 0.12s; }
+.pin-cell.filled > i { transform: scale(1); }
+.pin-cell.current { border-color: #fff; background: rgb(255 255 255 / 0.16); box-shadow: 0 0 0 3px rgb(255 255 255 / 0.18); }
+.pin-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  font-size: 16px; /* never smaller: iOS would zoom in */
+  -webkit-text-security: disc;
+  cursor: pointer;
+}
+.pin-input::selection { background: transparent; }
+.pin-input:focus-visible { outline: 0; } /* the current box (white, ringed) shows where the next digit goes */
+.pin-pad.busy .pin-cell { opacity: 0.6; }
+.pin-pad.shake { animation: pin-shake 0.36s ease-in-out; }
+@keyframes pin-shake {
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+@media (max-width: 340px) {
+  .pin-cells { gap: 10px; }
+  .pin-cell { width: 54px; height: 62px; }
+}
+
+/* ---------- Change PIN (#/me): the same boxes on white, in a bottom sheet ---------- */
+.pin-pad.light .pin-cell { border-color: var(--line); background: var(--field); color: var(--navy); }
+.pin-pad.light .pin-cell.current { border-color: var(--navy); background: #fff; box-shadow: 0 0 0 3px rgb(11 28 63 / 0.1); }
+.pin-sheet { align-items: center; text-align: center; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+.pin-sheet .help { max-width: 30ch; font-size: 14px; }
+.pin-sheet-error { justify-content: center; min-height: 1.5em; text-align: center; }
+.me-pin { align-self: flex-start; width: auto; }
+/* Create profile after "Forgot PIN?": the calm note under the title. */
+.pin-again-note { margin: 2px 0 16px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pin-pad.shake { animation: none; }
+  .pin-cell, .pin-cell > i { transition: none; }
+}

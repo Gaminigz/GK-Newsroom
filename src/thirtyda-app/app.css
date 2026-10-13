@@ -607,7 +607,12 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 /* Opening: 3 equal buttons, then the last 2 at the same width, centred under them. */
 .opening .lang-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; width: 100%; }
 .opening .lang-grid .btn { flex: 0 0 calc((100% - 16px) / 3); min-height: 44px; border-radius: 12px; font-size: 14px; }
-.opening-foot { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 4px; font-size: 20.4px; color: #fff; }
+/* "Pick your language — we will translate for you.": two halves that each stay whole (so a narrow phone breaks
+   only between them), the translate mark inline before the first. */
+.opening-foot { margin-top: 4px; font-size: 18px; line-height: 1.45; text-align: center; color: #fff; }
+.opening-foot .op-part { display: inline-block; }
+.opening-foot .icon { display: inline-block; margin-right: 6px; vertical-align: -3px; }
+:lang(km) .opening-foot { font-size: 17px; line-height: 1.7; }
 @media (max-height: 700px) {
   .opening { gap: 28px; }
   .opening-mark { font-size: 64px; margin-top: 20px; }
@@ -632,7 +637,8 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
   display: grid;
   place-items: center;
 }
-.photo-pick > img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+/* Pinned to the circle: in the grid button a portrait photo's height:100% did not resolve and it grew into an oval. */
+.photo-pick > img { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .photo-pick.has-photo { border: 0; background: none; }
 .photo-pick.busy { opacity: 0.6; cursor: progress; }
 .photo-pick .badge {
@@ -649,15 +655,52 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
   box-shadow: 0 0 0 3px #fff;
 }
 .photo-hint { font-size: 14px; line-height: 1.45; color: var(--muted); }
-/* Slots 2–4 shown locked under the hint: photos unlock by level (1 → 1, 2 → 2, 3 → 4). */
+/* Photos 2–4 under the hint: round "+" tiles that can be filled at once, each tagged with the level it shows at
+   (2 → Level 2, 3–4 → Level 3). A filled tile shows the photo (tap to change) and a small × to take it out. */
 .photo-side { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
-.slot-minis-wrap { display: flex; flex-direction: column; gap: 6px; }
-.slot-minis { display: flex; gap: 12px; }
-.slot-mini { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.slot-mini-dot { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; border: 1.5px dashed var(--line); background: #f7f9fc; color: var(--muted-2); }
-.slot-mini .label { font-size: 9px; white-space: nowrap; }
-:lang(km) .slot-mini .label { font-size: 10px; }
-.slot-minis-wrap .help { font-size: 12px; line-height: 1.4; }
+.slot-minis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.slot-mini { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; }
+.slot-mini-box { position: relative; display: block; width: 52px; height: 52px; }
+.slot-mini-dot {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1.5px dashed #9aa5b8;
+  background: #f7f9fc;
+  color: var(--navy);
+}
+.slot-mini-dot > img { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.slot-mini-dot.has-photo { border: 0; background: none; }
+.slot-mini-dot.busy { opacity: 0.6; cursor: progress; }
+.slot-mini-x {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--navy);
+  color: #fff;
+  box-shadow: 0 0 0 2px #fff;
+}
+.slot-mini-x::after { content: ''; position: absolute; inset: -8px; } /* a bigger target than the dot */
+.slot-mini-tag { max-width: min(100%, 68px); font-size: 10px; font-weight: 600; line-height: 1.25; text-align: center; color: var(--muted); overflow-wrap: anywhere; }
+:lang(km) .slot-mini-tag { font-size: 10.5px; line-height: 1.45; }
+/* Photo examples under the photos: drawn people, a green ✓ on the good one, a red circle-slash on the bad ones.
+   Up to 5 in one row at 390px (both sets, before "I am" is picked); 3 once Male or Female is picked. */
+.photo-examples { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin-top: 4px; }
+.ex { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; }
+.ex-pic { display: block; width: 56px; height: 56px; border-radius: 12px; overflow: hidden; }
+.ex-art { display: block; width: 100%; height: 100%; }
+.ex-badge { position: absolute; top: 39px; left: calc(50% + 15px); width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px #fff; }
+.ex-cap { max-width: 100%; font-size: 11px; font-weight: 600; line-height: 1.2; text-align: center; color: var(--muted); overflow-wrap: anywhere; }
+.ex-good .ex-cap { color: var(--green); }
+:lang(km) .ex-cap { font-size: 11px; line-height: 1.45; }
 /* App name (max 7 characters, so a short box) and birth year on one row; the truth warning under both. */
 .name-year-group { display: flex; flex-direction: column; gap: 8px; }
 .name-year { display: grid; grid-template-columns: minmax(0, max-content) max-content; justify-content: start; align-items: end; column-gap: 14px; }
@@ -678,9 +721,11 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
   line-height: 1.4;
 }
 .truth-note .icon { flex: none; margin-top: 1px; color: #c45f00; }
-/* Phone step: one row of round brand buttons — Telegram · WhatsApp (where the code goes) · Facebook · Google
-   (sign in). The chosen code channel gets a navy ring; one that does not work yet is dimmed, "Coming soon". */
+/* Phone step: one row of round brand buttons — Telegram · WhatsApp (where the code goes) · Facebook · Google ·
+   TikTok (sign in). The chosen code channel gets a navy ring; one that does not work yet is dimmed, "Coming soon". */
 .ways { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-bottom: 2px; }
+/* Create profile: all 5 on one row, still one row on a 360–390 px phone (in every language). */
+.ways.with-signin { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; }
 .way {
   position: relative;
   display: flex;
@@ -723,6 +768,10 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .way-msg .icon { flex: none; margin-top: 1px; color: var(--muted); }
 .field-error .err-action { font-size: inherit; color: var(--ink); white-space: nowrap; }
 .phone-row { display: grid; grid-template-columns: 94px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+/* Create profile while no code channel works: the number box stays (saved unverified), no Send code. */
+.phone-row.no-send { grid-template-columns: 94px minmax(0, 1fr); }
+/* Create profile: the one line under the 4 buttons ("Watch out — your code is sent to the app you pick."). */
+.way-watch { font-weight: 600; text-align: center; }
 .phone-row .select { padding: 0 26px 0 10px; background-position: right 6px center; font-family: var(--mono); font-size: 14px; }
 .phone-row .send-code { min-height: 46px; white-space: nowrap; }
 .phone-verified { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 46px; padding: 0 14px; border-radius: var(--radius); border: 1px solid var(--green); background: var(--green-soft); }
@@ -1000,3 +1049,19 @@ button.bubble { display: block; text-align: left; font-size: 15px; line-height: 
 /* Toasts sit above the conversation's bottom (a status line, the choice after Level 2, the send panel, the
    composer), never on it: conversation.js keeps --conv-foot-h at its height. */
 body:has(.screen.conv) .toast { bottom: max(calc(24px + env(safe-area-inset-bottom)), calc(var(--conv-foot-h, 72px) + 12px)); }
+/* The free Telegram bot: the phone step waits for "Share my number" in Telegram (create-profile.js tgWaitBox). */
+.tg-wait { display: flex; flex-direction: column; gap: 12px; padding: 12px 12px 12px 14px; border-radius: var(--radius); border: 1.5px solid #229ed9; background: #eef7fc; }
+.tg-wait-head { display: flex; align-items: center; gap: 12px; }
+.tg-wait-mark { position: relative; flex: none; width: 34px; height: 34px; }
+.tg-wait-mark .way-mark { display: block; width: 34px; height: 34px; }
+/* A slow ring around the Telegram mark: still waiting. */
+.tg-wait-mark::after { content: ''; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid rgb(34 158 217 / 0.22); border-top-color: #229ed9; animation: tg-wait-spin 1.1s linear infinite; }
+.tg-wait-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tg-wait-text strong { font-size: 14px; font-weight: 800; line-height: 1.35; color: var(--ink); }
+.tg-wait-num { font-family: var(--mono); font-size: 12.5px; letter-spacing: 0.03em; color: var(--muted); }
+.tg-wait-actions { display: flex; align-items: center; gap: 16px; padding-left: 46px; }
+.tg-wait-actions .tg-open { width: auto; min-height: 40px; padding: 0 16px; background: #1777ad; color: #fff; }
+.tg-wait-actions .tg-open:hover { background: #12659a; }
+.tg-wait-actions .tg-cancel { font-size: 13px; color: var(--muted); }
+@keyframes tg-wait-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .tg-wait-mark::after { animation: none; border-color: #229ed9; } }

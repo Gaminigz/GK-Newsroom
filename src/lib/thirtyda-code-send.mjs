@@ -197,7 +197,9 @@ export async function codeChannelConfigured(d) {
   for (const channel of CODE_CHANNELS) if (await channelLive(d, channel)) return true;
   if (!d) return false;
   for (const channel of CODE_CHANNELS) if (await secretSaved(d, channel)) return true;
-  return false;
+  // The free Telegram bot proves numbers too (src/lib/thirtyda-telegram-bot.mjs): once its key is saved, no code
+  // shows on screen either, so test mode cannot sign in as a number that is not yours next to a real check.
+  return secretSaved(d, "telegram_bot");
 }
 
 /**

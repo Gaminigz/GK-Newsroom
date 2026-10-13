@@ -6,17 +6,32 @@
  *   RAILWAY_PROJECT_ID / RAILWAY_SERVICE_ID).
  * Otherwise outboundFetch() is the plain global fetch and nothing here runs.
  *
- * When ON, a request to one of the provider addresses below (Google / Facebook sign-in, Telegram Gateway,
- * WhatsApp through graph.facebook.com) is answered from the dev DB collection `thirtyda_test_fetch` IF the e2e
+ * When ON, a request to one of the provider addresses below (Google / Facebook / TikTok sign-in — TikTok's token
+ * POST and user/info GET on open.tiktokapis.com; its authorize step is a browser redirect, which the e2e reads off
+ * the 302 like Google's — Telegram Gateway, WhatsApp through graph.facebook.com) is answered from the dev DB collection `thirtyda_test_fetch` IF the e2e
  * left an answer there for it:
  *   { _id: "<METHOD> <origin + path, no query>", reply: { status, json, delayMs?, fail?: 'timeout' | 'network' }, calls: [...] }
  * and the request is noted in `calls` (the last 20) — redacted: a secret, a code or a token only as its last 4,
  * a phone number masked — so the e2e can check its shape. No answer stored → the real fetch, unchanged.
+ *
+ * The Telegram Bot API (api.telegram.org, the free 30+DA bot — src/lib/thirtyda-telegram-bot.mjs) is answered by a
+ * small FAKE BOT instead, but only while the e2e left its doc there: { _id: "telegram-bot", fake: true, me?: { username,
+ * first_name }, replies?: { <method>: { status, json } }, revoked?: [<key's last 4>], lastError?: { at, message },
+ * pending? }. It answers getMe (the bot id is the key's number part), setWebhook, deleteWebhook, getWebhookInfo and
+ * sendMessage, and keeps on that doc:
+ *   hook  { url, secretToken, allowedUpdates, botId, at } — setWebhook's address AND its secret token, so the e2e can
+ *         post fake updates to the webhook with the right X-Telegram-Bot-Api-Secret-Token, as Telegram would (dev DB only);
+ *   sent  the bot's replies (chat id, text, keyboard) — the last 50;
+ *   calls every request, the key only as its last 4 (bot…AbCd) and secret_token only as its last 4.
+ * No doc → the real Bot API, unchanged.
  */
 
 export const TEST_FETCH_COLLECTION = "thirtyda_test_fetch";
-const HOSTS = new Set(["oauth2.googleapis.com", "openidconnect.googleapis.com", "graph.facebook.com", "gatewayapi.telegram.org"]);
-const SECRET_KEYS = new Set(["client_secret", "code", "access_token", "refresh_token", "id_token"]);
+const HOSTS = new Set(["oauth2.googleapis.com", "openidconnect.googleapis.com", "graph.facebook.com", "gatewayapi.telegram.org", "open.tiktokapis.com"]);
+const BOT_HOST = "api.telegram.org";
+/** The fake bot's doc in thirtyda_test_fetch (see above). */
+export const FAKE_BOT_DOC = "telegram-bot";
+const SECRET_KEYS = new Set(["client_secret", "code", "access_token", "refresh_token", "id_token", "code_verifier"]);
 
 /** The one switch: an explicit flag, a dev database, and not the live server. */
 export function testFetchAllowed(env = process.env) {
@@ -78,6 +93,11 @@ export function makeTestFetch(dbFn, realFetch = globalThis.fetch) {
     } catch {
       return realFetch(url, init);
     }
+    if (u.host === BOT_HOST) {
+      const bots = (await dbFn()).collection(TEST_FETCH_COLLECTION);
+      const bot = await bots.findOne({ _id: FAKE_BOT_DOC });
+      return bot?.fake ? fakeBotApi(bots, bot, u, init) : realFetch(url, init);
+    }
     if (!HOSTS.has(u.host)) return realFetch(url, init);
     const key = `${String(init.method || "GET").toUpperCase()} ${u.origin}${u.pathname}`;
     const col = (await dbFn()).collection(TEST_FETCH_COLLECTION);
@@ -93,6 +113,70 @@ export function makeTestFetch(dbFn, realFetch = globalThis.fetch) {
     }
     return new Response(JSON.stringify(json), { status, headers: { "Content-Type": "application/json" } });
   };
+}
+
+// ---------- the fake Telegram bot (Bot API) ----------
+
+/** "/bot<key>/<method>" → { token, method }, or null. */
+export function botApiPath(pathname) {
+  const m = String(pathname).match(/^\/bot([^/]+)\/([A-Za-z]+)$/);
+  if (!m) return null;
+  let token = m[1];
+  try { token = decodeURIComponent(token); } catch { /* as sent */ }
+  return { token, method: m[2] };
+}
+
+/** A Bot API request as the e2e may see it: the key and the webhook secret only as their last 4. */
+export function redactBotCall(u, init = {}) {
+  const p = botApiPath(u.pathname);
+  let body = null;
+  try {
+    body = typeof init.body === "string" && init.body ? JSON.parse(init.body) : {};
+  } catch {
+    body = { length: String(init.body).length };
+  }
+  if (body && typeof body === "object" && "secret_token" in body) body = { ...body, secret_token: last4(body.secret_token) };
+  return { at: new Date(), method: p?.method ?? null, url: `${u.origin}/bot${last4(p?.token ?? "")}/${p?.method ?? ""}`, body };
+}
+
+async function fakeBotApi(col, doc, u, init) {
+  const p = botApiPath(u.pathname);
+  let params = {};
+  try {
+    params = typeof init.body === "string" && init.body ? JSON.parse(init.body) : {};
+  } catch { /* not JSON: answered like an empty request */ }
+  const answer = (status, json) => new Response(JSON.stringify(json), { status, headers: { "Content-Type": "application/json" } });
+  const refuse = (code, description) => answer(code, { ok: false, error_code: code, description });
+  const token = String(p?.token ?? "");
+  const id = Number(token.split(":")[0]) || 0;
+  const ops = { $push: { calls: { $each: [redactBotCall(u, init)], $slice: -30 } } };
+  let out;
+  if (!p || !/^\d+:/.test(token)) out = refuse(404, "Not Found");
+  else if ((doc.revoked || []).includes(token.slice(-4))) out = refuse(401, "Unauthorized");
+  else if (doc.replies?.[p.method]) out = answer(doc.replies[p.method].status ?? 200, doc.replies[p.method].json ?? {});
+  else if (p.method === "getMe") {
+    out = answer(200, { ok: true, result: { id, is_bot: true, first_name: doc.me?.first_name ?? "30+DA", username: doc.me?.username ?? "ThirtyDA_test_bot", can_join_groups: true, can_read_all_group_messages: false, supports_inline_queries: false } });
+  } else if (p.method === "setWebhook") {
+    ops.$set = { hook: { url: String(params.url ?? ""), secretToken: String(params.secret_token ?? ""), allowedUpdates: params.allowed_updates ?? null, botId: id, at: new Date() } };
+    ops.$unset = { lastError: "" };
+    out = answer(200, { ok: true, result: true, description: "Webhook was set" });
+  } else if (p.method === "deleteWebhook") {
+    if (doc.hook?.botId === id) ops.$unset = { hook: "" };
+    out = answer(200, { ok: true, result: true, description: "Webhook was deleted" });
+  } else if (p.method === "getWebhookInfo") {
+    const hook = doc.hook?.botId === id ? doc.hook : null;
+    const lastError = hook && doc.lastError ? { last_error_date: Math.floor(new Date(doc.lastError.at).getTime() / 1000), last_error_message: String(doc.lastError.message) } : {};
+    out = answer(200, { ok: true, result: { url: hook?.url ?? "", has_custom_certificate: false, pending_update_count: Number(doc.pending) || 0, max_connections: 40, ...(hook?.allowedUpdates ? { allowed_updates: hook.allowedUpdates } : {}), ...lastError } });
+  } else if (p.method === "sendMessage") {
+    const sent = { at: new Date(), botId: id, chatId: params.chat_id ?? null, text: String(params.text ?? ""), replyMarkup: params.reply_markup ?? null };
+    ops.$push.sent = { $each: [sent], $slice: -50 };
+    out = answer(200, { ok: true, result: { message_id: Date.now() % 1e9, date: Math.floor(Date.now() / 1000), chat: { id: params.chat_id, type: "private" }, text: sent.text } });
+  } else {
+    out = refuse(404, "Not Found: method not found");
+  }
+  await col.updateOne({ _id: FAKE_BOT_DOC }, ops);
+  if (doc.delayMs > 0) await waitFor(Math.min(Number(doc.delayMs) || 0, 15_000), init.signal);
+  return out;
 }
 
 let chosen = null;

@@ -1,10 +1,13 @@
 // 30+DA super admin · Code — the four ways people sign in, and the keys each one needs:
 // Telegram and WhatsApp send the sign-in code: offered in the app only once a test code went through since the
-// keys were saved, and stopped again by a lasting failure (no balance, bad token, template). Google and Facebook
-// sign people in once their keys are saved; "Try sign-in" runs the real sign-in in a new tab and ends on a small
-// "Works ✓" page (no profile made). The server never sends a secret back: only its last 4 characters
-// (last4 / masks); the plain boxes (WhatsApp phone number ID + template, Google client ID, Facebook app ID) come
-// back as saved.
+// keys were saved, and stopped again by a lasting failure (no balance, bad token, template). Google, Facebook and
+// TikTok (owner 2026-10-13) sign people in once their keys are saved; "Try sign-in" runs the real sign-in in a new tab and ends on a small
+// "Works ✓" page (no profile made). The Telegram card leads with the FREE 30+DA bot (owner 2026-10-13): one box, the
+// bot key from @BotFather; Save checks it with Telegram (→ @username) and links the bot to this site; "Try the bot"
+// turns it on in the app (people share their number with the bot, no code). The paid Gateway stays below it, optional.
+// The server never sends a secret back: only its last 4 characters
+// (last4 / masks); the plain boxes (WhatsApp phone number ID + template, Google client ID, Facebook app ID, TikTok
+// client key) come back as saved.
 const API = '/30da/admin/api/connections';
 const $ = (id) => document.getElementById(id);
 
@@ -30,6 +33,8 @@ const LOGOS = {
   whatsapp: '<path d="M4 20l1.2-4A8.5 8.5 0 1 1 8 18.8L4 20Z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="M9.2 8.4c.3-.4.8-.4 1 0l.7 1.5c.1.3 0 .6-.2.8l-.4.4c.5 1 1.3 1.8 2.3 2.3l.4-.4c.2-.2.5-.3.8-.2l1.5.7c.4.2.4.7 0 1-.6.6-1.5.9-2.3.6-2.1-.8-3.7-2.4-4.5-4.5-.3-.8 0-1.7.7-2.2Z" fill="currentColor"/>',
   google: '<path d="M20.5 12.2h-8.2M20.5 12.2a8.5 8.5 0 1 1-2.5-6" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/>',
   facebook: '<path d="M14.5 21v-7.5h2.6l.4-3h-3V8.6c0-.9.3-1.5 1.5-1.5h1.6V4.4c-.3 0-1.2-.1-2.3-.1-2.3 0-3.8 1.4-3.8 4v2.2H9v3h2.5V21" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/>',
+  // A plain music note (stem, round head, curled flag): our own drawing.
+  tiktok: '<path d="M13.6 4.2v11.4M13.6 4.2c.5 2.6 2.4 4.3 5 4.6" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/><circle cx="10.2" cy="15.6" r="3.4" stroke="currentColor" stroke-width="1.7" fill="none"/>',
 };
 function logo(id) {
   const t = document.createElement('template');
@@ -59,7 +64,7 @@ async function call(method, path, body) {
 
 // ---------- helpers ----------
 const when = (iso) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const NAMES = { telegram: 'Telegram', whatsapp: 'WhatsApp', google: 'Google', facebook: 'Facebook' };
+const NAMES = { telegram: 'Telegram', 'telegram-bot': 'Telegram bot', whatsapp: 'WhatsApp', google: 'Google', facebook: 'Facebook', tiktok: 'TikTok' };
 const REASON_WORDS = {
   not_on_telegram: 'number not on Telegram',
   not_on_whatsapp: 'number not on WhatsApp',
@@ -315,18 +320,184 @@ function telegramCard(c, data) {
   err,
   h('div', { class: 'cx-actions' }, save, remove));
 
+  // The card: the free bot first (what the owner uses), then the paid Gateway (optional) under it.
+  const pill = telegramPill(c, st);
+  const bot = c.bot || { set: false };
   return h('section', { class: 'panel cx-card cx-main', 'aria-labelledby': 'cx-telegram' },
     h('div', { class: 'cx-head' }, logo('telegram'),
       h('div', { class: 'cx-title' }, h('h2', { id: 'cx-telegram', text: 'Telegram' }),
-        h('p', { class: 'cx-sub', text: 'Sign-in codes by Telegram message (Telegram Gateway)' })),
+        h('p', { class: 'cx-sub', text: 'People prove their phone number with Telegram' })),
+      h('span', { class: `cx-pill ${pill.pill}`, text: pill.text })),
+    botPart(bot, data),
+    h('div', { class: 'cx-part', 'aria-labelledby': 'cx-tg-gateway' },
+      h('div', { class: 'cx-part-head' },
+        h('h3', { id: 'cx-tg-gateway', text: 'Telegram Gateway (paid, optional)' }),
+        h('span', { class: `cx-pill ${st.pill}`, text: st.text })),
+      h('p', { class: 'cx-help' }, 'Sends a 6-digit code instead of the bot. Every code costs money from a balance at gateway.telegram.org. Leave it empty if the bot is enough.'),
+      h('dl', { class: 'cx-status' },
+        row('Token', ...tokenLine(c)),
+        row('In the app', !bot.offered ? codeAppLine(c, data, 'Telegram', 'token')
+          : c.live ? 'Not used while the bot works (the bot is free). Kept as a spare.' : 'Not needed: the bot already lets people use Telegram.'),
+        lastSendLine(c.lastSend, 'telegram')),
+      h('div', { class: 'cx-split' },
+        form,
+        testBlock(c, { help: 'Sends a real 6-digit code by Telegram to this number with the token in use (about US$0.01 each).' }))));
+}
+
+// ---------- the free Telegram bot (the Telegram card's first part) ----------
+
+/** The Telegram card's pill: the bot when it is set up, else the Gateway's. */
+function telegramPill(c, gateway) {
+  const b = c.bot || {};
+  if (b.set && !b.readable) return { pill: 'warn', text: 'Needs attention' };
+  if (b.offered || (c.live && c.offered)) return { pill: 'live', text: 'Live' };
+  if (b.set) return botStatus(b);
+  return gateway;
+}
+
+function botStatus(b) {
+  if (b.set && !b.readable) return { pill: 'warn', text: 'Needs attention' };
+  if (b.offered) return { pill: 'live', text: 'Live' };
+  if (b.live && b.offer?.state === 'stopped') return { pill: 'warn', text: 'Stopped' };
+  if (b.live) return { pill: 'saved', text: 'Saved · not tried' };
+  return { pill: 'off', text: 'Not set' };
+}
+
+function botLine(b) {
+  if (b.set && !b.readable) return unreadableLine(b, 'bot key');
+  if (!b.set) return [h('b', { text: 'Not set' })];
+  return [h('b', { text: 'Set' }), ' · ', b.link ? link(b.link, `@${b.username}`) : `@${b.username}`, ' · key ends ',
+    h('code', { class: 'cx-mono', text: `…${b.last4}` }), ` · saved ${when(b.updatedAt)} · ${b.updatedBy || 'superadmin'}`];
+}
+
+/** Why the bot stopped, in plain words. */
+const BOT_STOP_WORDS = {
+  bad_token: 'Telegram no longer accepts the bot key',
+  moved: 'the bot sends its messages somewhere else',
+  no_hook: 'the bot is not linked to this site any more',
+  hook_error: 'Telegram could not deliver the bot’s messages to this site',
+  timeout: 'Telegram did not answer',
+  network: 'Telegram could not be reached',
+};
+
+function botAppLine(b) {
+  if (b.offered) return 'Working: people who tap Telegram share their number with the bot. No code to type.';
+  if (b.live && b.offer?.state === 'stopped') {
+    return [h('b', { class: 'cx-bad', text: `Stopped: ${BOT_STOP_WORDS[b.offer.reason] || 'the last try did not work'}.` }), ' Fix it, then press “Try the bot”. Until then the app does not offer the bot.'];
+  }
+  if (b.live) return [h('b', { text: 'Not offered in the app yet — press “Try the bot”.' }), ' Once it works, people can tap Telegram.'];
+  if (b.set) return 'The app does not offer the bot until the key is saved again.';
+  return 'Save a bot key so people can prove their number with Telegram for free.';
+}
+
+function lastBotTry(b) {
+  const s = b.lastTry;
+  if (!s) return null;
+  if (s.ok) return row('Last try', h('span', { class: 'cx-ok', text: `Worked ${when(s.at)}` }));
+  return row('Last try', h('span', { class: 'cx-bad', text: `Did not work ${when(s.at)}` }),
+    ` · ${BOT_STOP_WORDS[s.reason] || s.reason || 'refused'}`, s.detail ? h('span', { class: 'cx-fine', text: ` · Telegram said: ${s.detail}` }) : null);
+}
+
+function botForm(b, data) {
+  const { keyReady } = data;
+  const err = h('p', { class: 'cx-err', id: 'tg-bot-err', role: 'alert', hidden: true });
+  const { input, wrap } = secretInput({
+    id: 'tg-bot-token', name: 'tg-bot-token', placeholder: b.set ? 'Paste a new key to replace it' : 'Paste the bot key',
+    'aria-describedby': 'tg-bot-help tg-bot-err', disabled: !keyReady, 'data-draft': 'telegram-bot',
+  });
+  const label = b.set ? 'Replace key' : 'Save';
+  const save = h('button', { type: 'submit', class: 'btn-primary cx-save', disabled: !keyReady }, label);
+  const remove = b.set ? h('button', { type: 'button', class: 'link cx-remove', on: { click: () => removeConnection('telegram-bot') } }, 'Remove') : null;
+  input.addEventListener('input', () => { err.hidden = true; input.classList.remove('is-error'); });
+  const fail = (text) => {
+    err.textContent = text;
+    err.hidden = false;
+    input.classList.add('is-error');
+    input.focus();
+  };
+  return h('form', {
+    class: 'cx-form', novalidate: true,
+    on: {
+      submit: async (e) => {
+        e.preventDefault();
+        if (state.busy) return;
+        const token = input.value.trim();
+        if (!token) return fail('Paste the bot key first.');
+        state.busy = true;
+        save.disabled = true;
+        save.textContent = 'Checking with Telegram…';
+        const r = await call('PUT', `${API}/telegram-bot`, { token });
+        state.busy = false;
+        if (!r.ok) {
+          save.disabled = false;
+          save.textContent = label;
+          return fail([r.data.error || 'Could not save the bot key.', r.data.detail ? ` Telegram said: ${r.data.detail}` : ''].join(''));
+        }
+        state.test['telegram-bot'] = null;
+        render(r.data, { fresh: 'telegram-bot' });
+        const now = r.data.connections.find((x) => x.id === 'telegram')?.bot;
+        toast(`Bot saved · @${now?.username} · key ends …${now?.last4}. Press “Try the bot” to check it.`);
+        $('tg-bot-try')?.focus();
+      },
+    },
+  },
+  h('label', { class: 'field', for: 'tg-bot-token' }, h('span', { class: 'label', text: 'Bot key' })),
+  wrap,
+  h('p', { class: 'cx-help', id: 'tg-bot-help' }, 'In Telegram open ', link('https://t.me/BotFather', '@BotFather'), ' → /newbot → name 30+DA → copy the key here.'),
+  err,
+  h('div', { class: 'cx-actions' }, save, remove));
+}
+
+/** "Try the bot": getMe + getWebhookInfo on the server. A pass turns Telegram on in the app. */
+function botTry(b) {
+  const r = state.test['telegram-bot'];
+  const trying = Boolean(r?.trying);
+  const btn = h('button', {
+    type: 'button', class: 'btn cx-test-btn', id: 'tg-bot-try', disabled: trying || !b.live,
+    on: {
+      click: async () => {
+        if (state.test['telegram-bot']?.trying) return;
+        state.test['telegram-bot'] = { trying: true };
+        render(state.data);
+        const x = await call('POST', `${API}/telegram-bot/try`, {});
+        const { view, ...result } = x.data;
+        state.test['telegram-bot'] = { ...result, ok: x.ok };
+        render(view?.connections ? view : state.data);
+        $('tg-bot-try')?.focus();
+      },
+    },
+  }, trying ? 'Trying…' : 'Try the bot');
+  let result = null;
+  if (r && !r.trying && r.ok) {
+    result = h('div', { class: 'cx-result ok' },
+      h('p', {}, h('b', { text: 'Works ✓ ' }), `@${r.username || b.username} answers, and its messages come to this site.`),
+      b.offered ? h('p', { class: 'cx-fine' }, 'Telegram is now offered in the app. ', b.link ? link(b.link, `Open @${b.username}`) : null, ' to see it yourself.') : null);
+  } else if (r && !r.trying) {
+    result = h('div', { class: 'cx-result bad' },
+      h('p', {}, h('b', { text: 'Did not work. ' }), r.error || 'Something went wrong.'),
+      r.detail ? h('p', { class: 'cx-fine' }, `Telegram said: ${r.detail}`) : null);
+  }
+  return h('div', { class: 'cx-test' },
+    h('h3', { text: 'Try the bot' }),
+    h('p', { class: 'cx-help' }, b.live
+      ? 'Checks that the bot answers and that Telegram sends its messages to this site. The app offers the bot only after a good try.'
+      : 'Save the bot key first, then try it here.'),
+    btn,
+    result);
+}
+
+function botPart(b, data) {
+  const st = botStatus(b);
+  return h('div', { class: 'cx-part', 'aria-labelledby': 'cx-tg-bot' },
+    h('div', { class: 'cx-part-head' },
+      h('h3', { id: 'cx-tg-bot' }, 'Telegram bot ', h('span', { class: 'cx-free', text: 'free' })),
       h('span', { class: `cx-pill ${st.pill}`, text: st.text })),
+    h('p', { class: 'cx-help' }, 'People type their number, tap Telegram and share their number with your 30+DA bot. No code, no cost.'),
     h('dl', { class: 'cx-status' },
-      row('Token', ...tokenLine(c)),
-      row('In the app', codeAppLine(c, data, 'Telegram', 'token')),
-      lastSendLine(c.lastSend, 'telegram')),
-    h('div', { class: 'cx-split' },
-      form,
-      testBlock(c, { help: 'Sends a real 6-digit code by Telegram to this number with the token in use (about US$0.01 each).' })));
+      row('Bot', ...botLine(b)),
+      row('In the app', botAppLine(b)),
+      lastBotTry(b)),
+    h('div', { class: 'cx-split' }, botForm(b, data), botTry(b)));
 }
 
 // ---------- WhatsApp, Google, Facebook: several boxes saved together ----------
@@ -392,6 +563,25 @@ const FIELD_CARDS = {
     fields: [
       { key: 'appId', label: 'App ID', placeholder: 'Only digits', inputmode: 'numeric', help: ['At the top of App settings → Basic.'] },
       { key: 'appSecret', label: 'App secret', secret: true, placeholder: 'Paste the App secret', help: ['Same page: App secret → press Show, then copy it.'] },
+    ],
+  },
+  tiktok: {
+    title: 'TikTok sign-in',
+    sub: 'Sign in with a TikTok account',
+    what: 'keys',
+    // TikTok's own menu names, in quotes. The website prefix comes from this page's address (the same as the others).
+    steps: (c) => [
+      ['Open ', link('https://developers.tiktok.com/apps', 'developers.tiktok.com'), ' → Manage apps → “Connect an app”, name it 30+DA.'],
+      ['Add products → “Login Kit”. Under Login Kit → Web, paste the redirect address below in “Redirect URI”.'],
+      [`Verify the website: “URL prefix” ${String(c.privacyUrl || '').replace(/privacy$/, '')} (its check file is already there).`],
+      ['In the app’s details paste the Terms of service and Privacy policy addresses below.'],
+      ['Copy the Client key and Client secret into the boxes here and press Save.'],
+      ['Press “Submit for review”. Until TikTok approves it, only the app’s testers can sign in (Sandbox → Target users, with the Sandbox’s own Client key and secret).'],
+    ],
+    redirectHelp: 'paste it in TikTok under Login Kit → Web → “Redirect URI”',
+    fields: [
+      { key: 'clientKey', label: 'Client key', placeholder: 'Letters and digits', help: ['On the app’s page in developers.tiktok.com (App details).'] },
+      { key: 'clientSecret', label: 'Client secret', secret: true, placeholder: 'Paste the Client secret', help: ['Same page, next to the Client key.'] },
     ],
   },
 };
@@ -523,12 +713,15 @@ function signinStatus(c) {
 const ONLY_YOU = {
   google: 'If the Google app is still in Testing, only you and its test users can sign in. On Google’s consent screen press “Publish app” so everyone can.',
   facebook: 'If the Facebook app is still in Development mode, only you and people with a role on the app can sign in. Switch the app to Live in Meta so everyone can.',
+  tiktok: 'Until TikTok approves the app, only its testers can sign in (Sandbox → Target users). Press “Submit for review” in TikTok so everyone can.',
 };
 /** A failure every sign-in will hit until it is fixed (not a cancel or a slow answer) — and what fixes it. */
 const SETUP_FIX = {
   bad_keys: () => 'Copy the keys again and save them',
   redirect: (name) => `Add the redirect address in ${name}`,
-  not_live: (name, id) => (id === 'google' ? 'Press “Publish app” on Google’s consent screen' : 'Switch the app to Live in Meta'),
+  not_live: (name, id) => ({
+    google: 'Press “Publish app” on Google’s consent screen', tiktok: 'Submit the app for review in TikTok (with Login Kit)',
+  })[id] || 'Switch the app to Live in Meta',
 };
 
 function signinAppLine(c, data) {
@@ -612,7 +805,15 @@ function signinCard(c, data) {
   const st = signinStatus(c);
   const f = c.fields || {};
   const idKey = card.fields[0].key;
-  const where = c.id === 'google' ? 'in Google on the consent screen (“Application privacy policy link”)' : 'in Meta under App settings → Basic';
+  const where = {
+    google: 'in Google on the consent screen (“Application privacy policy link”)', tiktok: 'in TikTok in the app’s details (“Privacy Policy URL”)',
+  }[c.id] || 'in Meta under App settings → Basic';
+  // TikTok asks for a Terms of service address; Google and Meta have a box for it too.
+  const termsWhere = {
+    google: 'Google may ask for it on the consent screen (“Application terms of service link”)',
+    facebook: 'paste it in Meta under App settings → Basic (“Terms of Service URL”)',
+    tiktok: 'paste it in TikTok in the app’s details (“Terms of Service URL”)',
+  }[c.id];
   return h('section', { class: 'panel cx-card cx-signin', 'aria-labelledby': `cx-${c.id}` },
     h('div', { class: 'cx-head' }, logo(c.id),
       h('div', { class: 'cx-title' }, h('h2', { id: `cx-${c.id}`, text: card.title }), h('p', { class: 'cx-sub', text: card.sub })),
@@ -625,11 +826,12 @@ function signinCard(c, data) {
     h('div', { class: 'cx-signin-body' },
       h('div', { class: 'cx-where' },
         h('p', { class: 'cx-help' }, h('b', { text: 'How to get the keys:' })),
-        h('ol', { class: 'cx-steps' }, card.steps.map((step) => h('li', {}, ...step)))),
+        h('ol', { class: 'cx-steps' }, (typeof card.steps === 'function' ? card.steps(c) : card.steps).map((step) => h('li', {}, ...step)))),
       addressRow('Redirect address', card.redirectHelp, c.redirect),
       addressRow('Privacy policy address', `paste it ${where}`, c.privacyUrl),
       c.id === 'facebook' ? addressRow('Data deletion address', 'paste it in Meta under App settings → Basic (“Data deletion instructions URL”)', c.deleteUrl)
-        : addressRow('Data deletion address', 'how people have their data deleted (Google may ask for it too)', c.deleteUrl),
+        : addressRow('Data deletion address', `how people have their data deleted (${NAMES[c.id]} may ask for it too)`, c.deleteUrl),
+      c.termsUrl ? addressRow('Terms of service address', termsWhere, c.termsUrl) : null,
       fieldsForm(c, data),
       tryBlock(c)));
 }
@@ -637,9 +839,11 @@ function signinCard(c, data) {
 // ---------- remove ----------
 const REMOVE_TEXT = {
   telegram: (devAuth) => `Remove the Telegram token?\n\nTelegram codes stop until a new token is saved.${devAuth ? ' In test mode codes then show on the screen instead.' : ''}`,
+  'telegram-bot': () => 'Remove the Telegram bot?\n\nThe bot stops answering, and people cannot use Telegram until a bot key is saved and tried again.',
   whatsapp: () => 'Remove the WhatsApp keys?\n\nWhatsApp codes stop until all four boxes are saved again.',
   google: () => 'Remove the Google keys?\n\nThe Google button in the app goes back to “Coming soon”, and nobody can sign in with Google until keys are saved again.',
   facebook: () => 'Remove the Facebook keys?\n\nThe Facebook button in the app goes back to “Coming soon”, and nobody can sign in with Facebook until keys are saved again.',
+  tiktok: () => 'Remove the TikTok keys?\n\nThe TikTok button in the app goes back to “Coming soon”, and nobody can sign in with TikTok until keys are saved again.',
 };
 async function removeConnection(id) {
   if (!confirm(REMOVE_TEXT[id](state.data?.devAuth))) return;
@@ -647,7 +851,7 @@ async function removeConnection(id) {
   if (!r.ok) return toast(r.data.error || 'Could not remove it.');
   state.test[id] = null;
   render(r.data, { fresh: id });
-  toast(id === 'telegram' ? 'Telegram token removed.' : `${NAMES[id]} keys removed.`);
+  toast(id === 'telegram' ? 'Telegram token removed.' : id === 'telegram-bot' ? 'Telegram bot removed.' : `${NAMES[id]} keys removed.`);
 }
 
 // ---------- render ----------
@@ -656,9 +860,14 @@ function headline(data) {
   const offered = codes.filter((c) => c.live && c.offered).map((c) => c.name);
   const stopped = codes.filter((c) => c.live && c.offer?.state === 'stopped').map((c) => c.name);
   const untested = codes.filter((c) => c.live && c.offer?.state === 'untested').map((c) => c.name);
+  const bot = data.connections.find((c) => c.id === 'telegram')?.bot;
   const attention = data.connections.filter((c) => c.set && c.readable === false).map((c) => NAMES[c.id]);
+  if (bot?.set && bot.readable === false) attention.push(NAMES['telegram-bot']);
   if (attention.length) return `${attention.join(' + ')} needs attention`;
   const parts = [];
+  if (bot?.offered) parts.push('Telegram bot live');
+  else if (bot?.live && bot.offer?.state === 'stopped') parts.push('Telegram bot stopped');
+  else if (bot?.live) parts.push('Telegram bot: press Try');
   if (offered.length) parts.push(`Codes live: ${offered.join(' + ')}`);
   if (stopped.length) parts.push(`${stopped.join(' + ')} stopped`);
   if (untested.length) parts.push(`${untested.join(' + ')}: send a test code`);
@@ -685,7 +894,7 @@ function render(data, { fresh = null } = {}) {
   $('cards').replaceChildren(
     telegramCard(byId.telegram, data),
     byId.whatsapp ? whatsappCard(byId.whatsapp, data) : null,
-    h('div', { class: 'cx-pair' }, ['facebook', 'google'].filter((id) => byId[id]).map((id) => signinCard(byId[id], data))),
+    h('div', { class: 'cx-pair' }, ['facebook', 'google', 'tiktok'].filter((id) => byId[id]).map((id) => signinCard(byId[id], data))),
   );
   for (const [id, value] of Object.entries(drafts)) if ($(id)) $(id).value = value;
   if (focused && $(focused) && !$(focused).disabled) $(focused).focus();

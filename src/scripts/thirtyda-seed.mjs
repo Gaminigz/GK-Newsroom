@@ -8,7 +8,8 @@
  * plus the A2 design's sample pairs, chats and flags, and pairs in every
  * conversation state (Level 1 and 2 both ways, partial replies, the waits,
  * Level 3 with its history, an older one-way pair), and prints the dev
- * login phones. Demo people have no photos (the app shows a silhouette).
+ * login phones. Demo people have no photos (the app shows a silhouette). In a *_dev database every demo
+ * person gets the dev PIN 2580 (the app's lock screen asks for it).
  *
  * Usage:
  *   set -a && . ./.env && set +a
@@ -18,7 +19,12 @@
 import { getDb, closeDb } from "../lib/mongo.ts";
 import { ensureThirtyDaIndexes } from "../lib/thirtyda-app.mjs";
 import { deletePhoto } from "../lib/thirtyda-photos.mjs";
+import { hashPin } from "../lib/thirtyda-pin.mjs";
 import { buildDemo, DEMO_NOTES } from "../data/thirtyda-sample.mjs";
+
+// Every demo person's PIN (the app asks for it each time it opens). Only ever set in a *_dev database: a
+// --force-demo seed elsewhere leaves the demo people without a PIN (they set their own on first sign-in).
+const DEV_PIN = "2580";
 
 const APP_COLLECTIONS = [
   "thirtyda_users", "thirtyda_user_sessions", "thirtyda_otps", "thirtyda_pairs",
@@ -47,6 +53,11 @@ try {
   for (const name of APP_COLLECTIONS) await d.collection(name).deleteMany({});
 
   const demo = buildDemo();
+  const devPin = dbName.endsWith("_dev");
+  if (devPin) {
+    const pinHash = await hashPin(DEV_PIN);
+    for (const u of demo.users) Object.assign(u, { pinHash, pinAt: new Date(), pinTries: 0 });
+  }
   await d.collection("thirtyda_users").insertMany(demo.users);
   await d.collection("thirtyda_pairs").insertMany(demo.pairs);
   await d.collection("thirtyda_sets").insertMany(demo.sets);
@@ -57,6 +68,7 @@ try {
 
   console.log(`Seeded ${dbName}: ${demo.users.length} people, ${demo.pairs.length} conversations, ${demo.sets.length} sets of 5 lines, ${demo.flags.length} open flags.`);
   console.log("\nDev logins (THIRTYDA_DEV_AUTH=1: send-code returns the code):");
+  if (devPin) console.log(`  (every demo person's PIN: ${DEV_PIN})`);
   for (const u of demo.users) {
     const note = DEMO_NOTES[u._id] ? ` · ${DEMO_NOTES[u._id]}` : "";
     console.log(`  ${u.phone}  ${u._id}  ${u.name.padEnd(10)} ${u.lang}  ${u.area}${note}`);

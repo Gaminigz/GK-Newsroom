@@ -1,11 +1,12 @@
 /**
  * 30+DA settings the super admin enters on the web (the admin "Code" page, /30da/admin/connections) —
- * the Telegram Gateway API token, the WhatsApp Cloud API keys, and the Google / Facebook sign-in keys.
+ * the Telegram Gateway API token, the free Telegram bot's key, the WhatsApp Cloud API keys, and the Google / Facebook
+ * sign-in keys.
  *
  * Mongo `thirtyda_settings`, one doc per setting:
  *   { _id:'telegram', kind:'secret', box:{ v:1, alg:'aes-256-gcm', iv, tag, data }, last4,
  *     updatedAt, updatedBy, lastSend?:{ ok, reason, detail, at } }
- *   { _id:'whatsapp'|'google'|'facebook', kind:'fields', box (sealed JSON of ALL the fields), last4, masks:{ <secret field>: last4 },
+ *   { _id:'whatsapp'|'google'|'facebook'|'telegram_bot', kind:'fields', box (sealed JSON of ALL the fields), last4, masks:{ <secret field>: last4 },
  *     updatedAt, updatedBy, lastSend? }
  * A "fields" setting (FIELD_SETTINGS) keeps every field in the one sealed box; the fields marked secret are
  * only ever shown as their last 4 characters, the others (a phone number ID, a template name, an app ID)
@@ -28,11 +29,17 @@ import crypto from "node:crypto";
 export const SETTINGS_COLLECTION = "thirtyda_settings";
 /** Settings that hold ONE secret string (saveSecret / readSecret). */
 export const SECRET_NAMES = ["telegram"];
-/** Settings that hold several fields in one sealed box (saveFields / readFields); secret:true → shown as last 4 only. */
+/**
+ * Settings that hold several fields in one sealed box (saveFields / readFields); secret:true → shown as last 4 only;
+ * secret + hidden → never shown at all, not even its last 4 (the Telegram bot's webhook secret).
+ */
 export const FIELD_SETTINGS = {
   whatsapp: { token: { secret: true }, phoneNumberId: {}, templateName: {}, templateLang: {} },
+  // The free 30+DA Telegram bot (src/lib/thirtyda-telegram-bot.mjs): the key from @BotFather + what Save set up.
+  telegram_bot: { token: { secret: true }, hookSecret: { secret: true, hidden: true }, username: {}, botId: {}, hookUrl: {} },
   google: { clientId: {}, clientSecret: { secret: true } },
   facebook: { appId: {}, appSecret: { secret: true } },
+  tiktok: { clientKey: {}, clientSecret: { secret: true } },
 };
 export const SETTING_NAMES = [...SECRET_NAMES, ...Object.keys(FIELD_SETTINGS)];
 const CACHE_MS = 30e3;
@@ -227,7 +234,8 @@ function pickFields(name, values) {
   for (const f of Object.keys(FIELD_SETTINGS[name])) out[f] = String(values?.[f] ?? "").trim();
   return out;
 }
-const secretFields = (name) => Object.keys(FIELD_SETTINGS[name]).filter((f) => FIELD_SETTINGS[name][f].secret);
+/** The secret fields shown as their last 4 (a hidden one is never shown at all). */
+const secretFields = (name) => Object.keys(FIELD_SETTINGS[name]).filter((f) => FIELD_SETTINGS[name][f].secret && !FIELD_SETTINGS[name][f].hidden);
 const plainFields = (name) => Object.keys(FIELD_SETTINGS[name]).filter((f) => !FIELD_SETTINGS[name][f].secret);
 
 /** The fields of a sealed box → object, or null when it is not a JSON object. */

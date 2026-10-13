@@ -20,8 +20,9 @@
         'App opens with the 30+DA logo animation (letters rise, white bar fills).',
         'Big headline above the logo: “Don’t make the same mistake again.” Tagline under it: safe and calm dating for 30+.',
         'User picks a language: English, ខ្មែរ, 中文, 한국어 or 日本語. The whole app switches to it.',
-        '“We will translate for you”: every chat is translated between the two people’s languages.',
-        'Tap a language → 2 · Create profile.',
+        '“Pick your language — we will translate for you.”: every chat is translated between the two people’s languages.',
+        'Tap a language → set a 4-digit PIN (typed twice). The PIN locks the app: asked every time 30+DA opens, and after 30 s without a touch.',
+        'Then → 2 · Create profile.',
       ],
     },
     2: {

@@ -6,6 +6,8 @@ import {
   resizeImage, updateLocation, roleLabel, LANGS, LANG_CODES, LANG_NATIVE, LANG_FLAG, ROLES, charCount,
   PHOTO_SLOT_LEVELS, NAME_MAX, NAME_RAW_MAX, checkAppName, clipChars, birthYearOptions, checkBirthYear,
 } from '../core.js';
+// The PIN chosen right after the language waits in this tab; it goes with the sign-in / the new profile (lock.js).
+import { waitingPin, clearPinFlags, pinResetPending, leaveWithoutLock } from '../lock.js';
 
 // ---------------------------------------------------------------- app name + birth year (also used on #/me)
 
@@ -99,15 +101,105 @@ const COUNTRY_CODES = [
 
 // ---------------------------------------------------------------- photo slots
 
-/** Slots 2–4, still locked for a new profile: small circles with a lock and the level that opens them. */
-function lockedSlots() {
-  const later = PHOTO_SLOT_LEVELS.slice(1);
-  return el('div', { class: 'slot-minis-wrap' },
-    el('ul', { class: 'slot-minis' }, later.map((level, i) => el('li', { class: 'slot-mini' },
-      el('span', { class: 'slot-mini-dot', 'aria-hidden': 'true' }, icon('lock', 14)),
-      el('span', { class: 'label' }, t('cp_slot_level', { n: level })),
-      el('span', { class: 'visually-hidden' }, t('cp_slot_aria', { slot: i + 2, n: level }))))),
-    el('p', { class: 'help' }, t('cp_more_photos')));
+/**
+ * Photos 2–4 on Create profile: small round "+" tiles that can be filled right away (all 4 slots can be
+ * uploaded at any level, Gamini 2026-10-13); who SEES a photo still goes by its slot (2 → Level 2, 3–4 →
+ * Level 3), so each tile says when it shows. They are held in the page and go up right after the profile is
+ * made, each into its own slot. photos = [slot 2, slot 3, slot 4] (data URL or null); busy = the 0-based slot
+ * being read; onPick(slot) / onRemove(slot) with the 0-based slot (1–3).
+ */
+function moreSlots(photos, { busy = -1, onPick, onRemove }) {
+  return el('ul', { class: 'slot-minis' }, PHOTO_SLOT_LEVELS.slice(1).map((level, k) => {
+    const slot = k + 1;
+    const photo = photos[k];
+    const vars = { slot: slot + 1, n: level };
+    return el('li', { class: 'slot-mini' },
+      el('span', { class: 'slot-mini-box' },
+        el('button', {
+          type: 'button', class: ['slot-mini-dot', photo && 'has-photo', busy === slot && 'busy'], 'data-slot': String(slot),
+          'aria-label': t(photo ? 'cp_slot_change' : 'cp_slot_add', vars), on: { click: () => onPick(slot) },
+        }, photo ? el('img', { src: photo, alt: '' }) : icon('plus', 18)),
+        photo ? el('button', {
+          type: 'button', class: 'slot-mini-x', 'aria-label': t('cp_slot_remove', vars), on: { click: () => onRemove(slot) },
+        }, icon('close', 11)) : null),
+      el('span', { class: 'slot-mini-tag', 'aria-hidden': 'true' }, t('cp_slot_shows', vars)));
+  }));
+}
+
+// Photo examples under the photos: one good (a clear face), 2 bad for men (sunglasses, cap / hat) and 2 for
+// women (side face, group photo). Drawn here as flat shapes in the app's palette — no photos of real people.
+// Constant markup (never user text), 64×64 art shown through a 56×56 window.
+const EXC = { ink: '#0b1c3f', face: '#efd8c3', neck: '#dcbfa6', bg: '#e9eef6', cap: '#5b6478', brim: '#3d475c' };
+const exNeck = `<path fill="${EXC.neck}" d="M28 36h8v12h-8z"/>`;
+const exBody = (top) => `<path fill="${top}" d="M9 64c0-11.5 9.6-17.6 23-17.6S55 52.5 55 64Z"/>`;
+const exHead = `<ellipse cx="32" cy="28" rx="11" ry="13" fill="${EXC.face}"/>`;
+const exEyes = `<circle cx="27.8" cy="29" r="1.4" fill="${EXC.ink}"/><circle cx="36.2" cy="29" r="1.4" fill="${EXC.ink}"/>`;
+const exSmile = `<path d="M28.6 34.4q3.4 2.6 6.8 0" fill="none" stroke="${EXC.ink}" stroke-width="1.4" stroke-linecap="round"/>`;
+// [behind the head, over the head]
+const EX_HAIR = {
+  man: ['', `<path fill="${EXC.ink}" d="M21.2 26.4c-1.4-9.2 4-14.6 10.8-14.6 7 0 12.2 5 10.8 14.6-.8-3.2-2.2-5.4-4.4-6.4-3.6 1.6-9.4 1.8-13.2-.6-2 1.4-3.4 3.8-4 7Z"/>`],
+  woman: [`<path fill="${EXC.ink}" d="M19.6 29c-.9-11.2 5-17.2 12.4-17.2S45.3 17.8 44.4 29l1.8 17c-3.4 2-7.4 1.8-10-.6h-8.4c-2.6 2.4-6.6 2.6-10 .6Z"/>`,
+    `<path fill="${EXC.ink}" d="M20.9 27c.4-8 4.8-11.6 11.1-11.6S42.7 19 43.1 27c-3.4-4.4-8.4-6.6-14.8-4.8-3 .9-5.4 2.4-7.4 4.8Z"/>`],
+  neutral: [`<path fill="${EXC.ink}" d="M20 31.5c-1.4-12.4 4.6-18.6 12-18.6s13.4 6.2 12 18.6l-.4 5.6c-1.6.8-2.8.2-2.8-1.4V27c-2.4-4.6-5.6-6.6-8.8-6.6s-6.4 2-8.8 6.6v8.7c0 1.6-1.2 2.2-2.8 1.4Z"/>`, ''],
+};
+/** One person facing the camera; `extra` is drawn over the face (glasses, a cap). */
+function exFront(hair, top, { eyes = true, hairFront = true, extra = '' } = {}) {
+  const [back, front] = EX_HAIR[hair];
+  return back + exNeck + exBody(top) + exHead + (eyes ? exEyes : '') + exSmile + (hairFront ? front : '') + extra;
+}
+const EX_ART = {
+  clear: exFront('neutral', '#13285a'),
+  clear_man: exFront('man', '#13285a'),
+  clear_woman: exFront('woman', '#5b6478'),
+  sunglasses: exFront('man', '#13285a', {
+    eyes: false,
+    extra: `<path d="M21 27.4l1.8-.6M43 27.4l-1.8-.6M31 27.6h2" stroke="${EXC.ink}" stroke-width="1.4" stroke-linecap="round"/>`
+      + `<rect x="22.4" y="25.2" width="8.8" height="6.6" rx="2.8" fill="${EXC.ink}"/><rect x="32.8" y="25.2" width="8.8" height="6.6" rx="2.8" fill="${EXC.ink}"/>`
+      + '<path d="M24.6 27.4l2.4-1M35 27.4l2.4-1" stroke="#fff" stroke-opacity=".55" stroke-width="1.1" stroke-linecap="round"/>',
+  }),
+  cap: exFront('man', '#13285a', {
+    hairFront: false,
+    extra: `<path fill="${EXC.ink}" fill-opacity=".2" d="M21 28.4h22l-.9 4.8H21.9Z"/>`
+      + `<path fill="${EXC.cap}" d="M20.6 26c-.4-9.6 4.6-14.8 11.4-14.8S43.8 16.4 43.4 26Z"/>`
+      + `<path d="M32 11.6V25M26.4 13.4c-1.6 3.6-2 7.6-1.8 12.2M37.6 13.4c1.6 3.6 2 7.6 1.8 12.2" fill="none" stroke="${EXC.brim}" stroke-width=".9" stroke-opacity=".7"/>`
+      + `<circle cx="32" cy="11.6" r="1.5" fill="${EXC.brim}"/>`
+      + `<path fill="${EXC.brim}" d="M18.6 26.4C23 24 41 24 45.4 26.4c1 2.6-.4 4.4-3.2 4.2-6.4-1.8-14-1.8-20.4 0-2.8.2-4.2-1.6-3.2-4.2Z"/>`,
+  }),
+  side: `<path fill="${EXC.neck}" d="M27 35h8.4l1 13h-9.4z"/>${exBody('#5b6478')}`
+    + `<ellipse cx="33" cy="27.6" rx="10.4" ry="12.8" fill="${EXC.face}"/>`
+    + `<path fill="${EXC.face}" d="M42.4 24.4 46.2 31c.5 1-.1 1.8-1.2 1.8h-2.8Z"/>`
+    + `<circle cx="39.4" cy="28" r="1.4" fill="${EXC.ink}"/>`
+    + `<path d="M39.4 35.4h3" stroke="${EXC.ink}" stroke-width="1.4" stroke-linecap="round"/>`
+    + `<path fill="${EXC.ink}" d="M22.4 30.4c-1.6-11.6 4.4-17.6 11.4-17.6 6 0 10.2 3.6 10.4 9.2-3.8-2.8-8-3-11-.8-2.6 1.8-3.4 5.2-3.2 9.4.2 5.4 1.2 10.4.4 15.4-3.6 1.6-8 1.2-11.4-.8 2.6-4.6 4.2-9.2 3.4-14.8Z"/>`,
+  group: [[-6.4, 25.4, 0.6, '#8a92a3'], [32.2, 25.4, 0.6, '#5b6478'], [10.9, 21.8, 0.66, '#13285a']]
+    .map(([x, y, s, top]) => `<g transform="translate(${x} ${y}) scale(${s})">${exFront('woman', top)}</g>`).join(''),
+};
+const EX_BADGE = {
+  good: '<circle cx="12" cy="12" r="10" fill="#1e9e57"/><path d="M7.2 12.4l3.2 3.2 6.4-6.6" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>',
+  bad: '<circle cx="12" cy="12" r="8.6" fill="#fff" stroke="#d92d20" stroke-width="2.8"/><path d="M6.2 17.8 17.8 6.2" stroke="#d92d20" stroke-width="2.8"/>',
+};
+function exSvg(markup, viewBox, cls) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  for (const [k, v] of Object.entries({ viewBox, 'aria-hidden': 'true', focusable: 'false', class: cls })) svg.setAttribute(k, v);
+  svg.innerHTML = markup;
+  return svg;
+}
+/** [art, caption key, good] for the gender picked so far: Male → the men's set, Female → the women's, else both. */
+function exampleSet(gender) {
+  const men = [['sunglasses', 'cp_ex_sunglasses'], ['cap', 'cp_ex_cap']];
+  const women = [['side', 'cp_ex_side'], ['group', 'cp_ex_group']];
+  if (gender === 'man') return [['clear_man', 'cp_ex_clear', true], ...men];
+  if (gender === 'woman') return [['clear_woman', 'cp_ex_clear', true], ...women];
+  return [['clear', 'cp_ex_clear', true], ...men, ...women];
+}
+/** The row of small examples under the photos: a green ✓ on the good one, a red circle-slash on the bad ones. */
+function photoExamples(gender) {
+  return el('ul', { class: 'photo-examples', 'aria-label': t('cp_ex_label'), 'data-set': gender === 'man' || gender === 'woman' ? gender : 'both' },
+    exampleSet(gender).map(([art, cap, good]) => el('li', { class: ['ex', good ? 'ex-good' : 'ex-bad'], 'data-ex': art },
+      el('span', { class: 'ex-pic' }, exSvg(`<rect width="64" height="64" fill="${EXC.bg}"/>${EX_ART[art]}`, '4 8 56 56', 'ex-art')),
+      exSvg(EX_BADGE[good ? 'good' : 'bad'], '0 0 24 24', 'ex-badge'),
+      el('span', { class: 'ex-cap', 'aria-hidden': 'true' }, t(cap)),
+      el('span', { class: 'visually-hidden' }, t(good ? 'cp_ex_good' : 'cp_ex_bad', { what: t(cap) })))));
 }
 
 // ---------------------------------------------------------------- phone verifier (also used on #/me)
@@ -118,10 +210,10 @@ export const blankPhone = () => ({
   channel: 'telegram', sentBy: null, live: false, failed: [],
 });
 
-// The ways in, in the order shown: two bring the code (Telegram, WhatsApp), two sign in (Facebook, Google).
+// The ways in, in the order shown: two bring the code (Telegram, WhatsApp), three sign in (Facebook, Google, TikTok).
 // Brand names stay in Latin letters in every language.
 const CODE_CHANNELS = [['telegram', 'Telegram'], ['whatsapp', 'WhatsApp']];
-const SIGN_INS = [['facebook', 'facebook', 'Facebook'], ['google', 'gmail', 'Google']]; // [provider, verified key, name]
+const SIGN_INS = [['facebook', 'facebook', 'Facebook'], ['google', 'gmail', 'Google'], ['tiktok', 'tiktok', 'TikTok']]; // [provider, verified key, name]
 const channelName = (key) => CODE_CHANNELS.find((c) => c[0] === key)?.[1] ?? key;
 const otherChannel = (key) => CODE_CHANNELS.find((c) => c[0] !== key)[0];
 let verifierSeq = 0;
@@ -142,6 +234,11 @@ const BRAND_SVG = {
     + '<path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>'
     + '<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>'
     + '</svg>',
+  // TikTok: a black circle with a plain white music note (our own simple drawing: stem, round head, curled flag).
+  tiktok: '<circle cx="12" cy="12" r="12" fill="#000"/>'
+    + '<g fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round">'
+    + '<path d="M13.2 5.8v9.3"/><circle cx="10.5" cy="15.2" r="2.7"/><path d="M13.2 5.8c.4 2 1.9 3.3 4 3.5"/>'
+    + '</g>',
 };
 function brandMark(key) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -194,6 +291,56 @@ function sendErrorText(err, channel, otherOn = true) {
   return err.status === 0 ? t('err_network') : t('err_generic');
 }
 
+// The free Telegram bot (owner 2026-10-13): the phone step while it waits for "Share my number" in Telegram.
+// "Share my number" is the bot's own button text in that language (src/lib/thirtyda-telegram-bot.mjs BOT_TEXT).
+registerStrings({
+  en: {
+    cp_tg_wait: 'Open Telegram and tap “Share my number”.',
+    cp_tg_opened: 'Now tap “Share my number” in Telegram.',
+    cp_tg_open: 'Open Telegram',
+    cp_tg_cancel: 'Cancel',
+    cp_tg_mismatch: 'The number in Telegram is not the one you typed. Check the number and try again.',
+    cp_tg_expired: 'That took too long. Tap Telegram to try again.',
+    cp_tg_number_first: 'Type your number first, then tap Telegram.',
+  },
+  km: {
+    cp_tg_wait: 'បើក Telegram ហើយចុច “ចែករំលែកលេខរបស់ខ្ញុំ”។',
+    cp_tg_opened: 'ឥឡូវនេះ សូមចុច “ចែករំលែកលេខរបស់ខ្ញុំ” ក្នុង Telegram។',
+    cp_tg_open: 'បើក Telegram',
+    cp_tg_cancel: 'បោះបង់',
+    cp_tg_mismatch: 'លេខក្នុង Telegram មិនមែនជាលេខដែលអ្នកបានវាយទេ។ សូមពិនិត្យលេខ ហើយសាកម្ដងទៀត។',
+    cp_tg_expired: 'ចំណាយពេលយូរពេក។ សូមចុច Telegram ដើម្បីសាកម្ដងទៀត។',
+    cp_tg_number_first: 'សូមវាយលេខទូរសព្ទរបស់អ្នកជាមុនសិន រួចចុច Telegram។',
+  },
+  zh: {
+    cp_tg_wait: '打开 Telegram，点“分享我的号码”。',
+    cp_tg_opened: '现在请在 Telegram 里点“分享我的号码”。',
+    cp_tg_open: '打开 Telegram',
+    cp_tg_cancel: '取消',
+    cp_tg_mismatch: 'Telegram 里的号码和你输入的不一样。请检查号码后再试。',
+    cp_tg_expired: '时间太久了。请再点一次 Telegram。',
+    cp_tg_number_first: '请先输入你的号码，再点 Telegram。',
+  },
+  ko: {
+    cp_tg_wait: 'Telegram을 열고 ‘내 번호 공유’를 누르세요.',
+    cp_tg_opened: '이제 Telegram에서 ‘내 번호 공유’를 누르세요.',
+    cp_tg_open: 'Telegram 열기',
+    cp_tg_cancel: '취소',
+    cp_tg_mismatch: 'Telegram의 번호가 입력한 번호와 달라요. 번호를 확인하고 다시 해 보세요.',
+    cp_tg_expired: '시간이 너무 지났어요. Telegram을 다시 눌러 주세요.',
+    cp_tg_number_first: '먼저 번호를 입력한 뒤 Telegram을 누르세요.',
+  },
+  ja: {
+    cp_tg_wait: 'Telegram を開いて「自分の番号を共有」を押してください。',
+    cp_tg_opened: 'では、Telegram で「自分の番号を共有」を押してください。',
+    cp_tg_open: 'Telegram を開く',
+    cp_tg_cancel: 'キャンセル',
+    cp_tg_mismatch: 'Telegram の番号が入力した番号と違います。番号を確認して、もう一度お試しください。',
+    cp_tg_expired: '時間がかかりすぎました。もう一度 Telegram を押してください。',
+    cp_tg_number_first: '先に番号を入力してから、Telegram を押してください。',
+  },
+});
+
 function verifyErrorText(err) {
   if (err.code === 'wrong_code' || err.code === 'invalid') return t('cp_code_wrong');
   if (err.code === 'code_expired') return t('cp_code_expired');
@@ -203,9 +350,12 @@ function verifyErrorText(err) {
 }
 
 /**
- * One row of round brand buttons: Telegram · WhatsApp (where the code goes) · Facebook · Google (sign in;
+ * One row of round brand buttons: Telegram · WhatsApp (where the code goes) · Facebook · Google · TikTok (sign in;
  * only when `signin` is given — Create profile). Then [+855 ⌄][12 345 678][Send code] → 6-digit code with a
- * resend countdown → green "Phone verified". A live channel really sends ("We sent a code to your Telegram");
+ * resend countdown → green "Phone verified". On Create profile (owner 2026-10-13) the number box comes FIRST,
+ * always there even while no code channel works (then without Send code: the number is kept and saved on the
+ * profile unverified — see flagNumber), and one short line under the round buttons replaces every standing note.
+ * A live channel really sends ("We sent a code to your Telegram");
  * test mode shows the code on screen. If the channel cannot deliver, the message offers the other one.
  * A button that does not work yet (GET /auth/methods) is dimmed with "Coming soon"; tapping it says why.
  * Facebook / Google say "Coming soon" until their keys are saved on the admin Code page; then a tap leaves for
@@ -231,10 +381,13 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
   let signingIn = null;
   let codeEl = null;
   let methods = null; // null = not known (yet): every button on
+  let methodsAsked = false; // GET /auth/methods answered (or failed): Create profile shows Send code only then
+  let numberFlagged = false; // the error shown is flagNumber's: it goes as soon as the number is edited
   let alive = true;
 
   // An optional action (e.g. "Send by WhatsApp") sits right after the message.
   const showError = (text, action = null) => {
+    numberFlagged = false;
     const body = text ? el('span', {}, text, action ? ' ' : null, action
       ? el('button', { type: 'button', class: 'link err-action', on: { click: action.run } }, action.label) : null) : null;
     error.replaceChildren(...(text ? [icon('flag', 14), body] : []));
@@ -249,17 +402,15 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
 
   const codeOn = (key) => methods?.code?.[key] !== false;
   const signinOn = (provider) => methods?.signin?.[provider] !== false;
-  /** Some code channel works (or it is not known yet). None → no phone box, one calm line instead. */
+  /**
+   * Some code channel works (or it is not known yet). None → #/me: no phone box, "Codes by phone are coming
+   * soon." instead; Create profile: the number box stays, without Send code.
+   */
   const anyCodeOn = () => CODE_CHANNELS.some(([key]) => codeOn(key));
   /** "Sign-in with Google is coming soon." — pointing at the phone only while a code channel works. */
   const signinSoonText = (name) => t(anyCodeOn() ? 'cp_signin_soon' : 'cp_signin_soon_only', { name });
-  /** No code channel works: "Codes by phone are coming soon. For now, sign in with Facebook or Google." (the working ones). */
-  function phoneSoonText() {
-    const proved = signin?.verified?.() || {};
-    const names = signin && !SIGN_INS.some(([, key]) => proved[key])
-      ? SIGN_INS.filter(([provider]) => methods?.signin?.[provider] === true).map(([, , name]) => name) : [];
-    return names.length ? t('cp_phone_soon_with', { names: names.join(t('cp_or')) }) : t('cp_phone_soon');
-  }
+  /** Create profile: Send code only once GET /auth/methods answered and a code channel works (or a code is out). */
+  const sendShown = () => model.codeSent || !signin || (methodsAsked && anyCodeOn());
 
   /** The other code channel can still be offered: it works and has not failed here already. */
   const otherWorks = (channel) => {
@@ -281,6 +432,12 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     if (!codeOn(key)) {
       showError(null);
       showNote(t(otherWorks(key) ? 'cp_ch_off' : 'cp_ch_off_only', { channel: channelName(key), other: channelName(otherChannel(key)) }));
+      return;
+    }
+    // The free Telegram bot: the tap itself goes to Telegram (no code to wait for).
+    if (key === 'telegram' && botMode()) {
+      model.channel = key;
+      startTelegram();
       return;
     }
     if (model.channel === key) return;
@@ -318,6 +475,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
 
   async function send() {
     if (sending) return;
+    if (model.channel === 'telegram' && botMode()) return startTelegram();
     const phone = fullPhone(model);
     if (!phone) return showError(t('cp_phone_invalid'));
     const channel = model.channel;
@@ -346,12 +504,138 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     if (sent) codeEl?.focus();
   }
 
+  // ---------- the free Telegram bot (GET /auth/methods → telegram: 'bot'; owner 2026-10-13) ----------
+  // No code: the number typed here goes to POST /auth/telegram/start, Telegram opens on the 30+DA bot, the person
+  // taps "Share my number" there, and GET /auth/telegram/status (every 2 s, and on coming back to this tab) signs
+  // in this browser exactly like a good code. model.tg = { phone, link, until, opened, pin } while it waits.
+  function botMode() { return methods?.telegram === 'bot'; }
+  model.tg ||= null;
+  let tgTimer = null;
+  let tgBusy = false;
+  let tgEl = null;
+  const onTgVisible = () => { if (document.visibilityState === 'visible' && model.tg) pollTelegram(); };
+  function stopTelegram() {
+    clearTimeout(tgTimer);
+    tgTimer = null;
+    document.removeEventListener('visibilitychange', onTgVisible);
+  }
+  function endTelegram() {
+    model.tg = null;
+    stopTelegram();
+  }
+  function waitForTelegram(ms) {
+    clearTimeout(tgTimer);
+    document.removeEventListener('visibilitychange', onTgVisible);
+    document.addEventListener('visibilitychange', onTgVisible);
+    tgTimer = setTimeout(pollTelegram, ms);
+  }
+  const openTelegram = (link) => {
+    try { window.open(link, '_blank', 'noopener'); } catch { /* blocked: the "Open Telegram" button is right there */ }
+  };
+
+  async function startTelegram() {
+    if (tgBusy || sending) return;
+    const phone = fullPhone(model);
+    if (!phone) {
+      showError(t(model.phone.trim() ? 'cp_phone_invalid' : 'cp_tg_number_first'));
+      numberFlagged = true;
+      node.querySelector('.phone-row input[type=tel]')?.focus();
+      return;
+    }
+    // The same number is already waiting: just open Telegram again.
+    if (model.tg?.phone === phone && model.tg.until > Date.now()) return openTelegram(model.tg.link);
+    endTelegram();
+    tgBusy = true;
+    sending = true;
+    showError(null);
+    showNote(null);
+    render();
+    try {
+      const pin = waitingPin(); // a returning person's waiting PIN goes with the check (the server keeps it hashed)
+      const r = await api.post('/auth/telegram/start', { phone, lang: state.lang, ...(pin ? { pin } : {}) });
+      model.tg = { phone: r.phone || phone, link: r.link, until: Date.now() + (Number(r.expiresIn) || 600) * 1000, opened: false, pin: Boolean(pin) };
+      openTelegram(r.link);
+      waitForTelegram(Number(r.pollMs) || 2000);
+    } catch (err) {
+      const off = err.code === 'channel_unavailable';
+      if (off && !model.failed.includes('telegram')) model.failed.push('telegram');
+      showError(sendErrorText(err, 'telegram', otherWorks('telegram')), off ? offerOther('telegram') : null);
+    } finally {
+      tgBusy = false;
+      sending = false;
+      render();
+    }
+  }
+
+  async function pollTelegram() {
+    if (!alive || !model.tg || tgBusy) return;
+    clearTimeout(tgTimer);
+    tgBusy = true;
+    let next = 2000;
+    try {
+      const r = await api.get('/auth/telegram/status', { redirect: false });
+      if (!model.tg) return; // cancelled meanwhile
+      if (r.state === 'verified') {
+        const { phone, pin } = model.tg;
+        endTelegram();
+        if (pin && r.user?.pinSet) clearPinFlags();
+        Object.assign(model, { verified: true, verifiedPhone: r.user?.phone || phone, codeSent: false, code: '', devCode: null, failed: [] });
+        showError(null);
+        render();
+        onChange?.();
+        onVerified?.(r);
+        return;
+      }
+      if (r.state !== 'waiting') {
+        // Over without a number: their own number was another one, or it took too long (calm, one line).
+        endTelegram();
+        showNote(t(r.state === 'mismatch' ? 'cp_tg_mismatch' : 'cp_tg_expired'), r.state === 'mismatch' ? 'flag' : 'clock');
+        render();
+        return;
+      }
+      if (r.opened && !model.tg.opened) {
+        model.tg.opened = true;
+        render();
+      }
+    } catch (err) {
+      next = err.status === 429 ? 10000 : 4000; // a hiccup: keep asking, a little slower
+    } finally {
+      tgBusy = false;
+    }
+    if (!model.tg) return;
+    if (Date.now() > model.tg.until + 60e3) {
+      endTelegram();
+      showNote(t('cp_tg_expired'));
+      render();
+      return;
+    }
+    waitForTelegram(next);
+  }
+
+  /** While it waits: "Open Telegram and tap “Share my number”." · the number · [Open Telegram] · Cancel. */
+  function tgWaitBox() {
+    tgEl = null;
+    if (!model.tg) return null;
+    tgEl = el('div', { class: 'tg-wait', role: 'status', 'aria-live': 'polite' },
+      el('div', { class: 'tg-wait-head' },
+        el('span', { class: 'tg-wait-mark', 'aria-hidden': 'true' }, brandMark('telegram')),
+        el('div', { class: 'tg-wait-text' },
+          el('strong', {}, t(model.tg.opened ? 'cp_tg_opened' : 'cp_tg_wait')),
+          el('span', { class: 'tg-wait-num' }, model.tg.phone))),
+      el('div', { class: 'tg-wait-actions' },
+        el('a', { class: 'btn btn-sm tg-open', href: model.tg.link, target: '_blank', rel: 'noopener noreferrer' }, t('cp_tg_open')),
+        el('button', { type: 'button', class: 'link tg-cancel', on: { click: () => { endTelegram(); render(); } } }, t('cp_tg_cancel'))));
+    return tgEl;
+  }
+
   async function check(input) {
     if (checking) return;
     checking = true;
     input.readOnly = true;
     try {
-      const r = await api.post('/auth/verify-code', { phone: model.sentTo, code: model.code });
+      const pin = waitingPin(); // a returning person's waiting PIN becomes their PIN (they just proved who they are)
+      const r = await api.post('/auth/verify-code', { phone: model.sentTo, code: model.code, ...(pin ? { pin } : {}) });
+      if (pin && r.user?.pinSet) clearPinFlags();
       Object.assign(model, { verified: true, verifiedPhone: model.sentTo, codeSent: false, code: '', devCode: null, failed: [] });
       showError(null);
       render();
@@ -435,28 +719,38 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
       COUNTRY_CODES.map((c) => el('option', { value: c, selected: c === model.cc }, c)));
     // While a code is out, "Resend code" under it takes over until the 30 s are up.
     const waiting = () => model.codeSent && model.resendAt > Date.now();
+    // The free Telegram bot sends no code: with Telegram picked the button opens Telegram (and rests while it waits).
+    const tgPicked = model.channel === 'telegram' && botMode();
     const sendBtn = el('button', {
-      type: 'button', class: 'btn btn-secondary btn-sm send-code', disabled: sending || waiting() || !fullPhone(model), on: { click: send },
-    }, t(sending ? 'cp_sending' : 'cp_send_code'));
+      type: 'button', class: 'btn btn-secondary btn-sm send-code', on: { click: send },
+      disabled: sending || waiting() || !fullPhone(model) || Boolean(model.tg && model.tg.phone === fullPhone(model)),
+    }, t(sending ? 'cp_sending' : tgPicked ? 'cp_tg_open' : 'cp_send_code'));
     const phoneInput = el('input', {
       class: 'input', type: 'tel', inputmode: 'tel', autocomplete: 'tel-national', maxlength: '20',
       placeholder: t('cp_phone_ph'), 'aria-label': t('cp_phone'), 'aria-describedby': `${uid}-by`, value: model.phone,
       on: {
         input: () => {
           model.phone = phoneInput.value;
+          // Waiting for Telegram for another number: that wait is over (tap Telegram again for this one).
+          if (model.tg && fullPhone(model) !== model.tg.phone) { endTelegram(); if (tgEl) tgEl.hidden = true; }
           if (model.codeSent && fullPhone(model) !== model.sentTo) Object.assign(model, { codeSent: false, devCode: null, code: '', live: false, sentBy: null });
           sendBtn.disabled = sending || waiting() || !fullPhone(model);
           codeBox.hidden = !model.codeSent;
-          hint.hidden = model.codeSent || !codeOn(model.channel);
+          hint.hidden = model.codeSent || (!signin && !codeOn(model.channel));
+          if (numberFlagged) showError(null); // "Enter a valid phone number." from Next goes as they fix it
         },
-        keydown: (e) => { if (e.key === 'Enter') send(); },
+        keydown: (e) => { if (e.key === 'Enter' && sendBtn.isConnected) send(); },
       },
     });
-    // "Your code comes by Telegram." — which of the two the Send button uses; only when that one is offered.
-    const hint = el('p', { class: 'way-hint', id: `${uid}-by`, hidden: model.codeSent || !codeOn(model.channel) },
-      t('cp_code_comes_by', { channel: channelName(model.channel) }));
-    // No code channel offered at all (and no code out): no phone box and Send button that can only fail, one calm line.
-    const phoneSoon = !anyCodeOn() && !model.codeSent;
+    // Create profile: one short line for all the ways ("Watch out — your code is sent to the app you pick.").
+    // #/me: "Your code comes by Telegram." — which of the two the Send button uses; only when that one is offered.
+    const hint = signin
+      ? el('p', { class: 'way-hint way-watch', id: `${uid}-by`, hidden: model.codeSent }, t('cp_code_watch'))
+      : el('p', { class: 'way-hint', id: `${uid}-by`, hidden: model.codeSent || !codeOn(model.channel) },
+        t('cp_code_comes_by', { channel: channelName(model.channel) }));
+    // #/me with no code channel offered at all (and no code out): no phone box and Send button that can only
+    // fail, one calm line. Create profile keeps the box (the number is saved unverified), just without Send code.
+    const phoneSoon = !signin && !anyCodeOn() && !model.codeSent;
 
     const codeBox = el('div', { class: 'stack', style: { '--gap': '8px' }, hidden: !model.codeSent });
     if (model.codeSent) {
@@ -479,12 +773,18 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
           : t('cp_code_sent', { phone: model.sentTo })));
       if (model.devCode) codeBox.append(el('p', { class: 'dev-note' }, t('cp_test_code', { code: model.devCode })));
     }
-    // "Google or Facebook is enough to start…" only once one of them is known to work.
-    const signinNote = signin && signinWorks(methods) ? el('p', { class: 'help' }, t('cp_social_note')) : null;
-    const phoneRow = phoneSoon
-      ? el('p', { class: 'way-hint way-soon', role: 'note' }, phoneSoonText())
-      : [hint, el('div', { class: 'phone-row' }, ccSel, phoneInput, sendBtn)];
-    node.replaceChildren(...[waysRow(), note, phoneRow, codeBox, error, signinNote].flat().filter(Boolean));
+    const withSend = sendShown();
+    const phoneRow = el('div', { class: ['phone-row', !withSend && 'no-send'] }, ccSel, phoneInput, withSend ? sendBtn : null);
+    // While it waits for Telegram (the free bot) its box takes the one line's place.
+    const tgBox = tgWaitBox();
+    if (tgBox) hint.hidden = true;
+    // Create profile: the number first (right under the label), then the round buttons, then the one line.
+    if (signin) node.replaceChildren(...[phoneRow, waysRow(), hint, note, codeBox, tgBox, error].filter(Boolean));
+    else {
+      node.replaceChildren(...[waysRow(), note, phoneSoon
+        ? el('p', { class: 'way-hint way-soon', role: 'note' }, t('cp_phone_soon'))
+        : [hint, phoneRow], codeBox, tgBox, error].flat().filter(Boolean));
+    }
   }
 
   render();
@@ -493,12 +793,19 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
   // Back from Google / Facebook with the browser's back button (page restored from memory): the button is free again.
   const onShow = (e) => { if (e.persisted && signingIn) { signingIn = null; render(); } };
   window.addEventListener('pageshow', onShow);
+  // Re-drawn while it waits for Telegram (a language switch): keep asking.
+  if (model.tg) pollTelegram();
   loadMethods().then((m) => {
-    if (!alive || !m) return;
-    methods = m;
-    onMethods?.(m);
-    // The chosen channel does not work but the other one does: start there (unless a code is already out).
-    if (!model.codeSent && !codeOn(model.channel) && codeOn(otherChannel(model.channel))) model.channel = otherChannel(model.channel);
+    if (!alive) return;
+    methodsAsked = true;
+    // The call failed: every button stays on (#/me: nothing changes; Create profile: Send code shows now).
+    if (!m && !signin) return;
+    if (m) {
+      methods = m;
+      onMethods?.(m);
+      // The chosen channel does not work but the other one does: start there (unless a code is already out).
+      if (!model.codeSent && !codeOn(model.channel) && codeOn(otherChannel(model.channel))) model.channel = otherChannel(model.channel);
+    }
     const focused = node.contains(document.activeElement) ? document.activeElement : null;
     const typed = focused?.matches?.('input') ? { value: focused.value, start: focused.selectionStart } : null;
     render();
@@ -511,14 +818,35 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
   return {
     node,
     focusCode: () => codeEl?.focus(),
-    destroy: () => { alive = false; clearInterval(resendTimer); window.removeEventListener('pageshow', onShow); },
+    /**
+     * Create profile: the number typed but not verified, ready for POST /profile (saved there unverified), or
+     * null when nothing is typed (or it is verified). A number that does not look right → flagged here
+     * ("Enter a valid phone number.", the box focused) and { bad: true }.
+     */
+    typedNumber: () => {
+      if (model.verified || !model.phone.trim()) return null;
+      const phone = fullPhone(model);
+      if (phone) return { phone };
+      flagNumber();
+      return { bad: true };
+    },
+    flagNumber,
+    destroy: () => { alive = false; clearInterval(resendTimer); stopTelegram(); window.removeEventListener('pageshow', onShow); },
   };
+
+  /** "Enter a valid phone number." under the box (it goes as soon as the number is edited), cursor in the box. */
+  function flagNumber() {
+    showError(t('cp_phone_invalid'));
+    numberFlagged = true;
+    node.querySelector('.phone-row input[type=tel]')?.focus();
+  }
 }
 
 // ---------------------------------------------------------------- screen
 
 const blankDraft = () => ({
-  photo: null, name: '', birthYear: '', realName: '', gender: '', role: '', phone: blankPhone(), verified: { gmail: false, facebook: false },
+  photo: null, name: '', birthYear: '', realName: '', gender: '', role: '', phone: blankPhone(), verified: { gmail: false, facebook: false, tiktok: false },
+  extraPhotos: [null, null, null], // photos 2–4 (optional), uploaded right after the profile is made
 });
 // Survives a language switch (which re-renders this screen) but not a reload — except the trip to Google /
 // Facebook and back: stashDraft keeps what was typed in this tab (sessionStorage) and the screen takes it back once.
@@ -526,10 +854,15 @@ let draft = blankDraft();
 const DRAFT_KEY = '30da_cp_draft';
 
 function stashDraft() {
-  try {
-    const { photo, name, birthYear, realName, gender, role } = draft;
-    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ photo, name, birthYear, realName, gender, role, cc: draft.phone.cc, phone: draft.phone.phone }));
-  } catch { /* storage full or off: they type it again */ }
+  const { photo, name, birthYear, realName, gender, role, extraPhotos } = draft;
+  const kept = { photo, name, birthYear, realName, gender, role, cc: draft.phone.cc, phone: draft.phone.phone };
+  // Photos 2–4 too when they fit (the tab's storage is a few MB); without them when they do not.
+  for (const value of [{ ...kept, extraPhotos }, kept]) {
+    try {
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(value));
+      return;
+    } catch { /* storage full or off: try smaller, else they type it again */ }
+  }
 }
 
 function takeStashedDraft() {
@@ -541,6 +874,13 @@ function takeStashedDraft() {
   if (!saved || typeof saved !== 'object') return;
   const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
   if (typeof saved.photo === 'string' && saved.photo.startsWith('data:image/')) draft.photo = saved.photo;
+  if (Array.isArray(saved.extraPhotos)) {
+    const kept = draft.extraPhotos || [null, null, null];
+    draft.extraPhotos = kept.map((p, i) => {
+      const v = saved.extraPhotos[i];
+      return typeof v === 'string' && v.startsWith('data:image/') ? v : p;
+    });
+  }
   draft.name = str(saved.name, NAME_RAW_MAX) || draft.name;
   draft.birthYear = str(String(saved.birthYear ?? ''), 4) || draft.birthYear;
   draft.realName = str(saved.realName, 60) || draft.realName;
@@ -550,7 +890,7 @@ function takeStashedDraft() {
   if (str(saved.phone, 20) && !draft.phone.verified) draft.phone.phone = str(saved.phone, 20);
 }
 
-const SIGNIN_NAMES = { google: 'Google', facebook: 'Facebook' };
+const SIGNIN_NAMES = { google: 'Google', facebook: 'Facebook', tiktok: 'TikTok' };
 const SIGNIN_ERRORS = ['cancelled', 'expired', 'unavailable', 'failed', 'too_many'];
 const SIGNIN_ERROR_ICON = { cancelled: 'question', expired: 'clock', too_many: 'clock', unavailable: 'refresh', failed: 'refresh' };
 
@@ -596,7 +936,9 @@ screen('/create', ({ root, query }) => {
   root.classList.add('create');
   // Back from Google / Facebook: what was typed before leaving, and a word on how it went (said once).
   takeStashedDraft();
-  const notice = signinNotice(query);
+  // After "Forgot PIN?" / 5 wrong PINs: a calm note at the top and by the sign-in buttons.
+  const pinAgain = pinResetPending();
+  const notice = signinNotice(query) || (pinAgain ? { ok: false, icon: 'lock', text: t('pin_signin_again') } : null);
   if (query?.signin) {
     try { history.replaceState(history.state, '', '#/create'); } catch { /* the address keeps its query */ }
   }
@@ -606,6 +948,7 @@ screen('/create', ({ root, query }) => {
   if (pending?.verified) {
     draft.verified.gmail ||= Boolean(pending.verified.gmail);
     draft.verified.facebook ||= Boolean(pending.verified.facebook);
+    draft.verified.tiktok ||= Boolean(pending.verified.tiktok);
   }
   let saving = false;
   // Google / Facebook known to work (GET /auth/methods, via the phone step): only then do the notes name them.
@@ -616,7 +959,9 @@ screen('/create', ({ root, query }) => {
       el('span', { class: 'wordmark brand' }, '30+DA'),
       el('button', { type: 'button', class: 'globe-pill', 'aria-label': t('cp_choose_language'), on: { click: languageSheet } },
         icon('globe', 15), LANG_CODES[state.lang] || state.lang.toUpperCase())),
-    el('h1', { class: 'title' }, t('cp_title')));
+    el('h1', { class: 'title' }, t('cp_title')),
+    // root.append is the browser's own (no null-skipping like el()): '' adds nothing visible, null would print "null".
+    pinAgain ? el('p', { class: 'way-msg pin-again-note', role: 'status' }, icon('lock', 14), el('span', {}, t('pin_signin_again'))) : '');
 
   // --- photo
   const file = el('input', { type: 'file', accept: 'image/*', capture: 'user', class: 'visually-hidden', tabindex: '-1', 'aria-hidden': 'true' });
@@ -647,6 +992,85 @@ screen('/create', ({ root, query }) => {
     }
   });
   paintPhoto();
+
+  // --- photos 2–4 (optional): filled here right away, sent right after the profile is made
+  if (!Array.isArray(draft.extraPhotos)) draft.extraPhotos = [null, null, null];
+  // From the library as well as the camera (no capture), unlike the face photo.
+  const moreFile = el('input', { type: 'file', accept: 'image/*', class: 'visually-hidden', tabindex: '-1', 'aria-hidden': 'true' });
+  const minis = el('div', { class: 'slot-minis-wrap' });
+  let moreTarget = 1;
+  let moreBusy = -1;
+  const paintMore = (focusSlot = 0) => {
+    minis.replaceChildren(moreSlots(draft.extraPhotos, {
+      busy: moreBusy,
+      onPick: (slot) => {
+        if (moreBusy >= 0) return;
+        moreTarget = slot;
+        moreFile.click();
+      },
+      onRemove: (slot) => {
+        if (moreBusy >= 0) return;
+        draft.extraPhotos[slot - 1] = null;
+        paintMore(slot);
+      },
+    }));
+    // Re-drawing replaces the buttons: keep the keyboard on the tile that was used.
+    if (focusSlot) minis.querySelector(`.slot-mini-dot[data-slot="${focusSlot}"]`)?.focus();
+  };
+  let moreRead = null; // the tile photo still being read, so Next can wait for it
+  moreFile.addEventListener('change', () => {
+    const f = moreFile.files?.[0];
+    moreFile.value = '';
+    if (!f || moreBusy >= 0) return;
+    moreRead = readMore(f, moreTarget).finally(() => { moreRead = null; });
+  });
+  async function readMore(f, slot) {
+    photoErr.hidden = true;
+    moreBusy = slot;
+    paintMore();
+    try {
+      draft.extraPhotos[slot - 1] = await resizeImage(f);
+    } catch {
+      photoErr.textContent = t('cp_photo_error');
+      photoErr.hidden = false;
+    } finally {
+      moreBusy = -1;
+      paintMore(slot);
+    }
+  }
+  /** Photos 2–4 as held now, after any one still being read (Next tapped right after picking). */
+  async function heldExtras() {
+    await moreRead;
+    return [...(draft.extraPhotos || [])];
+  }
+  paintMore();
+
+  /**
+   * Photos 2–4 once the profile exists: PUT /me/photos/1..3, one at a time, each into its own slot (so each keeps
+   * the level it shows at). A dropped connection gets one more try. → how many could not be added.
+   */
+  async function addExtraPhotos(extras) {
+    let missed = 0;
+    for (const [k, photo] of extras.entries()) {
+      if (!photo) continue;
+      let done = false;
+      for (let tries = 0; tries < 2 && !done; tries++) {
+        try {
+          setMe((await api.put(`/me/photos/${k + 1}`, { photo }, { redirect: false })).user);
+          done = true;
+        } catch (err) {
+          if (err.status !== 0) break;
+        }
+      }
+      if (!done) missed++;
+    }
+    return missed;
+  }
+
+  // The examples under the photos follow "I am": Male → the men's set, Female → the women's, else both.
+  const examples = el('div', { class: 'photo-examples-wrap' });
+  const paintExamples = () => examples.replaceChildren(photoExamples(draft.gender));
+  paintExamples();
 
   // --- names + birth year
   const nameErr = el('p', { class: 'field-error', role: 'alert', hidden: true });
@@ -690,6 +1114,7 @@ screen('/create', ({ root, query }) => {
       click: () => {
         draft.gender = g;
         genderBtns.forEach((b, i) => b.setAttribute('aria-pressed', String(GENDER_KEYS[i] === g)));
+        paintExamples();
         update();
       },
     },
@@ -701,7 +1126,7 @@ screen('/create', ({ root, query }) => {
   el('option', { value: '', disabled: true, selected: !draft.role }, t('cp_choose')),
   ROLES.map((r) => el('option', { value: r.key, selected: r.key === draft.role }, roleLabel(r.key))));
 
-  // --- phone, or Facebook / Google: one row of 4 round buttons (Telegram · WhatsApp · Facebook · Google)
+  // --- phone, or Facebook / Google / TikTok: one row of 5 round buttons (Telegram · WhatsApp · Facebook · Google · TikTok)
   const phone = phoneVerifier(draft.phone, {
     onChange: () => update(),
     onMethods: (m) => { signinOk = signinWorks(m); update(); },
@@ -716,27 +1141,33 @@ screen('/create', ({ root, query }) => {
     signin: {
       verified: () => draft.verified,
       onVerified: (verified) => { draft.verified = { ...draft.verified, ...verified }; },
-      beforeLeave: stashDraft,
+      beforeLeave: () => { stashDraft(); leaveWithoutLock(); }, // the trip to Google / Facebook is not "closing" the app
     },
     notice,
   });
 
-  // --- continue
-  const contText = el('span', { class: 'btn-text' }, t('cp_continue'));
+  // --- next ("Next →": owner 2026-10-13 — there is nothing to continue yet)
+  const contText = el('span', { class: 'btn-text' }, t('cp_next'));
   const cont = el('button', { type: 'button', class: 'btn btn-primary', on: { click: () => submit() } }, contText, icon('arrow', 18));
-  const contNote = el('p', { class: 'help center' }, t('cp_need_all_phone'));
-  const ready = () => Boolean(draft.photo && checkAppName(draft.name).ok && checkBirthYear(draft.birthYear).ok
+  const contNote = el('p', { class: 'help center' }, t('cp_need_all'));
+  const fieldsReady = () => Boolean(draft.photo && checkAppName(draft.name).ok && checkBirthYear(draft.birthYear).ok
     && charCount(draft.realName.trim()) >= 2
-    && draft.gender && draft.role && (draft.phone.verified || draft.verified.gmail || draft.verified.facebook));
+    && draft.gender && draft.role);
+  const ready = () => fieldsReady() && Boolean(draft.phone.verified || draft.verified.gmail || draft.verified.facebook || draft.verified.tiktok);
   function update() {
     const ok = ready();
     cont.disabled = !ok || saving;
+    // A few words, only while Next is still off: "Fill in every field first." / "Now pick a way to verify."
     contNote.hidden = ok || saving;
-    contNote.textContent = t(signinOk ? 'cp_need_all' : 'cp_need_all_phone');
+    contNote.textContent = t(fieldsReady() ? 'cp_need_way' : 'cp_need_all');
   }
 
   async function submit() {
     if (!ready() || saving) return;
+    // A number typed but not verified by a code (signed in with Google / Facebook) goes on the profile as an
+    // unverified number; one that does not look right is flagged in the phone box instead.
+    const typed = phone.typedNumber();
+    if (typed?.bad) return;
     saving = true;
     update();
     contText.textContent = t('cp_saving');
@@ -744,9 +1175,18 @@ screen('/create', ({ root, query }) => {
       const r = await api.post('/profile', {
         name: draft.name.trim().replace(/\s+/g, ' '), birthYear: Number(draft.birthYear), realName: draft.realName.trim(),
         role: draft.role, gender: draft.gender, lang: state.lang, photo: draft.photo,
+        ...(typed?.phone ? { phone: typed.phone } : {}),
+        ...(waitingPin() ? { pin: waitingPin() } : {}),
       });
+      if (r.user?.pinSet) clearPinFlags();
+      const extras = await heldExtras();
       draft = blankDraft();
       setMe(r.user);
+      // Photos 2–4 go up now that the profile exists; one that does not make it can be added on #/me.
+      if (extras.some(Boolean)) {
+        contText.textContent = t('cp_adding_photos');
+        if (await addExtraPhotos(extras)) toast(t('cp_photos_missed'));
+      }
       contText.textContent = t('cp_locating');
       // Don't hold the new user here if the location prompt is ignored; Nearby can ask again.
       const gaveUp = new Promise((resolve) => { setTimeout(resolve, 15000); });
@@ -754,7 +1194,7 @@ screen('/create', ({ root, query }) => {
       go('/nearby', { replace: true });
     } catch (err) {
       saving = false;
-      contText.textContent = t('cp_continue');
+      contText.textContent = t('cp_next');
       update();
       profileError(err);
     }
@@ -777,10 +1217,12 @@ screen('/create', ({ root, query }) => {
       photoErr.hidden = false;
     } else if (err.code === 'phone_in_use') {
       toast(t('cp_phone_in_use'));
+    } else if (fieldName === 'phone') {
+      phone.flagNumber(); // the unverified number typed: the server did not take it
     } else if (err.code === 'not_verified' || err.status === 401) {
       // The session expired: what it proved is gone, so verify again.
       Object.assign(draft.phone, blankPhone(), { phone: draft.phone.phone, cc: draft.phone.cc });
-      draft.verified = { gmail: false, facebook: false };
+      draft.verified = { gmail: false, facebook: false, tiktok: false };
       state.pending = null;
       toast(t(signinOk ? 'cp_verify_again' : 'cp_verify_again_phone'));
       go('/create', { replace: true });
@@ -797,8 +1239,8 @@ screen('/create', ({ root, query }) => {
         el('div', { class: 'photo-row' }, pick,
           el('div', { class: 'photo-side' },
             el('p', { class: 'photo-hint' }, t('cp_photo_hint')),
-            lockedSlots())),
-        photoErr, file),
+            minis)),
+        examples, photoErr, file, moreFile),
       // App name (short) and birth year side by side, the warning under both.
       el('div', { class: 'name-year-group' },
         el('div', { class: 'name-year' },
@@ -821,14 +1263,25 @@ registerStrings({
   en: {
     cp_title: 'Create profile',
     cp_choose_language: 'Choose language',
-    cp_photo: 'Profile photo',
-    cp_photo_hint: 'Add 1 clear photo of your face.',
+    cp_photo: 'Profile photos',
+    cp_photo_hint: 'Add up to 4 photos. Photo 1 shows first; the others open at Level 2 and 3.',
     cp_photo_add: 'Add a photo of your face',
     cp_photo_change: 'Change photo',
     cp_photo_error: 'This photo could not be used. Try another one.',
-    cp_slot_level: 'Level {n}',
-    cp_slot_aria: 'Photo {slot}: locked until Level {n}',
-    cp_more_photos: 'Add up to 3 more in your profile. They show at Level 2 and Level 3.',
+    cp_slot_shows: 'Shows at Level\u00a0{n}', // "Level 2" never split over two lines
+    cp_slot_add: 'Add photo {slot} (shows at Level {n})',
+    cp_slot_change: 'Change photo {slot} (shows at Level {n})',
+    cp_slot_remove: 'Remove photo {slot}',
+    cp_adding_photos: 'Adding your photos…',
+    cp_photos_missed: 'Some photos could not be added. Add them again in your profile.',
+    cp_ex_label: 'Photo examples',
+    cp_ex_good: 'Good: {what}',
+    cp_ex_bad: 'Not this: {what}',
+    cp_ex_clear: 'Clear face',
+    cp_ex_sunglasses: 'Sunglasses',
+    cp_ex_cap: 'Cap / hat',
+    cp_ex_side: 'Side face',
+    cp_ex_group: 'Group photo',
     cp_app_name: 'App name',
     cp_tag_shown: 'Shown',
     cp_app_name_ph: 'Name',
@@ -872,8 +1325,6 @@ registerStrings({
     cp_signin_soon: 'Sign-in with {name} is coming soon. For now, get a code on your phone.',
     cp_signin_soon_only: 'Sign-in with {name} is coming soon.',
     cp_phone_soon: 'Codes by phone are coming soon.',
-    cp_phone_soon_with: 'Codes by phone are coming soon. For now, sign in with {names}.',
-    cp_or: ' or ',
     cp_signin_cancelled: 'You stopped the {name} sign-in. Nothing was saved — pick a way to verify.',
     cp_signin_expired: 'The {name} sign-in took too long. Please try again.',
     cp_signin_unavailable: 'Sign-in with {name} is not working right now. Please try again later.',
@@ -889,13 +1340,13 @@ registerStrings({
     cp_ch_off_only: 'Codes by {channel} are not available yet.',
     cp_phone_in_use: 'This phone number already has a profile.',
     cp_verified: 'Verified',
-    cp_social_note: 'Google or Facebook is enough to start. Your phone is needed before you can chat at Level 3.',
-    cp_continue: 'Continue',
-    cp_need_all: 'Add your photo, fill in every field and verify your phone, Google or Facebook.',
-    cp_need_all_phone: 'Add your photo, fill in every field and verify your phone.',
+    cp_code_watch: 'Watch out — your code is sent to the app you pick.',
+    cp_next: 'Next',
+    cp_need_all: 'Fill in every field first.',
+    cp_need_way: 'Now pick a way to verify.',
     cp_saving: 'Saving…',
     cp_locating: 'Finding people near you…',
-    cp_verify_again: 'Please verify your phone, Google or Facebook again.',
+    cp_verify_again: 'Please verify your phone, Google, Facebook or TikTok again.',
     cp_verify_again_phone: 'Please verify your phone again.',
     cp_welcome_back: 'Welcome back, {name}',
   },
@@ -903,13 +1354,24 @@ registerStrings({
     cp_title: 'បង្កើតប្រវត្តិរូប',
     cp_choose_language: 'ជ្រើសរើសភាសា',
     cp_photo: 'រូបថតប្រវត្តិរូប',
-    cp_photo_hint: 'បន្ថែមរូបថតមុខរបស់អ្នក ១ សន្លឹកឲ្យច្បាស់។',
+    cp_photo_hint: 'បន្ថែមរូបថតបានដល់ទៅ 4 សន្លឹក។ រូបទី 1 បង្ហាញមុនគេ ឯរូបផ្សេងទៀតបើកនៅកម្រិត 2 និង 3។',
     cp_photo_add: 'បន្ថែមរូបថតមុខរបស់អ្នក',
     cp_photo_change: 'ប្ដូររូបថត',
     cp_photo_error: 'មិនអាចប្រើរូបថតនេះបានទេ។ សូមសាកល្បងរូបផ្សេង។',
-    cp_slot_level: 'កម្រិត {n}',
-    cp_slot_aria: 'រូបថតទី {slot}៖ ចាក់សោរហូតដល់កម្រិត {n}',
-    cp_more_photos: 'បន្ថែមរូបថត 3 ទៀតក្នុងប្រវត្តិរូប។ គេឃើញវានៅកម្រិត 2 និងកម្រិត 3។',
+    cp_slot_shows: 'បង្ហាញនៅ\u200bកម្រិត\u00a0{n}', // may break after "បង្ហាញនៅ", never inside "កម្រិត 2"
+    cp_slot_add: 'បន្ថែមរូបថតទី {slot} (បង្ហាញនៅកម្រិត {n})',
+    cp_slot_change: 'ប្ដូររូបថតទី {slot} (បង្ហាញនៅកម្រិត {n})',
+    cp_slot_remove: 'ដករូបថតទី {slot} ចេញ',
+    cp_adding_photos: 'កំពុងបន្ថែមរូបថត…',
+    cp_photos_missed: 'រូបថតខ្លះមិនអាចបន្ថែមបានទេ។ សូមបន្ថែមវាម្ដងទៀតក្នុងប្រវត្តិរូបរបស់អ្នក។',
+    cp_ex_label: 'ឧទាហរណ៍រូបថត',
+    cp_ex_good: 'ល្អ៖ {what}',
+    cp_ex_bad: 'កុំប្រើ៖ {what}',
+    cp_ex_clear: 'មុខច្បាស់',
+    cp_ex_sunglasses: 'វ៉ែនតាខ្មៅ',
+    cp_ex_cap: 'មួក',
+    cp_ex_side: 'មុខចំហៀង',
+    cp_ex_group: 'រូបថតក្រុម',
     cp_app_name: 'ឈ្មោះក្នុងកម្មវិធី',
     cp_tag_shown: 'បង្ហាញ',
     cp_app_name_ph: 'ឈ្មោះ',
@@ -953,8 +1415,6 @@ registerStrings({
     cp_signin_soon: 'ការចូលតាម {name} នឹងមានឆាប់ៗនេះ។ សម្រាប់ពេលនេះ សូមទទួលលេខកូដតាមទូរស័ព្ទរបស់អ្នក។',
     cp_signin_soon_only: 'ការចូលតាម {name} នឹងមានឆាប់ៗនេះ។',
     cp_phone_soon: 'លេខកូដតាមទូរស័ព្ទនឹងមានឆាប់ៗនេះ។',
-    cp_phone_soon_with: 'លេខកូដតាមទូរស័ព្ទនឹងមានឆាប់ៗនេះ។ សម្រាប់ពេលនេះ សូមចូលតាម {names}។',
-    cp_or: ' ឬ ',
     cp_signin_cancelled: 'អ្នកបានបញ្ឈប់ការចូលតាម {name}។ គ្មានអ្វីត្រូវបានរក្សាទុកទេ — សូមជ្រើសរើសវិធីផ្ទៀងផ្ទាត់មួយ។',
     cp_signin_expired: 'ការចូលតាម {name} ចំណាយពេលយូរពេក។ សូមព្យាយាមម្ដងទៀត។',
     cp_signin_unavailable: 'ការចូលតាម {name} មិនដំណើរការនៅពេលនេះទេ។ សូមព្យាយាមម្ដងទៀតនៅពេលក្រោយ។',
@@ -970,27 +1430,38 @@ registerStrings({
     cp_ch_off_only: 'លេខកូដតាម {channel} មិនទាន់អាចប្រើបាននៅឡើយទេ។',
     cp_phone_in_use: 'លេខទូរស័ព្ទនេះមានប្រវត្តិរូបរួចហើយ។',
     cp_verified: 'បានផ្ទៀងផ្ទាត់',
-    cp_social_note: 'Google ឬ Facebook គ្រប់គ្រាន់ដើម្បីចាប់ផ្ដើម។ ត្រូវការលេខទូរស័ព្ទ មុនពេលអ្នកអាចជជែកនៅកម្រិត 3។',
-    cp_continue: 'បន្ត',
-    cp_need_all: 'សូមបន្ថែមរូបថត បំពេញគ្រប់ចន្លោះ ហើយផ្ទៀងផ្ទាត់ទូរស័ព្ទ Google ឬ Facebook។',
-    cp_need_all_phone: 'សូមបន្ថែមរូបថត បំពេញគ្រប់ចន្លោះ ហើយផ្ទៀងផ្ទាត់ទូរស័ព្ទ។',
+    cp_code_watch: 'ប្រយ័ត្ន — លេខកូដរបស់អ្នកនឹងផ្ញើទៅកម្មវិធីដែលអ្នកជ្រើសរើស។',
+    cp_next: 'បន្ទាប់',
+    cp_need_all: 'សូមបំពេញគ្រប់ចន្លោះជាមុនសិន។',
+    cp_need_way: 'ឥឡូវ សូមជ្រើសរើសវិធីផ្ទៀងផ្ទាត់។',
     cp_saving: 'កំពុងរក្សាទុក…',
     cp_locating: 'កំពុងស្វែងរកមនុស្សនៅជិតអ្នក…',
-    cp_verify_again: 'សូមផ្ទៀងផ្ទាត់ទូរស័ព្ទ Google ឬ Facebook ម្ដងទៀត។',
+    cp_verify_again: 'សូមផ្ទៀងផ្ទាត់ទូរស័ព្ទ Google, Facebook ឬ TikTok ម្ដងទៀត។',
     cp_verify_again_phone: 'សូមផ្ទៀងផ្ទាត់ទូរស័ព្ទម្ដងទៀត។',
     cp_welcome_back: 'សូមស្វាគមន៍ការត្រឡប់មកវិញ {name}',
   },
   zh: {
     cp_title: '创建个人资料',
     cp_choose_language: '选择语言',
-    cp_photo: '头像照片',
-    cp_photo_hint: '请添加 1 张清晰的正脸照片。',
+    cp_photo: '个人照片',
+    cp_photo_hint: '最多可添加 4 张照片。第 1 张最先显示，其他照片在等级 2 和 3 开放。',
     cp_photo_add: '添加正脸照片',
     cp_photo_change: '更换照片',
     cp_photo_error: '这张照片无法使用，请换一张。',
-    cp_slot_level: '等级 {n}',
-    cp_slot_aria: '第 {slot} 张照片：等级 {n} 解锁',
-    cp_more_photos: '可在个人资料中再加 3 张照片，等级 2 和等级 3 时对方可见。',
+    cp_slot_shows: '等级\u00a0{n}\u00a0可见',
+    cp_slot_add: '添加第 {slot} 张照片（等级 {n} 可见）',
+    cp_slot_change: '更换第 {slot} 张照片（等级 {n} 可见）',
+    cp_slot_remove: '删除第 {slot} 张照片',
+    cp_adding_photos: '正在添加照片…',
+    cp_photos_missed: '部分照片未能添加，请在个人资料中重新添加。',
+    cp_ex_label: '照片示例',
+    cp_ex_good: '合格：{what}',
+    cp_ex_bad: '不合格：{what}',
+    cp_ex_clear: '正脸清晰',
+    cp_ex_sunglasses: '墨镜',
+    cp_ex_cap: '帽子',
+    cp_ex_side: '侧脸',
+    cp_ex_group: '合照',
     cp_app_name: '应用昵称',
     cp_tag_shown: '公开',
     cp_app_name_ph: '昵称',
@@ -1034,8 +1505,6 @@ registerStrings({
     cp_signin_soon: '{name} 登录即将推出。现在请先用手机接收验证码。',
     cp_signin_soon_only: '{name} 登录即将推出。',
     cp_phone_soon: '手机验证码即将推出。',
-    cp_phone_soon_with: '手机验证码即将推出。现在请先用 {names} 登录。',
-    cp_or: ' 或 ',
     cp_signin_cancelled: '你已取消 {name} 登录，没有保存任何内容。请选择一种验证方式。',
     cp_signin_expired: '{name} 登录用时太久，请再试一次。',
     cp_signin_unavailable: '{name} 登录暂时无法使用，请稍后再试。',
@@ -1051,13 +1520,13 @@ registerStrings({
     cp_ch_off_only: '{channel} 验证码暂未开通。',
     cp_phone_in_use: '这个手机号已经有资料了。',
     cp_verified: '已验证',
-    cp_social_note: '用 Google 或 Facebook 即可开始；到等级 3 聊天前需要验证手机号。',
-    cp_continue: '继续',
-    cp_need_all: '请添加照片、填写所有信息，并验证手机、Google 或 Facebook。',
-    cp_need_all_phone: '请添加照片、填写所有信息，并验证手机号。',
+    cp_code_watch: '请留意：验证码会发送到你选择的应用。',
+    cp_next: '下一步',
+    cp_need_all: '请先填写所有信息。',
+    cp_need_way: '现在请选择一种验证方式。',
     cp_saving: '保存中…',
     cp_locating: '正在寻找你附近的人…',
-    cp_verify_again: '请重新验证手机、Google 或 Facebook。',
+    cp_verify_again: '请重新验证手机、Google、Facebook 或 TikTok。',
     cp_verify_again_phone: '请重新验证手机号。',
     cp_welcome_back: '欢迎回来，{name}',
   },
@@ -1065,13 +1534,24 @@ registerStrings({
     cp_title: '프로필 만들기',
     cp_choose_language: '언어 선택',
     cp_photo: '프로필 사진',
-    cp_photo_hint: '얼굴이 잘 보이는 사진 1장을 올려 주세요.',
+    cp_photo_hint: '사진은 4장까지 올릴 수 있어요. 1번 사진이 먼저 보이고, 나머지는 레벨 2와 3에서 열려요.',
     cp_photo_add: '얼굴 사진 추가',
     cp_photo_change: '사진 바꾸기',
     cp_photo_error: '이 사진은 사용할 수 없어요. 다른 사진을 골라 주세요.',
-    cp_slot_level: '레벨 {n}',
-    cp_slot_aria: '사진 {slot}: 레벨 {n}에서 열려요',
-    cp_more_photos: '프로필에서 사진을 3장 더 올릴 수 있어요. 레벨 2와 3에서 보여요.',
+    cp_slot_shows: '레벨\u00a0{n}에서 보여요',
+    cp_slot_add: '사진 {slot} 추가 (레벨 {n}에서 보여요)',
+    cp_slot_change: '사진 {slot} 바꾸기 (레벨 {n}에서 보여요)',
+    cp_slot_remove: '사진 {slot} 빼기',
+    cp_adding_photos: '사진을 올리는 중…',
+    cp_photos_missed: '일부 사진을 올리지 못했어요. 내 프로필에서 다시 올려 주세요.',
+    cp_ex_label: '사진 예시',
+    cp_ex_good: '좋은 예: {what}',
+    cp_ex_bad: '안 되는 예: {what}',
+    cp_ex_clear: '또렷한 얼굴',
+    cp_ex_sunglasses: '선글라스',
+    cp_ex_cap: '모자',
+    cp_ex_side: '옆얼굴',
+    cp_ex_group: '단체 사진',
     cp_app_name: '앱 이름',
     cp_tag_shown: '공개',
     cp_app_name_ph: '이름',
@@ -1115,8 +1595,6 @@ registerStrings({
     cp_signin_soon: '{name} 로그인은 곧 제공돼요. 지금은 휴대폰으로 코드를 받아 주세요.',
     cp_signin_soon_only: '{name} 로그인은 곧 제공돼요.',
     cp_phone_soon: '휴대폰 코드 인증은 곧 제공돼요.',
-    cp_phone_soon_with: '휴대폰 코드 인증은 곧 제공돼요. 지금은 {names}(으)로 로그인해 주세요.',
-    cp_or: ' 또는 ',
     cp_signin_cancelled: '{name} 로그인을 취소했어요. 저장된 것은 없어요. 인증 방법을 골라 주세요.',
     cp_signin_expired: '{name} 로그인 시간이 너무 오래 걸렸어요. 다시 시도해 주세요.',
     cp_signin_unavailable: '지금은 {name} 로그인을 사용할 수 없어요. 잠시 후 다시 시도해 주세요.',
@@ -1132,13 +1610,13 @@ registerStrings({
     cp_ch_off_only: '{channel} 코드는 아직 쓸 수 없어요.',
     cp_phone_in_use: '이 전화번호로 이미 만든 프로필이 있어요.',
     cp_verified: '인증됨',
-    cp_social_note: 'Google 또는 Facebook으로 시작할 수 있어요. 레벨 3에서 채팅하려면 전화번호 인증이 필요해요.',
-    cp_continue: '계속',
-    cp_need_all: '사진을 올리고 모든 항목을 채운 뒤 전화번호, Google 또는 Facebook으로 인증해 주세요.',
-    cp_need_all_phone: '사진을 올리고 모든 항목을 채운 뒤 전화번호를 인증해 주세요.',
+    cp_code_watch: '주의하세요 — 코드는 고른 앱으로 보내져요.',
+    cp_next: '다음',
+    cp_need_all: '먼저 모든 항목을 채워 주세요.',
+    cp_need_way: '이제 인증 방법을 골라 주세요.',
     cp_saving: '저장 중…',
     cp_locating: '근처에 있는 사람을 찾는 중…',
-    cp_verify_again: '전화번호, Google 또는 Facebook으로 다시 인증해 주세요.',
+    cp_verify_again: '전화번호, Google, Facebook 또는 TikTok으로 다시 인증해 주세요.',
     cp_verify_again_phone: '전화번호를 다시 인증해 주세요.',
     cp_welcome_back: '다시 오신 걸 환영해요, {name}님',
   },
@@ -1146,13 +1624,24 @@ registerStrings({
     cp_title: 'プロフィール作成',
     cp_choose_language: '言語を選択',
     cp_photo: 'プロフィール写真',
-    cp_photo_hint: '顔がはっきり写った写真を1枚追加してください。',
+    cp_photo_hint: '写真は4枚まで追加できます。1枚目が最初に表示され、ほかはレベル2と3で表示されます。',
     cp_photo_add: '顔写真を追加',
     cp_photo_change: '写真を変更',
     cp_photo_error: 'この写真は使えません。別の写真をお試しください。',
-    cp_slot_level: 'レベル{n}',
-    cp_slot_aria: '写真{slot}：レベル{n}で解除',
-    cp_more_photos: 'プロフィールで写真をあと3枚追加できます。レベル2と3で表示されます。',
+    cp_slot_shows: 'レベル{n}で表示',
+    cp_slot_add: '写真{slot}を追加（レベル{n}で表示）',
+    cp_slot_change: '写真{slot}を変更（レベル{n}で表示）',
+    cp_slot_remove: '写真{slot}を外す',
+    cp_adding_photos: '写真を追加しています…',
+    cp_photos_missed: '一部の写真を追加できませんでした。プロフィールでもう一度追加してください。',
+    cp_ex_label: '写真の例',
+    cp_ex_good: '良い例：{what}',
+    cp_ex_bad: 'ダメな例：{what}',
+    cp_ex_clear: '正面の顔',
+    cp_ex_sunglasses: 'サングラス',
+    cp_ex_cap: '帽子',
+    cp_ex_side: '横顔',
+    cp_ex_group: '集合写真',
     cp_app_name: 'アプリ名',
     cp_tag_shown: '表示',
     cp_app_name_ph: '名前',
@@ -1196,8 +1685,6 @@ registerStrings({
     cp_signin_soon: '{name}でのログインは近日公開です。今は電話でコードを受け取ってください。',
     cp_signin_soon_only: '{name}でのログインは近日公開です。',
     cp_phone_soon: '電話でのコード確認は近日公開です。',
-    cp_phone_soon_with: '電話でのコード確認は近日公開です。今は{names}でログインしてください。',
-    cp_or: 'または',
     cp_signin_cancelled: '{name}でのログインを中止しました。何も保存されていません。確認方法を選んでください。',
     cp_signin_expired: '{name}でのログインに時間がかかりすぎました。もう一度お試しください。',
     cp_signin_unavailable: '今は{name}でログインできません。しばらくしてからもう一度お試しください。',
@@ -1213,13 +1700,13 @@ registerStrings({
     cp_ch_off_only: '{channel}でのコード送信はまだ利用できません。',
     cp_phone_in_use: 'この電話番号のプロフィールはすでにあります。',
     cp_verified: '確認済み',
-    cp_social_note: 'GoogleまたはFacebookで始められます。レベル3でチャットするには電話番号の確認が必要です。',
-    cp_continue: '次へ',
-    cp_need_all: '写真を追加してすべての項目を入力し、電話番号・Google・Facebookのいずれかで確認してください。',
-    cp_need_all_phone: '写真を追加してすべての項目を入力し、電話番号を確認してください。',
+    cp_code_watch: 'ご注意ください — コードは選んだアプリに届きます。',
+    cp_next: '次へ',
+    cp_need_all: 'まずすべての項目を入力してください。',
+    cp_need_way: 'あとは確認方法を選んでください。',
     cp_saving: '保存中…',
     cp_locating: '近くの人を探しています…',
-    cp_verify_again: '電話番号・Google・Facebookのいずれかでもう一度確認してください。',
+    cp_verify_again: '電話番号・Google・Facebook・TikTokのいずれかでもう一度確認してください。',
     cp_verify_again_phone: '電話番号をもう一度確認してください。',
     cp_welcome_back: 'おかえりなさい、{name}さん',
   },

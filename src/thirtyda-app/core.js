@@ -2,10 +2,12 @@
 // widgets every screen shares. Screen modules (owners C, D, E) import only from here.
 import { LANGS, LANG_CODES, photoSlotsFor } from './shared/rules.js';
 import { ROLES } from './shared/questions.js';
+import { INPUT_AGE_HEADER } from './shared/pin.js';
 
 export * from './shared/rules.js';
 export * from './shared/questions.js';
 export * from './shared/question-slots.js';
+export * from './shared/pin.js';
 
 const API_BASE = '/30da/api';
 const LANG_KEY = 'thirtyda_lang';
@@ -43,9 +45,10 @@ function initialLang() {
 
 // me: MeView | null · lang: UI language · notices: unseen admin notices · actions: pairs waiting on me
 // pending: what a session without a profile has already verified ({ phone, phoneVerified, verified })
-export const state = { me: null, lang: initialLang(), notices: [], actions: [], pending: null };
+// locked: the PIN screen covers the app (lock.js); no screen renders until it is open again
+export const state = { me: null, lang: initialLang(), notices: [], actions: [], pending: null, locked: false };
 
-/** App-wide events: 'me', 'lang', 'actions', 'notices'. */
+/** App-wide events: 'me', 'lang', 'actions', 'notices', 'locked' (an API call answered 423: detail = its data). */
 export const bus = new EventTarget();
 const emit = (name, detail) => bus.dispatchEvent(new CustomEvent(name, { detail }));
 
@@ -87,6 +90,29 @@ export function t(key, vars) {
   return s.replace(/\{(\w+)\}/g, (m, k) => (vars[k] == null ? m : String(vars[k])));
 }
 
+// ---------------------------------------------------------------- real use (the PIN lock)
+
+/**
+ * When the person last touched the app: a tap, a finger or mouse moving, a key, a wheel / trackpad scroll.
+ * Not the 'scroll' event (the app scrolls by itself, e.g. a chat getting a new line) and not a mouse "move"
+ * that stays on the same spot (browsers send those when the page moves under a still pointer).
+ * Every API call says how long ago that was (X-30DA-Input-Age), so the server never counts polling as use.
+ */
+export const activity = { lastInputAt: Date.now() };
+if (typeof document !== 'undefined') {
+  const touch = () => { activity.lastInputAt = Date.now(); };
+  let lastXY = '';
+  for (const type of ['pointerdown', 'touchstart', 'touchmove', 'keydown', 'wheel']) {
+    document.addEventListener(type, touch, { capture: true, passive: true });
+  }
+  document.addEventListener('pointermove', (e) => {
+    const xy = `${e.screenX},${e.screenY}`;
+    if (xy !== lastXY) { lastXY = xy; touch(); }
+  }, { capture: true, passive: true });
+}
+/** Whole seconds since the last touch, rounded UP: the server can only ever lock a little early, never late. */
+export const inputAge = () => Math.max(0, Math.ceil((Date.now() - activity.lastInputAt) / 1000));
+
 // ---------------------------------------------------------------- API
 
 export class ApiError extends Error {
@@ -100,7 +126,7 @@ export class ApiError extends Error {
 }
 
 async function request(method, path, body, opts = {}) {
-  const init = { method, credentials: 'same-origin', headers: { Accept: 'application/json' } };
+  const init = { method, credentials: 'same-origin', headers: { Accept: 'application/json', [INPUT_AGE_HEADER]: String(inputAge()) } };
   if (body !== undefined) {
     init.headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(body);
@@ -135,6 +161,8 @@ function redirectFor(err) {
   } else if (err.status === 403 && err.code === 'blocked') {
     if (state.me) state.me.blocked = true;
     if (path !== '/blocked') go('/blocked', { replace: true });
+  } else if (err.status === 423) {
+    emit('locked', err.data || {}); // the server locked this session: the PIN screen covers the app (lock.js)
   }
 }
 
@@ -191,7 +219,7 @@ function runCleanup() {
 }
 
 async function renderRoute() {
-  if (!started) return;
+  if (!started || state.locked) return; // covered by the PIN screen: nothing renders under it
   const { path, query } = parseHash();
   const redirect = guardFn?.(path);
   if (redirect && redirect !== path) return go(redirect, { replace: true });
@@ -228,8 +256,8 @@ async function renderRoute() {
 }
 
 function renderFailure(root, err) {
-  // 401 / blocked already redirected; nothing to show here.
-  if (err instanceof ApiError && (err.status === 401 || err.code === 'blocked')) return;
+  // 401 / blocked already redirected, 423 is covered by the PIN screen; nothing to show here.
+  if (err instanceof ApiError && (err.status === 401 || err.status === 423 || err.code === 'blocked')) return;
   if (!(err instanceof ApiError)) console.error(err);
   root.classList.add('failed');
   root.replaceChildren(
@@ -258,6 +286,26 @@ export function go(path, { replace = false } = {}) {
   const idx = typeof history.state?.idx === 'number' ? history.state.idx : 0;
   if (replace) history.replaceState({ idx }, '', target);
   else if (location.hash !== target) history.pushState({ idx: idx + 1 }, '', target);
+  renderRoute();
+}
+
+/**
+ * The PIN screen covers the app: the current screen is taken down (its timers stopped, its content removed —
+ * not blurred), every dialog closes, and nothing renders until uncoverScreen().
+ */
+export function coverScreen() {
+  state.locked = true;
+  renderSeq++; // a screen still loading must not draw itself afterwards
+  runCleanup();
+  for (const m of [...openModals]) m.close();
+  // Before the router has started (the PIN screen comes first at start-up) the host is still the boot splash.
+  (host || document.getElementById('app'))?.replaceChildren();
+  toastNode?.classList.remove('show');
+}
+
+/** The PIN was right: the current screen again, fresh from the server. */
+export function uncoverScreen() {
+  state.locked = false;
   renderRoute();
 }
 
@@ -593,7 +641,7 @@ export function roleLabel(key) {
 
 /** POST /me/heartbeat → state.actions / state.notices, then 'actions' + 'notices' events. */
 export async function heartbeat() {
-  if (!state.me || state.me.blocked) return null;
+  if (!state.me || state.me.blocked || state.locked) return null;
   try {
     const r = await api.post('/me/heartbeat', {});
     state.actions = Array.isArray(r.actions) ? r.actions : [];

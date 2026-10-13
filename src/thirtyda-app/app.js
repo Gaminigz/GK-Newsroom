@@ -1,13 +1,16 @@
 // 30+DA web app entry: loads every screen module, restores the session, starts the hash
-// router, keeps the heartbeat going and shows admin notices as a blocking dialog.
+// router, keeps the heartbeat going and shows admin notices as a blocking dialog. The PIN lock (lock.js)
+// covers the app when the session is locked, after 30 s without a touch, and when the app is hidden.
 import {
   state, api, bus, t, el, icon, go, modal, heartbeat, startRouter, setMe, registerStrings, actionLabel, pairRoute,
 } from './core.js';
+import { startLock, bootLock, applyLockInfo, waitingPin, pinResetPending, leaveWithoutLock } from './lock.js';
 
 // Each screen registers its own route. One failing module must not take the whole app down,
 // so they load side by side and a failure is only logged.
 const SCREENS = [
   ['opening', () => import('./screens/opening.js')],
+  ['pin', () => import('./screens/pin.js')],
   ['create-profile', () => import('./screens/create-profile.js')],
   ['nearby', () => import('./screens/nearby.js')],
   ['profile', () => import('./screens/profile.js')],
@@ -20,7 +23,7 @@ const SCREENS = [
   ['conversation', () => import('./screens/conversation.js')],
 ];
 
-const OPEN_PATHS = new Set(['/opening', '/create']);
+const OPEN_PATHS = new Set(['/opening', '/pin', '/create']);
 const BEAT_VISIBLE_MS = 30e3;
 const BEAT_HIDDEN_MS = 5 * 60e3; // only while notifications are allowed
 
@@ -36,6 +39,7 @@ async function loadSession() {
   try {
     // probe=1: a signed-out visit gets 200 { user:null, session:null } instead of a logged 401.
     const r = await api.get('/me?probe=1', { redirect: false });
+    applyLockInfo(r.lock);
     if (r.user) {
       setMe(r.user);
       state.notices = Array.isArray(r.notices) ? r.notices : [];
@@ -45,15 +49,21 @@ async function loadSession() {
     return true;
   } catch (err) {
     state.me = null;
+    if (err.status === 423) { // locked: the PIN screen comes first (lock.js)
+      bootLock(err.data);
+      return true;
+    }
     if (err.code === 'no_profile') state.pending = {};
     return err.status !== 0 && err.status < 500;
   }
 }
 
 // No session → opening; session without profile → create; blocked → blocked; signed in never sees 1–2.
+// Create profile comes after the PIN step (#/pin), unless the person is signing in again after "Forgot PIN?".
 function guard(path) {
   if (state.me?.blocked) return path === '/blocked' ? null : '/blocked';
   if (!state.me) {
+    if (path === '/create' && !waitingPin() && !pinResetPending()) return '/pin';
     if (OPEN_PATHS.has(path)) return null;
     return state.pending ? '/create' : '/opening';
   }
@@ -74,7 +84,7 @@ function renderOffline(host) {
 let noticeOpen = false;
 
 function showNotices() {
-  if (noticeOpen || !state.me || state.me.blocked) return;
+  if (noticeOpen || !state.me || state.me.blocked || state.locked) return;
   const notice = state.notices.find((n) => n && !n.seenAt);
   if (!notice) return;
   noticeOpen = true;
@@ -162,6 +172,13 @@ async function boot() {
     }
     meId = id;
   });
+  // Back from the PIN screen: the news and messages that waited.
+  bus.addEventListener('unlocked', () => {
+    noticeOpen = false; // the cover closed every dialog, a notice too: it shows again
+    heartbeat();
+    showNotices();
+  });
+  startLock();
   startRouter({ host, guard });
   showNotices();
   if (state.me) heartbeat();
@@ -216,7 +233,11 @@ async function checkBuild() {
 }
 checkBuild();
 setInterval(checkBuild, 60e3);
-window.addEventListener('hashchange', () => { if (stale) location.reload(); });
+window.addEventListener('hashchange', () => {
+  if (!stale) return;
+  leaveWithoutLock(); // our own reload, not the app being closed
+  location.reload();
+});
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState !== 'visible') return;
   await checkBuild();

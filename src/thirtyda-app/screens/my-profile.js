@@ -1,6 +1,6 @@
 // me · My profile (not in the design; same visual language): the 4 photo slots (main face photo, then
 // slots that unlock at Level 2 and Level 3), app name (max 7 characters), birth year (read-only: set once),
-// language, role, phone verification, hearts, sign out.
+// language, role, phone verification, hearts, Change PIN (the app lock, lock.js), sign out.
 import {
   screen, el, icon, t, go, api, toast, modal, state, setLang, setMe, topBar, heartPills, roleLabel, resizeImage,
   registerStrings, LANGS, LANG_NATIVE, LANG_FLAG, ROLES, PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, NAME_MAX, NAME_RAW_MAX,
@@ -8,6 +8,7 @@ import {
 import {
   phoneVerifier, blankPhone, appNameProblem, watchNameInput, clipNameInput, birthYearSelect, truthNote,
 } from './create-profile.js';
+import { changePinSheet } from '../lock.js';
 
 let phoneModel = blankPhone(); // keeps a half-finished phone check across re-renders
 
@@ -351,6 +352,11 @@ screen('/me', async ({ root }) => {
       el('p', { class: 'lock-note' }, icon('lock', 14), el('span', {}, t('me_phone_needed'))), phone.node);
   }
 
+  // --- the PIN that locks the app: small, above Sign out (set first if this profile has none yet)
+  const changePin = el('button', {
+    type: 'button', class: 'btn btn-secondary btn-sm btn-auto me-pin', on: { click: () => changePinSheet() },
+  }, icon('lock', 16), el('span', {}, t('pin_change')));
+
   // --- sign out
   const signOut = el('button', { type: 'button', class: 'btn btn-secondary' }, icon('logout', 18), el('span', {}, t('me_signout')));
   signOut.addEventListener('click', async () => {
@@ -414,6 +420,7 @@ screen('/me', async ({ root }) => {
     section(t('me_verified_with'), chips, phoneBlock),
     section(t('me_hearts'), el('div', { class: 'row', style: { '--gap': '12px' } }, heartPills(me.hearts, 'lg')),
       place ? el('p', { class: 'kv' }, icon('pin', 16), el('span', {}, place)) : null),
+    me.pinSet ? changePin : null,
     signOut,
     el('p', { class: 'label me-foot' }, `30+DA · ${me.id}`));
 
