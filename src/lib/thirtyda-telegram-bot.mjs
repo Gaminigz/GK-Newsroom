@@ -18,8 +18,8 @@
  *        pinHash? }. The token (24 random bytes, base64url) goes only into https://t.me/<bot>?start=<token>; the browser
  *        gets a fresh random cookie (thirtyda_tg: HttpOnly, SameSite=Lax, Path=/30da/api/auth/telegram, 12 minutes = the
  *        check + the verified grace), like the sign-in state. match ("🍊 47") is shown in the app's waiting box and
- *        repeated by the bot, so a forwarded link is caught: the bot names who is asking (masked number, Phnom Penh
- *        time, the sign) and says "If someone sent you this link, do not tap."
+ *        repeated by the bot, so a forwarded link is caught: the bot says when it was asked (Phnom Penh time) and the
+ *        sign — never the number — and "If someone sent you this link, do not tap."
  *   GET  /30da/api/auth/telegram/status → pollCheck: { state: waiting | verified | mismatch | expired | none } for THIS
  *        browser's check. verified is taken ONCE (state → used) and signs in exactly like a good code.
  * The bot — POST /30da/api/telegram/hook (handleTelegramHook): Telegram's X-Telegram-Bot-Api-Secret-Token must match the

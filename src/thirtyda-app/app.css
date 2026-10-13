@@ -774,9 +774,12 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .way-watch { font-weight: 600; text-align: center; }
 .phone-row .select { padding: 0 26px 0 10px; background-position: right 6px center; font-family: var(--mono); font-size: 14px; }
 .phone-row .send-code { min-height: 46px; white-space: nowrap; }
-.phone-verified { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 46px; padding: 0 14px; border-radius: var(--radius); border: 1px solid var(--green); background: var(--green-soft); }
-.phone-verified .phone-num { font-family: var(--mono); font-size: 14px; letter-spacing: 0.04em; }
+/* A proved number stays in its box (editable), green; "Number verified ✓" under the apps (owner 2026-10-13). */
+.phone-row .input.is-verified { border-color: var(--green); background: var(--green-soft); }
 .verified-line { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--green); white-space: nowrap; }
+.way-verified { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.way-verified .change-number { font-size: 13px; }
+.way-note.is-ok { color: var(--green); font-weight: 700; }
 .code-row { display: flex; align-items: center; gap: 12px; }
 .code-row .input { width: 172px; flex: none; }
 .resend { font-size: 13px; color: var(--muted); }

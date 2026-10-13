@@ -105,6 +105,7 @@
   padding: 10px 12px;
   line-height: 1.45;
   resize: vertical;
+  font-family: var(--body);
   font-size: 13px;
 }
 .sp-reply-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }

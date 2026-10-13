@@ -208,7 +208,38 @@ export const blankPhone = () => ({
   cc: '+855', phone: '', codeSent: false, code: '', devCode: null, resendAt: 0, sentTo: null, verified: false, verifiedPhone: null,
   // Where the code goes: the person picks (Telegram first). sentBy/live describe the last code sent.
   channel: 'telegram', sentBy: null, live: false, failed: [],
+  // verifiedPhone: the number this session / profile proved; verified: the box still shows it (editing it away
+  // drops the ✓ for this screen); verifiedBy: the app that proved it (its round button gets the ✓ and "Verified").
+  verifiedBy: null,
 });
+
+// Which app proved which number, remembered on this device (the server does not say): { phone, via }.
+const VIA_KEY = '30da.phoneVia';
+function rememberVia(phone, via) {
+  try { localStorage.setItem(VIA_KEY, JSON.stringify({ phone, via })); } catch { /* private mode */ }
+}
+function viaFor(phone) {
+  try {
+    const v = JSON.parse(localStorage.getItem(VIA_KEY) || 'null');
+    return v?.phone === phone && ['telegram', 'whatsapp'].includes(v.via) ? v.via : null;
+  } catch {
+    return null;
+  }
+}
+const digitsOf = (p) => String(p ?? '').replace(/\D/g, '');
+
+/**
+ * A phone model showing a proved number (owner 2026-10-13): the box keeps the number, editable; the app that proved
+ * it shows a ✓. `phone` is E.164 (+85512345678); the country code goes in the picker when it is one of ours.
+ */
+export function verifiedPhoneModel(phone, model = blankPhone()) {
+  const p = String(phone || '');
+  const cc = COUNTRY_CODES.filter((c) => p.startsWith(c)).sort((a, b) => b.length - a.length)[0];
+  return Object.assign(model, {
+    cc: cc || model.cc, phone: cc ? p.slice(cc.length) : p, verified: Boolean(p), verifiedPhone: p || null,
+    verifiedBy: viaFor(p), codeSent: false, code: '', devCode: null,
+  });
+}
 
 // The ways in: two bring the code (Telegram, WhatsApp), three sign in (Facebook, Google, TikTok); waysRow sets the order.
 // Brand names stay in Latin letters in every language.
@@ -587,7 +618,8 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
         const { phone, pin } = model.tg;
         endTelegram();
         if (pin && r.user?.pinSet) clearPinFlags();
-        Object.assign(model, { verified: true, verifiedPhone: r.user?.phone || phone, codeSent: false, code: '', devCode: null, failed: [] });
+        Object.assign(model, { verified: true, verifiedPhone: r.user?.phone || phone, verifiedBy: 'telegram', codeSent: false, code: '', devCode: null, failed: [] });
+        rememberVia(model.verifiedPhone, 'telegram');
         showError(null);
         render();
         onChange?.();
@@ -648,7 +680,9 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
       const pin = waitingPin(); // a returning person's waiting PIN becomes their PIN (they just proved who they are)
       const r = await api.post('/auth/verify-code', { phone: model.sentTo, code: model.code, ...(pin ? { pin } : {}) });
       if (pin && r.user?.pinSet) clearPinFlags();
-      Object.assign(model, { verified: true, verifiedPhone: model.sentTo, codeSent: false, code: '', devCode: null, failed: [] });
+      const via = model.sentBy || model.channel;
+      Object.assign(model, { verified: true, verifiedPhone: r.user?.phone || model.sentTo, verifiedBy: via, codeSent: false, code: '', devCode: null, failed: [] });
+      rememberVia(model.verifiedPhone, via);
       showError(null);
       render();
       onChange?.();
@@ -698,13 +732,16 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     el('span', { class: 'way-dot' }, brandMark(key),
       done ? el('span', { class: 'way-badge', 'aria-hidden': 'true' }, icon('check', 12)) : null),
     el('span', { class: 'way-name', 'aria-hidden': 'true' }, name),
-    on ? null : el('span', { class: 'way-note', 'aria-hidden': 'true' }, t('cp_soon')));
+    // The app that proved it: "Verified" under its name instead of its usual note.
+    done ? el('span', { class: 'way-note is-ok', 'aria-hidden': 'true' }, t('cp_verified'))
+      : on ? null : el('span', { class: 'way-note', 'aria-hidden': 'true' }, t('cp_soon')));
   }
 
   function waysRow() {
     const proved = signin?.verified?.() || {};
     const codeBtn = ([key, name]) => wayButton({
-      key, name, on: codeOn(key), pressed: model.channel === key && codeOn(key),
+      key, name, on: codeOn(key), pressed: model.channel === key && codeOn(key) && !model.verified,
+      done: Boolean(model.verified && model.verifiedBy === key),
       click: () => { if (!sending) pickChannel(key); },
     });
     const signinBtn = ([provider, key, name]) => wayButton({
@@ -725,15 +762,10 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     clearInterval(resendTimer);
     resendTimer = null;
     codeEl = null;
-    if (model.verified) {
-      node.replaceChildren(
-        el('div', { class: 'phone-verified' },
-          el('span', { class: 'phone-num' }, model.verifiedPhone || ''),
-          el('span', { class: 'verified-line' }, icon('check', 16), t('cp_phone_verified'))),
-        error);
-      return;
-    }
-    const ccSel = el('select', { class: 'select', 'aria-label': t('cp_country_code'), on: { change: () => { model.cc = ccSel.value; } } },
+    // Verified (owner 2026-10-13): the whole step stays — the number in its box (editable), the apps, a ✓ on the
+    // one that proved it. Editing the number away from the proved one drops the ✓ for this screen (verify again).
+    const proved = model.verified;
+    const ccSel = el('select', { class: 'select', 'aria-label': t('cp_country_code'), on: { change: () => { model.cc = ccSel.value; reproved(); } } },
       COUNTRY_CODES.map((c) => el('option', { value: c, selected: c === model.cc }, c)));
     // While a code is out, "Resend code" under it takes over until the 30 s are up.
     const waiting = () => model.codeSent && model.resendAt > Date.now();
@@ -744,7 +776,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
       disabled: sending || waiting() || !fullPhone(model) || Boolean(model.tg && model.tg.phone === fullPhone(model)),
     }, t(sending ? 'cp_sending' : tgPicked ? 'cp_tg_open' : 'cp_send_code'));
     const phoneInput = el('input', {
-      class: 'input', type: 'tel', inputmode: 'tel', autocomplete: 'tel-national', maxlength: '20',
+      class: ['input', proved && 'is-verified'], type: 'tel', inputmode: 'tel', autocomplete: 'tel-national', maxlength: '20',
       placeholder: t('cp_phone_ph'), 'aria-label': t('cp_phone'), 'aria-describedby': `${uid}-by`, value: model.phone,
       on: {
         input: () => {
@@ -756,13 +788,20 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
           codeBox.hidden = !model.codeSent;
           hint.hidden = model.codeSent || (!signin && !codeOn(model.channel));
           if (numberFlagged) showError(null); // "Enter a valid phone number." from Next goes as they fix it
+          reproved();
         },
         keydown: (e) => { if (e.key === 'Enter' && sendBtn.isConnected) send(); },
       },
     });
     // Create profile: one short line for all the ways ("To chat, verify: add your phone number, tap one of the apps and wait for its reply.").
     // #/me: "Your code comes by Telegram." — which of the two the Send button uses; only when that one is offered.
-    const hint = signin
+    // Verified: "Number verified ✓" takes the line's place (#/me: with "Change number").
+    const hint = proved
+      ? el('p', { class: 'way-hint way-watch way-verified', id: `${uid}-by`, role: 'status' },
+        el('span', { class: 'verified-line' }, t('cp_phone_verified')),
+        signin ? el('span', { class: 'way-private' }, icon('lock', 12), t('cp_code_private'))
+          : el('button', { type: 'button', class: 'link change-number', on: { click: changeNumber } }, t('cp_change_number')))
+      : signin
       ? el('p', { class: 'way-hint way-watch', id: `${uid}-by`, hidden: model.codeSent }, t('cp_code_watch'),
         // Owner: say the number is only for verification and stays private.
         el('span', { class: 'way-private' }, icon('lock', 12), t('cp_code_private')))
@@ -770,7 +809,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
         t('cp_code_comes_by', { channel: channelName(model.channel) }));
     // #/me with no code channel offered at all (and no code out): no phone box and Send button that can only
     // fail, one calm line. Create profile keeps the box (the number is saved unverified), just without Send code.
-    const phoneSoon = !signin && !anyCodeOn() && !model.codeSent;
+    const phoneSoon = !signin && !anyCodeOn() && !model.codeSent && !proved;
 
     const codeBox = el('div', { class: 'stack', style: { '--gap': '8px' }, hidden: !model.codeSent });
     if (model.codeSent) {
@@ -793,7 +832,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
           : t('cp_code_sent', { phone: model.sentTo })));
       if (model.devCode) codeBox.append(el('p', { class: 'dev-note' }, t('cp_test_code', { code: model.devCode })));
     }
-    const withSend = sendShown();
+    const withSend = sendShown() && !proved;
     const phoneRow = el('div', { class: ['phone-row', !withSend && 'no-send'] }, ccSel, phoneInput, withSend ? sendBtn : null);
     // While it waits for Telegram (the free bot) its box takes the one line's place.
     const tgBox = tgWaitBox();
@@ -805,6 +844,32 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
         ? el('p', { class: 'way-hint way-soon', role: 'note' }, t('cp_phone_soon'))
         : [hint, phoneRow], codeBox, tgBox, error].flat().filter(Boolean));
     }
+  }
+
+  /** The box shows the proved number again (✓ back) or no longer (✓ gone): redraw, the cursor where it was. */
+  function reproved() {
+    if (!model.verifiedPhone) return;
+    const p = fullPhone(model);
+    const now = Boolean(p && digitsOf(p) === digitsOf(model.verifiedPhone));
+    if (now === model.verified) return;
+    model.verified = now;
+    const input = node.querySelector('.phone-row input[type=tel]');
+    const at = input && document.activeElement === input ? input.selectionStart : null;
+    render();
+    onChange?.();
+    if (at != null) {
+      const again = node.querySelector('.phone-row input[type=tel]');
+      if (again) { again.focus(); try { again.setSelectionRange(at, at); } catch { /* type=tel */ } }
+    }
+  }
+  /** #/me "Change number": an empty box to type the new one; it is verified like the first. */
+  function changeNumber() {
+    model.phone = '';
+    model.verified = false;
+    showError(null);
+    render();
+    onChange?.();
+    node.querySelector('.phone-row input[type=tel]')?.focus();
   }
 
   render();
@@ -844,7 +909,15 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
      * ("Enter a valid phone number.", the box focused) and { bad: true }.
      */
     typedNumber: () => {
-      if (model.verified || !model.phone.trim()) return null;
+      if (model.verified) return null;
+      // The proved number was edited away (or cleared): verify the new one, or type the proved one back.
+      if (model.verifiedPhone) {
+        showError(t('cp_number_changed'));
+        numberFlagged = true;
+        node.querySelector('.phone-row input[type=tel]')?.focus();
+        return { bad: true };
+      }
+      if (!model.phone.trim()) return null;
       const phone = fullPhone(model);
       if (phone) return { phone };
       flagNumber();
@@ -964,7 +1037,8 @@ screen('/create', ({ root, query }) => {
   }
   // A session that already proved something (e.g. phone verified, then the tab was closed).
   const pending = state.pending;
-  if (pending?.phoneVerified && !draft.phone.verified) Object.assign(draft.phone, { verified: true, verifiedPhone: pending.phone || '' });
+  // The box shows that number (editable) with a ✓ on the app that proved it.
+  if (pending?.phoneVerified && !draft.phone.verifiedPhone && pending.phone) verifiedPhoneModel(pending.phone, draft.phone);
   if (pending?.verified) {
     draft.verified.gmail ||= Boolean(pending.verified.gmail);
     draft.verified.facebook ||= Boolean(pending.verified.facebook);
@@ -1338,7 +1412,9 @@ registerStrings({
     cp_resend_in: 'Resend in {s} s',
     cp_resend: 'Resend code',
     cp_test_code: 'Test code: {code}',
-    cp_phone_verified: 'Phone verified',
+    cp_phone_verified: 'Number verified ✓',
+    cp_number_changed: 'This is not the number you verified. Verify it with one of the apps, or type back the verified number.',
+    cp_change_number: 'Change number',
     cp_phone_invalid: 'Enter a valid phone number.',
     cp_code_wrong: 'That code is not right. Try again.',
     cp_code_expired: 'That code has expired. Ask for a new one.',
@@ -1429,7 +1505,9 @@ registerStrings({
     cp_resend_in: 'ផ្ញើម្ដងទៀតក្នុងរយៈពេល {s} វិនាទី',
     cp_resend: 'ផ្ញើលេខកូដម្ដងទៀត',
     cp_test_code: 'លេខកូដសាកល្បង៖ {code}',
-    cp_phone_verified: 'បានផ្ទៀងផ្ទាត់លេខទូរស័ព្ទ',
+    cp_phone_verified: 'បានផ្ទៀងផ្ទាត់លេខ ✓',
+    cp_number_changed: 'នេះមិនមែនជាលេខដែលអ្នកបានផ្ទៀងផ្ទាត់ទេ។ សូមផ្ទៀងផ្ទាត់វាជាមួយកម្មវិធីមួយ ឬវាយលេខដែលបានផ្ទៀងផ្ទាត់វិញ។',
+    cp_change_number: 'ប្ដូរលេខ',
     cp_phone_invalid: 'សូមបញ្ចូលលេខទូរស័ព្ទឲ្យបានត្រឹមត្រូវ។',
     cp_code_wrong: 'លេខកូដនោះមិនត្រឹមត្រូវទេ។ សូមព្យាយាមម្ដងទៀត។',
     cp_code_expired: 'លេខកូដនោះផុតកំណត់ហើយ។ សូមស្នើលេខកូដថ្មី។',
@@ -1520,7 +1598,9 @@ registerStrings({
     cp_resend_in: '{s} 秒后可重新发送',
     cp_resend: '重新发送验证码',
     cp_test_code: '测试验证码：{code}',
-    cp_phone_verified: '手机号已验证',
+    cp_phone_verified: '号码已验证 ✓',
+    cp_number_changed: '这不是你验证过的号码。请用其中一个应用验证它，或改回已验证的号码。',
+    cp_change_number: '更换号码',
     cp_phone_invalid: '请输入有效的手机号码。',
     cp_code_wrong: '验证码不正确，请重试。',
     cp_code_expired: '验证码已过期，请重新获取。',
@@ -1611,7 +1691,9 @@ registerStrings({
     cp_resend_in: '{s}초 후 다시 보내기',
     cp_resend: '코드 다시 받기',
     cp_test_code: '테스트 코드: {code}',
-    cp_phone_verified: '전화번호 인증 완료',
+    cp_phone_verified: '번호 인증 완료 ✓',
+    cp_number_changed: '인증한 번호가 아니에요. 앱 중 하나로 인증하거나, 인증한 번호로 다시 입력하세요.',
+    cp_change_number: '번호 변경',
     cp_phone_invalid: '올바른 전화번호를 입력해 주세요.',
     cp_code_wrong: '코드가 맞지 않아요. 다시 입력해 주세요.',
     cp_code_expired: '코드가 만료됐어요. 새 코드를 받아 주세요.',
@@ -1702,7 +1784,9 @@ registerStrings({
     cp_resend_in: '{s}秒後に再送信できます',
     cp_resend: 'コードを再送信',
     cp_test_code: 'テストコード：{code}',
-    cp_phone_verified: '電話番号を確認しました',
+    cp_phone_verified: '番号を確認しました ✓',
+    cp_number_changed: '確認済みの番号ではありません。アプリのどれかで確認するか、確認済みの番号に戻してください。',
+    cp_change_number: '番号を変更',
     cp_phone_invalid: '正しい電話番号を入力してください。',
     cp_code_wrong: 'コードが正しくありません。もう一度お試しください。',
     cp_code_expired: 'コードの有効期限が切れました。新しいコードを送信してください。',

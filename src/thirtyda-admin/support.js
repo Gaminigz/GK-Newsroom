@@ -240,3 +240,8 @@ setInterval(() => {
   if (view.open && !view.sending) openChat(view.open, { refresh: true });
 }, REFRESH_MS);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) loadList(); });
+// A link to one conversation (#c=<chat id>) opened on this page.
+window.addEventListener('hashchange', () => {
+  const c = location.hash.match(/^#c=(\d{1,16})$/);
+  if (c && Number(c[1]) !== view.open) openChat(Number(c[1]));
+});

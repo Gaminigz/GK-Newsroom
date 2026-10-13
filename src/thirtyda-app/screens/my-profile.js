@@ -6,7 +6,7 @@ import {
   registerStrings, LANGS, LANG_NATIVE, LANG_FLAG, ROLES, PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, NAME_MAX, NAME_RAW_MAX,
 } from '../core.js';
 import {
-  phoneVerifier, blankPhone, appNameProblem, watchNameInput, clipNameInput, birthYearSelect, truthNote,
+  phoneVerifier, blankPhone, verifiedPhoneModel, appNameProblem, watchNameInput, clipNameInput, birthYearSelect, truthNote,
 } from './create-profile.js';
 import { changePinSheet } from '../lock.js';
 
@@ -335,9 +335,10 @@ screen('/me', async ({ root }) => {
   const chips = el('div', { class: 'vchips' }, [['phone', t('me_v_phone')], ['gmail', 'Gmail'], ['facebook', 'Facebook']].map(([key, label]) =>
     el('span', { class: ['vchip', v[key] ? 'on' : 'off'] }, v[key] ? icon('check', 13) : null, label)));
   let phoneBlock;
-  if (v.phone && me.phone) {
-    phoneBlock = el('p', { class: 'kv' }, icon('check', 16), el('span', { class: 'mono' }, me.phone));
-  } else {
+  // A verified number (owner 2026-10-13): shown in its box, editable, a ✓ on the app that proved it; "Change number"
+  // = type a new one and verify it (the server puts the new number in place of the old one).
+  if (v.phone && me.phone && phoneModel.verifiedPhone !== me.phone) phoneModel = verifiedPhoneModel(me.phone);
+  {
     phone = phoneVerifier(phoneModel, {
       onVerified: (r) => {
         phoneModel = blankPhone();
@@ -349,7 +350,7 @@ screen('/me', async ({ root }) => {
       },
     });
     phoneBlock = el('div', { class: 'stack', style: { '--gap': '8px' } },
-      el('p', { class: 'lock-note' }, icon('lock', 14), el('span', {}, t('me_phone_needed'))), phone.node);
+      v.phone && me.phone ? null : el('p', { class: 'lock-note' }, icon('lock', 14), el('span', {}, t('me_phone_needed'))), phone.node);
   }
 
   // --- the PIN that locks the app: small, above Sign out (set first if this profile has none yet)
@@ -475,7 +476,7 @@ registerStrings({
     me_verified_with: 'Verified with',
     me_v_phone: 'Phone',
     me_phone_needed: 'Your phone number is needed to chat at Level 3.',
-    me_phone_done: 'Phone verified',
+    me_phone_done: 'Number verified ✓',
     me_switched: 'Signed in as {name}',
     me_hearts: 'Your hearts',
     me_signout: 'Sign out',
@@ -527,7 +528,7 @@ registerStrings({
     me_verified_with: 'បានផ្ទៀងផ្ទាត់ជាមួយ',
     me_v_phone: 'ទូរស័ព្ទ',
     me_phone_needed: 'ត្រូវការលេខទូរស័ព្ទរបស់អ្នក ដើម្បីជជែកនៅកម្រិត 3។',
-    me_phone_done: 'បានផ្ទៀងផ្ទាត់លេខទូរស័ព្ទ',
+    me_phone_done: 'បានផ្ទៀងផ្ទាត់លេខ ✓',
     me_switched: 'បានចូលជា {name}',
     me_hearts: 'បេះដូងរបស់អ្នក',
     me_signout: 'ចាកចេញ',
@@ -579,7 +580,7 @@ registerStrings({
     me_verified_with: '已验证方式',
     me_v_phone: '手机',
     me_phone_needed: '在等级 3 聊天需要验证手机号。',
-    me_phone_done: '手机号已验证',
+    me_phone_done: '号码已验证 ✓',
     me_switched: '已登录为 {name}',
     me_hearts: '你的心',
     me_signout: '退出登录',
@@ -631,7 +632,7 @@ registerStrings({
     me_verified_with: '인증 수단',
     me_v_phone: '전화',
     me_phone_needed: '레벨 3에서 채팅하려면 전화번호가 필요해요.',
-    me_phone_done: '전화번호 인증 완료',
+    me_phone_done: '번호 인증 완료 ✓',
     me_switched: '{name}님으로 로그인했어요',
     me_hearts: '내 하트',
     me_signout: '로그아웃',
@@ -683,7 +684,7 @@ registerStrings({
     me_verified_with: '確認済み',
     me_v_phone: '電話',
     me_phone_needed: 'レベル3でチャットするには電話番号が必要です。',
-    me_phone_done: '電話番号を確認しました',
+    me_phone_done: '番号を確認しました ✓',
     me_switched: '{name}さんとしてログインしました',
     me_hearts: 'あなたのハート',
     me_signout: 'ログアウト',
