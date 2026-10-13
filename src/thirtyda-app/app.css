@@ -821,7 +821,7 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .slot-tag { position: absolute; left: 5px; bottom: 5px; max-width: calc(100% - 10px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 5px; border-radius: 4px; background: rgb(255 255 255 / 0.92); color: var(--navy); font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
 :lang(km) .slot-tag { letter-spacing: 0.02em; }
 .slot-tag .icon { display: inline-block; margin-right: 3px; vertical-align: -1px; }
-.slot-sub { font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.slot-sub { display: inline-flex; align-items: center; gap: 3px; font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 :lang(km) .slot-sub { letter-spacing: 0.02em; }
 /* Kept: a photo from before the level rule, in a slot this level has not unlocked (lock in the tag). */
 .photo-slot.kept .slot-tag { background: var(--navy); color: #fff; }

@@ -63,7 +63,7 @@ screen('/me', async ({ root }) => {
     const filled = urls.filter(Boolean).length;
     const kept = urls.some((u, i) => u && i >= allowed);
     const open = Math.min(allowed, max);
-    slotCount.textContent = kept ? t('me_slots_kept', { count: filled, n: open, max }) : t('me_slots_open', { n: open, max });
+    slotCount.textContent = `${filled} / ${max}`; // all 4 can be filled; the locks say who sees which
     keptNote.hidden = !kept;
     slots.replaceChildren(...Array.from({ length: Math.max(max, urls.length) }, (_, i) => {
       const url = urls[i];
@@ -80,7 +80,8 @@ screen('/me', async ({ root }) => {
           }, icon('close', 14));
         return el('li', { class: ['photo-slot', 'filled', isKept && 'kept', busy && 'busy'] },
           el('img', { src: url, alt: i === 0 ? t('me_main') : t('me_photo_n', { n: i + 1 }) }),
-          el('span', { class: 'slot-tag' }, isKept ? icon('lock', 9) : null,
+          // Photos 2–4 stay locked to each person until the two of you reach that level.
+          el('span', { class: 'slot-tag' }, i > 0 ? icon('lock', 9) : null,
             el('span', {}, i === 0 ? t('me_main') : t('me_slot_level', { n: levelOf(i) }))),
           isKept ? el('span', { class: 'visually-hidden' }, t('me_kept_slot', { n: levelOf(i) })) : null,
           action);
@@ -93,7 +94,7 @@ screen('/me', async ({ root }) => {
           on: { click: () => pick(urls[0] ? i : 0) },
         }, icon('plus', 20), el('span', { class: 'slot-text' }, t('me_add_photo')),
         // Which level this slot is seen at, so the owner knows who will see the photo.
-        el('span', { class: 'slot-sub', 'aria-hidden': 'true' }, i === 0 ? t('me_main') : t('me_slot_level', { n: levelOf(i) }))));
+        el('span', { class: 'slot-sub', 'aria-hidden': 'true' }, i > 0 ? icon('lock', 10) : null, i === 0 ? t('me_main') : t('me_slot_level', { n: levelOf(i) }))));
       }
       return el('li', { class: 'photo-slot locked' },
         icon('lock', 17),
