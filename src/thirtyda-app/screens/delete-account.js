@@ -71,7 +71,7 @@ function ensureStyles() {
 
 // ---------------------------------------------------------------- links
 
-/** "Privacy policy · Terms": the public pages in the app's language, same tab (they link back to the app). */
+/** "Privacy policy · Terms · Help": the public pages in the app's language, same tab (they link back to the app). */
 export function legalLinks() {
   ensureStyles();
   const lang = encodeURIComponent(state.lang || 'en');
@@ -80,14 +80,20 @@ export function legalLinks() {
   return el('p', { class: 'legal-links' },
     el('a', { href: `/30da/privacy?lang=${lang}`, on: { click: away } }, t('da_privacy')),
     el('span', { class: 'dot', 'aria-hidden': 'true' }, '·'),
-    el('a', { href: `/30da/terms?lang=${lang}`, on: { click: away } }, t('da_terms')));
+    el('a', { href: `/30da/terms?lang=${lang}`, on: { click: away } }, t('da_terms')),
+    el('span', { class: 'dot', 'aria-hidden': 'true' }, '·'),
+    // Help & support: who runs 30+DA and the support email (owner 2026-10-14).
+    el('a', { href: `/30da/support?lang=${lang}`, on: { click: away } }, t('da_help')));
 }
 
-/** The bottom of #/me: Privacy policy · Terms, and a red "Delete my account". */
+/** The bottom of #/me: Privacy policy · Terms · Help, the support email, and a red "Delete my account". */
 export function accountFoot() {
   ensureStyles();
   const del = el('button', { type: 'button', class: 'delete-link', on: { click: () => deleteSheet() } }, t('da_delete'));
-  return el('div', { class: 'account-foot' }, legalLinks(), del);
+  // The support email, right there (owner 2026-10-14: "I don't see gk.smart@ggmt.sg anywhere").
+  const mail = el('p', { class: 'legal-links' }, t('da_support_mail'), ' ',
+    el('a', { href: 'mailto:gk.smart@ggmt.sg?subject=30%2BDA%20support' }, 'gk.smart@ggmt.sg'));
+  return el('div', { class: 'account-foot' }, legalLinks(), mail, del);
 }
 
 // ---------------------------------------------------------------- the sheet
@@ -232,6 +238,8 @@ registerStrings({
   en: {
     da_privacy: 'Privacy policy',
     da_terms: 'Terms',
+    da_help: 'Help',
+    da_support_mail: 'Support:',
     da_delete: 'Delete my account',
     da_title: 'Delete your account?',
     da_lead: 'Deleted at once:',
@@ -255,6 +263,8 @@ registerStrings({
   km: {
     da_privacy: 'គោលការណ៍ឯកជនភាព',
     da_terms: 'លក្ខខណ្ឌប្រើប្រាស់',
+    da_help: 'ជំនួយ',
+    da_support_mail: 'ជំនួយ៖',
     da_delete: 'លុបគណនីរបស់ខ្ញុំ',
     da_title: 'លុបគណនីរបស់អ្នក?',
     da_lead: 'នឹងត្រូវលុបភ្លាមៗ៖',
@@ -278,6 +288,8 @@ registerStrings({
   zh: {
     da_privacy: '隐私政策',
     da_terms: '使用条款',
+    da_help: '帮助',
+    da_support_mail: '客服：',
     da_delete: '删除我的账号',
     da_title: '删除你的账号？',
     da_lead: '以下内容会立即删除：',
@@ -301,6 +313,8 @@ registerStrings({
   ko: {
     da_privacy: '개인정보 처리방침',
     da_terms: '이용약관',
+    da_help: '도움말',
+    da_support_mail: '고객 지원:',
     da_delete: '내 계정 삭제',
     da_title: '계정을 삭제할까요?',
     da_lead: '바로 삭제되는 것:',
@@ -324,6 +338,8 @@ registerStrings({
   ja: {
     da_privacy: 'プライバシーポリシー',
     da_terms: '利用規約',
+    da_help: 'ヘルプ',
+    da_support_mail: 'サポート：',
     da_delete: 'アカウントを削除',
     da_title: 'アカウントを削除しますか？',
     da_lead: 'すぐに削除されるもの：',

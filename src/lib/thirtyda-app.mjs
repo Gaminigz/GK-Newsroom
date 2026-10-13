@@ -95,7 +95,7 @@ import {
   pinHashStale,
 } from "./thirtyda-pin.mjs";
 import {
-  privacyPage, deleteDataPage, termsPage, tryResultPage, appReturnPage, requestLang, backPage, backPlatform, backHref,
+  privacyPage, deleteDataPage, termsPage, supportPage, tryResultPage, appReturnPage, requestLang, backPage, backPlatform, backHref,
 } from "./thirtyda-pages.mjs";
 import {
   canTalk, talksToSomeone, SIGNUP_LIMITS, claimSignup, releaseSignup, verifyBackPath, ATTACH_FROM, phoneViaOf, withPhoneVia, signinsOf,
@@ -2999,6 +2999,8 @@ export async function handleThirtyDaApp(req, res, url) {
     if (path === `${BASE}/delete-data`) return sendPage(req, res, 200, deleteDataPage({ lang: requestLang(req, url) }), docHeaders);
     // The terms of service TikTok asks for (same look, same 5 languages).
     if (path === `${BASE}/terms`) return sendPage(req, res, 200, termsPage({ lang: requestLang(req, url) }), docHeaders);
+    // Help & support: who runs 30+DA and the email (the App Store "Support URL").
+    if (path === `${BASE}/support`) return sendPage(req, res, 200, supportPage({ lang: requestLang(req, url) }), docHeaders);
     // GKVerify's big "⬅️ Back to 30+DA" button (the Telegram bot): back into the app, else the web app.
     if (path === `${BASE}/back`) return sendBackPage(req, res, url);
     // The client loads its modules relative to /30da/, so the bare path gets a slash.

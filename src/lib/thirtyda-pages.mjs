@@ -22,6 +22,8 @@ import { LANGS, LANG_NATIVE, LANG_FLAG } from "../thirtyda-app/shared/rules.js";
 import { APP_SCHEME, APP_PACKAGE } from "./thirtyda-signin.mjs";
 
 export const CONTACT_EMAIL = "gk.smart@ggmt.sg";
+/** Who runs 30+DA (owner 2026-10-14): on every public page, next to the email. */
+export const OPERATOR = "GGMT PTE. LTD.";
 /** The day the privacy policy last changed (YYYY-MM-DD): the one place to change it. Each language writes it its own way (policyDate). */
 export const POLICY_DATE = "2026-10-13";
 /** The subject a deletion email asks for (English in every language: the team reads it; the mail link fills it in). */
@@ -68,6 +70,14 @@ export const PAGE_STRINGS = {
   en: {
     language: "Language",
     questions: "Questions:",
+    run_by: "Run by",
+    support_title: "Help & support",
+    support_lede: "30+DA is a calm dating app for people aged 30 and over.",
+    support_mail_k: "Email us:",
+    support_mail: "write in any of the 5 languages.",
+    support_delete_k: "Delete your account:",
+    support_safety_k: "Report a problem:",
+    support_safety: "email us. We check every report.",
     priv_title: "Privacy policy",
     priv_date: "Updated {date}",
     priv_lede: "30+DA is a dating app for people aged 30 and over.",
@@ -149,6 +159,14 @@ export const PAGE_STRINGS = {
   km: {
     language: "ភាសា",
     questions: "សំណួរ៖",
+    run_by: "ដំណើរការដោយ",
+    support_title: "ជំនួយ និងការគាំទ្រ",
+    support_lede: "30+DA គឺជាកម្មវិធីស្វែងរកដៃគូដ៏ស្ងប់ស្ងាត់ សម្រាប់អ្នកដែលមានអាយុ 30 ឆ្នាំឡើងទៅ។",
+    support_mail_k: "អ៊ីមែលមកយើង៖",
+    support_mail: "សរសេរជាភាសាណាមួយក្នុងចំណោម 5 ភាសា។",
+    support_delete_k: "លុបគណនីរបស់អ្នក៖",
+    support_safety_k: "រាយការណ៍បញ្ហា៖",
+    support_safety: "អ៊ីមែលមកយើង។ យើងពិនិត្យរាល់របាយការណ៍។",
     priv_title: "គោលការណ៍ឯកជនភាព",
     priv_date: "កែថ្មី {date}",
     priv_lede: "30+DA ជាកម្មវិធីណាត់ជួប សម្រាប់អ្នកដែលមានអាយុពី 30 ឆ្នាំឡើងទៅ។",
@@ -230,6 +248,14 @@ export const PAGE_STRINGS = {
   zh: {
     language: "语言",
     questions: "联系我们：",
+    run_by: "运营方：",
+    support_title: "帮助与支持",
+    support_lede: "30+DA 是一款为 30 岁及以上人士打造的安心交友应用。",
+    support_mail_k: "发邮件给我们：",
+    support_mail: "5 种语言都可以。",
+    support_delete_k: "删除账户：",
+    support_safety_k: "举报问题：",
+    support_safety: "发邮件给我们。每一份举报我们都会查看。",
     priv_title: "隐私政策",
     priv_date: "更新于 {date}",
     priv_lede: "30+DA 是为 30 岁及以上人士打造的交友应用。",
@@ -311,6 +337,14 @@ export const PAGE_STRINGS = {
   ko: {
     language: "언어",
     questions: "문의:",
+    run_by: "운영:",
+    support_title: "도움말 및 지원",
+    support_lede: "30+DA는 30세 이상을 위한 차분한 데이트 앱입니다.",
+    support_mail_k: "이메일 문의:",
+    support_mail: "5개 언어 중 어느 언어로든 쓰셔도 됩니다.",
+    support_delete_k: "계정 삭제:",
+    support_safety_k: "문제 신고:",
+    support_safety: "이메일로 알려 주세요. 모든 신고를 확인합니다.",
     priv_title: "개인정보 처리방침",
     priv_date: "{date} 업데이트",
     priv_lede: "30+DA는 30세 이상을 위한 만남 앱이에요.",
@@ -392,6 +426,14 @@ export const PAGE_STRINGS = {
   ja: {
     language: "言語",
     questions: "お問い合わせ：",
+    run_by: "運営：",
+    support_title: "ヘルプとサポート",
+    support_lede: "30+DA は 30 歳以上の方のための落ち着いた出会いアプリです。",
+    support_mail_k: "メールでのお問い合わせ：",
+    support_mail: "5 つの言語のどれで書いても大丈夫です。",
+    support_delete_k: "アカウント削除：",
+    support_safety_k: "問題の報告：",
+    support_safety: "メールでお知らせください。すべての報告を確認します。",
     priv_title: "プライバシーポリシー",
     priv_date: "{date} 更新",
     priv_lede: "30+DA は、30歳以上の方のための出会いアプリです。",
@@ -489,6 +531,7 @@ export function policyDate(lang, iso = POLICY_DATE) {
 }
 
 const mailLink = `<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>`;
+const supportMailLink = `<a href="mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("30+DA support")}">${CONTACT_EMAIL}</a>`;
 const deleteMailLink = `<a href="mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(DELETE_SUBJECT)}">${CONTACT_EMAIL}</a>`;
 
 /** The small flag row (the app's Me page look): flag + short native name, the current one filled navy. */
@@ -551,7 +594,7 @@ ${["priv_keep", "priv_social", "priv_why", "priv_who", "priv_team", "priv_codes"
         <li><b>${t.priv_long_k}</b> ${t.priv_long} <a href="/30da/delete-data?lang=${lang}">${t.priv_how_delete}</a></li>
       </ul>
       <p class="doc-fine"><b>${t.kept_k}</b> ${t.kept}</p>
-      <p class="doc-contact">${t.questions} ${mailLink}</p>
+      <p class="doc-contact">${t.run_by} <b>${OPERATOR}</b> · ${t.questions} ${mailLink}</p>
 ${backToApp(t)}`;
   return page({
     title: `${t.priv_title} · 30+DA`,
@@ -577,7 +620,7 @@ export function deleteDataPage({ lang: want } = {}) {
       </ul>
       <p class="doc-fine"><b>${t.kept_k}</b> ${t.kept}</p>
       <p class="doc-fine">${t.del_signout}</p>
-      <p class="doc-contact">${t.questions} ${mailLink} · <a href="/30da/privacy?lang=${lang}">${t.priv_title}</a></p>
+      <p class="doc-contact">${t.run_by} <b>${OPERATOR}</b> · ${t.questions} ${mailLink} · <a href="/30da/privacy?lang=${lang}">${t.priv_title}</a></p>
 ${backToApp(t)}`;
   return page({
     title: `${t.del_title} · 30+DA`,
@@ -601,12 +644,35 @@ export function termsPage({ lang: want } = {}) {
 ${["terms_age", "terms_honest", "terms_contact", "terms_respect", "terms_team"].map(point).join("\n")}
         <li><b>${t.terms_data_k}</b> <a href="/30da/privacy?lang=${lang}">${t.priv_title}</a></li>
       </ul>
-      <p class="doc-contact">${t.questions} ${mailLink}</p>
+      <p class="doc-contact">${t.run_by} <b>${OPERATOR}</b> · ${t.questions} ${mailLink}</p>
 ${backToApp(t)}`;
   return page({
     title: `${t.terms_title} · 30+DA`,
     lang,
     inner: docColumn({ lang, flags: flagRow(lang, (c) => `/30da/terms?lang=${c}`), body }),
+  });
+}
+
+/**
+ * GET /30da/support[?lang=] — Help & support (the App Store "Support URL"; owner 2026-10-14 "I don't see
+ * gk.smart@ggmt.sg anywhere"): who runs 30+DA, the email, how to report, how to delete.
+ */
+export function supportPage({ lang: want } = {}) {
+  const lang = ok(want);
+  const t = PAGE_STRINGS[lang];
+  const body = `      <h1>${t.support_title}</h1>
+      <p class="doc-lede">${t.support_lede}</p>
+      <ul class="facts">
+        <li><b>${t.support_mail_k}</b> ${supportMailLink} — ${t.support_mail}</li>
+        <li><b>${t.support_safety_k}</b> ${t.support_safety}</li>
+        <li><b>${t.support_delete_k}</b> ${t.del_app} <a href="/30da/delete-data?lang=${lang}">${t.priv_how_delete}</a></li>
+      </ul>
+      <p class="doc-contact">${t.run_by} <b>${OPERATOR}</b> · <a href="/30da/privacy?lang=${lang}">${t.priv_title}</a> · <a href="/30da/terms?lang=${lang}">${t.terms_title}</a></p>
+${backToApp(t)}`;
+  return page({
+    title: `${t.support_title} · 30+DA`,
+    lang,
+    inner: docColumn({ lang, flags: flagRow(lang, (c) => `/30da/support?lang=${c}`), body }),
   });
 }
 

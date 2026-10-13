@@ -489,8 +489,9 @@ test('privacy + delete-data: short, plain, in each language, flags on top, what 
   assert.ok(privacyPage().includes('<html lang="en">') && privacyPage().includes('<h1>Privacy policy</h1>'), 'no language → English');
   assert.ok(privacyPage({ lang: 'xx' }).includes('<html lang="en">'));
   assert.ok(shown(privacyPage()).length < 900, `privacy (en) stays short: ${shown(privacyPage()).length} characters`);
-  // 600: the in-app way + the one "What stays" line Google Play asks for (src/lib/thirtyda-delete.mjs keeps a bare note).
-  assert.ok(shown(deleteDataPage()).length < 600, `delete-data (en) stays short: ${shown(deleteDataPage()).length} characters`);
+  // 650: the in-app way + the one "What stays" line Google Play asks for (src/lib/thirtyda-delete.mjs keeps a bare note)
+  // + "Run by GGMT PTE. LTD." (owner 2026-10-14).
+  assert.ok(shown(deleteDataPage()).length < 650, `delete-data (en) stays short: ${shown(deleteDataPage()).length} characters`);
 });
 
 test('privacy: the date comes from POLICY_DATE alone, written each language\'s way; Google / Facebook line says what we keep', () => {
