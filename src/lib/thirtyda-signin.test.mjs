@@ -702,3 +702,183 @@ test('test fetch: answers only stored addresses, notes each call with secrets cu
   assert.equal(r3.body.code, '••••••');
   assert.ok(!JSON.stringify(r3).includes('12345678'));
 });
+
+// ---------- the native apps (owner 2026-10-13): only the web view that began a sign-in can finish it ----------
+
+import {
+  APP_SCHEME, APP_PACKAGE, APP_TICKETS, APP_TICKET_TTL_MS, APP_COOKIE, APP_ERRORS, newBinder, appCookie, readAppCookie,
+  createAppTicket, takeAppTicket, appReturnQuery, appSchemeUrl, appIntentUrl, appPlatformOf, platformOf,
+} from './thirtyda-signin.mjs';
+import { appReturnPage } from './thirtyda-pages.mjs';
+
+const PERSON = { provider: 'google', id: '109876543210987654321', email: 'nary@example.com', name: 'Nary Secret-Name' };
+
+test('app state: only the binder\'s hash + platform kept; the sheet needs no browser cookie; still single use, 10 minutes, this provider', async () => {
+  const d = fakeDb();
+  const now = Date.now();
+  const binder = newBinder();
+  assert.match(binder, /^[a-f0-9]{64}$/);
+  const state = await createSigninState(d, 'google', { to: 'me', app: stateHash(binder), platform: 'ios', now });
+  const [stored] = [...d.collection(SIGNIN_STATES).docs.values()];
+  assert.equal(stored.app, stateHash(binder), 'the binder\'s SHA-256');
+  assert.equal(stored.platform, 'ios');
+  assert.equal(stored.to, 'me');
+  assert.ok(!JSON.stringify(stored).includes(binder), 'never the binder itself');
+  const first = await takeSigninState(d, 'google', state, null, now + 1000);
+  assert.equal(first.ok, true, 'no thirtyda_oauth cookie in the sheet: the binder does that job at the claim');
+  assert.deepEqual(await takeSigninState(d, 'google', state, null, now + 2000), { ok: false, rec: null }, 'single use');
+
+  const late = await createSigninState(d, 'google', { app: stateHash(newBinder()), platform: 'android', now });
+  assert.equal((await takeSigninState(d, 'google', late, null, now + STATE_TTL_MS + 1)).ok, false, 'past 10 minutes');
+  const fb = await createSigninState(d, 'facebook', { app: stateHash(newBinder()), platform: 'android', now });
+  assert.equal((await takeSigninState(d, 'google', fb, null, now)).ok, false, 'a Facebook state on the Google return');
+});
+
+test('app state: a web state still needs the browser cookie; a test state or a malformed binder hash is never an app state', async () => {
+  const d = fakeDb();
+  const now = Date.now();
+  const web = await createSigninState(d, 'google', { now });
+  assert.equal((await takeSigninState(d, 'google', web, null, now)).ok, false, 'web: no cookie, another browser');
+  const tryState = await createSigninState(d, 'google', { test: true, adminHash: 'a'.repeat(64), app: stateHash(newBinder()), platform: 'ios', now });
+  const tried = await takeSigninState(d, 'google', tryState, null, now);
+  assert.equal(tried.ok, false, 'the admin try keeps its cookie check');
+  assert.equal(tried.rec.app, undefined);
+  const bad = await createSigninState(d, 'google', { app: 'not-a-hash', platform: 'ios', now });
+  const r = await takeSigninState(d, 'google', bad, null, now);
+  assert.equal(r.ok, false);
+  assert.equal(r.rec.app, undefined, 'nothing kept');
+  const odd = await createSigninState(d, 'google', { app: stateHash(newBinder()), platform: 'windows', now });
+  assert.equal((await takeSigninState(d, 'google', odd, null, now)).rec.platform, 'android', 'an unknown platform gets the page, which works anywhere');
+  assert.equal(platformOf('ios'), 'ios');
+  assert.equal(platformOf('iOS'), null);
+});
+
+test('app ticket: kept by its SHA-256 only, 2 minutes, id + email (never the name or a token), to, the binder\'s hash', async () => {
+  const d = fakeDb();
+  const now = Date.now();
+  const app = stateHash(newBinder());
+  const ticket = await createAppTicket(d, 'google', PERSON, { to: 'me', app, now });
+  assert.match(ticket, /^[a-f0-9]{64}$/);
+  const all = [...d.collection(APP_TICKETS).docs.values()];
+  assert.equal(all.length, 1);
+  const [rec] = all;
+  assert.equal(rec._id, stateHash(ticket));
+  assert.ok(!JSON.stringify(rec).includes(ticket), 'never the ticket itself');
+  assert.deepEqual(rec.person, { id: PERSON.id, email: PERSON.email });
+  assert.ok(!JSON.stringify(rec).includes('Nary Secret-Name'), 'no name');
+  assert.equal(rec.to, 'me');
+  assert.equal(rec.app, app);
+  assert.equal(new Date(rec.expires).getTime() - now, APP_TICKET_TTL_MS);
+  assert.equal(APP_TICKET_TTL_MS, 120e3);
+  const noEmail = await createAppTicket(d, 'tiktok', { id: 'open.id-1', email: null }, { app, now });
+  assert.deepEqual(d.collection(APP_TICKETS).docs.get(stateHash(noEmail)).person, { id: 'open.id-1' });
+  assert.equal(d.collection(APP_TICKETS).docs.get(stateHash(noEmail)).to, undefined, 'to only when "me"');
+  await assert.rejects(createAppTicket(d, 'google', PERSON, { app: 'x', now }), 'a ticket needs the binder\'s hash');
+  await assert.rejects(createAppTicket(d, 'myspace', PERSON, { app, now }));
+});
+
+test('app ticket: counts once, only with the binder its sign-in began with, only for 2 minutes', async () => {
+  const d = fakeDb();
+  const now = Date.now();
+  const binder = newBinder();
+  const mk = (n = now) => createAppTicket(d, 'google', PERSON, { to: 'me', app: stateHash(binder), now: n });
+
+  const t1 = await mk();
+  const good = await takeAppTicket(d, t1, binder, now + 1000);
+  assert.equal(good.ok, true);
+  assert.deepEqual(good.person, { provider: 'google', id: PERSON.id, email: PERSON.email });
+  assert.equal(good.rec.to, 'me');
+  assert.deepEqual(await takeAppTicket(d, t1, binder, now + 2000), { ok: false, rec: null }, 'replayed: gone');
+
+  const t2 = await mk();
+  const other = await takeAppTicket(d, t2, newBinder(), now);
+  assert.equal(other.ok, false, 'another web view\'s binder: an attacker\'s ticket fired into someone else\'s app');
+  assert.equal(other.person, undefined);
+  assert.equal(d.collection(APP_TICKETS).docs.has(stateHash(t2)), false, '…and it is used up');
+
+  const t3 = await mk();
+  assert.equal((await takeAppTicket(d, t3, null, now)).ok, false, 'no binder cookie at all');
+  const t4 = await mk();
+  assert.equal((await takeAppTicket(d, t4, stateHash(binder), now)).ok, false, 'the stored hash itself is not the binder');
+  const t5 = await mk(now - APP_TICKET_TTL_MS - 1);
+  const late = await takeAppTicket(d, t5, binder, now);
+  assert.equal(late.ok, false, 'past 2 minutes');
+  assert.ok(late.rec, '…reported (the provider for the way back) and gone');
+  assert.equal(d.collection(APP_TICKETS).docs.size, 0, 'every ticket that came back is used up');
+  assert.deepEqual(await takeAppTicket(d, 'not-a-ticket', binder, now), { ok: false, rec: null });
+  assert.deepEqual(await takeAppTicket(d, t1.toUpperCase(), binder, now), { ok: false, rec: null });
+});
+
+test('app claim with to=me: the account is ADDED to the profile signed in in the web view (never a switch)', async () => {
+  const d = fakeDb();
+  const now = Date.now();
+  const binder = newBinder();
+  const ticket = await createAppTicket(d, 'google', PERSON, { to: 'me', app: stateHash(binder), now });
+  const { ok, rec, person } = await takeAppTicket(d, ticket, binder, now);
+  assert.equal(ok, true);
+  assert.equal(rec.to, 'me');
+  const me = { _id: 'U-10500', phone: '+85512345678', verified: { phone: true } };
+  const plan = planSignin({ provider: person.provider, person, user: null, me, session: { userId: me._id } });
+  assert.equal(plan.kind, 'attach');
+  assert.equal(plan.userId, 'U-10500');
+  assert.deepEqual(plan.userSet, { 'signin.google': { id: PERSON.id, email: PERSON.email }, 'verified.gmail': true });
+});
+
+test('app return: the fixed scheme and package; t=<ticket>, or the callback\'s reason + provider (+ to=me)', () => {
+  const ticket = 'ab'.repeat(32);
+  assert.equal(APP_SCHEME, 'sg.ggmt.thirtyda');
+  assert.equal(APP_PACKAGE, 'sg.ggmt.thirtyda');
+  const q = appReturnQuery({ ticket });
+  assert.equal(q, `t=${ticket}`);
+  assert.equal(appSchemeUrl(q), `sg.ggmt.thirtyda://auth?t=${ticket}`);
+  assert.equal(appIntentUrl(q), `intent://auth?t=${ticket}#Intent;scheme=sg.ggmt.thirtyda;package=sg.ggmt.thirtyda;end`);
+  assert.throws(() => appReturnQuery({ ticket: 'https://evil.example/' }), 'a ticket is 64 hex, nothing else');
+  assert.equal(appReturnQuery({ error: 'cancelled', provider: 'google', to: 'me' }), 'error=cancelled&p=google&to=me');
+  assert.equal(appReturnQuery({ error: 'too_many', provider: 'tiktok' }), 'error=too_many&p=tiktok');
+  assert.deepEqual(APP_ERRORS, ['cancelled', 'expired', 'unavailable', 'failed', 'too_many']);
+  for (const reason of APP_ERRORS) assert.equal(appReturnQuery({ error: reason, provider: 'facebook' }), `error=${reason}&p=facebook`);
+  assert.equal(appReturnQuery({ error: 'javascript:alert(1)', provider: 'evil', to: 'https://evil.example' }), 'error=failed',
+    'an unknown reason is failed; an unknown provider or to is left out');
+  assert.equal(appSchemeUrl(appReturnQuery({ error: 'expired', provider: 'google' })), 'sg.ggmt.thirtyda://auth?error=expired&p=google');
+});
+
+test('app binder cookie: HttpOnly, SameSite=Lax, only /30da/api/auth/app, 10 minutes, Secure on https; read back', () => {
+  const b = 'c'.repeat(64);
+  assert.equal(APP_COOKIE, 'thirtyda_app');
+  assert.equal(appCookie(req('ecom.ggmt.sg'), b), `thirtyda_app=${b}; HttpOnly; SameSite=Lax; Path=/30da/api/auth/app; Max-Age=600; Secure`);
+  assert.equal(appCookie(req('localhost:8096'), b), `thirtyda_app=${b}; HttpOnly; SameSite=Lax; Path=/30da/api/auth/app; Max-Age=600`);
+  assert.equal(appCookie(req('ecom.ggmt.sg'), '', 0), 'thirtyda_app=; HttpOnly; SameSite=Lax; Path=/30da/api/auth/app; Max-Age=0; Secure');
+  assert.equal(readAppCookie(req('x', `thirtyda_s=${'1'.repeat(64)}; thirtyda_app=${b}`)), b);
+  assert.equal(readAppCookie(req('x', `thirtyda_app=${b}x`)), null);
+  assert.equal(readAppCookie(req('x', `xthirtyda_app=${b}`)), null);
+  assert.equal(readAppCookie(req('x', '')), null);
+});
+
+test('the app\'s web view by its user agent: "…30DA-iOS/<v>" / "…30DA-Android/<v>" as the last word, nothing else', () => {
+  assert.equal(appPlatformOf('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 30DA-iOS/0.1'), 'ios');
+  assert.equal(appPlatformOf('Mozilla/5.0 (Linux; Android 14; wv) AppleWebKit/537.36 Chrome/129.0 Mobile Safari/537.36 30DA-Android/0.1 '), 'android');
+  assert.equal(appPlatformOf('Mozilla/5.0 (iPhone) Safari/604.1'), null, 'Safari, the sign-in sheet');
+  assert.equal(appPlatformOf('30DA-iOS/0.1 Mozilla/5.0 Safari'), null, 'not the last word');
+  assert.equal(appPlatformOf('Mozilla/5.0 X30DA-Android/0.1'), null);
+  assert.equal(appPlatformOf(undefined), null);
+});
+
+test('Android return page: "Open 30+DA" is the intent link to the package, the plain link under it, one external script, 5 languages', () => {
+  const ticket = 'de'.repeat(32);
+  const q = appReturnQuery({ ticket });
+  const html = appReturnPage({ ok: true, provider: 'google', intentUrl: appIntentUrl(q), schemeUrl: appSchemeUrl(q), lang: 'km' });
+  assert.ok(html.includes(`<a class="doc-btn" data-app-open href="intent://auth?t=${ticket}#Intent;scheme=sg.ggmt.thirtyda;package=sg.ggmt.thirtyda;end">`));
+  assert.ok(html.includes(`<a href="sg.ggmt.thirtyda://auth?t=${ticket}">`));
+  assert.equal((html.match(/<script\b/g) || []).length, 1, 'one script');
+  assert.ok(html.includes('<script src="/30da/app-return.js" defer></script>'), '…an external file (the CSP allows no inline script)');
+  assert.ok(html.includes('<html lang="km">') && html.includes('<meta name="robots" content="noindex">'));
+  for (const code of ['en', 'km', 'zh', 'ko', 'ja']) {
+    assert.ok(html.includes(`id="${code}" lang="${code}"`), code);
+    assert.ok(html.includes(PAGE_STRINGS[code].app_open) && html.includes(PAGE_STRINGS[code].app_title), code);
+  }
+  assert.ok(html.includes('Google sign-in done.'));
+  const bad = appReturnPage({ ok: false, provider: 'facebook', intentUrl: appIntentUrl('error=cancelled&p=facebook'), schemeUrl: appSchemeUrl('error=cancelled&p=facebook'), lang: 'en' });
+  assert.ok(bad.includes(PAGE_STRINGS.en.app_bad) && bad.includes('intent://auth?error=cancelled&amp;p=facebook#Intent;'), 'the reason, escaped');
+  const js = readFileSync(new URL('../thirtyda-app/app-return.js', import.meta.url), 'utf8');
+  assert.ok(js.includes("a[data-app-open]") && !/fetch|cookie|localStorage/.test(js), 'the auto-try only follows the link');
+});

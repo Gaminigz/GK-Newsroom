@@ -206,6 +206,8 @@ const SAMPLES = [
   ['POST', '/auth/verify-social', 'signin'],
   ['POST', '/auth/telegram/start', 'signin'],
   ['GET', '/auth/telegram/status', 'signin'],
+  ['POST', '/auth/app/begin', 'signin'], // the native apps: begin a sign-in for the app's sheet
+  ['GET', '/auth/app', 'signin'], // …and claim it (the web callback's own lock rule)
   ['POST', '/auth/signout', 'open'],
   ['POST', '/profile', null],
   ['GET', '/me', null],

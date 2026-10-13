@@ -7,8 +7,10 @@ import {
   PHOTO_SLOT_LEVELS, NAME_MAX, NAME_RAW_MAX, checkAppName, clipChars, birthYearOptions, checkBirthYear,
 } from '../core.js';
 // The PIN chosen right after the language waits in this tab; it goes with the sign-in / the new profile (lock.js).
-import { waitingPin, clearPinFlags, pinResetPending, leaveWithoutLock } from '../lock.js';
+import { waitingPin, clearPinFlags, pinResetPending, leaveWithoutLock, backFromSheet } from '../lock.js';
 import { takeAfterCreate } from '../guest.js';
+// In the 30+DA app a sign-in runs in the app's own sheet (Google refuses web views): shell.js.
+import { shellAuth, shellSignIn, onAppReturn } from '../shell.js';
 
 // ---------------------------------------------------------------- app name + birth year (also used on #/me)
 
@@ -324,7 +326,6 @@ registerStrings({
     cp_tg_cancel: 'Cancel',
     cp_tg_mismatch: 'The number in Telegram is not the one you typed. Check the number and try again.',
     cp_tg_expired: 'That took too long. Tap Telegram to try again.',
-    cp_tg_number_first: 'Type your number first, then tap Telegram.',
     cp_tg_match: 'Telegram shows the same sign:',
   },
   km: {
@@ -334,7 +335,6 @@ registerStrings({
     cp_tg_cancel: 'បោះបង់',
     cp_tg_mismatch: 'លេខក្នុង Telegram មិនមែនជាលេខដែលអ្នកបានវាយទេ។ សូមពិនិត្យលេខ ហើយសាកម្ដងទៀត។',
     cp_tg_expired: 'ចំណាយពេលយូរពេក។ សូមចុច Telegram ដើម្បីសាកម្ដងទៀត។',
-    cp_tg_number_first: 'សូមវាយលេខទូរសព្ទរបស់អ្នកជាមុនសិន រួចចុច Telegram។',
     cp_tg_match: 'Telegram បង្ហាញសញ្ញាដូចគ្នា៖',
   },
   zh: {
@@ -344,7 +344,6 @@ registerStrings({
     cp_tg_cancel: '取消',
     cp_tg_mismatch: 'Telegram 里的号码和你输入的不一样。请检查号码后再试。',
     cp_tg_expired: '时间太久了。请再点一次 Telegram。',
-    cp_tg_number_first: '请先输入你的号码，再点 Telegram。',
     cp_tg_match: 'Telegram 会显示同样的标记：',
   },
   ko: {
@@ -354,7 +353,6 @@ registerStrings({
     cp_tg_cancel: '취소',
     cp_tg_mismatch: 'Telegram의 번호가 입력한 번호와 달라요. 번호를 확인하고 다시 해 보세요.',
     cp_tg_expired: '시간이 너무 지났어요. Telegram을 다시 눌러 주세요.',
-    cp_tg_number_first: '먼저 번호를 입력한 뒤 Telegram을 누르세요.',
     cp_tg_match: 'Telegram에도 같은 표시가 나와요:',
   },
   ja: {
@@ -364,7 +362,6 @@ registerStrings({
     cp_tg_cancel: 'キャンセル',
     cp_tg_mismatch: 'Telegram の番号が入力した番号と違います。番号を確認して、もう一度お試しください。',
     cp_tg_expired: '時間がかかりすぎました。もう一度 Telegram を押してください。',
-    cp_tg_number_first: '先に番号を入力してから、Telegram を押してください。',
     cp_tg_match: 'Telegram にも同じマークが出ます：',
   },
 });
@@ -381,10 +378,13 @@ function verifyErrorText(err) {
 
 /**
  * One row of round brand buttons: Telegram · WhatsApp (where the code goes) · Facebook · Google · TikTok (sign in;
- * only when `signin` is given — Create profile). Then [+855 ⌄][12 345 678][Send code] → 6-digit code with a
- * resend countdown → green "Phone verified". On Create profile (owner 2026-10-13) the number box comes FIRST,
- * always there even while no code channel works (then without Send code: the number is kept and saved on the
- * profile unverified — see flagNumber), and one short line under the round buttons replaces every standing note.
+ * only when `signin` is given — Create profile) and the number box [+855 ⌄][12 345 678] (the whole row: no button
+ * beside it). A TAP STARTS THAT WAY at once (owner 2026-10-13): Telegram / WhatsApp take the number typed (none yet:
+ * "Type your phone number first.") — the free Telegram bot's check, or a 6-digit code with a resend countdown —
+ * Google / Facebook / TikTok sign in. One short line under the buttons says what to do: "Tap the app you want to
+ * verify with." before a tap, "Check Telegram for the next step." / "Check WhatsApp for your code." after one; then
+ * green "Number verified ✓". On Create profile the number box comes FIRST, always there even while no code channel
+ * works (the number is kept and saved on the profile unverified — see flagNumber).
  * A live channel really sends ("We sent a code to your Telegram");
  * test mode shows the code on screen. If the channel cannot deliver, the message offers the other one.
  * A button that does not work yet (GET /auth/methods) is dimmed with "Coming soon"; tapping it says why.
@@ -413,7 +413,8 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
   let signingIn = null;
   let codeEl = null;
   let methods = null; // null = not known (yet): every button on
-  let methodsAsked = false; // GET /auth/methods answered (or failed): Create profile shows Send code only then
+  let methodsAsked = false; // GET /auth/methods answered (or failed): a Telegram tap waits for it (the bot or codes)
+  let methodsReady = null; // that call (set at the end): a tap before it answered waits for it
   let numberFlagged = false; // the error shown is flagNumber's: it goes as soon as the number is edited
   let alive = true;
 
@@ -438,13 +439,11 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
   const cpLayout = Boolean(signin) && signin.to !== 'me';
   /**
    * Some code channel works (or it is not known yet). None → #/me: no phone box, "Codes by phone are coming
-   * soon." instead; Create profile: the number box stays, without Send code.
+   * soon." instead; Create profile: the number box stays (saved unverified).
    */
   const anyCodeOn = () => CODE_CHANNELS.some(([key]) => codeOn(key));
   /** "Sign-in with Google is coming soon." — pointing at the phone only while a code channel works. */
   const signinSoonText = (name) => t(anyCodeOn() ? 'cp_signin_soon' : 'cp_signin_soon_only', { name });
-  /** Create profile: Send code only once GET /auth/methods answered and a code channel works (or a code is out). */
-  const sendShown = () => model.codeSent || !cpLayout || (methodsAsked && anyCodeOn());
 
   /** The other code channel can still be offered: it works and has not failed here already. */
   const otherWorks = (channel) => {
@@ -462,23 +461,36 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     };
   }
 
-  function pickChannel(key) {
+  /**
+   * A tap on Telegram / WhatsApp starts that way at once (owner 2026-10-13: no Send code / Open Telegram button):
+   * the free Telegram bot's check, or a code by that app. It needs the number typed first.
+   */
+  async function startChannel(key) {
+    if (sending || tgBusy || model.verified) return;
+    if (!methodsAsked) await methodsReady; // which Telegram it is (the bot or codes): known in a moment
+    if (!alive || sending || tgBusy) return;
     if (!codeOn(key)) {
       showError(null);
       showNote(t(otherWorks(key) ? 'cp_ch_off' : 'cp_ch_off_only', { channel: channelName(key), other: channelName(otherChannel(key)) }));
       return;
     }
-    // The free Telegram bot: the tap itself goes to Telegram (no code to wait for).
-    if (key === 'telegram' && botMode()) {
-      model.channel = key;
-      startTelegram();
-      return;
-    }
-    if (model.channel === key) return;
+    if (!fullPhone(model)) return askNumber();
     model.channel = key;
-    showError(null);
-    showNote(null);
-    render();
+    // The free Telegram bot: the tap itself goes to Telegram (no code to wait for).
+    if (key === 'telegram' && botMode()) return startTelegram();
+    // That app's code is already on its way to this number: its box is right there.
+    if (model.codeSent && model.sentBy === key && model.sentTo === fullPhone(model) && model.resendAt > Date.now()) return codeEl?.focus();
+    // Another app now: the wait for Telegram's bot is over (one way, one line at a time).
+    if (model.tg) endTelegram();
+    return send();
+  }
+
+  /** No number yet (or not a real one): one plain line under the box, the cursor in it. */
+  function askNumber() {
+    if (model.phone.trim()) return flagNumber();
+    showError(t('cp_number_first'));
+    numberFlagged = true;
+    node.querySelector('.phone-row input[type=tel]')?.focus();
   }
 
   async function signIn(provider, key, name) {
@@ -490,7 +502,10 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     if (methods?.signinTest?.[provider] !== true) {
       // The real sign-in: the whole page goes to Google / Facebook and comes back to this step.
       try { signin?.beforeLeave?.(); } catch { /* keeping the draft is a nicety */ }
-      location.assign(`/30da/api/auth/${provider}/start${signin?.to === 'me' ? '?to=me' : ''}`);
+      const to = signin?.to === 'me' ? 'me' : null;
+      // In the 30+DA app: the app's own sign-in sheet; when it signs in, the app loads the way back itself.
+      if (shellAuth()) return signInByApp(provider, to);
+      location.assign(`/30da/api/auth/${provider}/start${to ? '?to=me' : ''}`);
       return;
     }
     try {
@@ -507,11 +522,34 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     }
   }
 
+  /**
+   * The sign-in in the 30+DA app's sheet (shell.js). Done → the app loads /30da/api/auth/app?… itself (the button
+   * stays busy; free again after a while if that never came). Closed or failed → the button is free again at once.
+   */
+  async function signInByApp(provider, to) {
+    let how = 'failed';
+    try {
+      how = await shellSignIn(api, provider, to);
+    } catch (err) {
+      showError(err?.status === 0 ? t('err_network') : t('err_generic'));
+    }
+    if (how === 'left') return;
+    if (how === 'done') {
+      setTimeout(() => { if (alive && signingIn === provider) { signingIn = null; render(); } }, 10e3);
+      return;
+    }
+    backFromSheet({ touched: how === 'cancelled' });
+    if (how === 'failed' && error.hidden) showError(t('err_generic'));
+    if (!alive) return;
+    signingIn = null;
+    render();
+  }
+
   async function send() {
     if (sending) return;
     if (model.channel === 'telegram' && botMode()) return startTelegram();
     const phone = fullPhone(model);
-    if (!phone) return showError(t('cp_phone_invalid'));
+    if (!phone) return askNumber();
     const channel = model.channel;
     sending = true;
     showNote(null);
@@ -565,18 +603,13 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     tgTimer = setTimeout(pollTelegram, ms);
   }
   const openTelegram = (link) => {
-    try { window.open(link, '_blank', 'noopener'); } catch { /* blocked: the "Open Telegram" button is right there */ }
+    try { window.open(link, '_blank', 'noopener'); } catch { /* blocked: the waiting box's "Open Telegram" is right there */ }
   };
 
   async function startTelegram() {
     if (tgBusy || sending) return;
     const phone = fullPhone(model);
-    if (!phone) {
-      showError(t(model.phone.trim() ? 'cp_phone_invalid' : 'cp_tg_number_first'));
-      numberFlagged = true;
-      node.querySelector('.phone-row input[type=tel]')?.focus();
-      return;
-    }
+    if (!phone) return askNumber();
     // The same number is already waiting: just open Telegram again.
     if (model.tg?.phone === phone && model.tg.until > Date.now()) return openTelegram(model.tg.link);
     endTelegram();
@@ -714,6 +747,27 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     return line;
   }
 
+  /** Telegram / WhatsApp is under way for the number in the box: sending, its code out, or the bot waiting. */
+  function underWay(key) {
+    if (model.verified) return false;
+    if (sending) return model.channel === key;
+    return key === 'telegram' && model.tg ? true : Boolean(model.codeSent && model.sentBy === key);
+  }
+
+  /**
+   * The one line under the buttons (owner 2026-10-13): "Tap the app you want to verify with." until a tap starts
+   * one; then the app to look in — "Check Telegram for the next step." (the bot; Google / Facebook / TikTok while
+   * they open) or "Check WhatsApp for your code.". Brand names stay in Latin letters.
+   */
+  function stepText() {
+    const signinName = SIGN_INS.find(([provider]) => provider === signingIn)?.[2];
+    if (signinName) return t('cp_check_next', { app: signinName });
+    if (model.tg) return t('cp_check_next', { app: channelName('telegram') });
+    if (sending) return t(model.channel === 'telegram' && botMode() ? 'cp_check_next' : 'cp_check_code', { app: channelName(model.channel) });
+    if (model.codeSent) return t('cp_check_code', { app: channelName(model.sentBy || model.channel) });
+    return t('cp_tap_app');
+  }
+
   /** One round button: brand mark, name under it, "Coming soon" under that while it does not work. */
   function wayButton({ key, name, on, pressed = null, done = false, busy = false, click }) {
     return el('button', {
@@ -733,10 +787,11 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
 
   function waysRow() {
     const proved = signin?.verified?.() || {};
+    // Telegram / WhatsApp: a tap starts it (startChannel); the navy ring marks the one under way.
     const codeBtn = ([key, name]) => wayButton({
-      key, name, on: codeOn(key), pressed: model.channel === key && codeOn(key) && !model.verified,
-      done: Boolean(model.verified && model.verifiedBy === key),
-      click: () => { if (!sending) pickChannel(key); },
+      key, name, on: codeOn(key), pressed: underWay(key),
+      done: Boolean(model.verified && model.verifiedBy === key), busy: sending && model.channel === key,
+      click: () => startChannel(key),
     });
     const signinBtn = ([provider, key, name]) => wayButton({
       key: provider, name, on: signinOn(provider), done: Boolean(proved[key]), busy: signingIn === provider,
@@ -764,48 +819,42 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     const proved = model.verified;
     const ccSel = el('select', { class: 'select', 'aria-label': t('cp_country_code'), on: { change: () => { model.cc = ccSel.value; reproved(); } } },
       COUNTRY_CODES.map((c) => el('option', { value: c, selected: c === model.cc }, c)));
-    // While a code is out, "Resend code" under it takes over until the 30 s are up.
-    const waiting = () => model.codeSent && model.resendAt > Date.now();
-    // The free Telegram bot sends no code: with Telegram picked the button opens Telegram (and rests while it waits).
-    const tgPicked = model.channel === 'telegram' && botMode();
-    const sendBtn = el('button', {
-      type: 'button', class: 'btn btn-secondary btn-sm send-code', on: { click: send },
-      disabled: sending || waiting() || !fullPhone(model) || Boolean(model.tg && model.tg.phone === fullPhone(model)),
-    }, t(sending ? 'cp_sending' : tgPicked ? 'cp_tg_open' : 'cp_send_code'));
+    // No button beside the box (owner 2026-10-13): a tap on Telegram / WhatsApp sends (startChannel).
     const phoneInput = el('input', {
       class: ['input', proved && 'is-verified'], type: 'tel', inputmode: 'tel', autocomplete: 'tel-national', maxlength: '20',
       placeholder: t('cp_phone_ph'), 'aria-label': t('cp_phone'), 'aria-describedby': `${uid}-by`, value: model.phone,
       on: {
         input: () => {
           model.phone = phoneInput.value;
+          const said = stepText();
           // Waiting for Telegram for another number: that wait is over (tap Telegram again for this one).
           if (model.tg && fullPhone(model) !== model.tg.phone) { endTelegram(); if (tgEl) tgEl.hidden = true; }
           if (model.codeSent && fullPhone(model) !== model.sentTo) Object.assign(model, { codeSent: false, devCode: null, code: '', live: false, sentBy: null });
-          sendBtn.disabled = sending || waiting() || !fullPhone(model);
           codeBox.hidden = !model.codeSent;
-          hint.hidden = model.codeSent || (!cpLayout && !codeOn(model.channel));
+          // Nothing under way for this number any more: "Tap the app you want to verify with." again, no ring.
+          if (step && stepText() !== said) {
+            step.textContent = stepText();
+            node.querySelectorAll('.way[aria-pressed="true"]').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+          }
           if (numberFlagged) showError(null); // "Enter a valid phone number." from Next goes as they fix it
           reproved();
         },
-        keydown: (e) => { if (e.key === 'Enter' && sendBtn.isConnected) send(); },
       },
     });
-    // Create profile: one short line for all the ways ("To chat, verify: add your phone number, tap one of the apps and wait for its reply.").
-    // #/me: "Your code comes by Telegram." — which of the two the Send button uses; only when that one is offered.
-    // Verified: "Number verified ✓" takes the line's place (#/me: with "Change number").
+    // The one line under the buttons (stepText): "Tap the app you want to verify with." → "Check Telegram for the
+    // next step." / "Check WhatsApp for your code.". Create profile and the sheet: "🔒 Only for verification — kept
+    // safe and private." under it. Verified: "Number verified ✓" takes the line's place (#/me: with "Change number").
+    const step = proved ? null : el('span', { class: 'way-step' }, stepText());
     const hint = proved
       ? el('p', { class: 'way-hint way-watch way-verified', id: `${uid}-by`, role: 'status' },
         el('span', { class: 'verified-line' }, t('cp_phone_verified')),
         cpLayout ? el('span', { class: 'way-private' }, icon('lock', 12), t('cp_code_private'))
           : el('button', { type: 'button', class: 'link change-number', on: { click: changeNumber } }, t('cp_change_number')))
-      : cpLayout
-      ? el('p', { class: 'way-hint way-watch', id: `${uid}-by`, hidden: model.codeSent }, t('cp_code_watch'),
+      : el('p', { class: ['way-hint', cpLayout && 'way-watch'], id: `${uid}-by`, role: 'status' }, step,
         // Owner: say the number is only for verification and stays private.
-        el('span', { class: 'way-private' }, icon('lock', 12), t('cp_code_private')))
-      : el('p', { class: 'way-hint', id: `${uid}-by`, hidden: model.codeSent || !codeOn(model.channel) },
-        t('cp_code_comes_by', { channel: channelName(model.channel) }));
-    // #/me with no code channel offered at all (and no code out): no phone box and Send button that can only
-    // fail, one calm line. Create profile keeps the box (the number is saved unverified), just without Send code.
+        cpLayout ? el('span', { class: 'way-private' }, icon('lock', 12), t('cp_code_private')) : null);
+    // #/me with no code channel offered at all (and no code out): no phone box (a tap could only fail), one calm
+    // line. Create profile keeps the box (the number is saved unverified).
     const phoneSoon = !cpLayout && !anyCodeOn() && !model.codeSent && !proved;
 
     const codeBox = el('div', { class: 'stack', style: { '--gap': '8px' }, hidden: !model.codeSent });
@@ -829,11 +878,9 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
           : t('cp_code_sent', { phone: model.sentTo })));
       if (model.devCode) codeBox.append(el('p', { class: 'dev-note' }, t('cp_test_code', { code: model.devCode })));
     }
-    const withSend = sendShown() && !proved;
-    const phoneRow = el('div', { class: ['phone-row', !withSend && 'no-send'] }, ccSel, phoneInput, withSend ? sendBtn : null);
-    // While it waits for Telegram (the free bot) its box takes the one line's place.
+    const phoneRow = el('div', { class: 'phone-row' }, ccSel, phoneInput);
+    // While it waits for Telegram (the free bot): its box under "Check Telegram for the next step.".
     const tgBox = tgWaitBox();
-    if (tgBox) hint.hidden = true;
     // Create profile: the number first (right under the label), then the round buttons, then the one line.
     if (cpLayout) node.replaceChildren(...[phoneRow, waysRow(), hint, note, codeBox, tgBox, error].filter(Boolean));
     else {
@@ -875,19 +922,19 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
   // Back from Google / Facebook with the browser's back button (page restored from memory): the button is free again.
   const onShow = (e) => { if (e.persisted && signingIn) { signingIn = null; render(); } };
   window.addEventListener('pageshow', onShow);
+  // Back in the 30+DA app from its sign-in sheet (a Custom Tab trip has no unload, so no pageshow): free again.
+  const stopReturn = onAppReturn(() => { if (alive && signingIn) { signingIn = null; render(); } });
   // Re-drawn while it waits for Telegram (a language switch): keep asking.
   if (model.tg) pollTelegram();
-  loadMethods().then((m) => {
+  methodsReady = loadMethods().then((m) => {
     if (!alive) return;
     methodsAsked = true;
-    // The call failed: every button stays on (#/me: nothing changes; Create profile: Send code shows now).
-    if (!m && !cpLayout) return;
-    if (m) {
-      methods = m;
-      onMethods?.(m);
-      // The chosen channel does not work but the other one does: start there (unless a code is already out).
-      if (!model.codeSent && !codeOn(model.channel) && codeOn(otherChannel(model.channel))) model.channel = otherChannel(model.channel);
-    }
+    // The call failed: every button stays on, nothing changes (the server answers each tap for itself).
+    if (!m) return;
+    methods = m;
+    onMethods?.(m);
+    // The last channel does not work but the other one does: that one for a resend (unless a code is already out).
+    if (!model.codeSent && !codeOn(model.channel) && codeOn(otherChannel(model.channel))) model.channel = otherChannel(model.channel);
     const focused = node.contains(document.activeElement) ? document.activeElement : null;
     const typed = focused?.matches?.('input') ? { value: focused.value, start: focused.selectionStart } : null;
     render();
@@ -921,7 +968,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
       return { bad: true };
     },
     flagNumber,
-    destroy: () => { alive = false; clearInterval(resendTimer); stopTelegram(); window.removeEventListener('pageshow', onShow); },
+    destroy: () => { alive = false; clearInterval(resendTimer); stopTelegram(); window.removeEventListener('pageshow', onShow); stopReturn(); },
   };
 
   /** "Enter a valid phone number." under the box (it goes as soon as the number is edited), cursor in the box. */
@@ -1408,8 +1455,6 @@ registerStrings({
     cp_tag_needed_chat: 'Needed to chat',
     cp_country_code: 'Country code',
     cp_phone_ph: '12 345 678',
-    cp_send_code: 'Send code',
-    cp_sending: 'Sending…',
     cp_code_ph: '6-digit code',
     cp_code_sent: 'We sent a code to {phone}.',
     cp_resend_in: 'Resend in {s} s',
@@ -1425,7 +1470,6 @@ registerStrings({
     cp_too_many: 'Too many tries. Please wait a few minutes.',
     cp_sms_off: 'Text messages are not available yet. Verify with Google or Facebook for now.',
     cp_ways: 'How to verify',
-    cp_code_comes_by: 'Your code comes by {channel}.',
     cp_soon: 'Coming soon',
     cp_signin_soon: 'Sign-in with {name} is coming soon. For now, get a code on your phone.',
     cp_signin_soon_only: 'Sign-in with {name} is coming soon.',
@@ -1445,7 +1489,10 @@ registerStrings({
     cp_ch_off_only: 'Codes by {channel} are not available yet.',
     cp_phone_in_use: 'This phone number already has a profile.',
     cp_verified: 'Verified',
-    cp_code_watch: 'To chat, verify: add your phone number, tap one of the apps and wait for its reply.',
+    cp_tap_app: 'Tap the app you want to verify with.',
+    cp_check_next: 'Check {app} for the next step.',
+    cp_check_code: 'Check {app} for your code.',
+    cp_number_first: 'Type your phone number first.',
     cp_code_private: 'Only for verification — kept safe and private.',
     cp_next: 'Next',
     cp_need_all: 'Fill in every field first.',
@@ -1501,8 +1548,6 @@ registerStrings({
     cp_tag_needed_chat: 'ត្រូវការដើម្បីជជែក',
     cp_country_code: 'លេខកូដប្រទេស',
     cp_phone_ph: '12 345 678',
-    cp_send_code: 'ផ្ញើលេខកូដ',
-    cp_sending: 'កំពុងផ្ញើ…',
     cp_code_ph: 'លេខកូដ 6 ខ្ទង់',
     cp_code_sent: 'យើងបានផ្ញើលេខកូដទៅ {phone}។',
     cp_resend_in: 'ផ្ញើម្ដងទៀតក្នុងរយៈពេល {s} វិនាទី',
@@ -1518,7 +1563,6 @@ registerStrings({
     cp_too_many: 'ព្យាយាមច្រើនដងពេក។ សូមរង់ចាំប៉ុន្មាននាទីសិន។',
     cp_sms_off: 'សារ SMS មិនទាន់អាចប្រើបាននៅឡើយទេ។ សូមផ្ទៀងផ្ទាត់ជាមួយ Google ឬ Facebook សិន។',
     cp_ways: 'របៀបផ្ទៀងផ្ទាត់',
-    cp_code_comes_by: 'លេខកូដរបស់អ្នកនឹងផ្ញើមកតាម {channel}។',
     cp_soon: 'ឆាប់ៗនេះ',
     cp_signin_soon: 'ការចូលតាម {name} នឹងមានឆាប់ៗនេះ។ សម្រាប់ពេលនេះ សូមទទួលលេខកូដតាមទូរស័ព្ទរបស់អ្នក។',
     cp_signin_soon_only: 'ការចូលតាម {name} នឹងមានឆាប់ៗនេះ។',
@@ -1538,7 +1582,10 @@ registerStrings({
     cp_ch_off_only: 'លេខកូដតាម {channel} មិនទាន់អាចប្រើបាននៅឡើយទេ។',
     cp_phone_in_use: 'លេខទូរស័ព្ទនេះមានប្រវត្តិរូបរួចហើយ។',
     cp_verified: 'បានផ្ទៀងផ្ទាត់',
-    cp_code_watch: 'ដើម្បីជជែក សូមផ្ទៀងផ្ទាត់៖ បញ្ចូលលេខទូរស័ព្ទ ចុចកម្មវិធីណាមួយ ហើយរង់ចាំការឆ្លើយតប។',
+    cp_tap_app: 'ចុចកម្មវិធីដែលអ្នកចង់ប្រើដើម្បីផ្ទៀងផ្ទាត់។',
+    cp_check_next: 'សូមពិនិត្យ {app} សម្រាប់ជំហានបន្ទាប់។',
+    cp_check_code: 'សូមពិនិត្យ {app} ដើម្បីយកលេខកូដរបស់អ្នក។',
+    cp_number_first: 'សូមវាយលេខទូរស័ព្ទរបស់អ្នកជាមុនសិន។',
     cp_code_private: 'សម្រាប់តែការផ្ទៀងផ្ទាត់ — រក្សាទុកដោយសុវត្ថិភាព និងជាការសម្ងាត់។',
     cp_next: 'បន្ទាប់',
     cp_need_all: 'សូមបំពេញគ្រប់ចន្លោះជាមុនសិន។',
@@ -1594,8 +1641,6 @@ registerStrings({
     cp_tag_needed_chat: '聊天必需',
     cp_country_code: '国家/地区代码',
     cp_phone_ph: '12 345 678',
-    cp_send_code: '发送验证码',
-    cp_sending: '发送中…',
     cp_code_ph: '6 位验证码',
     cp_code_sent: '验证码已发送至 {phone}。',
     cp_resend_in: '{s} 秒后可重新发送',
@@ -1611,7 +1656,6 @@ registerStrings({
     cp_too_many: '尝试次数过多，请稍等几分钟。',
     cp_sms_off: '短信验证暂未开通，请先用 Google 或 Facebook 验证。',
     cp_ways: '验证方式',
-    cp_code_comes_by: '验证码将通过 {channel} 发送。',
     cp_soon: '即将推出',
     cp_signin_soon: '{name} 登录即将推出。现在请先用手机接收验证码。',
     cp_signin_soon_only: '{name} 登录即将推出。',
@@ -1631,7 +1675,10 @@ registerStrings({
     cp_ch_off_only: '{channel} 验证码暂未开通。',
     cp_phone_in_use: '这个手机号已经有资料了。',
     cp_verified: '已验证',
-    cp_code_watch: '想聊天请先验证：填写手机号，点选任一应用，然后等待回复。',
+    cp_tap_app: '点选你想用来验证的应用。',
+    cp_check_next: '请查看 {app}，进行下一步。',
+    cp_check_code: '请查看 {app} 收到的验证码。',
+    cp_number_first: '请先输入你的手机号码。',
     cp_code_private: '仅用于验证——安全保密。',
     cp_next: '下一步',
     cp_need_all: '请先填写所有信息。',
@@ -1687,8 +1734,6 @@ registerStrings({
     cp_tag_needed_chat: '채팅에 필요',
     cp_country_code: '국가 번호',
     cp_phone_ph: '12 345 678',
-    cp_send_code: '코드 받기',
-    cp_sending: '보내는 중…',
     cp_code_ph: '6자리 코드',
     cp_code_sent: '{phone}(으)로 코드를 보냈어요.',
     cp_resend_in: '{s}초 후 다시 보내기',
@@ -1704,7 +1749,6 @@ registerStrings({
     cp_too_many: '시도 횟수가 너무 많아요. 몇 분 뒤에 다시 해 주세요.',
     cp_sms_off: '아직 문자 인증을 쓸 수 없어요. 지금은 Google 또는 Facebook으로 인증해 주세요.',
     cp_ways: '인증 방법',
-    cp_code_comes_by: '코드는 {channel}(으)로 보내 드려요.',
     cp_soon: '곧 제공',
     cp_signin_soon: '{name} 로그인은 곧 제공돼요. 지금은 휴대폰으로 코드를 받아 주세요.',
     cp_signin_soon_only: '{name} 로그인은 곧 제공돼요.',
@@ -1724,7 +1768,10 @@ registerStrings({
     cp_ch_off_only: '{channel} 코드는 아직 쓸 수 없어요.',
     cp_phone_in_use: '이 전화번호로 이미 만든 프로필이 있어요.',
     cp_verified: '인증됨',
-    cp_code_watch: '채팅하려면 인증하세요: 전화번호를 넣고 앱 하나를 누른 뒤 답을 기다리세요.',
+    cp_tap_app: '인증할 앱을 누르세요.',
+    cp_check_next: '{app}에서 다음 단계를 확인하세요.',
+    cp_check_code: '{app}에서 코드를 확인하세요.',
+    cp_number_first: '먼저 전화번호를 입력하세요.',
     cp_code_private: '인증에만 쓰여요 — 안전하게 비공개로 지켜요.',
     cp_next: '다음',
     cp_need_all: '먼저 모든 항목을 채워 주세요.',
@@ -1780,8 +1827,6 @@ registerStrings({
     cp_tag_needed_chat: 'チャットに必要',
     cp_country_code: '国番号',
     cp_phone_ph: '12 345 678',
-    cp_send_code: 'コード送信',
-    cp_sending: '送信中…',
     cp_code_ph: '6桁のコード',
     cp_code_sent: '{phone} にコードを送りました。',
     cp_resend_in: '{s}秒後に再送信できます',
@@ -1797,7 +1842,6 @@ registerStrings({
     cp_too_many: '試行回数が多すぎます。数分お待ちください。',
     cp_sms_off: 'SMSはまだ利用できません。今はGoogleまたはFacebookで確認してください。',
     cp_ways: '確認の方法',
-    cp_code_comes_by: 'コードは{channel}に届きます。',
     cp_soon: '近日公開',
     cp_signin_soon: '{name}でのログインは近日公開です。今は電話でコードを受け取ってください。',
     cp_signin_soon_only: '{name}でのログインは近日公開です。',
@@ -1817,7 +1861,10 @@ registerStrings({
     cp_ch_off_only: '{channel}でのコード送信はまだ利用できません。',
     cp_phone_in_use: 'この電話番号のプロフィールはすでにあります。',
     cp_verified: '確認済み',
-    cp_code_watch: 'チャットするには確認を：電話番号を入れて、アプリを1つ選び、返事を待ってください。',
+    cp_tap_app: '確認に使うアプリをタップしてください。',
+    cp_check_next: '{app} で次の手順を確認してください。',
+    cp_check_code: '{app} に届いたコードを確認してください。',
+    cp_number_first: '先に電話番号を入力してください。',
     cp_code_private: '確認のためだけに使います — 安全に非公開で守ります。',
     cp_next: '次へ',
     cp_need_all: 'まずすべての項目を入力してください。',

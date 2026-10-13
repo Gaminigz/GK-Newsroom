@@ -40,6 +40,10 @@
  * GET /30da/api/auth/<provider>/callback → 302 to /30da/#/create (new person) or /30da/#/nearby (returning person),
  * or back to the phone step with ?signin=<provider>&error=<cancelled|expired|unavailable|failed|too_many>.
  * The admin's "Try sign-in" ends on a small result page instead and makes no user or session.
+ * The native apps (owner 2026-10-13, src/lib/thirtyda-signin.mjs): the app's web view POSTs /auth/app/begin (a binder
+ * cookie of that web view + { url }), its sign-in sheet (own cookies) goes to the provider and the callback signs nobody
+ * in there — it hands a one-time ticket to the app (iOS: 302 sg.ggmt.thirtyda://auth?t=<t>; Android: a page with an
+ * intent:// link), and the web view finishes it at GET /30da/api/auth/app?t=<t> only with the same binder (appClaim).
  *
  * The PIN lock (owner 2026-10-13, src/lib/thirtyda-pin.mjs): a 4-digit PIN locks the app. A profile's session
  * is open only after a sign-in or the PIN, and only while the person really uses the app (2 minutes without
@@ -71,6 +75,8 @@ import {
   SIGNIN_PROVIDERS, SIGNIN_WIRED, VERIFIED_KEY, SIGNIN_STATES, signinKeys, signinKeysSaved, signinRedirect, authorizeUrl,
   createSigninState, takeSigninState, stateCookie, readStateCookie, adminSessionAlive, signinPerson, callbackError,
   signinUserFilter, planSignin, pkcePair,
+  stateHash, APP_TICKETS, APP_ERRORS, platformOf, newBinder, appCookie, readAppCookie, createAppTicket, takeAppTicket, appReturnQuery,
+  appSchemeUrl, appIntentUrl,
 } from "./thirtyda-signin.mjs";
 import { noteSecretUse } from "./thirtyda-settings.mjs";
 import { outboundFetch } from "./thirtyda-test-fetch.mjs";
@@ -83,7 +89,7 @@ import {
   legacyLockFields, activityAt, backgroundCall, passiveCall, nextActiveAt, whileLocked, pinSetPlan, afterWrongPin,
   pinHashStale,
 } from "./thirtyda-pin.mjs";
-import { privacyPage, deleteDataPage, termsPage, tryResultPage, requestLang } from "./thirtyda-pages.mjs";
+import { privacyPage, deleteDataPage, termsPage, tryResultPage, appReturnPage, requestLang } from "./thirtyda-pages.mjs";
 import {
   canTalk, talksToSomeone, SIGNUP_LIMITS, claimSignup, releaseSignup, verifyBackPath, ATTACH_FROM, phoneViaOf, withPhoneVia, signinsOf,
 } from "./thirtyda-verify.mjs";
@@ -172,6 +178,8 @@ export async function ensureThirtyDaIndexes(d) {
     ...SIGNIN_PROVIDERS.map((p) => d.collection(C.users).createIndex(
       { [`signin.${p}.id`]: 1 }, { unique: true, partialFilterExpression: { [`signin.${p}.id`]: { $exists: true } } })),
     d.collection(SIGNIN_STATES).createIndex({ expires: 1 }, { expireAfterSeconds: 0 }),
+    // The native apps' one-time sign-in tickets (2 minutes, single use — src/lib/thirtyda-signin.mjs).
+    d.collection(APP_TICKETS).createIndex({ expires: 1 }, { expireAfterSeconds: 0 }),
     // Telegram bot checks: gone 30 minutes after they expire; found by browser (status) and by Telegram user (the bot).
     d.collection(TG_CHECKS).createIndex({ purgeAt: 1 }, { expireAfterSeconds: 0 }),
     d.collection(TG_CHECKS).createIndex({ browser: 1, created: -1 }),
@@ -813,6 +821,7 @@ const ipGuesses = new Map(); // ip -> [timestamps] of code checks (verify-code)
 const giveBacks = new Map(); // phone -> [timestamps] of failed live sends that were given back
 const ipSigninStarts = new Map(); // ip -> [timestamps] of Google / Facebook sign-ins started
 const ipSigninReturns = new Map(); // ip -> [timestamps] of returns from Google / Facebook
+const ipSigninClaims = new Map(); // ip -> [timestamps] of the native apps' ticket claims (GET /auth/app)
 
 /** Timestamps of `key` still inside the window (the list is stored back, pruned). */
 function inWindowFor(map, key, now) {
@@ -823,7 +832,7 @@ function inWindowFor(map, key, now) {
 /** Drop keys with nothing left in the window, so the limiter maps cannot grow without end. */
 setInterval(() => {
   const now = Date.now();
-  for (const map of [ipSends, ipGuesses, giveBacks, ipSigninStarts, ipSigninReturns]) {
+  for (const map of [ipSends, ipGuesses, giveBacks, ipSigninStarts, ipSigninReturns, ipSigninClaims]) {
     for (const [key, list] of map) if (!list.some((t) => now - t < OTP_WINDOW_MS)) map.delete(key);
   }
 }, OTP_WINDOW_MS).unref();
@@ -1226,6 +1235,12 @@ const backToPhoneStep = (provider, reason) => `${BASE}/#/create?signin=${provide
 /** A provider's ?error_description=… cut down to something safe to keep and show. */
 const safeNote = (v) => String(v ?? "").replace(/[^\w .,:;()'/+-]/g, " ").replace(/\s+/g, " ").trim().slice(0, 160) || null;
 
+/** { "Set-Cookie": … } for the cookies given (a single one stays a plain string), or no header at all. */
+function setCookies(...list) {
+  const all = list.flat().filter(Boolean);
+  return all.length ? { "Set-Cookie": all.length === 1 ? all[0] : all } : {};
+}
+
 /**
  * GET /auth/<provider>/start → 302 to Google / Facebook with a fresh single-use state and its cookie. Keys not
  * saved → back to the phone step (unavailable). SIGNIN_STARTS per address per 15 minutes (too_many).
@@ -1249,16 +1264,23 @@ async function signinStart(req, res, url, d, provider) {
  * browser). A test state (the admin's "Try sign-in") ends on the result page (signinTry). Otherwise:
  * the person → completeSignin → 302 /30da/#/nearby (returning) or /30da/#/create?signin=<provider>&ok=1 (new);
  * any failure → 302 back to the phone step with ?signin=<provider>&error=<reason> (the app words it calmly).
+ * A native app's state (POST /auth/app/begin): never signed in here (the sheet's cookies are not the app's) — a good
+ * exchange → a one-time ticket handed to the app (appReturn), which only the web view holding the binder can claim
+ * (appClaim); a failure → the app with ?error=<reason>&p=<provider>[&to=me].
  */
 async function signinCallback(req, res, url, d, provider) {
   const clear = stateCookie(req, provider, "", 0);
   let to = null; // 'me': started on #/me (the state says so), it goes back there
-  const back = async (reason) => redirectTo(res, await signinBack(d, req, provider, reason, to), { "Set-Cookie": clear });
+  let app = null; // a native app's sign-in (the state says so): it ends in the app
+  const back = async (reason) => (app
+    ? appReturn(req, res, app.platform, { error: reason, provider, to })
+    : redirectTo(res, await signinBack(d, req, provider, reason, to), { "Set-Cookie": clear }));
   if (overLimit(ipSigninReturns, clientIp(req), SIGNIN_RETURNS)) return back("too_many");
   const params = url.searchParams;
   const { ok: stateOk, rec } = await takeSigninState(d, provider, params.get("state"), readStateCookie(req));
   to = stateOk && ATTACH_FROM.includes(rec?.to) ? rec.to : null;
   if (rec?.test) return signinTry(req, res, d, provider, { rec, stateOk, params, clear });
+  if (typeof rec?.app === "string") app = { platform: platformOf(rec.platform) ?? "android", hash: rec.app };
   if (!stateOk) return back("expired");
   const refused = callbackError(provider, params);
   if (refused) return back(appSigninReason(refused));
@@ -1275,6 +1297,22 @@ async function signinCallback(req, res, url, d, provider) {
     console.warn(`[30da signin] ${provider} sign-in did not work: ${r.reason}${r.detail ? ` (${r.detail})` : ""}`);
     return back(appSigninReason(r.reason));
   }
+  // A native app's sheet has its own cookies, not the app's: nothing is signed in here. The person waits under a
+  // one-time ticket (2 minutes, with to=me) that only the web view holding the binder can claim (appClaim).
+  if (app) {
+    const ticket = await createAppTicket(d, provider, r.person, { to, app: app.hash });
+    return appReturn(req, res, app.platform, { ticket, provider });
+  }
+  return finishSignin(req, res, d, provider, r.person, { to, clear: [clear] });
+}
+
+/**
+ * A good sign-in, finished with THIS request's session: the web callback's own ending, and the native apps' claim
+ * (appClaim, in the app's web view). The PIN lock rules, to=me (attach, never a switch) and "Verify to chat" apply, then 302
+ * to where the person goes next. `clear`: cookies cleared on the way (the web callback's state cookie).
+ */
+async function finishSignin(req, res, d, provider, person, { to = null, clear = [] } = {}) {
+  const back = async (reason) => redirectTo(res, await signinBack(d, req, provider, reason, to), setCookies(clear));
   const ctx = { d, req, headers: {}, session: await loadSession(d, req) };
   ctx.me = ctx.session?.userId ? await d.collection(C.users).findOne({ _id: ctx.session.userId }) : null;
   // Coming back to a LOCKED phone: the sign-in starts from nothing (it never attaches to the locked profile).
@@ -1294,12 +1332,108 @@ async function signinCallback(req, res, url, d, provider) {
   // (#/verified); an account that already has another profile is refused there (nothing changes, no switch).
   // #/me (owner 2026-10-13): the same attach-never-switch for any profile, and back to #/me.
   const attaching = Boolean(ctx.me && (to || !canTalk(ctx.me)));
-  const { existing, inUse, refused: notAdded } = await completeSignin(ctx, provider, r.person, { attachOnly: attaching });
-  if (inUse) return redirectTo(res, verifyBackPath(provider, { reason: "in_use", to }), { "Set-Cookie": clear });
+  const { existing, inUse, refused: notAdded } = await completeSignin(ctx, provider, person, { attachOnly: attaching });
+  if (inUse) return redirectTo(res, verifyBackPath(provider, { reason: "in_use", to }), setCookies(clear));
   if (notAdded) return back(notAdded);
-  redirectTo(res, attaching ? verifyBackPath(provider, { ok: true, to }) : existing ? `${BASE}/#/nearby` : `${BASE}/#/create?signin=${provider}&ok=1`, {
-    "Set-Cookie": [clear, ctx.headers["Set-Cookie"]].filter(Boolean),
-  });
+  redirectTo(res, attaching ? verifyBackPath(provider, { ok: true, to }) : existing ? `${BASE}/#/nearby` : `${BASE}/#/create?signin=${provider}&ok=1`,
+    setCookies(clear, ctx.headers["Set-Cookie"]));
+}
+
+/** The Android return page: no inline script at all; its one script (the auto-try) and its styles are our own files. */
+const CSP_APP_RETURN = "default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; "
+  + "font-src https://fonts.gstatic.com; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+
+/**
+ * The sheet hands a sign-in to the app — { ticket } after a good exchange, else { error, provider, to }:
+ *   iOS     → 302 sg.ggmt.thirtyda://auth?<query> (ASWebAuthenticationSession catches its own scheme);
+ *   Android → 200, a small page in 5 languages: "Open 30+DA" = Chrome's intent:// link for the app's package, plus the
+ *             plain sg.ggmt.thirtyda:// link (a Custom Tab may want a tap before it leaves for an app).
+ * The query is fixed by appReturnQuery: t=<ticket> | error=<reason>&p=<provider>[&to=me]. Never an address from the request.
+ */
+function appReturn(req, res, platform, { ticket = null, error = null, provider = null, to = null }) {
+  const query = appReturnQuery(ticket ? { ticket } : { error, provider, to });
+  if (platform === "ios") return redirectTo(res, appSchemeUrl(query), { "Referrer-Policy": "no-referrer" });
+  return sendPage(req, res, 200, appReturnPage({
+    ok: Boolean(ticket), provider, intentUrl: appIntentUrl(query), schemeUrl: appSchemeUrl(query), lang: requestLang(req),
+  }), { "Content-Security-Policy": CSP_APP_RETURN, "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex", Vary: "Accept-Language" });
+}
+
+/**
+ * POST /auth/app/begin { provider, to?: 'me', platform: 'ios' | 'android' } — the native apps' sign-in, asked by the
+ * app's web view (its own page: a same-host Origin is required). The same limits, keys and state as
+ * /auth/<provider>/start, plus a BINDER: 32 random bytes in an HttpOnly cookie of THIS web view (thirtyda_app,
+ * Path=/30da/api/auth/app, 10 minutes), its SHA-256 kept with the state and then the ticket, so only this web view
+ * can claim the sign-in (GET /auth/app). → { url }: the provider's authorize address (the same redirect_uri as the
+ * web) for the app's sign-in sheet. Every refusal is JSON { error, message, back } — back: where the web sign-in
+ * sends the person for that reason (always /30da/…; the app goes there): 429 too_many, 503 unavailable (keys not
+ * saved / the sign-in off), 403 bad_origin / 422 invalid (→ 'failed'), 500 failed. (Another site's Origin never
+ * gets this far: the router's plain 403.)
+ */
+async function appBegin(ctx) {
+  const { d, req, body } = ctx;
+  const provider = SIGNIN_PROVIDERS.includes(body.provider) ? body.provider : null;
+  const to = ATTACH_FROM.includes(body.to) ? body.to : null;
+  const refuse = async (status, error, message, reason) => {
+    let back = `${BASE}/`; // no such sign-in: the app's start, which knows where the person is
+    if (provider) back = await signinBack(d, req, provider, reason, to).catch(() => backToPhoneStep(provider, reason));
+    return fail(status, error, message, { back });
+  };
+  if (!req.headers.origin) throw await refuse(403, "bad_origin", "Requests must come from the 30+DA app.", "failed");
+  if (!provider) throw await refuse(422, "invalid", "No such sign-in.", "failed");
+  const platform = platformOf(body.platform);
+  if (!platform) throw await refuse(422, "invalid", "Which app: ios or android.", "failed");
+  if (overLimit(ipSigninStarts, clientIp(req), SIGNIN_STARTS)) throw await refuse(429, "too_many", "Too many tries. Wait 15 minutes.", "too_many");
+  try {
+    const keys = SIGNIN_WIRED[provider] ? await signinKeys(d, provider) : null;
+    if (!keys) throw await refuse(503, "unavailable", "This sign-in is not working right now.", "unavailable");
+    const pkce = pkcePair(provider);
+    const binder = newBinder();
+    const state = await createSigninState(d, provider, { verifier: pkce?.verifier, to, app: stateHash(binder), platform });
+    ctx.headers["Set-Cookie"] = appCookie(req, binder);
+    return { url: authorizeUrl(provider, { clientId: keys.id, redirectUri: signinRedirect(req, provider), state, codeChallenge: pkce?.challenge }) };
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    console.error("[30da signin] app begin:", err instanceof Error ? err.message : err);
+    throw await refuse(500, "failed", "Something went wrong. Try again.", "failed");
+  }
+}
+
+/**
+ * GET /auth/app?t=<ticket> (or ?error=<reason>&p=<provider>[&to=me]) — the native apps' end of a sign-in, loaded in
+ * the app's web view with the query exactly as the sheet handed it over. The ticket is used up at once (single use,
+ * 2 minutes) and counts only with THIS web view's binder cookie (the one /auth/app/begin set; its SHA-256 compared
+ * timing-safe) — a ticket fired into someone else's app is refused, so nobody can push their own account onto
+ * another person's profile. Then the sign-in finishes exactly like the web callback with this request's session
+ * (finishSignin: the PIN lock rules, to=me attaches, never a switch) and the binder cookie is cleared. An error →
+ * where the callback sends that reason; a refused ticket → 'expired'. Always a redirect (a 4xx page load would show the
+ * app's offline page); never the ticket in a log. SIGNIN_RETURNS per address per 15 minutes, like the callback.
+ */
+async function appClaim(ctx) {
+  const { d, req, res, url } = ctx;
+  ctx.sent = true;
+  const params = url.searchParams;
+  const binder = readAppCookie(req);
+  const clear = binder ? [appCookie(req, "", 0)] : [];
+  let provider = SIGNIN_PROVIDERS.includes(params.get("p")) ? params.get("p") : null;
+  let to = null;
+  const back = async (reason) => redirectTo(res, provider ? await signinBack(d, req, provider, reason, to) : `${BASE}/`, setCookies(clear));
+  try {
+    if (overLimit(ipSigninClaims, clientIp(req), SIGNIN_RETURNS)) return await back("too_many");
+    if (!params.has("t")) {
+      // The sheet said why not: the callback's own reasons, back where it would have sent them.
+      to = ATTACH_FROM.includes(params.get("to")) ? params.get("to") : null;
+      const reason = params.get("error");
+      return await back(APP_ERRORS.includes(reason) ? reason : "failed");
+    }
+    const { ok, rec, person } = await takeAppTicket(d, params.get("t"), binder);
+    if (SIGNIN_PROVIDERS.includes(rec?.provider)) provider = rec.provider;
+    if (!ok) return await back("expired");
+    to = ATTACH_FROM.includes(rec.to) ? rec.to : null;
+    return await finishSignin(req, res, d, provider, person, { to, clear });
+  } catch (err) {
+    console.error("[30da signin] app claim:", err instanceof Error ? err.message : err);
+    if (!res.headersSent) redirectTo(res, provider ? backToPhoneStep(provider, "failed") : `${BASE}/`, setCookies(clear));
+  }
 }
 
 /**
@@ -2722,6 +2856,10 @@ const ROUTES = [
   // The free Telegram bot: start a check, then ask from the same browser until Telegram has the number.
   ["POST", /^\/auth\/telegram\/start$/, telegramStart, { auth: "none" }],
   ["GET", /^\/auth\/telegram\/status$/, telegramStatus, { auth: "none" }],
+  // The native apps (src/lib/thirtyda-signin.mjs): the web view begins a sign-in for its sheet (binder cookie + the
+  // provider's address), then claims what the sheet did (a redirect, never JSON; the web callback's own lock rules).
+  ["POST", /^\/auth\/app\/begin$/, appBegin, { auth: "none", blockedOk: true }],
+  ["GET", /^\/auth\/app$/, appClaim, { auth: "none", blockedOk: true }],
   ["POST", /^\/auth\/signout$/, signout, { auth: "none", blockedOk: true }],
   // auth "none": no session at all may make an unverified profile ({ unverified: true }, see createProfile).
   ["POST", /^\/profile$/, createProfile, { auth: "none" }],

@@ -127,6 +127,12 @@ export const PAGE_STRINGS = {
     terms_team_k: "Our team:",
     terms_team: "may warn, block or remove accounts that break these rules.",
     terms_data_k: "Your data:",
+    // The Android app's sign-in return page (appReturnPage).
+    app_title: "Back to 30+DA",
+    app_ok: "{name} sign-in done. Open 30+DA to finish.",
+    app_bad: "Sign-in did not finish. Open 30+DA to go back.",
+    app_open: "Open 30+DA",
+    app_link: "Not opening? Use this link.",
   },
   km: {
     language: "ភាសា",
@@ -193,6 +199,12 @@ export const PAGE_STRINGS = {
     terms_team_k: "ក្រុមការងាររបស់យើង៖",
     terms_team: "អាចព្រមាន បិទ ឬលុបគណនីដែលបំពានច្បាប់ទាំងនេះ។",
     terms_data_k: "ទិន្នន័យរបស់អ្នក៖",
+    // The Android app's sign-in return page (appReturnPage).
+    app_title: "ត្រឡប់ទៅ 30+DA",
+    app_ok: "ការចូលតាម {name} រួចរាល់។ បើក 30+DA ដើម្បីបញ្ចប់។",
+    app_bad: "ការចូលមិនទាន់បានបញ្ចប់ទេ។ បើក 30+DA ដើម្បីត្រឡប់ទៅវិញ។",
+    app_open: "បើក 30+DA",
+    app_link: "មិនបើកទេ? ប្រើតំណនេះ។",
   },
   zh: {
     language: "语言",
@@ -259,6 +271,12 @@ export const PAGE_STRINGS = {
     terms_team_k: "我们的团队：",
     terms_team: "可对违反规则的账号发出警告、封禁或删除。",
     terms_data_k: "你的数据：",
+    // The Android app's sign-in return page (appReturnPage).
+    app_title: "返回 30+DA",
+    app_ok: "{name} 登录已完成。打开 30+DA 即可完成。",
+    app_bad: "登录未完成。打开 30+DA 返回。",
+    app_open: "打开 30+DA",
+    app_link: "没有打开？请使用此链接。",
   },
   ko: {
     language: "언어",
@@ -325,6 +343,12 @@ export const PAGE_STRINGS = {
     terms_team_k: "운영팀:",
     terms_team: "규칙을 어긴 계정은 경고, 차단 또는 삭제할 수 있어요.",
     terms_data_k: "내 데이터:",
+    // The Android app's sign-in return page (appReturnPage).
+    app_title: "30+DA로 돌아가기",
+    app_ok: "{name} 로그인이 끝났어요. 30+DA를 열어 마무리하세요.",
+    app_bad: "로그인이 끝나지 않았어요. 30+DA를 열어 돌아가세요.",
+    app_open: "30+DA 열기",
+    app_link: "열리지 않나요? 이 링크를 쓰세요.",
   },
   ja: {
     language: "言語",
@@ -391,6 +415,12 @@ export const PAGE_STRINGS = {
     terms_team_k: "運営チーム：",
     terms_team: "ルールに違反したアカウントは、警告・ブロック・削除することがあります。",
     terms_data_k: "あなたのデータ：",
+    // The Android app's sign-in return page (appReturnPage).
+    app_title: "30+DA に戻る",
+    app_ok: "{name} でのログインが済みました。30+DA を開いて完了してください。",
+    app_bad: "ログインは完了していません。30+DA を開いて戻ってください。",
+    app_open: "30+DA を開く",
+    app_link: "開かない場合は、このリンクを使ってください。",
   },
 };
 
@@ -431,7 +461,7 @@ ${body}
   </div>`;
 }
 
-function page({ title, lang, inner, robots = "index", kind = "doc" }) {
+function page({ title, lang, inner, robots = "index", kind = "doc", script = null }) {
   return `<!doctype html>
 <html lang="${lang}">
 <head>
@@ -444,7 +474,7 @@ function page({ title, lang, inner, robots = "index", kind = "doc" }) {
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..900&family=JetBrains+Mono:wght@400..600&display=swap">
-  <link rel="stylesheet" href="/30da/pages.css">
+  <link rel="stylesheet" href="/30da/pages.css">${script ? `\n  <script src="${script}" defer></script>` : ""}
 </head>
 <body class="page-${kind}">
 ${inner}
@@ -559,4 +589,30 @@ export function tryResultPage({ provider, ok: worked, person = null, reason = nu
     robots: "noindex",
     kind: "try",
   });
+}
+
+// ---------- the native apps: the end of a sign-in in the Android app's sheet ----------
+
+/**
+ * The page the Android app's sign-in sheet (a Chrome Custom Tab) ends on: one big "Open 30+DA" button — Chrome's
+ * intent:// link to the app's package — and the plain sg.ggmt.thirtyda:// link under it; /30da/app-return.js tries
+ * the button once by itself (no inline script: the page's CSP allows none). The two links carry the one-time ticket
+ * (or the reason): src/lib/thirtyda-signin.mjs builds them, never from the request; they are only escaped here.
+ * All 5 languages are in the page (the flags switch, like the try page); `lang` picks the one shown first.
+ */
+export function appReturnPage({ ok: done, provider = null, intentUrl, schemeUrl, lang: want = "en" }) {
+  const first = ok(want);
+  const name = esc(NAMES[provider] ?? "30+DA");
+  const column = (code) => {
+    const t = PAGE_STRINGS[code];
+    const body = `      <h1>${t.app_title}</h1>
+      <p class="doc-lede">${done ? fill(t.app_ok, { name }) : t.app_bad}</p>
+      <p class="doc-actions"><a class="doc-btn" data-app-open href="${esc(intentUrl)}">${t.app_open}</a></p>
+      <p class="doc-fine"><a href="${esc(schemeUrl)}">${t.app_link}</a></p>`;
+    return docColumn({ lang: code, flags: flagRow(code, (c) => `#${c}`), body, tag: "section" });
+  };
+  // The first-shown language goes last: a chosen #link (:target) earlier in the page hides it (pages.css).
+  const order = [...LANGS.filter((c) => c !== first), first];
+  const inner = order.map((code) => `<div class="tr${code === first ? " on" : ""}" id="${code}" lang="${code}">\n${column(code)}\n</div>`).join("\n");
+  return page({ title: PAGE_STRINGS[first].app_title, lang: first, inner, robots: "noindex", kind: "try", script: "/30da/app-return.js" });
 }

@@ -11,6 +11,7 @@ import {
   state, bus, api, t, el, icon, go, toast, modal, setMe, registerStrings, errorText, coverScreen, uncoverScreen,
   activity, checkNewPin, pinDigits, PIN_LENGTH, IDLE_COVER_MS, LOCK_IDLE_MS, INPUT_AGE_HEADER, inputAge,
 } from './core.js';
+import { onAppReturn } from './shell.js';
 
 // ---------------------------------------------------------------- what waits in this tab
 
@@ -179,6 +180,7 @@ const lock = {
   focus: null,
   bootMode: null,
   leaving: false,
+  leavingAt: 0, // leaving counts for BACK_MS at most (leavingNow)
   picker: 0, // when a file picker / camera was opened from the app
   started: false,
 };
@@ -202,7 +204,35 @@ export function bootLock(data) {
  */
 export function leaveWithoutLock() {
   lock.leaving = true;
-  tab.set(BACK_KEY, String(Date.now()));
+  lock.leavingAt = Date.now();
+  tab.set(BACK_KEY, String(lock.leavingAt));
+}
+
+/** Left on purpose, and not longer ago than BACK_MS (10 minutes, like the way back): no lock on hiding meanwhile. */
+const leavingNow = () => lock.leaving && Date.now() - lock.leavingAt < BACK_MS;
+
+/** How long "back from the app's sign-in sheet" waits before leaving ends (the app's own load of the sign-in's end may follow). */
+const RETURN_GRACE_MS = 3000;
+let returnTimer = 0;
+
+/**
+ * The 30+DA app's sign-in sheet (shell.js) is closed, or the person is back in the app: a Custom Tab trip has no
+ * unload, so pageshow never ends `leaving` and hiding the app would never lock it again. Ended here — after a short
+ * wait, because when the sheet DID sign in, the app loads /30da/api/auth/app?… right away, and that unload must not
+ * lock the session (the claim would then be refused). Still here after the wait: no sign-in followed, so the way back
+ * is used up too (the next open asks for the PIN). touched: the person closed the sheet themselves (a tap, like
+ * choosing a photo), so the 30 s without a touch starts again.
+ */
+export function backFromSheet({ touched = false } = {}) {
+  if (touched) activity.lastInputAt = Date.now();
+  if (!lock.leaving) return;
+  clearTimeout(returnTimer);
+  const at = lock.leavingAt;
+  returnTimer = setTimeout(() => {
+    if (lock.leavingAt !== at || document.hidden) return;
+    lock.leaving = false;
+    tab.del(BACK_KEY);
+  }, RETURN_GRACE_MS);
 }
 
 /** Coming back from leaveWithoutLock (used up). */
@@ -237,7 +267,8 @@ function stillHere() {
 
 /** Cover now and tell the server (30 s idle, hidden, closed). */
 function lockNow() {
-  if (!guarded()) return;
+  // Away on purpose (the sign-in sheet, our own reload): not "closed" — until leaving ends or runs out (10 minutes).
+  if (!guarded() || leavingNow()) return;
   showCover('enter');
   tellServer();
 }
@@ -417,7 +448,7 @@ async function afterUser() {
 const pickerOpen = () => Boolean(lock.picker) && Date.now() - lock.picker < lock.coverMs;
 
 function onHidden() {
-  if (lock.leaving) return;
+  if (leavingNow()) return;
   if (pickerOpen()) return;
   lockNow();
 }
@@ -461,6 +492,8 @@ export function startLock() {
   document.addEventListener('visibilitychange', () => (document.hidden ? onHidden() : onVisible()));
   window.addEventListener('pagehide', onHidden);
   window.addEventListener('pageshow', () => { lock.leaving = false; });
+  // Back in the app after its sign-in sheet (no unload, so no pageshow): leaving ends (see backFromSheet).
+  onAppReturn(() => backFromSheet());
 
   // Every time 30+DA opens, the PIN comes first: a reload or a new tab too (the server may not have had the
   // closing tab's lock yet). Not after the app's own reload or the trip to Google / Facebook (cameBack).

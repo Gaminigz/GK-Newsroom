@@ -722,7 +722,7 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 }
 .truth-note .icon { flex: none; margin-top: 1px; color: #c45f00; }
 /* Phone step: one row of round brand buttons — Telegram · WhatsApp (where the code goes) · Facebook · Google ·
-   TikTok (sign in). The chosen code channel gets a navy ring; one that does not work yet is dimmed, "Coming soon". */
+   TikTok (sign in). A tap starts that way; the one under way gets a navy ring; one that does not work yet is dimmed, "Coming soon". */
 .ways { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 4px; margin-bottom: 2px; }
 /* Create profile: all 5 on one row, still one row on a 360–390 px phone (in every language). */
 .ways.with-signin { grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr)); gap: 2px; }
@@ -767,13 +767,11 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .way-msg { display: flex; align-items: flex-start; gap: 6px; padding: 8px 10px; border-radius: var(--radius); background: var(--bubble); font-size: 12.5px; font-weight: 600; line-height: 1.4; color: var(--ink); }
 .way-msg .icon { flex: none; margin-top: 1px; color: var(--muted); }
 .field-error .err-action { font-size: inherit; color: var(--ink); white-space: nowrap; }
-.phone-row { display: grid; grid-template-columns: 94px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
-/* Create profile while no code channel works: the number box stays (saved unverified), no Send code. */
-.phone-row.no-send { grid-template-columns: 94px minmax(0, 1fr); }
-/* Create profile: the one line under the 4 buttons ("Watch out — your code is sent to the app you pick."). */
+/* [+855 ⌄][12 345 678] — the whole row: no button beside it, a tap on Telegram / WhatsApp sends (owner 2026-10-13). */
+.phone-row { display: grid; grid-template-columns: 94px minmax(0, 1fr); gap: 8px; align-items: center; }
+/* Create profile: the one line under the buttons ("Tap the app you want to verify with." → "Check Telegram for the next step."). */
 .way-watch { font-weight: 600; text-align: center; }
 .phone-row .select { padding: 0 26px 0 10px; background-position: right 6px center; font-family: var(--mono); font-size: 14px; }
-.phone-row .send-code { min-height: 46px; white-space: nowrap; }
 /* A proved number stays in its box (editable), green; "Number verified ✓" under the apps (owner 2026-10-13). */
 .phone-row .input.is-verified { border-color: var(--green); background: var(--green-soft); }
 .verified-line { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--green); white-space: nowrap; }

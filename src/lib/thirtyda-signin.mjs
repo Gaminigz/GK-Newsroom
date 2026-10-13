@@ -30,6 +30,23 @@
  * The provider's tokens never leave signinPerson(): not stored, not logged, not returned. What is kept is the
  * person's provider id (+ email when given) — see src/lib/thirtyda-app.mjs completeSignin.
  *
+ * The native apps (owner 2026-10-13): the 30+DA iOS / Android apps are shells around https://ecom.ggmt.sg/30da/, and
+ * Google refuses sign-in inside a web view, so the apps run it in a system sheet (iOS ASWebAuthenticationSession,
+ * Android Chrome Custom Tabs) that keeps its OWN cookies. So the sheet never signs in, and only the web view that
+ * asked can finish it:
+ *   web view  POST /30da/api/auth/app/begin { provider, to?, platform } → the state as for /start, plus a BINDER: 32
+ *             random bytes in an HttpOnly cookie of that web view (thirtyda_app, Path=/30da/api/auth/app), its SHA-256
+ *             kept with the state → { url } (the provider's authorize address, the same redirect_uri)
+ *   sheet     the provider → GET /30da/api/auth/<provider>/callback — an app state skips the browser-cookie match (the
+ *             sheet never had it); a good exchange keeps the person { id, email? } (+ to, + the binder's hash) under a
+ *             one-time ticket (only its SHA-256 stored, 2 minutes, single use) → iOS: 302 sg.ggmt.thirtyda://auth?t=<t>;
+ *             Android: a small page with an intent:// link (+ the plain link). A failure → the same with
+ *             ?error=<reason>&p=<provider>[&to=me] instead of t.
+ *   web view  GET /30da/api/auth/app?<that query> — the ticket counts only with the SAME binder cookie, then the
+ *             sign-in finishes exactly like the web callback (src/lib/thirtyda-app.mjs appClaim). A ticket pushed into
+ *             someone else's app (by any app firing the scheme) is refused: their web view never had that binder.
+ * The scheme and package are fixed (APP_SCHEME): never an address taken from the request.
+ *
  * Pure apart from the `d` (Mongo Db) and `fetchImpl` handed in, so the unit tests run without a database or network.
  */
 
@@ -207,7 +224,7 @@ export const stateHash = sha256;
  * purpose (test: the admin's "Try sign-in", bound to that admin session by `adminHash`) and a 10-minute expiry.
  * `verifier`: the PKCE verifier of this sign-in (pkcePair), kept with it until the code comes back.
  */
-export async function createSigninState(d, provider, { test = false, adminHash = null, verifier = null, to = null, now = Date.now() } = {}) {
+export async function createSigninState(d, provider, { test = false, adminHash = null, verifier = null, to = null, app = null, platform = null, now = Date.now() } = {}) {
   if (!SIGNIN_PROVIDERS.includes(provider)) throw new Error("No such sign-in.");
   const state = crypto.randomBytes(32).toString("hex");
   await d.collection(SIGNIN_STATES).insertOne({
@@ -215,6 +232,8 @@ export async function createSigninState(d, provider, { test = false, adminHash =
     ...(verifier ? { verifier: String(verifier) } : {}),
     // 'me': started on #/me to add this account to the signed-in profile (never a switch); back to #/me after.
     ...(to === "me" ? { to: "me" } : {}),
+    // The native apps (see the top): the binder's SHA-256 and 'ios' | 'android' — it ends in the app with a ticket.
+    ...(!test && HEX64.test(String(app ?? "")) ? { app: String(app), platform: platformOf(platform) ?? "android" } : {}),
     created: new Date(now), expires: new Date(now + STATE_TTL_MS),
   });
   return state;
@@ -225,13 +244,15 @@ export async function createSigninState(d, provider, { test = false, adminHash =
  * → { ok:true, rec } only when it was stored for this provider, has not expired, and the browser's cookie carries
  *   the same state; else { ok:false, rec } (rec = what was stored, or null — so a failed admin try still gets
  *   the admin's page).
+ * A native app's state (rec.app) skips the cookie: the app's web view began it and the sheet never had the cookie.
+ * Its binder does that job instead, when the app claims the ticket (takeAppTicket). Still single use, 10 minutes.
  */
 export async function takeSigninState(d, provider, state, cookieState, now = Date.now()) {
   if (!STATE_RE.test(String(state ?? ""))) return { ok: false, rec: null };
   const rec = await d.collection(SIGNIN_STATES).findOneAndDelete({ _id: sha256(state) });
   if (!rec) return { ok: false, rec: null };
-  const sameBrowser = STATE_RE.test(String(cookieState ?? ""))
-    && crypto.timingSafeEqual(Buffer.from(String(cookieState)), Buffer.from(String(state)));
+  const sameBrowser = (typeof rec.app === "string" && !rec.test) || (STATE_RE.test(String(cookieState ?? ""))
+    && crypto.timingSafeEqual(Buffer.from(String(cookieState)), Buffer.from(String(state))));
   const fresh = new Date(rec.expires).getTime() > now;
   return { ok: rec.provider === provider && fresh && sameBrowser, rec };
 }
@@ -252,6 +273,102 @@ export async function adminSessionAlive(d, adminHash, now = new Date()) {
   if (!/^[a-f0-9]{64}$/.test(String(adminHash ?? ""))) return false;
   const live = await d.collection("thirtyda_admin_sessions").find({ expires: { $gt: now } }, { projection: { _id: 1 } }).limit(200).toArray();
   return live.some((s) => sha256(s._id) === adminHash);
+}
+
+// ---- the native apps: only the web view that began a sign-in can finish it (see the top of this file)
+
+/** The apps' URL scheme and Android package (iOS and Android alike). Fixed: never an address taken from the request. */
+export const APP_SCHEME = "sg.ggmt.thirtyda";
+export const APP_PACKAGE = "sg.ggmt.thirtyda";
+export const APP_PLATFORMS = ["ios", "android"];
+/** 'ios' | 'android', or null. */
+export const platformOf = (v) => (APP_PLATFORMS.includes(v) ? v : null);
+/** The reasons a sign-in hands the app (the web callback's own: src/lib/thirtyda-app.mjs appSigninReason + too_many). */
+export const APP_ERRORS = ["cancelled", "expired", "unavailable", "failed", "too_many"];
+const HEX64 = /^[a-f0-9]{64}$/;
+
+/** A fresh binder: 32 random bytes (64 hex), for the web view's cookie; only its SHA-256 (stateHash) is stored. */
+export const newBinder = () => crypto.randomBytes(32).toString("hex");
+
+export const APP_COOKIE = "thirtyda_app";
+
+/** The binder cookie (Max-Age 0 clears it): HttpOnly, SameSite=Lax, Secure on https, only for /30da/api/auth/app*. */
+export function appCookie(req, binder, maxAgeS = STATE_TTL_MS / 1000) {
+  const secure = publicOrigin(req).startsWith("https:");
+  return `${APP_COOKIE}=${binder}; HttpOnly; SameSite=Lax; Path=/30da/api/auth/app; Max-Age=${maxAgeS}${secure ? "; Secure" : ""}`;
+}
+
+/** The binder this web view carries, or null. */
+export function readAppCookie(req) {
+  return String(req?.headers?.cookie || "").match(new RegExp(`(?:^|;\\s*)${APP_COOKIE}=([a-f0-9]{64})(?=;|\\s*$)`))?.[1] ?? null;
+}
+
+export const APP_TICKETS = "thirtyda_app_tickets";
+export const APP_TICKET_TTL_MS = 2 * 60e3;
+
+/**
+ * The person a good exchange in the sheet found, kept for the app: 32 random bytes (64 hex), only its SHA-256 stored
+ * with the provider, { id, email? } (never a token, never the name), to ('me') and `app` (the binder's SHA-256, from
+ * the state); 2 minutes (TTL index on expires). → the ticket.
+ */
+export async function createAppTicket(d, provider, person, { to = null, app, now = Date.now() } = {}) {
+  if (!SIGNIN_PROVIDERS.includes(provider) || !person?.id || !HEX64.test(String(app ?? ""))) throw new Error("No such sign-in.");
+  const ticket = crypto.randomBytes(32).toString("hex");
+  await d.collection(APP_TICKETS).insertOne({
+    _id: sha256(ticket), provider,
+    person: { id: String(person.id), ...(person.email ? { email: String(person.email) } : {}) },
+    ...(to === "me" ? { to: "me" } : {}),
+    app: String(app),
+    created: new Date(now), expires: new Date(now + APP_TICKET_TTL_MS),
+  });
+  return ticket;
+}
+
+/**
+ * Use up a ticket: deleted on first sight (single use, atomic), whatever happens next. → { ok:true, rec, person } only
+ * when it has not expired and `binder` (this web view's cookie) is the one its sign-in began with (SHA-256, compared
+ * timing-safe); else { ok:false, rec } (rec = what was stored, or null).
+ */
+export async function takeAppTicket(d, ticket, binder, now = Date.now()) {
+  if (!HEX64.test(String(ticket ?? ""))) return { ok: false, rec: null };
+  const rec = await d.collection(APP_TICKETS).findOneAndDelete({ _id: sha256(ticket) });
+  if (!rec) return { ok: false, rec: null };
+  const bound = HEX64.test(String(binder ?? "")) && HEX64.test(String(rec.app ?? ""))
+    && crypto.timingSafeEqual(Buffer.from(sha256(binder), "hex"), Buffer.from(String(rec.app), "hex"));
+  const provider = SIGNIN_PROVIDERS.includes(rec.provider) ? rec.provider : null;
+  const id = typeof rec.person?.id === "string" && rec.person.id ? rec.person.id : null;
+  const ok = bound && Boolean(provider && id) && new Date(rec.expires).getTime() > now;
+  return ok ? { ok, rec, person: { provider, id, email: rec.person.email ?? null } } : { ok, rec };
+}
+
+/**
+ * What the sheet hands the app (the query the app passes on, unchanged, to /30da/api/auth/app):
+ * t=<ticket> after a good exchange, else error=<reason>&p=<provider>[&to=me] (an unknown reason is 'failed').
+ */
+export function appReturnQuery({ ticket = null, error = null, provider = null, to = null } = {}) {
+  if (ticket != null) {
+    if (!HEX64.test(String(ticket))) throw new Error("Not a sign-in ticket.");
+    return new URLSearchParams({ t: String(ticket) }).toString();
+  }
+  const q = new URLSearchParams({ error: APP_ERRORS.includes(error) ? error : "failed" });
+  if (SIGNIN_PROVIDERS.includes(provider)) q.set("p", provider);
+  if (to === "me") q.set("to", "me");
+  return q.toString();
+}
+
+/** sg.ggmt.thirtyda://auth?<query> — iOS (ASWebAuthenticationSession catches it), and the Android page's plain link. */
+export const appSchemeUrl = (query) => `${APP_SCHEME}://auth?${query}`;
+/** Chrome's intent link to the Android app (only that package; Chrome asks nothing else to open it). */
+export const appIntentUrl = (query) => `intent://auth?${query}#Intent;scheme=${APP_SCHEME};package=${APP_PACKAGE};end`;
+
+/**
+ * The app's own web view, by its user agent's last word (Capacitor appendUserAgent): "… 30DA-iOS/<version>" → 'ios',
+ * "… 30DA-Android/<version>" → 'android', anything else → null. A hint only (a user agent is easy to fake): it never
+ * decides who someone is.
+ */
+export function appPlatformOf(userAgent) {
+  const m = String(userAgent ?? "").trim().match(/(?:^|\s)30DA-(iOS|Android)\/[\w.+-]{0,32}$/);
+  return m ? (m[1] === "iOS" ? "ios" : "android") : null;
 }
 
 // ---- the requests (each { url, init }); the secret goes only where the provider asks for it

@@ -203,6 +203,9 @@ export function whileLocked(method, sub) {
   if (method === "POST" && /^\/auth\/(send-code|verify-code|verify-social)$/.test(path)) return "signin";
   // The free Telegram bot: its status signs in when Telegram has the number (src/lib/thirtyda-telegram-bot.mjs).
   if ((method === "POST" && path === "/auth/telegram/start") || (method === "GET" && path === "/auth/telegram/status")) return "signin";
+  // The native apps (src/lib/thirtyda-signin.mjs): begin a sign-in for the app's sheet, and claim what it did — the
+  // claim applies the web callback's own lock rule to the session.
+  if ((method === "POST" && path === "/auth/app/begin") || (method === "GET" && path === "/auth/app")) return "signin";
   if (/^\/auth\//.test(path)) return "open";
   if (method === "POST" && /^\/me\/(lock|unlock|pin|pin\/forgot)$/.test(path)) return "open";
   if (passiveCall(method, path)) return "open";

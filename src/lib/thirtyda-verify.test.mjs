@@ -31,6 +31,7 @@ test('canTalk: any one verified way (phone, Google, Facebook, TikTok) — nothin
 const SAMPLES = [
   ['GET', '/auth/methods', false], ['POST', '/auth/send-code', false], ['POST', '/auth/verify-code', false],
   ['POST', '/auth/verify-social', false], ['POST', '/auth/telegram/start', false], ['GET', '/auth/telegram/status', false],
+  ['POST', '/auth/app/begin', false], ['GET', '/auth/app', false],
   ['POST', '/auth/signout', false], ['POST', '/profile', false], ['GET', '/me', false], ['PATCH', '/me', false],
   ['POST', '/me/photos', false], ['PUT', '/me/photos/1', false], ['DELETE', '/me/photos/2', false],
   ['POST', '/me/location', false], ['POST', '/me/heartbeat', false], ['GET', '/me/pending', false],
