@@ -846,8 +846,15 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .inline-row .name-input, .inline-row .year-select { flex: 0 1 auto; }
 .birth-year-line { font-weight: 700; font-variant-numeric: tabular-nums; }
 /* Me: five small language buttons on one row, thin borders. */
-.me .lang-grid { display: flex; flex-wrap: wrap; gap: 6px; }
-.me .lang-grid .btn { flex: 1 1 0; min-width: 0; min-height: 34px; padding: 0 6px; border-width: 1px; border-color: #cfd6e2; border-radius: 999px; font-size: 13.5px; }
+.me .lang-grid { gap: 6px; } /* 3 + 2, like the opening screen */
+.me .lang-grid .btn { min-width: 0; min-height: 36px; gap: 5px; padding: 0 8px; border-width: 1px; border-color: #cfd6e2; border-radius: 999px; font-size: 13.5px; }
+/* Little flag before each language name (Me, opening, language sheet). */
+.lang-label { display: inline-flex; align-items: center; gap: 6px; }
+.flag { display: inline-block; font-size: 1.25em; line-height: 1; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
+.lang-sheet .flag, .menu .flag { margin-right: 8px; }
+/* Birth year + You are: the two "tell the truth" fields, in the warning's amber. */
+.truth-field, .select.truth-field { background-color: var(--orange-soft); color: #8a4500; border: 1px solid #f3cf9c; }
+.select.truth-field.placeholder { color: #b0752e; }
 .me .lang-grid .btn[aria-pressed="true"] { background: var(--navy); color: #fff; border-color: var(--navy); }
 .kv { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .kv .icon { flex: none; color: var(--muted); }

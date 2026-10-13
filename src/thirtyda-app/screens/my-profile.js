@@ -3,7 +3,7 @@
 // language, role, phone verification, hearts, sign out.
 import {
   screen, el, icon, t, go, api, toast, modal, state, setLang, setMe, topBar, heartPills, roleLabel, resizeImage,
-  registerStrings, LANGS, LANG_NATIVE, ROLES, PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, NAME_MAX, NAME_RAW_MAX,
+  registerStrings, LANGS, LANG_NATIVE, LANG_FLAG, ROLES, PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, NAME_MAX, NAME_RAW_MAX,
 } from '../core.js';
 import {
   phoneVerifier, blankPhone, appNameProblem, watchNameInput, clipNameInput, birthYearSelect, truthNote,
@@ -222,7 +222,7 @@ screen('/me', async ({ root }) => {
   function paintYear() {
     if (yearSet()) {
       yearCell.replaceChildren(el('span', { class: 'label ink' }, t('me_birth_year')),
-        el('p', { class: 'year-fixed' }, icon('lock', 14), el('span', {}, String(state.me.birthYear))));
+        el('p', { class: 'year-fixed truth-field' }, icon('lock', 14), el('span', {}, String(state.me.birthYear))));
       return;
     }
     const sel = birthYearSelect({
@@ -295,11 +295,11 @@ screen('/me', async ({ root }) => {
         }
       },
     },
-  }, LANG_NATIVE[code]));
+  }, el('span', { class: 'lang-label' }, el('span', { class: 'flag', 'aria-hidden': 'true' }, LANG_FLAG[code]), LANG_NATIVE[code])));
 
   // --- role
   const roleSel = el('select', {
-    class: 'select', id: 'me-role',
+    class: 'select truth-field', id: 'me-role',
     on: {
       change: async () => {
         const prev = state.me.role;

@@ -3,7 +3,7 @@
 // Then location, then Nearby.
 import {
   screen, el, icon, t, go, api, toast, modal, state, setLang, setMe, registerStrings,
-  resizeImage, updateLocation, roleLabel, LANGS, LANG_CODES, LANG_NATIVE, ROLES, charCount,
+  resizeImage, updateLocation, roleLabel, LANGS, LANG_CODES, LANG_NATIVE, LANG_FLAG, ROLES, charCount,
   PHOTO_SLOT_LEVELS, NAME_MAX, NAME_RAW_MAX, checkAppName, clipChars, birthYearOptions, checkBirthYear,
 } from '../core.js';
 
@@ -81,7 +81,7 @@ export function clipNameInput(input, e) {
 /** Birth year dropdown: only this year − 30 down to this year − 80 (30+DA is for people aged 30 and over). */
 export function birthYearSelect({ id, value = '', onChange } = {}) {
   const sel = el('select', {
-    class: ['select', 'year-select', !value && 'placeholder'], id,
+    class: ['select', 'year-select', 'truth-field', !value && 'placeholder'], id,
     on: { change: () => { sel.classList.toggle('placeholder', !sel.value); onChange?.(sel.value); } },
   },
   el('option', { value: '', disabled: true, selected: !value }, t('cp_year_ph')),
@@ -322,7 +322,7 @@ function languageSheet() {
       lang: code,
       'aria-pressed': String(code === state.lang),
       on: { click: () => { sheet.close(); setLang(code); } },
-    }, el('span', {}, LANG_NATIVE[code]), code === state.lang ? icon('check', 18) : null)))),
+    }, el('span', {}, el('span', { class: 'flag', 'aria-hidden': 'true' }, LANG_FLAG[code]), LANG_NATIVE[code]), code === state.lang ? icon('check', 18) : null)))),
   { sheet: true, label: t('cp_choose_language') });
 }
 
@@ -421,7 +421,7 @@ screen('/create', ({ root }) => {
     },
   }, t(`cp_gender_${g}`)));
   const roleSel = el('select', {
-    class: ['select', !draft.role && 'placeholder'], id: 'cp-role',
+    class: ['select', 'truth-field', !draft.role && 'placeholder'], id: 'cp-role',
     on: { change: () => { draft.role = roleSel.value; roleSel.classList.toggle('placeholder', !draft.role); update(); } },
   },
   el('option', { value: '', disabled: true, selected: !draft.role }, t('cp_choose')),

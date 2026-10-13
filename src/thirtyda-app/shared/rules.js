@@ -5,6 +5,7 @@
 export const LANGS = ['en', 'km', 'zh', 'ko', 'ja'];
 export const LANG_CODES = { en: 'EN', km: 'KM', zh: 'ZH', ko: 'KO', ja: 'JA' };
 export const LANG_NATIVE = { en: 'English', km: 'ខ្មែរ', zh: '中文', ko: '한국어', ja: '日本語' };
+export const LANG_FLAG = { en: '\u{1F1EC}\u{1F1E7}', km: '\u{1F1F0}\u{1F1ED}', zh: '\u{1F1E8}\u{1F1F3}', ko: '\u{1F1F0}\u{1F1F7}', ja: '\u{1F1EF}\u{1F1F5}' }; // GB KH CN KR JP
 export const LANG_ENGLISH = { en: 'English', km: 'Khmer', zh: 'Chinese', ko: 'Korean', ja: 'Japanese' };
 export const SPEECH_LOCALE = { en: 'en-US', km: 'km-KH', zh: 'zh-CN', ko: 'ko-KR', ja: 'ja-JP' };
 

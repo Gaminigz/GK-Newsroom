@@ -1,6 +1,6 @@
 // Screen 1 · Opening — headline, the 30+DA wordmark rising in letter by letter, the white rule
 // filling left → right, and the five language buttons. Picking a language goes to Create profile.
-import { screen, el, icon, t, go, state, setLang, registerStrings, LANGS, LANG_NATIVE } from '../core.js';
+import { screen, el, icon, t, go, state, setLang, registerStrings, LANGS, LANG_NATIVE, LANG_FLAG } from '../core.js';
 
 screen('/opening', ({ root }) => {
   root.classList.add('dark', 'opening');
@@ -26,7 +26,7 @@ screen('/opening', ({ root }) => {
           lang: code,
           'aria-pressed': String(code === state.lang),
           on: { click: () => pick(code) },
-        }, LANG_NATIVE[code]))),
+        }, el('span', { class: 'lang-label' }, el('span', { class: 'flag', 'aria-hidden': 'true' }, LANG_FLAG[code]), LANG_NATIVE[code])))),
       el('p', { class: 'opening-foot' }, icon('translate', 19), t('op_translate'))),
   );
 });
