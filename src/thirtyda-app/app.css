@@ -748,24 +748,11 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .range::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--navy); background: #fff; }
 .ticks { display: flex; justify-content: space-between; margin-top: -2px; }
 .nearby .seg { margin-top: 18px; }
-.waiting { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; }
-.waiting-row { display: flex; gap: 8px; margin: 0 calc(var(--gutter) * -1); padding: 2px var(--gutter); overflow-x: auto; scrollbar-width: none; }
+.waiting { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.waiting-row { display: flex; gap: 12px; margin: 0 calc(var(--gutter) * -1); padding: 2px var(--gutter); overflow-x: auto; scrollbar-width: none; }
 .waiting-row::-webkit-scrollbar { display: none; }
-.wait-item {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 40px;
-  padding: 0 14px 0 6px;
-  border-radius: 999px;
-  border: 1.5px solid var(--navy);
-  background: #fff;
-  font-size: 13px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-.wait-item .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
+.wait-item { position: relative; flex: none; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; box-shadow: 0 0 0 2px var(--navy); }
+.wait-item .dot { position: absolute; top: -1px; right: -1px; width: 12px; height: 12px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 2px #fff; }
 .count-line { margin-top: 22px; }
 .people { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px 12px; margin-top: 14px; }
 .people > .empty { grid-column: 1 / -1; }

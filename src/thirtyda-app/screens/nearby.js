@@ -108,13 +108,14 @@ screen('/nearby', ({ root }) => {
 
   // --- waiting strip, count, grid
   const waitRow = el('div', { class: 'waiting-row' });
-  const waiting = el('section', { class: 'waiting', hidden: true, 'aria-label': t('nb_waiting') },
-    el('span', { class: 'label ink' }, t('nb_waiting')), waitRow);
+  // Just round photos with a red dot; tapping one opens what is waiting (e.g. their replies).
+  const waiting = el('section', { class: 'waiting', hidden: true, 'aria-label': t('nb_waiting') }, waitRow);
   function paintWaiting() {
     const items = (state.actions || []).filter((p) => p?.other);
     waiting.hidden = !items.length;
-    waitRow.replaceChildren(...items.map((p) => el('button', { type: 'button', class: 'wait-item', on: { click: () => go(pairRoute(p)) } },
-      avatar(p.other.photo || null, 28), el('span', {}, actionLabel(p)), el('span', { class: 'dot', 'aria-hidden': 'true' }))));
+    waitRow.replaceChildren(...items.map((p) => el('button', {
+      type: 'button', class: 'wait-item', 'aria-label': actionLabel(p), title: actionLabel(p), on: { click: () => go(pairRoute(p)) },
+    }, avatar(p.other.photo || null, 44), el('span', { class: 'dot', 'aria-hidden': 'true' }))));
   }
 
   const countLine = el('p', { class: 'label ink count-line', 'aria-live': 'polite' });
