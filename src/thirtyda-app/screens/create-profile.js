@@ -884,9 +884,10 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     // Create profile: the number first (right under the label), then the round buttons, then the one line.
     if (cpLayout) node.replaceChildren(...[phoneRow, waysRow(), hint, note, codeBox, tgBox, error].filter(Boolean));
     else {
-      node.replaceChildren(...[waysRow(), note, phoneSoon
+      // #/me and the "Verify to chat" sheet too (owner 2026-10-13): the number on top, the apps under it.
+      node.replaceChildren(...[phoneSoon
         ? el('p', { class: 'way-hint way-soon', role: 'note' }, t('cp_phone_soon'))
-        : [hint, phoneRow], codeBox, tgBox, error].flat().filter(Boolean));
+        : phoneRow, waysRow(), phoneSoon ? null : hint, note, codeBox, tgBox, error].filter(Boolean));
     }
   }
 
