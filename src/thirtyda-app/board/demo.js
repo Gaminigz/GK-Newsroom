@@ -870,7 +870,7 @@
     const realName = String(body.realName ?? '').trim().replace(/\s+/g, ' ');
     if (R.charCount(realName) < 2 || R.charCount(realName) > 60) throw invalid('Write your first and last name.', { field: 'realName' });
     const role = checkRole(body.role);
-    if (!['woman', 'man'].includes(body.gender)) throw invalid('Choose woman or man.', { field: 'gender' });
+    if (!['man', 'woman', 'other'].includes(body.gender)) throw invalid('Choose male, female or other.', { field: 'gender' });
     const lang = checkLang(body.lang);
     const phone = s.phoneVerified ? s.phone : null;
     if (phone && [...W.users.values()].some((x) => x.phone === phone)) throw fail(409, 'phone_in_use', 'This phone number already has a profile.');

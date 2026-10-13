@@ -3,10 +3,10 @@
 // language, role, phone verification, hearts, sign out.
 import {
   screen, el, icon, t, go, api, toast, modal, state, setLang, setMe, topBar, heartPills, roleLabel, resizeImage,
-  registerStrings, LANGS, LANG_NATIVE, ROLES, PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, NAME_MAX,
+  registerStrings, LANGS, LANG_NATIVE, ROLES, PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, NAME_MAX, NAME_RAW_MAX,
 } from '../core.js';
 import {
-  phoneVerifier, blankPhone, appNameProblem, clipNameInput, birthYearSelect, truthNote,
+  phoneVerifier, blankPhone, appNameProblem, watchNameInput, clipNameInput, birthYearSelect, truthNote,
 } from './create-profile.js';
 
 let phoneModel = blankPhone(); // keeps a half-finished phone check across re-renders
@@ -192,11 +192,11 @@ screen('/me', async ({ root }) => {
 
   // --- app name
   const nameErr = el('p', { class: 'field-error', role: 'alert', hidden: true });
-  // Max 7 characters, clipped as typed (a name saved before the rule shows in full until it is edited).
-  const nameInput = el('input', {
-    class: 'input name-input', id: 'me-name', type: 'text', maxlength: '32', autocomplete: 'nickname', value: me.name || '',
+  // Max 7 characters, held as typed like on screen 2 (a name saved before the rule shows in full until it is edited).
+  const nameInput = watchNameInput(el('input', {
+    class: 'input name-input', id: 'me-name', type: 'text', maxlength: String(NAME_RAW_MAX), autocomplete: 'nickname', value: me.name || '',
     placeholder: t('me_name_ph'), 'data-max-chars': String(NAME_MAX),
-  });
+  }));
   const saveName = el('button', { type: 'button', class: 'btn btn-secondary', disabled: true }, t('me_save'));
   const paintName = () => {
     const value = nameInput.value;

@@ -4,7 +4,7 @@
 import {
   screen, el, icon, t, go, api, toast, modal, state, setLang, setMe, registerStrings,
   resizeImage, updateLocation, roleLabel, LANGS, LANG_CODES, LANG_NATIVE, ROLES, charCount,
-  PHOTO_SLOT_LEVELS, NAME_MAX, checkAppName, clipChars, birthYearOptions, checkBirthYear,
+  PHOTO_SLOT_LEVELS, NAME_MAX, NAME_RAW_MAX, checkAppName, clipChars, birthYearOptions, checkBirthYear,
 } from '../core.js';
 
 // ---------------------------------------------------------------- app name + birth year (also used on #/me)
@@ -16,14 +16,66 @@ export function appNameProblem(value) {
   return c.error === 'contact' ? 'contact' : 'length';
 }
 
+// What each app-name box held, and where its cursor was, just before the edit in progress; and where a
+// character was just refused (its marks, typed next, are refused with it).
+const nameBefore = new WeakMap();
+const nameHeld = new WeakMap();
+const snapName = (input) => nameBefore.set(input, {
+  value: input.value, start: input.selectionStart ?? input.value.length, end: input.selectionEnd ?? input.value.length,
+});
+
 /**
- * Keep an app-name input at NAME_MAX characters as the server counts them (a Khmer cluster is one), like
- * maxlength would for plain letters. Never while an IME is composing (Chinese, Japanese, Korean typing).
+ * Wire an app-name box (once): remember its value and cursor before every edit, so clipNameInput can refuse
+ * what does not fit the way maxlength does. While an IME composes, the state from before it started is kept.
+ */
+export function watchNameInput(input) {
+  input.addEventListener('beforeinput', (e) => { if (!e.isComposing && !/Composition/.test(e.inputType)) snapName(input); });
+  input.addEventListener('compositionstart', () => snapName(input));
+  return input;
+}
+
+/**
+ * Keep an app-name box at NAME_MAX characters as the server counts them (a Khmer cluster is one), like
+ * maxlength: an edit that would pass the limit keeps only as much of the new text as fits (a keystroke:
+ * none, so the name and the cursor stay as they were). The marks typed right after a refused character
+ * go with it (the 8th Khmer stack typed key by key must not hang its coeng and vowel on the 7th). A name
+ * with no record of the edit (a name saved before the rule) keeps its first NAME_MAX characters.
+ * Never while an IME is composing.
  */
 export function clipNameInput(input, e) {
   if (e?.isComposing) return;
-  const clipped = clipChars(input.value, NAME_MAX);
-  if (clipped !== input.value) input.value = clipped;
+  const value = input.value;
+  const snap = nameBefore.get(input);
+  if (!snap) {
+    if (charCount(value) > NAME_MAX) input.value = clipChars(value, NAME_MAX);
+    return;
+  }
+  const held = nameHeld.get(input);
+  nameBefore.delete(input);
+  nameHeld.delete(input);
+  const head = snap.value.slice(0, snap.start);
+  const tail = snap.value.slice(snap.end);
+  const known = charCount(snap.value) <= NAME_MAX && value.length >= head.length + tail.length
+    && value.startsWith(head) && value.endsWith(tail);
+  const refuse = () => {
+    input.value = snap.value;
+    input.setSelectionRange(snap.start, snap.end);
+    if (snap.start === snap.end) nameHeld.set(input, { value: snap.value, at: snap.start });
+  };
+  if (known && held && held.value === snap.value && held.at === snap.start && snap.start === snap.end
+    && value.length > snap.value.length) return refuse();
+  if (charCount(value) <= NAME_MAX) return;
+  if (!known) {
+    input.value = clipChars(value, NAME_MAX);
+    return;
+  }
+  const added = [...value.slice(head.length, value.length - tail.length)];
+  let k = added.length;
+  while (k > 0 && charCount(head + added.slice(0, k).join('') + tail) > NAME_MAX) k--;
+  if (!k) return refuse();
+  const kept = head + added.slice(0, k).join('');
+  input.value = kept + tail;
+  input.setSelectionRange(kept.length, kept.length);
 }
 
 /** Birth year dropdown: only this year − 30 down to this year − 80 (30+DA is for people aged 30 and over). */
@@ -324,18 +376,19 @@ screen('/create', ({ root }) => {
 
   // --- names + birth year
   const nameErr = el('p', { class: 'field-error', role: 'alert', hidden: true });
-  // Max 7 characters, clipped as typed (see clipNameInput; a code-unit maxlength would cut Khmer names short).
+  // Max 7 characters, held as typed (see clipNameInput). maxlength is only the raw cap: a code-unit count of 7
+  // would cut Khmer stacks short, so it stays at NAME_RAW_MAX (64), the server's code-point cap.
   const onName = (e) => {
     clipNameInput(nameInput, e);
     draft.name = nameInput.value;
     paintName();
     update();
   };
-  const nameInput = el('input', {
-    class: 'input name-input', id: 'cp-name', type: 'text', maxlength: '32', autocomplete: 'nickname', enterkeyhint: 'next',
+  const nameInput = watchNameInput(el('input', {
+    class: 'input name-input', id: 'cp-name', type: 'text', maxlength: String(NAME_RAW_MAX), autocomplete: 'nickname', enterkeyhint: 'next',
     placeholder: t('cp_app_name_ph'), value: draft.name, 'aria-describedby': 'cp-name-rule', 'data-max-chars': String(NAME_MAX),
     on: { input: onName, compositionend: onName },
-  });
+  }));
   const yearErr = el('p', { class: 'field-error', role: 'alert', hidden: true });
   const yearSel = birthYearSelect({
     id: 'cp-year', value: draft.birthYear,
@@ -356,12 +409,13 @@ screen('/create', ({ root }) => {
   });
 
   // --- I am (gender) + You are (role)
-  const genderBtns = ['woman', 'man'].map((g) => el('button', {
+  const GENDER_KEYS = ['man', 'woman', 'other']; // Male / Female / Other
+  const genderBtns = GENDER_KEYS.map((g) => el('button', {
     type: 'button', 'aria-pressed': String(draft.gender === g),
     on: {
       click: () => {
         draft.gender = g;
-        genderBtns.forEach((b, i) => b.setAttribute('aria-pressed', String(['woman', 'man'][i] === g)));
+        genderBtns.forEach((b, i) => b.setAttribute('aria-pressed', String(GENDER_KEYS[i] === g)));
         update();
       },
     },
@@ -530,8 +584,9 @@ registerStrings({
     cp_year_needed: 'Choose your birth year from the list.',
     cp_name_contact: 'No phone numbers, emails or chat handles in your name.',
     cp_i_am: 'I am',
-    cp_gender_woman: 'Woman',
-    cp_gender_man: 'Man',
+    cp_gender_woman: 'Female',
+    cp_gender_man: 'Male',
+    cp_gender_other: 'Other',
     cp_you_are: 'You are',
     cp_choose: 'Choose one',
     cp_phone: 'Phone number',
@@ -588,8 +643,9 @@ registerStrings({
     cp_year_needed: 'សូមជ្រើសរើសឆ្នាំកំណើតរបស់អ្នកពីបញ្ជី។',
     cp_name_contact: 'កុំដាក់លេខទូរស័ព្ទ អ៊ីមែល ឬឈ្មោះគណនីជជែក ក្នុងឈ្មោះរបស់អ្នក។',
     cp_i_am: 'ខ្ញុំជា',
-    cp_gender_woman: 'ស្ត្រី',
-    cp_gender_man: 'បុរស',
+    cp_gender_woman: 'ស្រី',
+    cp_gender_man: 'ប្រុស',
+    cp_gender_other: 'ផ្សេងទៀត',
     cp_you_are: 'អ្នកជា',
     cp_choose: 'ជ្រើសរើសមួយ',
     cp_phone: 'លេខទូរស័ព្ទ',
@@ -646,8 +702,9 @@ registerStrings({
     cp_year_needed: '请从列表中选择你的出生年份。',
     cp_name_contact: '名字中不能包含电话、邮箱或聊天账号。',
     cp_i_am: '我是',
-    cp_gender_woman: '女士',
-    cp_gender_man: '男士',
+    cp_gender_woman: '女',
+    cp_gender_man: '男',
+    cp_gender_other: '其他',
     cp_you_are: '你的身份',
     cp_choose: '请选择',
     cp_phone: '手机号码',
@@ -706,6 +763,7 @@ registerStrings({
     cp_i_am: '나는',
     cp_gender_woman: '여성',
     cp_gender_man: '남성',
+    cp_gender_other: '기타',
     cp_you_are: '하는 일',
     cp_choose: '하나를 선택하세요',
     cp_phone: '전화번호',
@@ -764,6 +822,7 @@ registerStrings({
     cp_i_am: '性別',
     cp_gender_woman: '女性',
     cp_gender_man: '男性',
+    cp_gender_other: 'その他',
     cp_you_are: 'お仕事・状況',
     cp_choose: '1つ選んでください',
     cp_phone: '電話番号',

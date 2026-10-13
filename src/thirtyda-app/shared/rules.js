@@ -750,11 +750,11 @@ const isKhmerLetter = (cp) => cp >= 0x1780 && cp <= 0x17b3;
 const isRegional = (cp) => cp >= 0x1f1e6 && cp <= 0x1f1ff;
 const isPictographic = (cp) => cp >= 0x1f000 || (cp >= 0x2190 && cp <= 0x2bff) || cp === 0xa9 || cp === 0xae;
 
-// What a person would call characters: "កា" is one, "👍🏽" is one. Runs of spaces count once,
-// so a short message cannot be padded out to the minimum with blanks.
-export function charCount(text) {
+// One pass over the characters (trimmed, runs of spaces as one): how many there are, and the most
+// code points any one of them holds (a "zalgo" letter stacks hundreds of marks onto one character).
+function scanChars(text) {
   const s = String(text ?? '').trim().replace(/\s+/g, ' ');
-  let n = 0, prev = 0, khmerBase = false, flagOpen = false;
+  let n = 0, size = 0, widest = 0, prev = 0, khmerBase = false, flagOpen = false;
   for (const ch of s) {
     const cp = ch.codePointAt(0);
     const joins = n > 0 && (EXTEND.test(ch)
@@ -763,12 +763,20 @@ export function charCount(text) {
       || (flagOpen && isRegional(cp)));
     if (!joins) {
       n++;
+      size = 0;
       khmerBase = isKhmerLetter(cp);
     }
+    if (++size > widest) widest = size;
     flagOpen = isRegional(cp) ? !flagOpen && !joins : flagOpen && joins;
     prev = cp;
   }
-  return n;
+  return { count: n, widest };
+}
+
+// What a person would call characters: "កា" is one, "👍🏽" is one. Runs of spaces count once,
+// so a short message cannot be padded out to the minimum with blanks.
+export function charCount(text) {
+  return scanChars(text).count;
 }
 
 const TRIVIAL_WORDS = [
@@ -864,6 +872,11 @@ export function checkWrittenAnswer(text) {
 // only holds the years of ages 30–80 and anything younger is refused.
 
 export const NAME_MIN = 2, NAME_MAX = 7;
+// Raw size caps, so marks that join onto a character (and count as nothing) cannot stack without end:
+// at most 64 code points in all (also the app-name inputs' maxlength: a code-unit count is never
+// smaller, so whatever those boxes let through passes this cap) and 8 in any one character (a Khmer
+// stack like "ស្ត្រី" is 6).
+export const NAME_RAW_MAX = 64, NAME_CHAR_MAX = 8;
 export const AGE_MIN = 30, AGE_MAX = 80;
 
 // "This year" is Phnom Penh's (fixed UTC+7) on the server and in every browser, whatever the device
@@ -900,16 +913,17 @@ export function checkBirthYear(value, now = Date.now()) {
 /**
  * An app name → { ok, name, count, error:null|'empty'|'too_short'|'too_long'|'contact', hits, reason }
  * (name = trimmed, single spaces). A contact detail is reported first: it is the rule that matters.
+ * too_long also covers a name over the raw caps (NAME_RAW_MAX code points, NAME_CHAR_MAX in one character).
  */
 export function checkAppName(text) {
   const name = String(text ?? '').trim().replace(/\s+/g, ' ');
-  const count = charCount(name);
+  const { count, widest } = scanChars(name);
   const { ok: clean, hits, reason } = findContactDetails(name);
   const result = (error) => ({ ok: !error, name, count, error, hits, reason });
   if (!count) return result('empty');
   if (!clean) return result('contact');
+  if (count > NAME_MAX || widest > NAME_CHAR_MAX || [...name].length > NAME_RAW_MAX) return result('too_long');
   if (count < NAME_MIN) return result('too_short');
-  if (count > NAME_MAX) return result('too_long');
   return result(null);
 }
 

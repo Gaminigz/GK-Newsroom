@@ -3,7 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  NAME_MIN, NAME_MAX, AGE_MIN, AGE_MAX, currentYear, birthYearOptions, checkBirthYear, checkAppName, clipChars, charCount,
+  NAME_MIN, NAME_MAX, NAME_RAW_MAX, NAME_CHAR_MAX, AGE_MIN, AGE_MAX, currentYear, birthYearOptions, checkBirthYear, checkAppName,
+  clipChars, charCount,
 } from './rules.js';
 
 // 2026-10-13 12:00 in Phnom Penh.
@@ -12,6 +13,8 @@ const NOW = Date.UTC(2026, 9, 13, 5, 0);
 test('limits are the owner rule', () => {
   assert.equal(NAME_MIN, 2);
   assert.equal(NAME_MAX, 7);
+  assert.equal(NAME_RAW_MAX, 64);
+  assert.equal(NAME_CHAR_MAX, 8);
   assert.equal(AGE_MIN, 30);
   assert.equal(AGE_MAX, 80);
 });
@@ -75,6 +78,33 @@ test('checkAppName: 2–7 characters, contact details first', () => {
   assert.equal(c.reason, 'Phone number shared');
   assert.equal(checkAppName('@visal').error, 'contact');
   assert.equal(checkAppName('Telegram').error, 'contact');
+});
+
+test('checkAppName: marks that join a character cannot stack without end (zalgo)', () => {
+  const marks = '\u0336\u0301\u0489'; // strike-through, acute, cyrillic millions sign: all combining
+  // Counted as 2 characters, 4502 code points: refused (it would draw a tall glitch over Nearby and chat).
+  const zalgo = `Ab${marks.repeat(1500)}`;
+  assert.equal(charCount(zalgo), 2);
+  assert.equal(checkAppName(zalgo).error, 'too_long');
+  assert.equal(checkAppName(`A${'\u0301'.repeat(31)}`).error, 'too_long'); // one letter, 31 marks
+  assert.equal(checkAppName(`Ab${'\u0301'.repeat(7)}`).ok, true); // 8 code points in one character: still fine
+  assert.equal(checkAppName(`Ab${'\u0301'.repeat(8)}`).error, 'too_long');
+  // Invisible joiners count too.
+  assert.equal(checkAppName(`Ab${'\u200d'.repeat(70)}`).error, 'too_long');
+  // Real stacked names pass: 7 Khmer clusters of 6 code points (42), emoji with skin tones, flags.
+  assert.equal([...'ស្ត្រី'].length, 6);
+  assert.equal(checkAppName('ស្ត្រី'.repeat(7)).ok, true);
+  assert.equal(checkAppName('ស្ត្រី'.repeat(8)).error, 'too_long');
+  assert.equal(checkAppName('ស្រីល័ក្ខ').ok, true);
+  assert.equal(checkAppName('Ana 👍🏽').ok, true);
+  assert.equal(checkAppName('🇰🇭Sok').ok, true);
+  assert.equal(checkAppName('👨‍👩‍👧‍👦 Dara').ok, true); // a 7-code-point family emoji is one character
+  // A name made only of an over-long character is still "too long", never "too short".
+  assert.equal(checkAppName(`A${'\u0301'.repeat(20)}`).error, 'too_long');
+  // Whatever an input with maxlength = NAME_RAW_MAX lets through (UTF-16 units ≥ code points) fits the raw cap.
+  const km = 'ស្ត្រី'.repeat(10).slice(0, NAME_RAW_MAX);
+  assert.ok([...km].length <= NAME_RAW_MAX);
+  assert.equal(checkAppName(clipChars(km, NAME_MAX)).ok, true);
 });
 
 test('clipChars keeps whole characters up to the limit', () => {

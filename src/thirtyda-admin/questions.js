@@ -322,7 +322,8 @@ function refresh() {
     const t = L.titles[i];
     const saved = L.saved.titles[i];
     const stale = saved && clean(t.en) && clean(t.en) !== clean(saved.en) ? OTHER.filter((l) => clean(t[l]) && clean(t[l]) === clean(saved[l])) : [];
-    paintLangs(r, state.allOpen || L.open.has(k), bad, stale, t);
+    // "Show all languages" opens a topic only when it has one: empty topic boxes are just noise.
+    paintLangs(r, L.open.has(k) || (state.allOpen && (hasText(t) || bad.size > 0)), bad, stale, t);
     const notes = [];
     const theirs = L.collisions.get(k);
     if (theirs !== undefined) notes.push(`The other tab changed this topic too, to “${theirs || 'no topic'}”. Yours is kept.`);
@@ -350,6 +351,7 @@ function refresh() {
     status.textContent = `Unsaved changes in Level ${state.level}`;
     status.classList.add('warn');
   } else status.textContent = 'All changes saved';
+  document.querySelector('.q-actions').classList.toggle('conflict', Boolean(L.conflict) && !state.busy);
   const merge = $('merge');
   merge.hidden = !L.conflict;
   merge.disabled = state.busy;

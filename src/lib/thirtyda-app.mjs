@@ -71,7 +71,7 @@ const C = {
 const ID_PREFIX = { user: "U-", pair: "P-", set: "S-", msg: "M-", flag: "f" };
 const STAGE_LEVEL = { l1_ask: 1, l1_answer: 1, l2_wait: 1, l2_open: 2, l3_wait: 2, l3_open: 3 };
 const REPORT_REASONS = { rude: "rude message", scam: "scam or money", sexual: "sexual message", other: "other" };
-const GENDERS = ["woman", "man"];
+const GENDERS = ["man", "woman", "other"]; // Male / Female / Other
 
 const CSP =
   "default-src 'self'; img-src 'self' data: blob:; style-src 'self' https://fonts.googleapis.com; " +
@@ -827,7 +827,7 @@ async function createProfile(ctx) {
   const realName = String(body.realName ?? "").trim().replace(/\s+/g, " ");
   if (charCount(realName) < 2 || charCount(realName) > 60) throw invalid("Write your first and last name.", { field: "realName" });
   const role = checkRole(body.role);
-  if (!GENDERS.includes(body.gender)) throw invalid("Choose woman or man.", { field: "gender" });
+  if (!GENDERS.includes(body.gender)) throw invalid("Choose male, female or other.", { field: "gender" });
   const lang = checkLang(body.lang);
 
   const users = d.collection(C.users);

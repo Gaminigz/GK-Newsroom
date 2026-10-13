@@ -470,7 +470,7 @@ export function countdown(node, untilIso, onDone) {
   return stop;
 }
 
-export const pronoun = (gender) => (gender === 'man' ? 'him' : 'her');
+export const pronoun = (gender) => (gender === 'man' ? 'him' : gender === 'woman' ? 'her' : 'them');
 
 const codeOf = (l) => LANG_CODES[l] || String(l || '').toUpperCase();
 export const langPair = (myLang, theirLang) => `${codeOf(myLang)}⇄${codeOf(theirLang)}`;

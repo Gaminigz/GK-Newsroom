@@ -175,13 +175,14 @@ screen('/ask/:pairId/:level', async ({ params, root }) => {
   // --- pick rows: a field-fill trigger that drops that question's own 5 choices right under it
   const pickRows = draft.picks.map((_, i) => {
     const face = el('span', {});
+    // The admin's topic for this question, if any, sits small above the picked text.
+    const topic = titles[i] ? el('span', { class: 'label pick-topic', 'aria-hidden': 'true' }, titles[i]) : null;
     const trigger = el('button', {
       type: 'button', class: 'select', 'aria-haspopup': 'listbox', 'aria-expanded': 'false', style: PICK_STYLE, on: { click: () => openPicker(i) },
-    }, el('span', { class: 'visually-hidden' }, `${slotTitle(i)}: `), face);
+    }, ...[el('span', { class: 'visually-hidden' }, `${slotTitle(i)}: `), topic, face].filter(Boolean));
     // Shown after the admin changed this question's list and the pick went back to choice 1.
     const note = el('p', { class: 'pick-note', id: `la-upd-${i + 1}`, hidden: true }, icon('flag', 14), el('span', {}, t('la_pick_updated')));
-    const topic = titles[i] ? el('span', { class: 'label pick-topic', 'aria-hidden': 'true' }, titles[i]) : null;
-    return { face, trigger, note, node: qrow(i + 1, ...[topic, trigger, note].filter(Boolean)) };
+    return { face, trigger, note, node: qrow(i + 1, trigger, note) };
   });
 
   // One drop list open at a time, directly under the question that was tapped.
@@ -381,6 +382,7 @@ registerStrings({
     lv_sending: 'Sending…',
     la_title_her: 'Ask her 5 questions',
     la_title_him: 'Ask him 5 questions',
+    la_title_them: 'Ask them 5 questions',
     la_rule: 'Pick {pick} questions · Write {write}',
     la_ph_1: 'Write a yes/no question',
     la_ph_2: 'Write a question',
@@ -389,6 +391,7 @@ registerStrings({
     la_send: 'Send 5 questions',
     la_ask_her: 'Ask her',
     la_ask_him: 'Ask him',
+    la_ask_them: 'Ask them',
     la_write_one: 'Write 1 more question',
     la_write_n: 'Write {n} more questions',
     la_sent: 'Sent. Now it is {name}’s turn.',
@@ -415,6 +418,7 @@ registerStrings({
     lv_sending: 'កំពុងផ្ញើ…',
     la_title_her: 'សួរនាង 5 សំណួរ',
     la_title_him: 'សួរគាត់ 5 សំណួរ',
+    la_title_them: 'សួរគេ 5 សំណួរ',
     la_rule: 'ជ្រើស {pick} សំណួរ · សរសេរ {write}',
     la_ph_1: 'សរសេរសំណួរដែលឆ្លើយបាន បាទ/ចាស ឬ ទេ',
     la_ph_2: 'សរសេរសំណួរមួយ',
@@ -423,6 +427,7 @@ registerStrings({
     la_send: 'ផ្ញើ 5 សំណួរ',
     la_ask_her: 'សួរនាង',
     la_ask_him: 'សួរគាត់',
+    la_ask_them: 'សួរគេ',
     la_write_one: 'សរសេរសំណួរ 1 ទៀត',
     la_write_n: 'សរសេរសំណួរ {n} ទៀត',
     la_sent: 'បានផ្ញើហើយ។ ឥឡូវដល់វេន {name} ឆ្លើយ។',
@@ -449,6 +454,7 @@ registerStrings({
     lv_sending: '发送中…',
     la_title_her: '问她 5 个问题',
     la_title_him: '问他 5 个问题',
+    la_title_them: '问 TA 5 个问题',
     la_rule: '选 {pick} 个问题 · 自己写 {write} 个',
     la_ph_1: '写一个用“是/不是”回答的问题',
     la_ph_2: '写一个问题',
@@ -457,6 +463,7 @@ registerStrings({
     la_send: '发送 5 个问题',
     la_ask_her: '问她',
     la_ask_him: '问他',
+    la_ask_them: '问 TA',
     la_write_one: '还要再写 1 个问题',
     la_write_n: '还要再写 {n} 个问题',
     la_sent: '已发送，现在轮到 {name} 回答。',
@@ -483,6 +490,7 @@ registerStrings({
     lv_sending: '보내는 중…',
     la_title_her: '{name}님에게 5가지 질문하기',
     la_title_him: '{name}님에게 5가지 질문하기',
+    la_title_them: '{name}님에게 5가지 질문하기',
     la_rule: '질문 {pick}개 고르기 · {write}개 직접 쓰기',
     la_ph_1: '예/아니요로 답할 질문을 써 주세요',
     la_ph_2: '질문을 써 주세요',
@@ -491,6 +499,7 @@ registerStrings({
     la_send: '질문 5개 보내기',
     la_ask_her: '질문하기',
     la_ask_him: '질문하기',
+    la_ask_them: '질문하기',
     la_write_one: '질문 1개 더 써 주세요',
     la_write_n: '질문 {n}개 더 써 주세요',
     la_sent: '보냈어요. 이제 {name}님이 답할 차례예요.',
@@ -517,6 +526,7 @@ registerStrings({
     lv_sending: '送信中…',
     la_title_her: '{name}さんに5つ質問する',
     la_title_him: '{name}さんに5つ質問する',
+    la_title_them: '{name}さんに5つ質問する',
     la_rule: '{pick}つ選ぶ · {write}つ書く',
     la_ph_1: 'はい/いいえで答えられる質問を書く',
     la_ph_2: '質問を書く',
@@ -525,6 +535,7 @@ registerStrings({
     la_send: '5つの質問を送る',
     la_ask_her: '彼女に聞く',
     la_ask_him: '彼に聞く',
+    la_ask_them: '質問する',
     la_write_one: 'あと1つ質問を書いてください',
     la_write_n: 'あと{n}つ質問を書いてください',
     la_sent: '送信しました。次は{name}さんが答える番です。',
