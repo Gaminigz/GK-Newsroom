@@ -1087,3 +1087,6 @@ dialog.verify-sheet { overflow-y: auto; }
 /* Home header: sign out next to my photo (owner 2026-10-13). */
 .brandbar .nb-signout { flex: none; margin-left: -6px; }
 .brandbar .gps-inline { min-width: 0; }
+
+/* Me page: hearts on top (owner 2026-10-13). */
+.me-hearts-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-radius: 14px; background: var(--field, #eef1f6); }
