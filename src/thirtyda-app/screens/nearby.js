@@ -108,14 +108,27 @@ screen('/nearby', ({ root }) => {
 
   // --- waiting strip, count, grid
   const waitRow = el('div', { class: 'waiting-row' });
-  // Just round photos with a red dot; tapping one opens what is waiting (e.g. their replies).
-  const waiting = el('section', { class: 'waiting', hidden: true, 'aria-label': t('nb_waiting') }, waitRow);
+  // My conversations: every ongoing pair as a round photo; a red dot when it is my turn.
+  const waiting = el('section', { class: 'waiting', hidden: true, 'aria-label': t('nb_my_convos') },
+    el('span', { class: 'label ink' }, t('nb_my_convos')), waitRow);
+  let pairs = [];
   function paintWaiting() {
-    const items = (state.actions || []).filter((p) => p?.other);
+    const mine = new Map((state.actions || []).filter((p) => p?.other).map((p) => [p.id, p]));
+    const items = [...pairs.filter((p) => p?.other && !mine.has(p.id)), ...mine.values()];
+    items.sort((a, b) => Number(mine.has(b.id)) - Number(mine.has(a.id))); // my turn first
     waiting.hidden = !items.length;
-    waitRow.replaceChildren(...items.map((p) => el('button', {
-      type: 'button', class: 'wait-item', 'aria-label': actionLabel(p), title: actionLabel(p), on: { click: () => go(pairRoute(p)) },
-    }, avatar(p.other.photo || null, 44), el('span', { class: 'dot', 'aria-hidden': 'true' }))));
+    waitRow.replaceChildren(...items.map((p) => {
+      const turn = mine.has(p.id);
+      const label = turn ? actionLabel(p) : p.other.name;
+      return el('button', { type: 'button', class: 'wait-item', 'aria-label': label, title: label, on: { click: () => go(pairRoute(p)) } },
+        avatar(p.other.photo || null, 44), turn ? el('span', { class: 'dot', 'aria-hidden': 'true' }) : null);
+    }));
+  }
+  async function loadPairs() {
+    try {
+      pairs = (await api.get('/pairs')).pairs || [];
+    } catch { /* keep what we had */ }
+    if (alive) paintWaiting();
   }
 
   const countLine = el('p', { class: 'label ink count-line', 'aria-live': 'polite' });
@@ -183,7 +196,8 @@ screen('/nearby', ({ root }) => {
   paintRange();
   paintWaiting();
   skeleton();
-  bus.addEventListener('actions', paintWaiting);
+  bus.addEventListener('actions', loadPairs);
+  loadPairs();
   heartbeat();
   (async () => {
     if (!refreshedThisLoad && (await geoAllowed())) await refreshGps(true);
@@ -193,7 +207,7 @@ screen('/nearby', ({ root }) => {
   return () => {
     alive = false;
     clearTimeout(timer);
-    bus.removeEventListener('actions', paintWaiting);
+    bus.removeEventListener('actions', loadPairs);
   };
 });
 
@@ -218,6 +232,7 @@ registerStrings({
     nb_show_women: 'Women',
     nb_show_men: 'Men',
     nb_waiting: 'Waiting for you',
+    nb_my_convos: 'My conversations',
     nb_count: '{n} people near you',
     nb_count_one: '1 person near you',
     nb_empty: 'No one within {km} km yet. Try a wider distance.',
@@ -243,6 +258,7 @@ registerStrings({
     nb_show_women: 'ស្ត្រី',
     nb_show_men: 'បុរស',
     nb_waiting: 'កំពុងរង់ចាំអ្នក',
+    nb_my_convos: 'ការសន្ទនារបស់ខ្ញុំ',
     nb_count: 'មនុស្ស {n} នាក់នៅជិតអ្នក',
     nb_count_one: 'មនុស្ស 1 នាក់នៅជិតអ្នក',
     nb_empty: 'មិនទាន់មាននរណាម្នាក់ក្នុងរង្វង់ {km} គ.ម នៅឡើយទេ។ សូមសាកល្បងចម្ងាយឆ្ងាយជាងនេះ។',
@@ -268,6 +284,7 @@ registerStrings({
     nb_show_women: '女士',
     nb_show_men: '男士',
     nb_waiting: '等你回应',
+    nb_my_convos: '我的对话',
     nb_count: '附近有 {n} 人',
     nb_count_one: '附近有 1 人',
     nb_empty: '{km} 公里内暂时没有人，试试扩大距离。',
@@ -293,6 +310,7 @@ registerStrings({
     nb_show_women: '여성',
     nb_show_men: '남성',
     nb_waiting: '나를 기다리는 중',
+    nb_my_convos: '나의 대화',
     nb_count: '근처에 {n}명',
     nb_count_one: '근처에 1명',
     nb_empty: '{km}km 안에는 아직 아무도 없어요. 거리를 넓혀 보세요.',
@@ -318,6 +336,7 @@ registerStrings({
     nb_show_women: '女性',
     nb_show_men: '男性',
     nb_waiting: 'あなたの番です',
+    nb_my_convos: 'わたしの会話',
     nb_count: '近くに{n}人',
     nb_count_one: '近くに1人',
     nb_empty: '{km}km以内にはまだ誰もいません。距離を広げてみてください。',
