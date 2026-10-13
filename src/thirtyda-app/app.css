@@ -1059,14 +1059,13 @@ body:has(.screen.conv) .toast { bottom: max(calc(24px + env(safe-area-inset-bott
 .tg-wait-mark::after { content: ''; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid rgb(34 158 217 / 0.22); border-top-color: #229ed9; animation: tg-wait-spin 1.1s linear infinite; }
 .tg-wait-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 /* No headline of its own ("Check Telegram for the next step." above says it): the number leads. */
-.tg-wait-num { font-family: var(--mono); font-size: 14px; font-weight: 700; letter-spacing: 0.03em; color: var(--ink); }
+.tg-wait-step { font-size: 14px; font-weight: 700; line-height: 1.35; color: var(--ink); }
 .tg-wait-match { margin-top: 2px; font-size: 13px; line-height: 1.35; color: var(--ink); }
 .tg-wait-privacy { display: block; margin-top: 6px; font-size: 12px; line-height: 1.4; color: var(--muted, #5b6478); }
 .tg-wait-match b { display: inline-block; margin-left: 2px; padding: 1px 8px; border-radius: 999px; background: #fff; border: 1px solid rgb(34 158 217 / 0.35); font-size: 15px; font-weight: 800; letter-spacing: 0.04em; white-space: nowrap; }
 .tg-wait-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding-left: 46px; }
 /* "Telegram did not open? Open it" — small, only for a browser that blocked the automatic tab (no big button). */
-.tg-reopen { font-size: 13px; line-height: 1.4; color: var(--muted); }
-.tg-reopen .tg-open { color: #1777ad; }
+.tg-wait-actions .tg-open { font-size: 13px; font-weight: 700; color: #1777ad; }
 .tg-wait-actions .tg-cancel { font-size: 13px; color: var(--muted); }
 @keyframes tg-wait-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .tg-wait-mark::after { animation: none; border-color: #229ed9; } }

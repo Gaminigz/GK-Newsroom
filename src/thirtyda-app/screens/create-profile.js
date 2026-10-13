@@ -320,56 +320,56 @@ function sendErrorText(err, channel, otherOn = true) {
 // bot itself asks for it; this screen only says "Check Telegram for the next step.").
 registerStrings({
   en: {
-    cp_tg_not_open: 'Telegram did not open?',
-    cp_tg_open_it: 'Open it',
+    cp_tg_open_it: 'Open Telegram',
+    cp_tg_opening: 'Opening Telegram… tap START there.',
+    cp_tg_share: 'In Telegram, tap “Share my number”.',
     cp_tg_cancel: 'Cancel',
     cp_tg_mismatch: 'This Telegram is a different number. Use the Telegram of the number you typed, or change the number.',
     cp_tg_needs_app: 'Needs the Telegram app, signed in, on this phone. Not on Telegram? Use Google or Facebook.',
-    cp_tg_privacy: 'Telegram opens on your phone. 30+DA cannot see your chats; only the number you share with GKVerify comes back.',
     cp_tg_safe: 'Safe: GKVerify (@ThirtyDa_bot) never messages you first and never asks for money, card details, passwords or codes.',
     cp_tg_expired: 'That took too long. Tap Telegram to try again.',
     cp_tg_match: 'Telegram shows the same sign:',
   },
   km: {
-    cp_tg_not_open: 'Telegram មិនបានបើកទេ?',
-    cp_tg_open_it: 'បើកវា',
+    cp_tg_open_it: 'បើក Telegram',
+    cp_tg_opening: 'កំពុងបើក Telegram… សូមចុច START នៅទីនោះ។',
+    cp_tg_share: 'នៅក្នុង Telegram សូមចុច “ចែករំលែកលេខរបស់ខ្ញុំ”។',
     cp_tg_cancel: 'បោះបង់',
     cp_tg_mismatch: 'Telegram នេះជាលេខផ្សេង។ សូមប្រើ Telegram របស់លេខដែលអ្នកបានវាយ ឬប្ដូរលេខ។',
     cp_tg_needs_app: 'ត្រូវការកម្មវិធី Telegram ដែលបានចូលរួចនៅលើទូរស័ព្ទនេះ។ មិនប្រើ Telegram ទេ? សូមប្រើ Google ឬ Facebook។',
-    cp_tg_privacy: 'Telegram បើកនៅលើទូរស័ព្ទរបស់អ្នក។ 30+DA មិនអាចមើលការជជែករបស់អ្នកបានទេ មានតែលេខដែលអ្នកចែករំលែកជាមួយ GKVerify ប៉ុណ្ណោះដែលត្រឡប់មកវិញ។',
     cp_tg_safe: 'សុវត្ថិភាព៖ GKVerify (@ThirtyDa_bot) មិនដែលផ្ញើសារមកអ្នកមុន ហើយមិនដែលសុំលុយ ព័ត៌មានកាត ពាក្យសម្ងាត់ ឬលេខកូដឡើយ។',
     cp_tg_expired: 'ចំណាយពេលយូរពេក។ សូមចុច Telegram ដើម្បីសាកម្ដងទៀត។',
     cp_tg_match: 'Telegram បង្ហាញសញ្ញាដូចគ្នា៖',
   },
   zh: {
-    cp_tg_not_open: 'Telegram 没打开？',
-    cp_tg_open_it: '点此打开',
+    cp_tg_open_it: '打开 Telegram',
+    cp_tg_opening: '正在打开 Telegram…请在那里点 START。',
+    cp_tg_share: '在 Telegram 里点「分享我的号码」。',
     cp_tg_cancel: '取消',
     cp_tg_mismatch: '这个 Telegram 是另一个号码。请用你输入的号码所登录的 Telegram，或者修改号码。',
     cp_tg_needs_app: '需要这部手机上已登录的 Telegram 应用。没有 Telegram？请用 Google 或 Facebook。',
-    cp_tg_privacy: 'Telegram 会在你的手机上打开。30+DA 看不到你的聊天，只会收到你分享给 GKVerify 的号码。',
     cp_tg_safe: '放心：GKVerify（@ThirtyDa_bot）从不主动给你发消息，也从不索要钱、银行卡信息、密码或验证码。',
     cp_tg_expired: '时间太久了。请再点一次 Telegram。',
     cp_tg_match: 'Telegram 会显示同样的标记：',
   },
   ko: {
-    cp_tg_not_open: 'Telegram이 열리지 않았나요?',
-    cp_tg_open_it: '열기',
+    cp_tg_open_it: 'Telegram 열기',
+    cp_tg_opening: 'Telegram을 여는 중… 거기서 START를 누르세요.',
+    cp_tg_share: 'Telegram에서 “내 번호 공유”를 누르세요.',
     cp_tg_cancel: '취소',
     cp_tg_mismatch: '이 Telegram은 다른 번호예요. 입력한 번호의 Telegram을 쓰거나 번호를 바꿔 주세요.',
     cp_tg_needs_app: '이 휴대폰에 로그인된 Telegram 앱이 필요해요. Telegram이 없나요? Google이나 Facebook을 쓰세요.',
-    cp_tg_privacy: 'Telegram이 휴대폰에서 열려요. 30+DA는 채팅을 볼 수 없고, GKVerify에 공유한 번호만 돌아와요.',
     cp_tg_safe: '안심하세요: GKVerify(@ThirtyDa_bot)는 먼저 메시지를 보내지 않고, 돈·카드 정보·비밀번호·코드를 절대 묻지 않아요.',
     cp_tg_expired: '시간이 너무 지났어요. Telegram을 다시 눌러 주세요.',
     cp_tg_match: 'Telegram에도 같은 표시가 나와요:',
   },
   ja: {
-    cp_tg_not_open: 'Telegram が開きませんか？',
-    cp_tg_open_it: '開く',
+    cp_tg_open_it: 'Telegram を開く',
+    cp_tg_opening: 'Telegram を開いています… そこで START を押してください。',
+    cp_tg_share: 'Telegram で「自分の番号を共有」を押してください。',
     cp_tg_cancel: 'キャンセル',
     cp_tg_mismatch: 'この Telegram は別の番号です。入力した番号の Telegram を使うか、番号を変えてください。',
     cp_tg_needs_app: 'この電話でログイン済みの Telegram アプリが必要です。Telegram がない場合は Google か Facebook を使ってください。',
-    cp_tg_privacy: 'Telegram はお使いの電話で開きます。30+DA はチャットを見られません。GKVerify に共有した番号だけが戻ってきます。',
     cp_tg_safe: '安心：GKVerify（@ThirtyDa_bot）から先にメッセージを送ることはなく、お金・カード情報・パスワード・コードを聞くこともありません。',
     cp_tg_expired: '時間がかかりすぎました。もう一度 Telegram を押してください。',
     cp_tg_match: 'Telegram にも同じマークが出ます：',
@@ -592,10 +592,11 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
   // ---------- the free Telegram bot (GET /auth/methods → telegram: 'bot'; owner 2026-10-13) ----------
   // No code: the number typed here goes to POST /auth/telegram/start, Telegram opens on the 30+DA bot, the person
   // taps "Share my number" there, and GET /auth/telegram/status (every 2 s, and on coming back to this tab) signs
-  // in this browser exactly like a good code. model.tg = { phone, link, until, opened, pin, match } while it waits.
+  // in this browser exactly like a good code. model.tg = { phone, link, until, opened, pin, match, started } while it waits.
   // match ("🍊 47") is shown here and repeated by the bot: a person sent someone else's link sees no such screen.
   function botMode() { return methods?.telegram === 'bot'; }
   model.tg ||= null;
+  const TG_NOT_OPENED_MS = 120e3;
   let tgTimer = null;
   let tgPolling = false; // a GET /auth/telegram/status is on its way (it never blocks a tap: see startChannel)
   let tgEl = null;
@@ -633,7 +634,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     try {
       const pin = waitingPin(); // a returning person's waiting PIN goes with the check (the server keeps it hashed)
       const r = await api.post('/auth/telegram/start', { phone, lang: state.lang, ...(pin ? { pin } : {}) });
-      model.tg = { phone: r.phone || phone, link: r.link, until: Date.now() + (Number(r.expiresIn) || 600) * 1000, opened: false, pin: Boolean(pin), match: typeof r.match === 'string' ? r.match : null };
+      model.tg = { phone: r.phone || phone, link: r.link, until: Date.now() + (Number(r.expiresIn) || 600) * 1000, opened: false, pin: Boolean(pin), match: typeof r.match === 'string' ? r.match : null, started: Date.now() };
       // One way at a time: a WhatsApp code that was out is over (its box and countdown go). Only once Telegram's
       // check really started — if it could not, that code is still there to type.
       Object.assign(model, { codeSent: false, devCode: null, code: '', live: false, sentBy: null });
@@ -682,6 +683,13 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
         model.tg.opened = true;
         render();
       }
+      // Telegram never got to GKVerify in 2 minutes (no app, or not signed in): close the card, say what is needed.
+      if (!model.tg.opened && Date.now() - model.tg.started > TG_NOT_OPENED_MS) {
+        endTelegram();
+        showNote(t('cp_tg_needs_app'));
+        render();
+        return;
+      }
     } catch (err) {
       next = err.status === 429 ? 10000 : 4000; // a hiccup: keep asking, a little slower
     } finally {
@@ -699,29 +707,24 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
   }
 
   /**
-   * While it waits: the number · the sign (🍊 47) · "Telegram did not open? Open it" · Cancel. No instruction of its
-   * own and no big button (owner 2026-10-13): "Check Telegram for the next step." above says what to do, Telegram
-   * itself says the rest. The small link is for a browser that blocked the automatic tab; it goes once Telegram
-   * has opened (a tap on Telegram above opens it again too).
+   * The Telegram card (owner 2026-10-14: "it looks scammy, something is happening in my phone"): one plain line for
+   * the step the person is on, the safety line, Open Telegram and Cancel. No number, no sign until GKVerify really
+   * has them (then the bot shows the same sign); nothing runs or stays when Telegram was not picked.
    */
   function tgWaitBox() {
     tgEl = null;
     if (!model.tg) return null;
+    const { opened, match, link } = model.tg;
     tgEl = el('div', { class: 'tg-wait', role: 'status', 'aria-live': 'polite' },
       el('div', { class: 'tg-wait-head' },
         el('span', { class: 'tg-wait-mark', 'aria-hidden': 'true' }, brandMark('telegram')),
         el('div', { class: 'tg-wait-text' },
-          el('span', { class: 'tg-wait-num' }, model.tg.phone),
-          model.tg.match ? el('span', { class: 'tg-wait-match' }, t('cp_tg_match'), ' ', el('b', {}, model.tg.match)) : null,
-          // Owner saw his own Telegram flash open and read it as 30+DA seeing his account: say what really happens.
-          el('span', { class: 'tg-wait-privacy' }, t('cp_tg_privacy')),
-          // Owner 2026-10-14: Telegram has a scam name here; say what GKVerify never does, and which bot is real.
-          el('span', { class: 'tg-wait-privacy' }, t('cp_tg_safe')),
-          // A phone with no Telegram signed in lands on Telegram's own "Your phone" screen: say what is needed.
-          el('span', { class: 'tg-wait-privacy' }, t('cp_tg_needs_app')))),
+          el('span', { class: 'tg-wait-step' }, t(opened ? 'cp_tg_share' : 'cp_tg_opening')),
+          opened && match ? el('span', { class: 'tg-wait-match' }, t('cp_tg_match'), ' ', el('b', {}, match)) : null,
+          el('span', { class: 'tg-wait-privacy' }, t('cp_tg_safe')))),
       el('div', { class: 'tg-wait-actions' },
-        model.tg.opened ? null : el('span', { class: 'tg-reopen' }, t('cp_tg_not_open'), ' ',
-          el('a', { class: 'link tg-open', href: model.tg.link, target: '_blank', rel: 'noopener noreferrer' }, t('cp_tg_open_it'))),
+        // A real link, so a browser that blocked the automatic open still opens Telegram on this tap.
+        opened ? null : el('a', { class: 'link tg-open', href: link, target: '_blank', rel: 'noopener noreferrer' }, t('cp_tg_open_it')),
         el('button', { type: 'button', class: 'link tg-cancel', on: { click: () => { endTelegram(); render(); } } }, t('cp_tg_cancel'))));
     return tgEl;
   }
@@ -955,7 +958,10 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
   const onShow = (e) => { if (e.persisted && signingIn) { signingIn = null; render(); } };
   window.addEventListener('pageshow', onShow);
   // Back in the 30+DA app from its sign-in sheet (a Custom Tab trip has no unload, so no pageshow): free again.
-  const stopReturn = onAppReturn(() => { if (alive && signingIn) { signingIn = null; render(); } });
+  const stopReturn = onAppReturn(() => {
+    if (alive && signingIn) { signingIn = null; render(); }
+    if (alive && model.tg) pollTelegram(); // back from Telegram in the app: ask now, not at the next tick
+  });
   // Re-drawn while it waits for Telegram (a language switch): keep asking.
   if (model.tg) pollTelegram();
   methodsReady = loadMethods().then((m) => {
