@@ -175,7 +175,7 @@ test('a shared contact is deleted from the chat (verified, mismatch, someone els
       assert.deepEqual(ctx.api.of('deleteMessage').at(-1).body, { chat_id: 111, message_id: u.message.message_id }, 'chat_id + message_id');
       assert.equal(sentTexts(ctx.api).at(-1), said);
     }
-    assert.equal(BOT_TEXT.en.done, 'Number verified ✓ Go back to 30+DA.');
+    assert.equal(BOT_TEXT.en.done, 'Number verified ✓ You are now logged in to the 30+DA app. Go back to it.');
     // A mismatch: deleted too, and the reply says how to type it (never the number).
     const { token: t2 } = await startCheck(ctx.d, { phone: PHONE, browser: newBrowserKey() });
     await hook(ctx, msg(222, { text: `/start ${t2}` }));

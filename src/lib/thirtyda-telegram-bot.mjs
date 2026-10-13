@@ -499,7 +499,7 @@ export const BOT_TEXT = {
   en: {
     ask: "GKVerify — confirm your number for 30+DA ({time}, Phnom Penh time).\nCheck that your 30+DA screen shows {mark}, then tap the button to share your number.\nIf someone sent you this link, do not tap.",
     button: "Share my number",
-    done: "Number verified ✓ Go back to 30+DA.",
+    done: "Number verified ✓ You are now logged in to the 30+DA app. Go back to it.",
     mismatch: "That number is not the one you typed in 30+DA. In 30+DA, type the same number your Telegram uses, with its country code, then tap Telegram again.",
     not_own: "Please share your own number with the button below.",
     expired: "This link has expired. Go back to 30+DA and tap Telegram again.",
@@ -509,7 +509,7 @@ export const BOT_TEXT = {
   km: {
     ask: "GKVerify — បញ្ជាក់លេខរបស់អ្នកសម្រាប់ 30+DA ({time} ម៉ោងភ្នំពេញ)។\nសូមពិនិត្យថា អេក្រង់ 30+DA របស់អ្នកបង្ហាញ {mark} រួចចុចប៊ូតុង ដើម្បីចែករំលែកលេខរបស់អ្នក។\nបើមាននរណាម្នាក់ផ្ញើតំណនេះមកអ្នក សូមកុំចុច។",
     button: "ចែករំលែកលេខរបស់ខ្ញុំ",
-    done: "បានផ្ទៀងផ្ទាត់លេខ ✓ សូមត្រឡប់ទៅ 30+DA វិញ។",
+    done: "បានផ្ទៀងផ្ទាត់លេខ ✓ ឥឡូវនេះអ្នកបានចូលកម្មវិធី 30+DA ហើយ។ សូមត្រឡប់ទៅវាវិញ។",
     mismatch: "លេខនេះមិនមែនជាលេខដែលអ្នកបានវាយក្នុង 30+DA ទេ។ នៅក្នុង 30+DA សូមវាយលេខដូចគ្នានឹងលេខដែល Telegram របស់អ្នកប្រើ ជាមួយលេខកូដប្រទេស រួចចុច Telegram ម្ដងទៀត។",
     not_own: "សូមចែករំលែកលេខផ្ទាល់ខ្លួនរបស់អ្នក ដោយប្រើប៊ូតុងខាងក្រោម។",
     expired: "តំណនេះផុតកំណត់ហើយ។ សូមត្រឡប់ទៅ 30+DA ហើយចុច Telegram ម្ដងទៀត។",
@@ -519,7 +519,7 @@ export const BOT_TEXT = {
   zh: {
     ask: "GKVerify — 为 30+DA 确认你的号码（金边时间 {time}）。\n请确认你的 30+DA 屏幕上显示 {mark}，再点按钮分享你的号码。\n如果这个链接是别人发给你的，请不要点。",
     button: "分享我的号码",
-    done: "号码已验证 ✓ 请回到 30+DA。",
+    done: "号码已验证 ✓ 你已登录 30+DA 应用。请回到应用。",
     mismatch: "这个号码不是你在 30+DA 里输入的号码。请在 30+DA 里输入你的 Telegram 用的同一个号码（带国家区号），再点一次 Telegram。",
     not_own: "请用下面的按钮分享你自己的号码。",
     expired: "这个链接已过期。请回到 30+DA，再点一次 Telegram。",
@@ -529,7 +529,7 @@ export const BOT_TEXT = {
   ko: {
     ask: "GKVerify — 30+DA를 위해 번호를 확인해 주세요 (프놈펜 시간 {time}).\n30+DA 화면에 {mark} 표시가 있는지 확인한 뒤, 버튼을 눌러 번호를 공유하세요.\n누군가 이 링크를 보내 줬다면 누르지 마세요.",
     button: "내 번호 공유",
-    done: "번호 인증 완료 ✓ 30+DA로 돌아가세요.",
+    done: "번호 인증 완료 ✓ 이제 30+DA 앱에 로그인됐어요. 앱으로 돌아가세요.",
     mismatch: "이 번호는 30+DA에 입력한 번호가 아니에요. 30+DA에서 Telegram에 쓰는 번호를 국가 번호와 함께 입력한 뒤 Telegram을 다시 누르세요.",
     not_own: "아래 버튼으로 본인 번호를 공유해 주세요.",
     expired: "이 링크는 만료됐어요. 30+DA로 돌아가 Telegram을 다시 누르세요.",
@@ -539,7 +539,7 @@ export const BOT_TEXT = {
   ja: {
     ask: "GKVerify — 30+DA のために番号を確認してください（プノンペン時間 {time}）。\n30+DA の画面に {mark} が出ているか確かめてから、ボタンを押して番号を共有してください。\n誰かからこのリンクが送られてきた場合は、押さないでください。",
     button: "自分の番号を共有",
-    done: "番号を確認しました ✓ 30+DA に戻ってください。",
+    done: "番号を確認しました ✓ 30+DA アプリにログインしました。アプリに戻ってください。",
     mismatch: "この番号は 30+DA で入力した番号ではありません。30+DA で、Telegram で使っている番号を国番号から入力し、もう一度 Telegram を押してください。",
     not_own: "下のボタンで、ご自分の番号を共有してください。",
     expired: "このリンクは期限切れです。30+DA に戻って、もう一度 Telegram を押してください。",
