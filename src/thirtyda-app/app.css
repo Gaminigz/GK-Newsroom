@@ -876,18 +876,20 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .conv .chat-scroll > .thread { min-height: 0; }
 .conv-thread { display: flex; flex-direction: column; gap: 8px; }
 .conv-history { margin-bottom: 10px; }
-.conv-history { gap: 0; }
-/* History (Levels 1-2): plain navy text on white, no bubbles, one compact row per line with its reply. */
-.conv-history .bubble { max-width: none; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--navy); }
-.conv-history .bubble .trans, .conv-history .bubble .trans-note { color: var(--muted); }
-.conv-history .conv-line { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 12px; padding: 4px 0; }
-.conv-history .conv-line + .conv-line { margin-top: 0; }
-.conv-history .conv-line > .bubble:first-child { flex: 1; min-width: 0; text-align: left; font-size: 14.5px; line-height: 1.35; }
-.conv-history .conv-reply { flex: none; max-width: 42%; text-align: right; font-size: 14.5px; font-weight: 800; color: var(--navy); }
-.conv-history .conv-line:has(.conv-edit, .conv-chips) { flex-direction: column; align-items: stretch; }
-.conv-history .conv-topic { margin-bottom: 0; }
-.conv-history .conv-cap { margin: 8px 0 2px; }
-.conv-history .conv-progress { margin: 2px 0 6px; }
+/* Levels 1-2 lines and replies, everywhere on the conversation screen: plain solid text on white, no
+   bubbles, no borders, no topic headings, one compact row per line with its reply (Gamini 2026-10-13). */
+.conv-thread:has(.conv-line) { gap: 0; }
+.conv-thread .conv-line .bubble { max-width: none; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--navy); }
+.conv-line .bubble .trans, .conv-line .bubble .trans-note { color: var(--muted); }
+.conv-thread .conv-line, .conv-thread .conv-line.mine, .conv-thread .conv-line.theirs { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 12px; padding: 3px 0; }
+.conv-thread .conv-line + .conv-line { margin-top: 0; }
+.conv-thread .conv-line > .bubble:first-child { flex: 1; min-width: 0; align-self: auto; text-align: left; font-size: 14.5px; line-height: 1.35; }
+.conv-thread .conv-line .conv-reply { flex: none; max-width: 42%; align-self: auto; text-align: right; font-size: 14.5px; font-weight: 800; color: var(--navy); }
+.conv-thread .conv-line:has(.conv-edit, .conv-chips) { flex-direction: column; align-items: stretch; }
+.conv-line .conv-topic { display: none; }
+.conv-line .conv-pending { height: auto; padding: 0; border: 0; border-radius: 0; font-size: 9px; }
+.conv-cap { margin: 8px 0 2px; }
+.conv-progress { margin: 2px 0 6px; }
 .conv-sub { display: inline-flex; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 4px; }
 .conv-sub > span { white-space: nowrap; } /* "LEVEL 2/3" stays whole; the bar drops under it when the photos take the room */
 .conv-divider { margin: 12px 0 2px; }
