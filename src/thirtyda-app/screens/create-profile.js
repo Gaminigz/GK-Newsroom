@@ -746,10 +746,12 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     const sign = Object.fromEntries(SIGN_INS.map((s) => [s[0], s]));
     // Owner's order (2026-10-13): TikTok, Telegram, Google, Facebook, WhatsApp — Create profile, the sheet and #/me.
     // Without sign-ins (no `signin` given): the two code apps.
+    // Owner (2026-10-13): hide WhatsApp while it does not work (it comes back by itself once its test code goes through).
+    const shown = (c) => c[0] !== 'whatsapp' || codeOn('whatsapp');
     const row = signin
-      ? [signinBtn(sign.tiktok), codeBtn(code.telegram), signinBtn(sign.google), signinBtn(sign.facebook), codeBtn(code.whatsapp)]
-      : CODE_CHANNELS.map(codeBtn);
-    return el('div', { class: ['ways', signin && 'with-signin'], role: 'group', 'aria-label': t('cp_ways') }, row);
+      ? [signinBtn(sign.tiktok), codeBtn(code.telegram), signinBtn(sign.google), signinBtn(sign.facebook), shown(code.whatsapp) ? codeBtn(code.whatsapp) : null].filter(Boolean)
+      : CODE_CHANNELS.filter(shown).map(codeBtn);
+    return el('div', { class: ['ways', signin && 'with-signin'], role: 'group', 'aria-label': t('cp_ways'), style: { '--cols': String(row.length) } }, row);
   }
 
   function render() {

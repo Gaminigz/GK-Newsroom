@@ -723,9 +723,9 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .truth-note .icon { flex: none; margin-top: 1px; color: #c45f00; }
 /* Phone step: one row of round brand buttons — Telegram · WhatsApp (where the code goes) · Facebook · Google ·
    TikTok (sign in). The chosen code channel gets a navy ring; one that does not work yet is dimmed, "Coming soon". */
-.ways { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-bottom: 2px; }
+.ways { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 4px; margin-bottom: 2px; }
 /* Create profile: all 5 on one row, still one row on a 360–390 px phone (in every language). */
-.ways.with-signin { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; }
+.ways.with-signin { grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr)); gap: 2px; }
 .way {
   position: relative;
   display: flex;
