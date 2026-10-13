@@ -422,7 +422,7 @@ registerStrings({
     lw_is_open_2: '레벨 2가 열렸어요',
     lw_is_open_3: '레벨 3이 열렸어요',
     lw_text_2: '{name}님과 레벨 1을 마쳤어요. 레벨 2에서는 각자 2개를 고르고, 3개를 직접 쓰고, 자기 말로 답장해요.',
-    lw_text_3: '{name}님과 레벨 2의 5개에 모두 답장했어요. 다음은 채팅이 열려요.',
+    lw_text_3: '{name}님과 레벨 2의 한마디 5개에 모두 답장했어요. 다음은 채팅이 열려요.',
     lw_recap_1: '레벨 1 돌아보기',
     lw_all_answered: '5개 모두 답장했어요',
     lw_some_answered: '{total}개 중 {a}개 답장했어요',

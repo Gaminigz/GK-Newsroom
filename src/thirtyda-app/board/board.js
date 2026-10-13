@@ -88,7 +88,7 @@
       title: 'Level 2 · Conversation', who: 'Dara writes to Sophea',
       notes: [
         'Sender picks 2 lines from drop-down lists and writes 3 of their own.',
-        'Lines can be open (“Tell me what you can see from your window.”) because replies come back as written text.',
+        'Lines can be open (“What can you see from your window?”) because replies come back as written text.',
         'Phone numbers and chat handles are never allowed.',
         'Send → 9.',
       ],

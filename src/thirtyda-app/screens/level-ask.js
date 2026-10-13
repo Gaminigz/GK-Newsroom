@@ -400,7 +400,7 @@ registerStrings({
     la_choose_one: 'Choose 1 of these {n}',
     la_choices_changed: 'The choices were just updated. Check your picks.',
     la_pick_updated: 'Updated. Check this line.',
-    la_answer_first: '{name} started a conversation · reply first',
+    la_answer_first: 'Reply to {name} first',
   },
   km: {
     lv_level_of: 'កម្រិត {n}/3',
@@ -437,7 +437,7 @@ registerStrings({
     la_choose_one: 'ជ្រើសរើស 1 ក្នុងចំណោម {n} នេះ',
     la_choices_changed: 'ជម្រើសទើបតែត្រូវបានធ្វើបច្ចុប្បន្នភាព។ សូមពិនិត្យជម្រើសរបស់អ្នកម្តងទៀត។',
     la_pick_updated: 'បានធ្វើបច្ចុប្បន្នភាព។ សូមពិនិត្យឃ្លានេះ។',
-    la_answer_first: '{name} បានចាប់ផ្ដើមការសន្ទនា · ឆ្លើយតបមុនសិន',
+    la_answer_first: 'ឆ្លើយតបទៅ {name} មុនសិន',
   },
   zh: {
     lv_level_of: '等级 {n}/3',
@@ -474,7 +474,7 @@ registerStrings({
     la_choose_one: '从这 {n} 句中选 1 句',
     la_choices_changed: '选项刚刚更新了，请再检查一下你的选择。',
     la_pick_updated: '已更新，请检查这一句。',
-    la_answer_first: '{name} 开始了对话 · 先回复',
+    la_answer_first: '先回复 {name}',
   },
   ko: {
     lv_level_of: '레벨 {n}/3',
@@ -511,7 +511,7 @@ registerStrings({
     la_choose_one: '이 {n}개 중 1개를 고르세요',
     la_choices_changed: '선택지가 방금 바뀌었어요. 고른 것을 다시 확인해 주세요.',
     la_pick_updated: '바뀌었어요. 이 한마디를 확인해 주세요.',
-    la_answer_first: '{name}님이 대화를 시작했어요 · 먼저 답장하기',
+    la_answer_first: '{name}님에게 먼저 답장하기',
   },
   ja: {
     lv_level_of: 'レベル {n}/3',
@@ -548,6 +548,6 @@ registerStrings({
     la_choose_one: 'この{n}つから1つ選んでください',
     la_choices_changed: '選択肢が更新されました。選んだものをもう一度確認してください。',
     la_pick_updated: '更新されました。このひとことを確認してください。',
-    la_answer_first: '{name}さんが会話を始めました · 先に返信する',
+    la_answer_first: '先に{name}さんに返信する',
   },
 });

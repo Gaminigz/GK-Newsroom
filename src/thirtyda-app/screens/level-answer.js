@@ -88,7 +88,7 @@ screen('/answer/:pairId/:level', async ({ params, root }) => {
     return false;
   }
 
-  const head = topBar({ left: 'close', onLeft: close, title: headTitle(pair, t('lan_title', { name })), sub, right: levelBar(level) });
+  const head = topBar({ left: 'close', onLeft: close, title: headTitle(pair, level >= 2 ? t('act_reply', { name }) : t('lan_title', { name })), sub, right: levelBar(level) });
   const list = el('ol', { class: 'stack', style: { '--gap': '26px', marginTop: '8px' } });
   const actions = el('div', { class: 'sticky-actions' });
 
@@ -308,7 +308,7 @@ registerStrings({
     lan_title: '{name}님이 대화를 시작했어요',
     lan_sub: '레벨 {n}/3 · {done}/{total} 답장함',
     lan_system: '{n} · 기본',
-    lan_by: '{name}님이 쓴 말',
+    lan_by: '{name}님이 쓴 한마디',
     lan_no_translation: '아직 번역이 없어요.',
     lan_hint_1: '한마디마다 한 번만 누르세요. 5번째까지 누르면 답장이 자동으로 보내져요.',
     lan_ph: '내 말로 답장해 주세요',
