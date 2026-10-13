@@ -456,7 +456,7 @@ test('bot replies: the one-button keyboard asks for the contact; done / mismatch
   assert.deepEqual(ask.reply_markup, { keyboard: [[{ text: BOT_TEXT.km.button, request_contact: true }]], one_time_keyboard: true, resize_keyboard: true });
   assert.ok(botReply('not_own', 'en', 1).reply_markup.keyboard[0][0].request_contact);
   for (const k of ['done', 'mismatch', 'expired', 'help']) assert.deepEqual(botReply(k, 'en', 1).reply_markup, { remove_keyboard: true }, k);
-  assert.equal(BOT_TEXT.en.done, 'Number verified ✓ You are now logged in to the 30+DA app. Go back to it.');
+  assert.equal(BOT_TEXT.en.done, 'Number verified ✓ You are now logged in to the 30+DA app. Go back to it.\nWe never ask for bank, card or payment details — there is nothing to pay in this app.');
   assert.equal(BOT_TEXT.en.mismatch, 'That number is not the one you typed in 30+DA. In 30+DA, type the same number your Telegram uses, with its country code, then tap Telegram again.');
   assert.equal(BOT_TEXT.en.button, 'Share my number');
   for (const lang of BOT_LANGS) {
