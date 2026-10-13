@@ -549,6 +549,11 @@ textarea.input.q-in {
 .cx-result p { margin: 0; }
 .cx-result p + p { margin-top: 4px; }
 .cx-result.ok { background: #e3f5ea; }
+.cx-check-row { display: flex; gap: 8px; margin: 8px 0 6px; }
+.cx-check-row .input { flex: 0 1 160px; min-width: 0; letter-spacing: 0.2em; }
+.cx-check { margin: 4px 0 6px; font-weight: 600; }
+.cx-check.ok { color: #1a7a3d; }
+.cx-check.bad { color: var(--red); }
 .cx-result.bad { background: var(--red-soft); color: var(--red); }
 .cx-result.bad .cx-fine { color: #8f2a24; }
 .cx-fine { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }

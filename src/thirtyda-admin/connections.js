@@ -133,9 +133,29 @@ function testResult() {
   if (!r) return null;
   if (r.sending) return h('p', { class: 'cx-result', text: `Sending a test code to ${prettyPhone(r.phone)}…` });
   if (r.ok) {
+    // Type back the code that arrived in Telegram: a ✓ proves the whole loop works end to end.
+    const input = h('input', {
+      type: 'text', inputmode: 'numeric', maxlength: '6', autocomplete: 'one-time-code', class: 'input cx-mono cx-check-input',
+      placeholder: '6-digit code', 'aria-label': 'The code you got in Telegram', value: r.typed || '',
+    });
+    const verdict = r.checked == null ? null
+      : r.checked
+        ? h('p', { class: 'cx-check ok' }, h('b', { text: '✓ Correct. ' }), 'Telegram codes reach the phone — sign-in codes are working.')
+        : h('p', { class: 'cx-check bad' }, h('b', { text: '✗ Not the same code. ' }), 'Check the latest message from Verification Codes in Telegram.');
+    const check = h('form', {
+      class: 'cx-check-row', novalidate: true,
+      on: {
+        submit: (e) => {
+          e.preventDefault();
+          const typed = input.value.replace(/\D/g, '');
+          state.test = { ...r, typed, checked: typed === r.code };
+          render(state.data);
+        },
+      },
+    }, input, h('button', { type: 'submit', class: 'btn cx-test-btn' }, 'Check'));
     return h('div', { class: 'cx-result ok' },
-      h('p', {}, h('b', { text: 'Sent. ' }), `Telegram should show the code `, h('code', { class: 'cx-code', text: r.code }),
-        ` to ${prettyPhone(r.phone)} within a minute.`),
+      h('p', {}, h('b', { text: 'Sent. ' }), `A code is on its way to ${prettyPhone(r.phone)} in Telegram (from "Verification Codes"). Type it here:`),
+      check, verdict,
       h('p', { class: 'cx-fine' }, `Telegram request id ${r.requestId || '–'}`,
         r.cost != null ? ` · cost US$${r.cost}` : '', r.balance != null ? ` · balance left US$${r.balance}` : '',
         ' · this test code does not sign anyone in.'));
