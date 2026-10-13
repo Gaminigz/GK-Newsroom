@@ -99,6 +99,17 @@ body.pin-locked .toast { display: none; }
   .pin-cell { width: 54px; height: 62px; }
 }
 
+/* Setting a PIN: the digits show (not dots), and "1" / "2" beside the last box says which time this is. */
+.pin-cell > b { display: none; font-size: 30px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.pin-pad.show .pin-cell > i { display: none; }
+.pin-pad.show .pin-cell > b { display: block; }
+.pin-step { position: absolute; top: 50%; right: -34px; transform: translateY(-50%); display: flex; flex-direction: column; gap: 6px; }
+.pin-step-n { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; border: 1.5px solid rgb(255 255 255 / 0.45); color: rgb(255 255 255 / 0.6); }
+.pin-step-n.on { background: #fff; border-color: #fff; color: var(--navy); }
+.pin-pad.light .pin-step-n { border-color: var(--line); color: var(--muted, #667); }
+.pin-pad.light .pin-step-n.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+@media (max-width: 340px) { .pin-step { right: -30px; } }
+
 /* ---------- Change PIN (#/me): the same boxes on white, in a bottom sheet ---------- */
 .pin-pad.light .pin-cell { border-color: var(--line); background: var(--field); color: var(--navy); }
 .pin-pad.light .pin-cell.current { border-color: var(--navy); background: #fff; box-shadow: 0 0 0 3px rgb(11 28 63 / 0.1); }

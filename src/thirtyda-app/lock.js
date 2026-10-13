@@ -47,19 +47,21 @@ export function clearPinFlags() {
  * digits count), so typing moves from box to box by itself. onFull(pin) when the 4th digit is in.
  * light: the white version (Change PIN on #/me).
  */
-export function pinPad({ onFull, light = false, label = t('pin_aria') } = {}) {
+export function pinPad({ onFull, light = false, show = false, step = null, label = t('pin_aria') } = {}) {
   let value = '';
   let busy = false;
   const input = el('input', {
     class: 'pin-input', type: 'text', inputmode: 'numeric', pattern: '[0-9]*', autocomplete: 'off', autocorrect: 'off',
     autocapitalize: 'off', spellcheck: 'false', enterkeyhint: 'done', dir: 'ltr', 'aria-label': label,
   });
-  const cells = Array.from({ length: PIN_LENGTH }, () => el('span', { class: 'pin-cell' }, el('i')));
-  const node = el('div', { class: ['pin-pad', light && 'light'] }, el('div', { class: 'pin-cells', 'aria-hidden': 'true' }, cells), input);
+  // show: the digits stay readable while setting a PIN (owner: people over 30 forget a PIN they never saw).
+  const cells = Array.from({ length: PIN_LENGTH }, () => el('span', { class: 'pin-cell' }, el('i'), el('b')));
+  const node = el('div', { class: ['pin-pad', light && 'light', show && 'show'] }, el('div', { class: 'pin-cells', 'aria-hidden': 'true' }, cells), input, step);
   const paint = () => {
     const focused = document.activeElement === input;
     cells.forEach((c, i) => {
       c.classList.toggle('filled', i < value.length);
+      if (show) c.lastChild.textContent = value[i] ?? '';
       c.classList.toggle('current', focused && !busy && value.length < PIN_LENGTH && i === value.length);
     });
   };
@@ -114,8 +116,14 @@ export function setPinSteps({ title, text, onDone, onFirst = null, light = false
   const titleEl = el('h1', { class: 'pin-title', id: 'pin-title' });
   const textEl = el('p', { class: 'pin-text' });
   const err = errorLine();
-  const pad = pinPad({ onFull, light });
+  // "1" then "2" beside the last box: the PIN is typed twice (owner 2026-10-13).
+  const one = el('span', { class: 'pin-step-n' }, '1');
+  const two = el('span', { class: 'pin-step-n' }, '2');
+  const stepMark = el('span', { class: 'pin-step', 'aria-hidden': 'true' }, one, two);
+  const pad = pinPad({ onFull, light, show: true, step: stepMark });
   const paint = () => {
+    one.classList.toggle('on', !first);
+    two.classList.toggle('on', Boolean(first));
     titleEl.textContent = first ? t('pin_again_title') : title;
     textEl.textContent = first ? t('pin_again_text') : text;
   };
