@@ -91,8 +91,10 @@ test('Level 1 answers and roles match the contract', () => {
     ['yes', 'Yes'], ['no', 'No'], ['ok', 'OK'], ['not_really', 'Not really'], ['maybe', 'Maybe'],
   ]);
   assert.deepEqual(ROLES.map((x) => [x.key, x.text.en]), [
-    ['sales', 'Sales'], ['accountant', 'Accountant'], ['own_business', 'Own business'],
-    ['time_off', 'Taking some time off'], ['family_home', 'Family time or Home business'],
+    ['sales', 'Sales'], ['accountant', 'Accountant'], ['hr', 'HR'], ['administration', 'Administration'],
+    ['manager', 'Manager'], ['director', 'Director'], ['doctor', 'Doctor'], ['nurse', 'Nurse'],
+    ['civil_engineering', 'Civil engineering'], ['airport_staff', 'Airport staff'], ['government', 'Government'],
+    ['own_business', 'Own business'], ['time_off', 'Taking some time off'], ['family_home', 'Family time or Home business'],
   ]);
   for (const list of [L1_ANSWERS, ROLES]) {
     for (const lang of LANGS) {
