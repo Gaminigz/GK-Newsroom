@@ -717,6 +717,13 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .ask-actions { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
 .me-btn { flex: none; padding: 0; border: 0; background: none; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--navy); cursor: pointer; }
 .dark .me-btn { box-shadow: 0 0 0 1.5px #fff; }
+/* Nearby header: where I am, as one small chip between 30+DA and my photo. */
+.brandbar .gps-inline { flex: 1; min-width: 0; display: flex; justify-content: center; }
+.gps-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; min-height: 32px; padding: 0 10px; border: 0; border-radius: 999px; background: var(--field); color: var(--ink); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.gps-chip .gps-place { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gps-chip .icon { flex: none; }
+.gps-chip.off { background: var(--orange-soft); color: #8a4500; }
+.gps-chip.busy .icon:last-child { animation: spin 1s linear infinite; }
 .gps-card { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: var(--radius-lg); background: var(--navy); color: #fff; }
 .gps-pin { flex: none; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: rgb(255 255 255 / 0.12); }
 .gps-card.off .gps-pin { color: var(--on-dark-muted); }

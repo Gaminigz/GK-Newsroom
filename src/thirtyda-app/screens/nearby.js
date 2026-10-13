@@ -39,40 +39,23 @@ screen('/nearby', ({ root }) => {
   let locating = false;
   let last = null; // last /nearby response
 
-  // --- header
+  // --- header: 30+DA · where I am (tap = refresh GPS) · my photo, all on one row
+  const gpsCard = el('div', { class: 'gps-inline', 'aria-live': 'polite' });
   root.append(el('header', { class: 'brandbar' },
     el('span', { class: 'wordmark brand' }, '30+DA'),
-    el('div', { class: 'brandbar-right' },
-      el('span', { class: 'label ink' }, t('nb_title')),
-      el('button', { type: 'button', class: 'me-btn', 'aria-label': t('nb_my_profile'), on: { click: () => go('/me') } },
-        avatar(state.me?.photos?.[0] || null, 34)))));
-
-  // --- GPS card
-  const gpsCard = el('section', { class: 'gps-card', 'aria-live': 'polite' });
+    gpsCard,
+    el('button', { type: 'button', class: 'me-btn', 'aria-label': t('nb_my_profile'), on: { click: () => go('/me') } },
+      avatar(state.me?.photos?.[0] || null, 34))));
   function paintGps() {
     const on = Boolean(last?.gps);
-    gpsCard.classList.toggle('off', Boolean(last) && !on);
-    // Area on its own (up to two lines), the city smaller under it: "Boeng Keng Kang 1" never pushes "Phnom Penh" out.
     let place = '…';
-    let city = '';
     if (locating) place = t('nb_locating');
-    else if (last && on) {
-      place = last.area || last.city || t('nb_near_you');
-      city = last.city && last.city !== place ? last.city : '';
-    } else if (last) place = t('nb_loc_off');
-    gpsCard.replaceChildren(
-      el('span', { class: 'gps-pin', 'aria-hidden': 'true' }, icon('pin', 20)),
-      el('div', { class: 'gps-text' },
-        el('span', { class: 'label' }, !last ? t('nb_near_you') : on ? t('nb_gps_on') : t('nb_gps_off')),
-        el('span', { class: 'gps-area' }, place),
-        city ? el('span', { class: 'gps-city' }, city) : null,
-        last && !on && !locating
-          ? el('button', { type: 'button', class: 'btn btn-light btn-sm btn-auto', on: { click: () => refreshGps(false) } }, icon('pin', 16), t('nb_turn_on'))
-          : null),
-      el('button', {
-        type: 'button', class: ['icon-btn', locating && 'busy'], 'aria-label': t('nb_refresh'), disabled: locating,
-        on: { click: () => refreshGps(false) },
-      }, icon('target', 20)));
+    else if (last && on) place = [last.area, last.city].filter((x, i, a) => x && a.indexOf(x) === i).join(', ') || t('nb_near_you');
+    else if (last) place = t('nb_turn_on');
+    gpsCard.replaceChildren(el('button', {
+      type: 'button', class: ['gps-chip', locating && 'busy', last && !on && 'off'], disabled: locating,
+      'aria-label': `${place} · ${t('nb_refresh')}`, on: { click: () => refreshGps(false) },
+    }, icon('pin', 15), el('span', { class: 'gps-place' }, place), icon('target', 15)));
   }
 
   async function refreshGps(silent) {
@@ -187,7 +170,6 @@ screen('/nearby', ({ root }) => {
   }
 
   root.append(
-    gpsCard,
     el('section', { class: 'distance' },
       el('div', { class: 'dist-head' }, el('span', { class: 'label ink' }, t('nb_distance')), within),
       range,
