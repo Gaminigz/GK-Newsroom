@@ -24,7 +24,7 @@ function slotsOf(me) {
   const s = me?.photoSlots || {};
   return {
     max: s.max || PHOTO_MAX,
-    allowed: s.allowed || photoSlotsFor(me?.level),
+    allowed: s.allowed || PHOTO_MAX, // all 4 can be uploaded; visibility goes by level
     levels: Array.isArray(s.levels) && s.levels.length ? s.levels : PHOTO_SLOT_LEVELS,
   };
 }

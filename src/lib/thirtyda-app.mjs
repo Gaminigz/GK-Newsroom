@@ -321,7 +321,8 @@ function meView(u) {
     // Slot-aligned: photos[i] is slot i+1's url, or null for an empty slot (trailing empty slots left out).
     photos: slotUrls(u),
     // Slots unlock by level (1 → 1, 2 → 2, 3 → 4). Photos kept from before the rule stay even past `allowed`.
-    photoSlots: { max: PHOTO_MAX, allowed: photoSlotsFor(u.level ?? 1), levels: [...PHOTO_SLOT_LEVELS], filled: filledCount(u) },
+    // All 4 can be uploaded at any time (Gamini 2026-10-13); who SEES them still goes by level.
+    photoSlots: { max: PHOTO_MAX, allowed: PHOTO_MAX, levels: [...PHOTO_SLOT_LEVELS], filled: filledCount(u) },
     area: u.area ?? "",
     city: u.city ?? "",
     hearts: heartsOf(u),
@@ -968,7 +969,7 @@ async function addPhoto(ctx) {
   const users = d.collection(C.users);
   let me = await syncLevel(d, ctx.me);
   await ensurePhotoArray(users, me);
-  const allowed = photoSlotsFor(me.level);
+  const allowed = PHOTO_MAX;
   let slot = emptySlot(slotsOf(me), allowed);
   if (slot < 0) throw photoRefusal(me);
   const photoId = await storePhoto(body.photo);
@@ -995,7 +996,7 @@ async function putPhoto(ctx) {
   const me = await syncLevel(d, ctx.me);
   await ensurePhotoArray(users, me);
   const index = Number(params[0]);
-  if (index >= photoSlotsFor(me.level)) throw photoRefusal(me, index);
+  if (index >= PHOTO_MAX) throw photoRefusal(me, index);
   const photos = slotsOf(me);
   if (index > 0 && !photos[0]) throw fail(409, "main_first", "Add your main photo first.");
   const old = photos[index] ?? null;

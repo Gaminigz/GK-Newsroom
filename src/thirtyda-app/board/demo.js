@@ -486,7 +486,7 @@
       birthYear: Number.isInteger(u.birthYear) ? u.birthYear : null,
       verified: { phone: Boolean(u.verified?.phone), gmail: Boolean(u.verified?.gmail), facebook: Boolean(u.verified?.facebook) },
       photos: slotUrls(u),
-      photoSlots: { max: R.PHOTO_MAX, allowed: R.photoSlotsFor(u.level ?? 1), levels: [...R.PHOTO_SLOT_LEVELS], filled: filledCount(u) },
+      photoSlots: { max: R.PHOTO_MAX, allowed: R.PHOTO_MAX, levels: [...R.PHOTO_SLOT_LEVELS], filled: filledCount(u) },
       area: u.area ?? '',
       city: u.city ?? '',
       hearts: heartsOf(u),
@@ -926,7 +926,7 @@
   /** POST /me/photos — into the lowest empty slot this person's level has unlocked. */
   function addPhoto({ body }) {
     const u = syncLevel(me());
-    const slot = emptySlot(slotsOf(u), R.photoSlotsFor(u.level));
+    const slot = emptySlot(slotsOf(u), R.PHOTO_MAX);
     if (slot < 0) throw photoRefusal(u);
     setSlot(u, slot, checkPhoto(body.photo));
     return { user: meView(u) };
@@ -936,7 +936,7 @@
   function putPhoto({ body, params }) {
     const u = syncLevel(me());
     const index = Number(params[0]);
-    if (index >= R.photoSlotsFor(u.level)) throw photoRefusal(u, index);
+    if (index >= R.PHOTO_MAX) throw photoRefusal(u, index);
     if (index > 0 && !slotsOf(u)[0]) throw fail(409, 'main_first', 'Add your main photo first.');
     setSlot(u, index, checkPhoto(body.photo));
     return { user: meView(u) };

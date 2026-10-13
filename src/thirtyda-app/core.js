@@ -563,7 +563,8 @@ export function actionLabel(pair) {
  * level means I have reached it too, so the slots are really mine to fill.)
  */
 export function morePhotosPrompt(openLevel) {
-  const lvl = Number(openLevel) || 1;
+  return null; // all 4 photos can be uploaded any time now, so there is nothing to unlock
+  const lvl = Number(openLevel) || 1; // eslint-disable-line no-unreachable
   if (lvl < 2 || !state.me) return null;
   // MeView.photos is slot-aligned (null = empty slot): count the empty slots this level has unlocked.
   const photos = state.me.photos || [];
