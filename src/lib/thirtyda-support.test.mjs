@@ -15,6 +15,7 @@ import {
 import {
   SUPPORT, SUPPORT_CHATS, SUPPORT_PER_HOUR, recordSupport, listSupportChats, supportThread, sendSupportReply,
   supportUnread, describeBot, guessLang, phnomPenhDay, supportText, BOT_DESCRIPTION, BOT_SHORT_DESCRIPTION,
+  BOT_DESCRIPTION_DEFAULT, BOT_SHORT_DESCRIPTION_DEFAULT,
 } from './thirtyda-support.mjs';
 
 const KEY_HEX = crypto.randomBytes(32).toString('hex');
@@ -363,17 +364,24 @@ test('admin: list newest first with unread counts; opening marks read; the reply
   });
 });
 
-test('the bot\'s profile words: setMyDescription + setMyShortDescription in 5 languages (English is the default)', async () => {
+test('the bot\'s profile words: setMyDescription + setMyShortDescription in 5 languages + a stacked default', async () => {
   await withKey(async () => {
     const { d, api } = await readyBot();
     const r = await describeBot(d, { fetchImpl: api });
-    assert.deepEqual(r, { ok: 10, failed: 0 });
-    assert.deepEqual(api.of('setMyDescription').map((c) => c.body.language_code).sort(), ['', 'ja', 'km', 'ko', 'zh']);
-    assert.deepEqual(api.of('setMyShortDescription').map((c) => c.body.language_code).sort(), ['', 'ja', 'km', 'ko', 'zh']);
-    assert.equal(api.of('setMyDescription').find((c) => c.body.language_code === '').body.description,
-      "GKVerify — GK SMART's number check for 30+DA and other GK apps. Verify your number here, or ask us anything.");
+    assert.deepEqual(r, { ok: 12, failed: 0 });
+    assert.deepEqual(api.of('setMyDescription').map((c) => c.body.language_code).sort(), ['', 'en', 'ja', 'km', 'ko', 'zh']);
+    assert.deepEqual(api.of('setMyShortDescription').map((c) => c.body.language_code).sort(), ['', 'en', 'ja', 'km', 'ko', 'zh']);
+    const def = api.of('setMyDescription').find((c) => c.body.language_code === '').body.description;
+    assert.equal(def, BOT_DESCRIPTION_DEFAULT);
+    // Owner 2026-10-14: tap START to verify, free, the scam-safety lines, the one real bot — default in all 5 languages.
+    assert.equal(def.split('\n').length, 6);
+    for (const s of ['Tap START', 'never asks for money', 'ចុច START', '点 START', 'START를', 'START を', '@ThirtyDa_bot']) {
+      assert.ok(def.includes(s), s);
+    }
+    assert.ok(def.length <= 512 && BOT_SHORT_DESCRIPTION_DEFAULT.length <= 120);
     for (const lang of BOT_LANGS) {
       assert.ok(BOT_DESCRIPTION[lang].length <= 512 && BOT_SHORT_DESCRIPTION[lang].length <= 120, lang);
+      assert.ok(BOT_DESCRIPTION[lang].includes('START') && BOT_DESCRIPTION[lang].includes('@ThirtyDa_bot'), lang);
     }
     clearSettingsCache(); // settings are cached per process: a fresh database has no bot
     assert.deepEqual(await describeBot(fakeDb(), { fetchImpl: api }), { ok: 0, failed: 0 }, 'no bot: nothing');

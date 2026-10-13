@@ -326,6 +326,7 @@ registerStrings({
     cp_tg_mismatch: 'This Telegram is a different number. Use the Telegram of the number you typed, or change the number.',
     cp_tg_needs_app: 'Needs the Telegram app, signed in, on this phone. Not on Telegram? Use Google or Facebook.',
     cp_tg_privacy: 'Telegram opens on your phone. 30+DA cannot see your chats; only the number you share with GKVerify comes back.',
+    cp_tg_safe: 'Safe: GKVerify (@ThirtyDa_bot) never messages you first and never asks for money, card details, passwords or codes.',
     cp_tg_expired: 'That took too long. Tap Telegram to try again.',
     cp_tg_match: 'Telegram shows the same sign:',
   },
@@ -336,6 +337,7 @@ registerStrings({
     cp_tg_mismatch: 'Telegram នេះជាលេខផ្សេង។ សូមប្រើ Telegram របស់លេខដែលអ្នកបានវាយ ឬប្ដូរលេខ។',
     cp_tg_needs_app: 'ត្រូវការកម្មវិធី Telegram ដែលបានចូលរួចនៅលើទូរស័ព្ទនេះ។ មិនប្រើ Telegram ទេ? សូមប្រើ Google ឬ Facebook។',
     cp_tg_privacy: 'Telegram បើកនៅលើទូរស័ព្ទរបស់អ្នក។ 30+DA មិនអាចមើលការជជែករបស់អ្នកបានទេ មានតែលេខដែលអ្នកចែករំលែកជាមួយ GKVerify ប៉ុណ្ណោះដែលត្រឡប់មកវិញ។',
+    cp_tg_safe: 'សុវត្ថិភាព៖ GKVerify (@ThirtyDa_bot) មិនដែលផ្ញើសារមកអ្នកមុន ហើយមិនដែលសុំលុយ ព័ត៌មានកាត ពាក្យសម្ងាត់ ឬលេខកូដឡើយ។',
     cp_tg_expired: 'ចំណាយពេលយូរពេក។ សូមចុច Telegram ដើម្បីសាកម្ដងទៀត។',
     cp_tg_match: 'Telegram បង្ហាញសញ្ញាដូចគ្នា៖',
   },
@@ -346,6 +348,7 @@ registerStrings({
     cp_tg_mismatch: '这个 Telegram 是另一个号码。请用你输入的号码所登录的 Telegram，或者修改号码。',
     cp_tg_needs_app: '需要这部手机上已登录的 Telegram 应用。没有 Telegram？请用 Google 或 Facebook。',
     cp_tg_privacy: 'Telegram 会在你的手机上打开。30+DA 看不到你的聊天，只会收到你分享给 GKVerify 的号码。',
+    cp_tg_safe: '放心：GKVerify（@ThirtyDa_bot）从不主动给你发消息，也从不索要钱、银行卡信息、密码或验证码。',
     cp_tg_expired: '时间太久了。请再点一次 Telegram。',
     cp_tg_match: 'Telegram 会显示同样的标记：',
   },
@@ -356,6 +359,7 @@ registerStrings({
     cp_tg_mismatch: '이 Telegram은 다른 번호예요. 입력한 번호의 Telegram을 쓰거나 번호를 바꿔 주세요.',
     cp_tg_needs_app: '이 휴대폰에 로그인된 Telegram 앱이 필요해요. Telegram이 없나요? Google이나 Facebook을 쓰세요.',
     cp_tg_privacy: 'Telegram이 휴대폰에서 열려요. 30+DA는 채팅을 볼 수 없고, GKVerify에 공유한 번호만 돌아와요.',
+    cp_tg_safe: '안심하세요: GKVerify(@ThirtyDa_bot)는 먼저 메시지를 보내지 않고, 돈·카드 정보·비밀번호·코드를 절대 묻지 않아요.',
     cp_tg_expired: '시간이 너무 지났어요. Telegram을 다시 눌러 주세요.',
     cp_tg_match: 'Telegram에도 같은 표시가 나와요:',
   },
@@ -366,6 +370,7 @@ registerStrings({
     cp_tg_mismatch: 'この Telegram は別の番号です。入力した番号の Telegram を使うか、番号を変えてください。',
     cp_tg_needs_app: 'この電話でログイン済みの Telegram アプリが必要です。Telegram がない場合は Google か Facebook を使ってください。',
     cp_tg_privacy: 'Telegram はお使いの電話で開きます。30+DA はチャットを見られません。GKVerify に共有した番号だけが戻ってきます。',
+    cp_tg_safe: '安心：GKVerify（@ThirtyDa_bot）から先にメッセージを送ることはなく、お金・カード情報・パスワード・コードを聞くこともありません。',
     cp_tg_expired: '時間がかかりすぎました。もう一度 Telegram を押してください。',
     cp_tg_match: 'Telegram にも同じマークが出ます：',
   },
@@ -710,6 +715,8 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
           model.tg.match ? el('span', { class: 'tg-wait-match' }, t('cp_tg_match'), ' ', el('b', {}, model.tg.match)) : null,
           // Owner saw his own Telegram flash open and read it as 30+DA seeing his account: say what really happens.
           el('span', { class: 'tg-wait-privacy' }, t('cp_tg_privacy')),
+          // Owner 2026-10-14: Telegram has a scam name here; say what GKVerify never does, and which bot is real.
+          el('span', { class: 'tg-wait-privacy' }, t('cp_tg_safe')),
           // A phone with no Telegram signed in lands on Telegram's own "Your phone" screen: say what is needed.
           el('span', { class: 'tg-wait-privacy' }, t('cp_tg_needs_app')))),
       el('div', { class: 'tg-wait-actions' },

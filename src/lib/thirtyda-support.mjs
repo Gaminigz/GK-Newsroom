@@ -79,21 +79,55 @@ export function guessLang(text, fallback = "en") {
   return BOT_LANGS.includes(fallback) ? fallback : "en";
 }
 
-/** The bot's profile words (setMyDescription ≤ 512, setMyShortDescription ≤ 120), in the 5 app languages. */
+/**
+ * The bot's profile words (setMyDescription ≤ 512, setMyShortDescription ≤ 120), in the 5 app languages. Owner
+ * 2026-10-14: say "tap START to verify" and the scam-safety lines so nobody is scared of a Telegram bot. Telegram has
+ * no Khmer, Chinese or Japanese app language, so most people here see the DEFAULT words: all 5 languages stacked.
+ */
 export const BOT_DESCRIPTION = {
-  en: "GKVerify — GK SMART's number check for 30+DA and other GK apps. Verify your number here, or ask us anything.",
-  km: "GKVerify — ការផ្ទៀងផ្ទាត់លេខរបស់ GK SMART សម្រាប់ 30+DA និងកម្មវិធី GK ផ្សេងទៀត។ ផ្ទៀងផ្ទាត់លេខរបស់អ្នកនៅទីនេះ ឬសួរយើងអ្វីក៏បាន។",
-  zh: "GKVerify — GK SMART 为 30+DA 及其他 GK 应用提供的号码验证。在这里验证你的号码，或问我们任何问题。",
-  ko: "GKVerify — 30+DA와 다른 GK 앱을 위한 GK SMART 번호 인증. 여기에서 번호를 인증하거나 무엇이든 물어보세요.",
-  ja: "GKVerify — 30+DA などの GK アプリのための GK SMART の番号確認。ここで番号の確認ができます。何でも聞いてください。",
+  en: "Tap START to verify your number for 30+DA. It is free, nothing to pay.\n" +
+    "• GKVerify never messages you first. You start it from 30+DA.\n" +
+    "• It never asks for money, bank or card details, passwords or codes.\n" +
+    "• It only asks you to tap 'Share my number'.\n" +
+    "• The only real GKVerify is @ThirtyDa_bot.",
+  km: "ចុច START ដើម្បីផ្ទៀងផ្ទាត់លេខរបស់អ្នកសម្រាប់ 30+DA។ ឥតគិតថ្លៃ មិនមានអ្វីត្រូវបង់ទេ។\n" +
+    "• GKVerify មិនដែលផ្ញើសារមកអ្នកមុនទេ។ អ្នកចាប់ផ្ដើមវាពី 30+DA។\n" +
+    "• វាមិនដែលសុំលុយ ព័ត៌មានធនាគារ ឬកាត ពាក្យសម្ងាត់ ឬលេខកូដឡើយ។\n" +
+    "• វាគ្រាន់តែសុំឱ្យអ្នកចុច 'ចែករំលែកលេខរបស់ខ្ញុំ'។\n" +
+    "• GKVerify ពិតតែមួយគត់គឺ @ThirtyDa_bot។",
+  zh: "点 START 验证你在 30+DA 的号码。免费，无需付款。\n" +
+    "• GKVerify 从不主动给你发消息，由你在 30+DA 里开始。\n" +
+    "• 它从不索要钱、银行或银行卡信息、密码或验证码。\n" +
+    "• 它只请你点「分享我的号码」。\n" +
+    "• 唯一真正的 GKVerify 是 @ThirtyDa_bot。",
+  ko: "START를 눌러 30+DA 번호를 인증하세요. 무료이며 결제할 것이 없습니다.\n" +
+    "• GKVerify는 먼저 메시지를 보내지 않습니다. 30+DA에서 시작합니다.\n" +
+    "• 돈, 은행·카드 정보, 비밀번호, 코드를 절대 묻지 않습니다.\n" +
+    "• '내 번호 공유'를 누르라고만 합니다.\n" +
+    "• 진짜 GKVerify는 @ThirtyDa_bot 하나뿐입니다.",
+  ja: "START を押して 30+DA の番号を確認します。無料で、支払いはありません。\n" +
+    "• GKVerify から先にメッセージを送ることはありません。30+DA から始めます。\n" +
+    "• お金、銀行・カード情報、パスワード、コードを聞くことは決してありません。\n" +
+    "• お願いするのは「自分の番号を共有」を押すことだけです。\n" +
+    "• 本物の GKVerify は @ThirtyDa_bot だけです。",
 };
+/** The default (no language_code) description: one short line per language, stacked, then the real-bot line. */
+export const BOT_DESCRIPTION_DEFAULT =
+  "Tap START to verify your number for 30+DA. Free. GKVerify never messages first, never asks for money, bank/card details, passwords or codes.\n" +
+  "ចុច START ដើម្បីផ្ទៀងផ្ទាត់លេខសម្រាប់ 30+DA។ ឥតគិតថ្លៃ។ មិនដែលសុំលុយ កាត ពាក្យសម្ងាត់ ឬលេខកូដឡើយ។\n" +
+  "点 START 验证 30+DA 号码。免费，从不索要钱、银行卡、密码或验证码。\n" +
+  "START를 눌러 30+DA 번호 인증. 무료, 돈·카드·비밀번호·코드를 묻지 않습니다.\n" +
+  "START を押して 30+DA の番号を確認。無料。お金・カード・パスワード・コードは聞きません。\n" +
+  "The only real GKVerify: @ThirtyDa_bot";
 export const BOT_SHORT_DESCRIPTION = {
-  en: "GK SMART number check for 30+DA and other GK apps. Verify or ask us anything.",
-  km: "ការផ្ទៀងផ្ទាត់លេខ GK SMART សម្រាប់ 30+DA និងកម្មវិធី GK។ ផ្ទៀងផ្ទាត់ ឬសួរយើង។",
-  zh: "GK SMART 号码验证，适用于 30+DA 及其他 GK 应用。验证或提问。",
-  ko: "30+DA와 GK 앱을 위한 GK SMART 번호 인증. 인증하거나 질문하세요.",
-  ja: "30+DA などの GK アプリ向け GK SMART 番号確認。確認やご質問はこちら。",
+  en: "Verify your number for 30+DA · free, nothing to pay · never asks for money, card details or codes",
+  km: "ផ្ទៀងផ្ទាត់លេខសម្រាប់ 30+DA · ឥតគិតថ្លៃ · មិនសុំលុយ កាត ឬលេខកូដឡើយ",
+  zh: "验证你的 30+DA 号码 · 免费，无需付款 · 从不索要钱、银行卡或验证码",
+  ko: "30+DA 번호 인증 · 무료, 결제 없음 · 돈·카드·코드를 묻지 않습니다",
+  ja: "30+DA の番号確認 · 無料、支払いなし · お金・カード・コードは聞きません",
 };
+export const BOT_SHORT_DESCRIPTION_DEFAULT =
+  "Verify your number for 30+DA · free, nothing to pay\nផ្ទៀងផ្ទាត់លេខសម្រាប់ 30+DA · ឥតគិតថ្លៃ";
 
 // ---------------------------------------------------------------- in (the webhook)
 
@@ -297,17 +331,20 @@ export async function sendSupportReply(d, chatId, rawText, { fetchImpl = fetch, 
 // ---------------------------------------------------------------- the bot's profile words
 
 /**
- * setMyDescription + setMyShortDescription for every app language (English is also the default, for everyone else).
+ * setMyDescription + setMyShortDescription for every app language, plus the 5-language stacked default for the rest.
  * Best effort: never throws, never blocks a save. → { ok: calls that went through, failed }.
  */
 export async function describeBot(d, { fetchImpl = fetch } = {}) {
   const cfg = await botConfig(d).catch(() => null);
   if (!cfg) return { ok: 0, failed: 0 };
-  const calls = [];
-  for (const lang of BOT_LANGS) {
-    const language_code = lang === "en" ? "" : lang; // "" = the default, for every language without its own
-    calls.push(["setMyDescription", { description: BOT_DESCRIPTION[lang], language_code }]);
-    calls.push(["setMyShortDescription", { short_description: BOT_SHORT_DESCRIPTION[lang], language_code }]);
+  // "" = the default, for every Telegram app language without its own (Khmer, Chinese, Japanese have none): stacked.
+  const calls = [
+    ["setMyDescription", { description: BOT_DESCRIPTION_DEFAULT, language_code: "" }],
+    ["setMyShortDescription", { short_description: BOT_SHORT_DESCRIPTION_DEFAULT, language_code: "" }],
+  ];
+  for (const language_code of BOT_LANGS) {
+    calls.push(["setMyDescription", { description: BOT_DESCRIPTION[language_code], language_code }]);
+    calls.push(["setMyShortDescription", { short_description: BOT_SHORT_DESCRIPTION[language_code], language_code }]);
   }
   const results = await Promise.all(calls.map(([method, params]) =>
     botCall(cfg.token, method, params, { fetchImpl, timeoutMs: DESCRIBE_TIMEOUT_MS }).catch(() => ({ ok: false }))));
