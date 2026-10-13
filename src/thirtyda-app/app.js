@@ -63,11 +63,14 @@ async function loadSession() {
 
 // No session → opening; session without profile → create; blocked → blocked; signed in never sees 1–2.
 // Create profile comes after the PIN step (#/pin), unless the person is signing in again after "Forgot PIN?".
+// A guest (owner 2026-10-13: "Language → PIN → the home screen"): the PIN chosen, no profile yet → the home screen
+// (#/nearby) to look around; Me is Create profile; anything else goes back home (guest.js asks for a profile first).
 function guard(path) {
   if (state.me?.blocked) return path === '/blocked' ? null : '/blocked';
   if (!state.me) {
     if (path === '/create' && !waitingPin() && !pinResetPending()) return '/pin';
     if (OPEN_PATHS.has(path)) return null;
+    if (waitingPin()) return path === '/nearby' ? null : path === '/me' ? '/create' : '/nearby';
     return state.pending ? '/create' : '/opening';
   }
   if (OPEN_PATHS.has(path) || path === '/' || path === '/blocked') return '/nearby';

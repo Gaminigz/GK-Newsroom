@@ -8,6 +8,7 @@ import {
 } from '../core.js';
 // The PIN chosen right after the language waits in this tab; it goes with the sign-in / the new profile (lock.js).
 import { waitingPin, clearPinFlags, pinResetPending, leaveWithoutLock } from '../lock.js';
+import { takeAfterCreate } from '../guest.js';
 
 // ---------------------------------------------------------------- app name + birth year (also used on #/me)
 
@@ -1050,7 +1051,12 @@ screen('/create', ({ root, query }) => {
 
   root.append(
     el('header', { class: 'brandbar' },
-      el('span', { class: 'wordmark brand' }, '30+DA'),
+      // A guest who came from the home screen (the PIN chosen, owner 2026-10-13) can go back to looking.
+      waitingPin() && !pinAgain
+        ? el('span', { class: 'brandbar-right' },
+          el('button', { type: 'button', class: 'icon-btn', 'aria-label': t('core_back'), on: { click: () => go('/nearby', { replace: true }) } }, icon('back', 18)),
+          el('span', { class: 'wordmark brand' }, '30+DA'))
+        : el('span', { class: 'wordmark brand' }, '30+DA'),
       el('button', { type: 'button', class: 'globe-pill', 'aria-label': t('cp_choose_language'), on: { click: languageSheet } },
         icon('globe', 15), LANG_CODES[state.lang] || state.lang.toUpperCase())),
     el('h1', { class: 'title' }, t('cp_title')),
@@ -1229,7 +1235,7 @@ screen('/create', ({ root, query }) => {
         draft = blankDraft();
         setMe(r.user);
         toast(t('cp_welcome_back', { name: r.user.name }));
-        go('/nearby', { replace: true });
+        go(takeAfterCreate() || '/nearby', { replace: true });
       }
     },
     signin: {
@@ -1289,7 +1295,7 @@ screen('/create', ({ root, query }) => {
       // Don't hold the new user here if the location prompt is ignored; Nearby can ask again.
       const gaveUp = new Promise((resolve) => { setTimeout(resolve, 15000); });
       await Promise.race([updateLocation().catch(() => {}), gaveUp]);
-      go('/nearby', { replace: true });
+      go(takeAfterCreate() || '/nearby', { replace: true }); // back home, or to the profile the guest tapped (guest.js)
     } catch (err) {
       saving = false;
       contText.textContent = t('cp_next');

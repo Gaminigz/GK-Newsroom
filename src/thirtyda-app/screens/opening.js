@@ -1,6 +1,6 @@
 // Screen 1 · Opening — headline, the 30+DA wordmark rising in letter by letter, the white rule
 // filling left → right, and the five language buttons. Picking a language goes to Set your PIN (#/pin),
-// then Create profile.
+// then the home screen as a guest (Create profile when they want to do something).
 import { screen, el, icon, t, go, state, setLang, registerStrings, LANGS, LANG_NATIVE, LANG_FLAG } from '../core.js';
 
 screen('/opening', ({ root }) => {

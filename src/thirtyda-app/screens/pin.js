@@ -1,6 +1,7 @@
-// #/pin · Set your PIN (owner 2026-10-13, "Lock the app"): the step right after the language, before Create
-// profile. The PIN is typed twice, then waits in this tab (sessionStorage — never localStorage, never in a URL)
-// until the first sign-in or Create profile sends it once (lock.js). From then on 30+DA asks for it every time.
+// #/pin · Set your PIN (owner 2026-10-13, "Lock the app"): the step right after the language; then the home screen
+// as a guest (owner 2026-10-13: "Language → PIN → the home screen"), Create profile only when they want to do something.
+// The PIN is typed twice, then waits in this tab (sessionStorage — never localStorage, never in a URL) until the first
+// sign-in or Create profile sends it once (lock.js). From then on 30+DA asks for it every time.
 import { screen, el, t, go, icon } from '../core.js';
 import { setPinSteps, keepWaitingPin, pinFrame } from '../lock.js';
 
@@ -11,7 +12,7 @@ screen('/pin', ({ root }) => {
     text: t('pin_set_text'),
     async onDone(pin) {
       keepWaitingPin(pin);
-      go('/create');
+      go('/nearby');
       return null;
     },
   });

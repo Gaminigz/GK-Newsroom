@@ -1188,6 +1188,23 @@
     return { ...base, gps: true, count: people.length, people };
   }
 
+  // POST /guest/nearby (server: src/lib/thirtyda-guest.mjs): before a profile, the cards only — a distance band,
+  // around the device or Phnom Penh centre (here: the demo distances), never a private field. Writes nothing.
+  const KM_BANDS = [1, 2, 5, 10, 20, 50];
+  const kmBand = (v) => KM_BANDS.find((b) => v <= b) ?? 50;
+  function guestNearby({ body }) {
+    const km = Math.min(50, Math.max(1, Number(body.km) || 10));
+    const gender = body.show === 'women' ? 'woman' : body.show === 'men' ? 'man' : null;
+    const device = Number.isFinite(Number(body.lat)) && Number.isFinite(Number(body.lng)) && body.lat != null && body.lng != null;
+    const u = me();
+    const people = [...W.users.values()]
+      .filter((x) => x.id !== u?.id && !x.blocked && x.location && x.km <= km && (!gender || x.gender === gender))
+      .sort((x, y) => x.km - y.km)
+      .slice(0, 60)
+      .map((x) => ({ id: x.id, name: x.name, gender: x.gender ?? null, role: x.role ?? null, km: kmBand(x.km), hearts: heartsOf(x), photo: mainPhoto(x) }));
+    return { guest: true, near: device ? 'you' : 'phnom_penh', gps: true, count: people.length, people };
+  }
+
   function person({ params }) {
     const u = me();
     const x = W.users.get(params[0]);
@@ -1600,6 +1617,7 @@
     ['POST', /^\/me\/pin\/forgot$/, forgotPin, { auth: 'none' }],
     ['POST', /^\/notices\/([\w-]{1,64})\/seen$/, () => ({ ok: true })],
     ['GET', /^\/nearby$/, nearby],
+    ['POST', /^\/guest\/nearby$/, guestNearby, { auth: 'none' }],
     ['GET', /^\/people\/(U-\d+)$/, person],
     ['POST', /^\/pairs$/, createPair],
     ['GET', /^\/pairs$/, listPairs],

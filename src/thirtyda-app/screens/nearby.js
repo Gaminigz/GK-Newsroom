@@ -2,14 +2,17 @@
 // and the 3-column grid of faces with heart pills.
 import {
   screen, el, icon, t, go, api, toast, state, bus, store, avatar, heartPills, fmtKm, pairRoute, actionLabel,
-  heartbeat, updateLocation, registerStrings, roleLabel,
+  heartbeat, updateLocation, locate, registerStrings, roleLabel,
 } from '../core.js';
+import { profileFirst } from '../guest.js';
 
 const KM_KEY = 'thirtyda_km';
 const SHOW_KEY = 'thirtyda_show';
 const SHOWS = ['everyone', 'women', 'men'];
 const DEBOUNCE_MS = 300;
 let refreshedThisLoad = false; // re-read GPS silently once per page load when already allowed
+// A guest's position (no profile yet): only in this page's memory, sent with each look, never stored anywhere.
+let guestPos = null;
 
 const clampKm = (v) => Math.min(50, Math.max(1, Math.round(Number(v)) || 10));
 
@@ -38,18 +41,22 @@ screen('/nearby', ({ root }) => {
   let seq = 0;
   let locating = false;
   let last = null; // last /nearby response
+  // A guest (the PIN chosen, no profile yet — guard in app.js): the same cards, from POST /guest/nearby. Looking only:
+  // a tap on a face, or on Me, asks for a profile first (guest.js); no pairs, no heartbeat.
+  const guest = !state.me;
 
   // --- header: 30+DA · where I am (tap = refresh GPS) · my photo, all on one row
   const gpsCard = el('div', { class: 'gps-inline', 'aria-live': 'polite' });
   root.append(el('header', { class: 'brandbar' },
     el('span', { class: 'wordmark brand' }, '30+DA'),
     gpsCard,
-    el('button', { type: 'button', class: 'me-btn', 'aria-label': t('nb_my_profile'), on: { click: () => go('/me') } },
+    el('button', { type: 'button', class: 'me-btn', 'aria-label': t('nb_my_profile'), on: { click: () => go(guest ? '/create' : '/me') } },
       avatar(state.me?.photos?.[0] || null, 34))));
   function paintGps() {
     const on = Boolean(last?.gps);
     let place = '…';
     if (locating) place = t('nb_locating');
+    else if (last?.guest) place = last.near === 'you' ? t('nb_near_you') : t('gf_phnom_penh');
     else if (last && on) place = [last.area, last.city].filter((x, i, a) => x && a.indexOf(x) === i).join(', ') || t('nb_near_you');
     else if (last) place = t('nb_turn_on');
     gpsCard.replaceChildren(el('button', {
@@ -63,7 +70,8 @@ screen('/nearby', ({ root }) => {
     locating = true;
     paintGps();
     try {
-      await updateLocation();
+      if (guest) guestPos = await locate();
+      else await updateLocation();
       refreshedThisLoad = true;
     } catch (err) {
       if (!silent && alive) toast(locationErrorText(err));
@@ -145,11 +153,13 @@ screen('/nearby', ({ root }) => {
   const emptyBox = (text, action) => el('div', { class: 'empty' },
     el('span', { class: 'icon-circle', 'aria-hidden': 'true' }, icon('pin', 22)), el('p', {}, text), action);
 
-  const tile = (p) => el('button', { type: 'button', class: 'person', on: { click: () => go(`/person/${encodeURIComponent(p.id)}`) } },
+  const openPerson = (p) => (guest ? profileFirst(`/person/${p.id}`) : go(`/person/${encodeURIComponent(p.id)}`));
+  const tile = (p) => el('button', { type: 'button', class: 'person', on: { click: () => openPerson(p) } },
     el('span', { class: 'face' }, avatar(p.photo || null, '100%'), heartPills(p.hearts, 'sm')),
     el('span', { class: 'person-name' }, p.name),
     p.role ? el('span', { class: 'person-role' }, roleLabel(p.role)) : null,
-    el('span', { class: 'person-km' }, fmtKm(p.km)));
+    // A guest sees a band (≤ 5 km), never an exact distance (src/lib/thirtyda-guest.mjs).
+    el('span', { class: 'person-km' }, guest ? `≤ ${fmtKm(p.km, { whole: true })}` : fmtKm(p.km)));
 
   function paintPeople() {
     const people = Array.isArray(last.people) ? last.people : [];
@@ -167,7 +177,9 @@ screen('/nearby', ({ root }) => {
     const mine = ++seq;
     grid.setAttribute('aria-busy', 'true');
     try {
-      const r = await api.get(`/nearby?km=${km}&show=${show}`);
+      const r = guest
+        ? await api.post('/guest/nearby', { km, show, ...(guestPos || {}) }) // the position in the body, never in a URL
+        : await api.get(`/nearby?km=${km}&show=${show}`);
       if (!alive || mine !== seq) return;
       last = r;
       paintGps();
@@ -176,7 +188,7 @@ screen('/nearby', ({ root }) => {
       if (!alive || mine !== seq || err.status === 401 || err.code === 'blocked') return;
       countLine.textContent = '';
       grid.replaceChildren(el('div', { class: 'empty' },
-        el('p', {}, err.status === 0 ? t('err_network') : t('err_generic')),
+        el('p', {}, err.status === 0 ? t('err_network') : err.status === 429 ? t('gf_slow') : t('err_generic')),
         el('button', { type: 'button', class: 'btn btn-secondary btn-sm btn-auto', on: { click: () => load() } }, t('core_retry'))));
     } finally {
       if (mine === seq) grid.removeAttribute('aria-busy');
@@ -201,9 +213,11 @@ screen('/nearby', ({ root }) => {
   paintRange();
   paintWaiting();
   skeleton();
-  bus.addEventListener('actions', loadPairs);
-  loadPairs();
-  heartbeat();
+  if (!guest) {
+    bus.addEventListener('actions', loadPairs);
+    loadPairs();
+    heartbeat();
+  }
   (async () => {
     if (!refreshedThisLoad && (await geoAllowed())) await refreshGps(true);
     else await load();

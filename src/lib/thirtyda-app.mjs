@@ -65,6 +65,7 @@ import { savePhoto, readPhoto, deletePhoto, isPhotoId, PhotoError } from "./thir
 import { translate, translateAll, translateEnabled } from "./thirtyda-translate.mjs";
 import { areaFor, haversineKm } from "./thirtyda-geo.mjs";
 import { clientIp } from "./thirtyda-net.mjs";
+import { guestLimiter, guestPoint, guestCard, GUEST_LIMIT } from "./thirtyda-guest.mjs";
 import { CODE_CHANNELS, DEFAULT_CHANNEL, CHANNEL_NAMES, channelOffered, testCodesAllowed, deliverCode } from "./thirtyda-code-send.mjs";
 import {
   SIGNIN_PROVIDERS, SIGNIN_WIRED, VERIFIED_KEY, SIGNIN_STATES, signinKeys, signinKeysSaved, signinRedirect, authorizeUrl,
@@ -1752,12 +1753,13 @@ async function getPhoto(ctx) {
   if (!isPhotoId(id)) throw fail(404, "not_found", "No such photo.");
   const owner = await d.collection(C.users).findOne({ photos: id }, { projection: { photos: 1, blocked: 1 } });
   // A blocked person has vanished: their photos go with them (as GET /people and Nearby already do).
-  if (!owner || (owner.blocked && owner._id !== me._id)) throw fail(404, "not_found", "No such photo.");
+  // A guest (no profile yet, the home screen before Create profile): photo 1 only, like any stranger.
+  if (!owner || (owner.blocked && owner._id !== me?._id)) throw fail(404, "not_found", "No such photo.");
   // Per person, bound to the slot: the owner sees all; anyone sees slot 1; slot 2 needs Level 2
   // opened together, slots 3–4 Level 3. Slots never move, so a photo keeps its level.
   const index = slotsOf(owner).indexOf(id);
-  let allowed = owner._id === me._id || photoVisible(index, 1);
-  if (!allowed) allowed = photoVisible(index, await openLevelBetween(d, me._id, owner._id));
+  let allowed = owner._id === me?._id || photoVisible(index, 1);
+  if (!allowed && me) allowed = photoVisible(index, await openLevelBetween(d, me._id, owner._id));
   const buf = allowed ? await readPhoto(id) : null;
   if (!buf) throw fail(404, "not_found", "No such photo.");
   res.writeHead(200, {
@@ -1801,6 +1803,37 @@ async function nearby(ctx) {
     photo: photoUrl(u.photo),
   }));
   return { ...base, gps: true, count: people.length, people };
+}
+
+/**
+ * POST /guest/nearby { km, show, lat?, lng? } → { guest: true, near: 'you' | 'phnom_penh', gps: true, count, people }.
+ * The home screen before a profile exists (owner 2026-10-13): who is on 30+DA, as cards only (src/lib/thirtyda-guest.mjs:
+ * app name, role, a distance band, hearts, photo 1). No session needed, rate-limited per IP, writes nothing — the
+ * guest's position (POST body, so it stays out of URLs and logs) is used for this one answer and never stored.
+ */
+const guestReads = guestLimiter();
+async function guestNearby(ctx) {
+  const { d, me, req, body } = ctx;
+  if (!guestReads.take(clientIp(req))) throw fail(429, "rate_limited", "Too many looks. Try again in a few minutes.");
+  const km = Math.min(NEARBY_MAX_KM, Math.max(1, Number(body.km) || 10));
+  const gender = body.show === "women" ? "woman" : body.show === "men" ? "man" : null;
+  const { point, device } = guestPoint(body);
+  const rows = await d.collection(C.users).aggregate([
+    {
+      $geoNear: {
+        near: { type: "Point", coordinates: point },
+        key: "location",
+        distanceField: "dist",
+        maxDistance: km * 1000,
+        spherical: true,
+        query: { blocked: { $ne: true }, ...(me ? { _id: { $ne: me._id } } : {}), ...(gender ? { gender } : {}) },
+      },
+    },
+    { $limit: GUEST_LIMIT },
+    { $project: { name: 1, gender: 1, role: 1, hearts: 1, dist: 1, photo: { $arrayElemAt: ["$photos", 0] } } },
+  ]).toArray();
+  const people = rows.map((u) => guestCard(u, { photoUrl }));
+  return { guest: true, near: device ? "you" : "phnom_penh", gps: true, count: people.length, people };
 }
 
 /** Distance for a profile: only for someone within Nearby range (or with a pair), never 0. */
@@ -2679,8 +2712,10 @@ const ROUTES = [
   ["POST", /^\/me\/pin$/, setPin],
   ["POST", /^\/me\/pin\/forgot$/, forgotPin, { auth: "none", blockedOk: true }],
   ["POST", /^\/notices\/([\w-]{1,64})\/seen$/, noticeSeen],
-  ["GET", /^\/photos\/([a-f0-9]{32})$/, getPhoto],
+  // auth "none": a guest (no profile yet) sees photo 1 only, as on the cards of POST /guest/nearby.
+  ["GET", /^\/photos\/([a-f0-9]{32})$/, getPhoto, { auth: "none" }],
   ["GET", /^\/nearby$/, nearby],
+  ["POST", /^\/guest\/nearby$/, guestNearby, { auth: "none" }],
   ["GET", /^\/people\/(U-\d+)$/, person],
   ["POST", /^\/pairs$/, createPair],
   ["GET", /^\/pairs$/, listPairs],

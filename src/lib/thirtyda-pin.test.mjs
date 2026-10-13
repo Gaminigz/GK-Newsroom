@@ -223,6 +223,7 @@ const SAMPLES = [
   ['POST', '/notices/n-1/seen', null],
   ['GET', `/photos/${'a'.repeat(32)}`, null],
   ['GET', '/nearby', null],
+  ['POST', '/guest/nearby', null], // a guest has no profile, so never a lock; a locked profile waits like /nearby
   ['GET', '/people/U-10231', null],
   ['POST', '/pairs', null],
   ['GET', '/pairs', null],

@@ -38,7 +38,7 @@ const SAMPLES = [
   ['POST', '/me/pin', false], ['POST', '/me/pin/forgot', false], ['POST', '/notices/n-1/seen', false],
   ['GET', '/photos/0123456789abcdef0123456789abcdef', false],
   // Looking around: Nearby, a profile, my conversations, the questions — never gated.
-  ['GET', '/nearby', false], ['GET', '/people/U-10231', false], ['GET', '/pairs', false], ['GET', '/pairs/P-1', false],
+  ['GET', '/nearby', false], ['POST', '/guest/nearby', false], ['GET', '/people/U-10231', false], ['GET', '/pairs', false], ['GET', '/pairs/P-1', false],
   ['GET', '/pairs/P-1/conversation', false], ['GET', '/questions', false], ['GET', '/pairs/P-1/incoming', false],
   ['GET', '/pairs/P-1/outgoing', false], ['GET', '/pairs/P-1/messages', false],
   // Talking to someone: gated until the profile has a verified way.
