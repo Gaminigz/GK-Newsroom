@@ -133,7 +133,7 @@ export function sendPanel({ pairId, level, bank, name, onSent, onReload, onMoved
 
   const textOf = (i, key) => slots[i]?.find((q) => q.key === key)?.text || '';
   const qrow = (n, ...kids) => el('li', { class: 'qrow' },
-    el('span', { class: 'num', 'aria-hidden': 'true' }, String(n)),
+    el('span', { class: 'num', 'aria-hidden': 'true' }, String((level - 1) * 5 + n)), // Level 2 continues: 6–10
     el('div', { class: 'qrow-main' }, ...kids));
 
   // --- pick rows: a field-fill trigger that drops that line's own 5 choices right under it
