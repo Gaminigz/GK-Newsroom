@@ -1061,6 +1061,7 @@ body:has(.screen.conv) .toast { bottom: max(calc(24px + env(safe-area-inset-bott
 /* No headline of its own ("Check Telegram for the next step." above says it): the number leads. */
 .tg-wait-num { font-family: var(--mono); font-size: 14px; font-weight: 700; letter-spacing: 0.03em; color: var(--ink); }
 .tg-wait-match { margin-top: 2px; font-size: 13px; line-height: 1.35; color: var(--ink); }
+.tg-wait-privacy { display: block; margin-top: 6px; font-size: 12px; line-height: 1.4; color: var(--muted, #5b6478); }
 .tg-wait-match b { display: inline-block; margin-left: 2px; padding: 1px 8px; border-radius: 999px; background: #fff; border: 1px solid rgb(34 158 217 / 0.35); font-size: 15px; font-weight: 800; letter-spacing: 0.04em; white-space: nowrap; }
 .tg-wait-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding-left: 46px; }
 /* "Telegram did not open? Open it" — small, only for a browser that blocked the automatic tab (no big button). */
