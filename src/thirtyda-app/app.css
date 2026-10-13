@@ -663,6 +663,7 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .name-year { display: grid; grid-template-columns: minmax(0, max-content) max-content; justify-content: start; align-items: end; column-gap: 14px; }
 .name-year .field-head { min-height: 19px; } /* the tag's height: both labels sit on one line */
 .name-input { width: 9.5em; max-width: 100%; }
+:lang(km) .name-input { width: 11.75em; } /* 7 stacked Khmer clusters ("ស្ត្រី" × 7) fit without scrolling */
 .year-select { width: 118px; font-variant-numeric: tabular-nums; }
 .truth-note {
   display: flex;
