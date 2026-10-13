@@ -94,7 +94,9 @@ test('Level 1 answers and roles match the contract', () => {
     ['sales', 'Sales'], ['accountant', 'Accountant'], ['hr', 'HR'], ['administration', 'Administration'],
     ['manager', 'Manager'], ['director', 'Director'], ['doctor', 'Doctor'], ['nurse', 'Nurse'],
     ['civil_engineering', 'Civil engineering'], ['airport_staff', 'Airport staff'], ['government', 'Government'],
-    ['own_business', 'Own business'], ['time_off', 'Taking some time off'], ['family_home', 'Family time or Home business'],
+    ['operations', 'Operations'], ['logistics', 'Logistics'], ['shop_staff', 'Shop staff'], ['farm', 'Farm'],
+    ['own_business', 'Own business'], ['stay_home', 'Stay home'], ['time_off', 'Taking some time off'],
+    ['family_home', 'Family time or Home business'],
   ]);
   for (const list of [L1_ANSWERS, ROLES]) {
     for (const lang of LANGS) {
