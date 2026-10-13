@@ -852,6 +852,7 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 /* Birth year + You are: the two "tell the truth" fields, in the warning's amber. */
 .truth-field, .select.truth-field { background-color: var(--orange-soft); color: #8a4500; border: 1px solid #f3cf9c; }
 .select.truth-field.placeholder { color: #b0752e; }
+.input.truth-field::placeholder { color: #b0752e; }
 .btn.truth-btn { background: var(--orange-soft); color: #8a4500; border: 1px solid #f3cf9c; }
 .btn.truth-btn:disabled { opacity: 0.55; }
 .me .lang-grid .btn[aria-pressed="true"] { background: var(--navy); color: #fff; border-color: var(--navy); }

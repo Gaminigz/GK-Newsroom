@@ -207,7 +207,7 @@ screen('/me', async ({ root }) => {
   const nameChanged = () => nameInput.value.trim().replace(/\s+/g, ' ') !== me.name;
   // Real name: kept private until Level 3, then shown to that person.
   const realInput = el('input', {
-    class: 'input', id: 'me-real', type: 'text', maxlength: '60', autocomplete: 'name', value: me.realName || '', placeholder: t('me_real_ph'),
+    class: 'input truth-field', id: 'me-real', type: 'text', maxlength: '60', autocomplete: 'name', value: me.realName || '', placeholder: t('me_real_ph'),
   });
   const realValue = () => realInput.value.trim().replace(/\s+/g, ' ');
   const realChanged = () => realValue() !== (me.realName || '');

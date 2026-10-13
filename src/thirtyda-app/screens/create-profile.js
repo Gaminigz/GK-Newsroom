@@ -403,7 +403,7 @@ screen('/create', ({ root }) => {
   };
   paintName();
   const realInput = el('input', {
-    class: 'input', id: 'cp-real', type: 'text', maxlength: '60', autocomplete: 'name', enterkeyhint: 'next',
+    class: 'input truth-field', id: 'cp-real', type: 'text', maxlength: '60', autocomplete: 'name', enterkeyhint: 'next',
     placeholder: t('cp_real_name_ph'), value: draft.realName,
     on: { input: () => { draft.realName = realInput.value; update(); } },
   });
