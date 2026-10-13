@@ -17,11 +17,13 @@
  * The Telegram Bot API (api.telegram.org, the free 30+DA bot — src/lib/thirtyda-telegram-bot.mjs) is answered by a
  * small FAKE BOT instead, but only while the e2e left its doc there: { _id: "telegram-bot", fake: true, me?: { username,
  * first_name }, replies?: { <method>: { status, json } }, revoked?: [<key's last 4>], lastError?: { at, message },
- * pending? }. It answers getMe (the bot id is the key's number part), setWebhook, deleteWebhook, getWebhookInfo and
- * sendMessage, and keeps on that doc:
+ * pending? }. It answers getMe (the bot id is the key's number part), setWebhook, deleteWebhook, getWebhookInfo,
+ * sendMessage, deleteMessage, setMyDescription and setMyShortDescription, and keeps on that doc:
  *   hook  { url, secretToken, allowedUpdates, botId, at } — setWebhook's address AND its secret token, so the e2e can
  *         post fake updates to the webhook with the right X-Telegram-Bot-Api-Secret-Token, as Telegram would (dev DB only);
  *   sent  the bot's replies (chat id, text, keyboard) — the last 50;
+ *   deleted  the messages the bot deleted (chat id, message id) — the last 50 (a shared contact never stays in the chat);
+ *   profile  { description: { default|km|zh|ko|ja: text }, short: { … } } — the bot's profile words (support, 2026-10-13);
  *   calls every request, the key only as its last 4 (bot…AbCd) and secret_token only as its last 4.
  * No doc → the real Bot API, unchanged.
  */
@@ -171,6 +173,15 @@ async function fakeBotApi(col, doc, u, init) {
     const sent = { at: new Date(), botId: id, chatId: params.chat_id ?? null, text: String(params.text ?? ""), replyMarkup: params.reply_markup ?? null };
     ops.$push.sent = { $each: [sent], $slice: -50 };
     out = answer(200, { ok: true, result: { message_id: Date.now() % 1e9, date: Math.floor(Date.now() / 1000), chat: { id: params.chat_id, type: "private" }, text: sent.text } });
+  } else if (p.method === "deleteMessage") {
+    const deleted = { at: new Date(), botId: id, chatId: params.chat_id ?? null, messageId: params.message_id ?? null };
+    ops.$push.deleted = { $each: [deleted], $slice: -50 };
+    out = answer(200, { ok: true, result: true });
+  } else if (p.method === "setMyDescription" || p.method === "setMyShortDescription") {
+    const long = p.method === "setMyDescription";
+    const lang = /^[a-z]{2}$/.test(String(params.language_code ?? "")) ? params.language_code : "default";
+    ops.$set = { [`profile.${long ? "description" : "short"}.${lang}`]: String((long ? params.description : params.short_description) ?? "") };
+    out = answer(200, { ok: true, result: true });
   } else {
     out = refuse(404, "Not Found: method not found");
   }

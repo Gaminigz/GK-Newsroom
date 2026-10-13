@@ -30,6 +30,14 @@
  *   GET  /30da/admin/api/connections/google|facebook|tiktok/try    (a new tab) the real sign-in with a test state bound to
  *        this admin session → Google / Facebook / TikTok → the app's callback, which ends on a small "Works ✓ / Did not work"
  *        page and makes no user or session (src/lib/thirtyda-app.mjs signinTry)
+ *   Bot Save / Try that went through also set the bot's profile words (setMyDescription / setMyShortDescription, 5
+ *        languages, best effort — src/lib/thirtyda-support.mjs describeBot).
+ *   GET  /30da/admin/support                  Support: questions people sent the Telegram bot, and the team's replies
+ *   GET  /30da/admin/api/support              { chats: [{ chatId, name, username, profileId, lastAt, lastText, unread, … }], unread, bot }
+ *   GET  /30da/admin/api/support/unread       { unread } (the sidebar badge on every admin page)
+ *   GET  /30da/admin/api/support/:chatId      { chat, messages } — opening it marks it read
+ *   POST /30da/admin/api/support/:chatId/reply { text } → the bot sends it to that chat (plain text ≤ 2000) and it is kept;
+ *        Telegram refusing (they blocked the bot) comes back in plain words. Audited with ids and lengths only, never text.
  *
  * Secrets (src/lib/thirtyda-settings.mjs) are sealed with THIRTYDA_SECRET_KEY and never sent back:
  * only { set, last4, updatedAt, updatedBy }. The audit log never carries them either.
@@ -61,7 +69,10 @@ import {
   pkcePair,
 } from "./thirtyda-signin.mjs";
 import { outboundFetch } from "./thirtyda-test-fetch.mjs";
-import { botView, saveBot, tryBot, removeBot } from "./thirtyda-telegram-bot.mjs";
+import { botView, saveBot, tryBot, removeBot, windowLimiter } from "./thirtyda-telegram-bot.mjs";
+import {
+  listSupportChats, supportThread, sendSupportReply, supportUnread, describeBot, SUPPORT_TEXT_MAX,
+} from "./thirtyda-support.mjs";
 import { tryResultPage, requestLang } from "./thirtyda-pages.mjs";
 import { normalizePhone } from "./thirtyda-app.mjs";
 import { QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS } from "../thirtyda-app/shared/question-slots.js";
@@ -78,6 +89,8 @@ const WINDOW_MS = 15 * 60 * 1000;
 const MAX_WRITES = 30; // question saves/resets per admin session per window
 const QUESTIONS_BODY_MAX = 200_000; // 20 choices × 5 languages × 100 characters, with room to spare
 const MAX_TESTS = 10; // real Telegram test codes per admin session per window (each one costs money)
+const MAX_REPLIES = 60; // support replies per admin session per window
+const replyLimits = windowLimiter(WINDOW_MS);
 
 const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
@@ -423,7 +436,11 @@ async function telegramBotRoute(req, res, isTry) {
     req.resume();
     if (testLimited(req)) return json(res, 429, { error: `That is ${MAX_TESTS} tries in 15 minutes. Try again later.` });
     const r = await tryBot(d, { fetchImpl });
-    await audit(req, "connection_test", { connection: "telegram-bot", ok: r.ok, ...(r.ok ? { username: r.username } : { reason: r.reason }) });
+    // The bot's profile words (what people see before they write to it), best effort.
+    const described = r.ok ? await describeBot(d, { fetchImpl }) : null;
+    await audit(req, "connection_test", {
+      connection: "telegram-bot", ok: r.ok, ...(r.ok ? { username: r.username, described: described.ok } : { reason: r.reason }),
+    });
     const view = await connectionsView(d, req);
     if (!r.ok) return json(res, r.status || 422, { ok: false, error: r.error, reason: r.reason, detail: r.detail ?? null, view });
     return json(res, 200, { ok: true, username: r.username, view });
@@ -443,7 +460,8 @@ async function telegramBotRoute(req, res, isTry) {
       if (r.reason !== "format") await audit(req, "connection_save_refused", { connection: "telegram-bot", reason: r.reason });
       return json(res, r.status, { error: r.error, field: r.field, reason: r.reason, detail: r.detail });
     }
-    await audit(req, "connection_save", { connection: "telegram-bot", last4: r.last4, username: r.username });
+    const described = await describeBot(d, { fetchImpl });
+    await audit(req, "connection_save", { connection: "telegram-bot", last4: r.last4, username: r.username, described: described.ok });
   } catch (err) {
     if (err instanceof SettingsError && err.code === "no_key") {
       await audit(req, "connection_save_refused", { connection: "telegram-bot", reason: "no_key" });
@@ -461,7 +479,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
   const path = url.pathname.replace(/\/+$/, "") || "/";
   const sub = path.slice(BASE.length) || "/";
 
-  const asset = sub.match(/^\/(app\.css|signin\.js|monitor\.js|questions\.js|connections\.js)$/);
+  const asset = sub.match(/^\/(app\.css|signin\.js|monitor\.js|questions\.js|connections\.js|support\.js|support\.css|support-badge\.js)$/);
   if (req.method === "GET" && asset) return serveFile(res, asset[1]);
 
   if (req.method !== "GET" && req.method !== "HEAD" && sub.startsWith("/api/")) {
@@ -520,6 +538,11 @@ export async function handleThirtyDaAdmin(req, res, url) {
     if (!me) return send(res, 302, "", { Location: BASE });
     await audit(req, "view_connections");
     return serveFile(res, "connections.html");
+  }
+  if (req.method === "GET" && sub === "/support") {
+    if (!me) return send(res, 302, "", { Location: BASE });
+    await audit(req, "view_support");
+    return serveFile(res, "support.html");
   }
 
   // "Try sign-in" (Google / Facebook / TikTok card): opened in a new tab, so it answers with pages and redirects, not JSON.
@@ -690,6 +713,39 @@ export async function handleThirtyDaAdmin(req, res, url) {
       throw err;
     }
     return json(res, 200, await connectionsView(d, req));
+  }
+
+  // Support: questions people sent the Telegram bot, and the team's replies (src/lib/thirtyda-support.mjs).
+  if (req.method === "GET" && sub === "/api/support/unread") return json(res, 200, { unread: await supportUnread(await db()) });
+  if (req.method === "GET" && sub === "/api/support") {
+    const d = await db();
+    const [list, bot] = await Promise.all([listSupportChats(d), botView(d)]);
+    return json(res, 200, { ...list, max: SUPPORT_TEXT_MAX, bot: { set: bot.set, username: bot.username, offered: bot.offered } });
+  }
+  m = sub.match(/^\/api\/support\/(\d{1,16})(\/reply)?$/);
+  if (m && ((req.method === "GET" && !m[2]) || (req.method === "POST" && m[2]))) {
+    const chatId = Number(m[1]);
+    const d = await db();
+    if (!m[2]) {
+      const thread = Number.isSafeInteger(chatId) ? await supportThread(d, chatId) : null;
+      if (!thread) return json(res, 404, { error: "There is no such conversation." });
+      // The page refreshes an open conversation every few seconds: only the opening is audited.
+      if (url.searchParams.get("refresh") !== "1") await audit(req, "support_open", { chatId });
+      return json(res, 200, thread);
+    }
+    if (replyLimits.over(tokenOf(req) || clientIp(req), MAX_REPLIES)) {
+      req.resume();
+      return json(res, 429, { error: "That is a lot of replies in 15 minutes. Try again in a few minutes." });
+    }
+    const body = await readJsonBody(req, 64e3);
+    if (body.tooLarge) return json(res, 413, { error: `A reply can be at most ${SUPPORT_TEXT_MAX} characters.` });
+    if (body.bad) return json(res, 400, { error: "Send { text }." });
+    const r = await sendSupportReply(d, chatId, body.value.text, { fetchImpl: outboundFetch() });
+    // Ids and lengths only: never the words.
+    const length = typeof body.value.text === "string" ? body.value.text.trim().length : 0;
+    await audit(req, "support_reply", { chatId, length, ok: r.ok, ...(r.ok ? {} : { reason: r.reason }) });
+    if (!r.ok) return json(res, r.status, { error: r.error, reason: r.reason });
+    return json(res, 200, { ok: true, message: r.message, ...(await supportThread(d, chatId, { markRead: false })) });
   }
 
   m = sub.match(/^\/api\/users\/(U-\d+)\/(block|unblock)$/);

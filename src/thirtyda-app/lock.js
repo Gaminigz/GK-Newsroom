@@ -44,10 +44,11 @@ export function clearPinFlags() {
 
 /**
  * Four big boxes that fill with dots. One real input sits on top of them (numeric keypad, Khmer and full-width
- * digits count), so typing moves from box to box by itself. onFull(pin) when the 4th digit is in.
+ * digits count), so typing moves from box to box by itself. onFull(pin) when the 4th digit is in; onDigit() on
+ * every change (typing is a touch, also on phone keyboards that send no key events).
  * light: the white version (Change PIN on #/me).
  */
-export function pinPad({ onFull, light = false, show = false, step = null, label = t('pin_aria') } = {}) {
+export function pinPad({ onFull, onDigit = null, light = false, show = false, step = null, label = t('pin_aria') } = {}) {
   let value = '';
   let busy = false;
   const input = el('input', {
@@ -69,7 +70,9 @@ export function pinPad({ onFull, light = false, show = false, step = null, label
     if (busy) { input.value = value; return; }
     value = pinDigits(input.value).slice(0, PIN_LENGTH);
     input.value = value;
+    activity.lastInputAt = Date.now();
     paint();
+    onDigit?.();
     if (value.length === PIN_LENGTH) onFull?.(value);
   });
   input.addEventListener('focus', paint);
@@ -108,10 +111,10 @@ function errorLine(cls = 'pin-error') {
 
 /**
  * Set a PIN: 4 digits, then the same 4 again. Refuses 0000-style and 1234 / 4321-style PINs with a plain line.
- * onDone(pin) → null when saved, or a line to show (the steps start again). onFirst() once the first 4 are in.
- * → { node, focus }.
+ * onDone(pin) → null when saved, or a line to show (the steps start again). onFirst() once the first 4 are in;
+ * onDigit() on every digit typed. → { node, focus }.
  */
-export function setPinSteps({ title, text, onDone, onFirst = null, light = false }) {
+export function setPinSteps({ title, text, onDone, onFirst = null, onDigit = null, light = false }) {
   let first = '';
   const titleEl = el('h1', { class: 'pin-title', id: 'pin-title' });
   const textEl = el('p', { class: 'pin-text' });
@@ -120,7 +123,7 @@ export function setPinSteps({ title, text, onDone, onFirst = null, light = false
   const one = el('span', { class: 'pin-step-n' }, '1');
   const two = el('span', { class: 'pin-step-n' }, '2');
   const stepMark = el('span', { class: 'pin-step', 'aria-hidden': 'true' }, one, two);
-  const pad = pinPad({ onFull, light, show: true, step: stepMark });
+  const pad = pinPad({ onFull, onDigit, light, show: true, step: stepMark });
   const paint = () => {
     one.classList.toggle('on', !first);
     two.classList.toggle('on', Boolean(first));
@@ -220,8 +223,17 @@ function post(path) {
   } catch { /* offline: the server locks by itself after 2 minutes */ }
 }
 const tellServer = () => post('/me/lock');
-/** Setting a PIN is real use: the server hears it (a heartbeat right after a touch), so a slow chooser is not locked out. */
-const stillHere = () => post('/me/heartbeat');
+/**
+ * Setting a PIN is real use: the server hears it (a heartbeat right after a touch), so a person who is typing is
+ * never locked out by the server's 2-minute window. At most every 5 s (sooner when the window is shortened).
+ */
+let stillAt = 0;
+function stillHere() {
+  const now = Date.now();
+  if (now - stillAt < Math.min(5e3, lock.serverMs / 4)) return;
+  stillAt = now;
+  post('/me/heartbeat');
+}
 
 /** Cover now and tell the server (30 s idle, hidden, closed). */
 function lockNow() {
@@ -330,7 +342,7 @@ function setBody(mode) {
   const steps = setPinSteps({
     title: t(mode === 'reset' ? 'pin_new_title' : 'pin_set_title'),
     text: t('pin_set_text'),
-    onFirst: stillHere,
+    onDigit: stillHere,
     async onDone(pin) {
       try {
         const r = await api.post('/me/pin', { pin }, { redirect: false });
@@ -339,6 +351,9 @@ function setBody(mode) {
         opened(r);
         return null;
       } catch (e) {
+        // The server's window ran out while the new PIN was being chosen. After "Forgot PIN?" / 5 wrong the old
+        // PIN is the one they do not know: sign in again (the calm note), never "Enter your PIN".
+        if (e.status === 423 && mode === 'reset') { signInAgain(); return null; }
         if (e.status === 423) { showCover(e.data?.pin === false ? 'signin' : 'enter'); return null; }
         if (e.code === 'old_pin_needed' || e.status === 401) { signInAgain({ end: e.status !== 401 }); return null; }
         if (e.code === 'weak_pin') return ruleText(e.data?.reason);
@@ -394,18 +409,23 @@ async function afterUser() {
 
 // ---------------------------------------------------------------- watching
 
+/**
+ * The app opened the photo picker / camera itself: that is not leaving the app — for as long as the app may be
+ * left alone anyway (the 30 s cover time). Only choosing or cancelling (the file input's change / cancel) is a
+ * touch; coming back is not, so a long time away with the picker open still ends on the PIN screen.
+ */
+const pickerOpen = () => Boolean(lock.picker) && Date.now() - lock.picker < lock.coverMs;
+
 function onHidden() {
   if (lock.leaving) return;
-  // The app opened the photo picker / camera itself: that is not leaving the app.
-  if (lock.picker && Date.now() - lock.picker < lock.serverMs) return;
+  if (pickerOpen()) return;
   lockNow();
 }
 
 function onVisible() {
-  if (lock.picker) {
-    lock.picker = 0;
-    activity.lastInputAt = Date.now();
-  }
+  if (lock.picker && !pickerOpen()) lock.picker = 0;
+  // Back after longer than the cover time without a touch (the picker was open): covered before anything shows.
+  if (!lock.picker && guarded() && Date.now() - activity.lastInputAt >= lock.coverMs) lockNow();
   if (lock.covered) lock.focus?.();
 }
 
@@ -420,10 +440,10 @@ export function startLock() {
     if (lock.covered && (lock.mode === mode || lock.mode === 'enter')) return;
     showCover(mode);
   });
-  // 30 s without a touch → covered. A photo picker opened from the app pauses it (until the server's own limit).
+  // 30 s without a touch → covered. A photo picker opened from the app pauses it (for the same 30 s at most).
   setInterval(() => {
     if (!guarded()) return;
-    if (lock.picker && Date.now() - lock.picker < lock.serverMs) return;
+    if (pickerOpen()) return;
     if (Date.now() - activity.lastInputAt >= lock.coverMs) lockNow();
   }, 1000);
   document.addEventListener('click', (e) => {

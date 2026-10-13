@@ -144,8 +144,22 @@ async function request(method, path, body, opts = {}) {
   }
   if (res.ok) return data;
   const err = new ApiError(res.status, data.error || `http_${res.status}`, data.message || t('err_generic'), data);
+  // "Verify to chat" (owner 2026-10-13): a call that talks to someone, from a profile with nothing verified yet. The
+  // sheet opens (screens/verify-chat.js); after a good verify the same call goes again, once, so the screen carries
+  // on where it was. Closed without verifying → the 403 below (screens say nothing more: the sheet already did).
+  if (err.status === 403 && err.code === 'verify_needed' && verifyGate && !opts.again) {
+    let verified = false;
+    try { verified = await verifyGate(err.data); } catch { /* the sheet could not open: the 403 stands */ }
+    if (verified) return request(method, path, body, { ...opts, again: true });
+  }
   if (opts.redirect !== false) redirectFor(err);
   throw err;
+}
+
+let verifyGate = null;
+/** screens/verify-chat.js: fn(data) → Promise<boolean> (true = verified now: the call goes again). */
+export function onVerifyNeeded(fn) {
+  verifyGate = fn;
 }
 
 // Signed out → opening (or create when only the profile is missing); blocked → blocked screen.

@@ -54,7 +54,8 @@ export function translateNote(pair) {
 export const lockNote = (text) => el('p', { class: 'lock-note' }, icon('lock', 14), el('span', {}, text));
 
 /** True when the error was already handled by a redirect (signed out / blocked). */
-export const redirected = (err) => err?.status === 401 || err?.code === 'blocked';
+// verify_needed: the "Verify to chat" sheet already said why (screens/verify-chat.js) — nothing more to say.
+export const redirected = (err) => err?.status === 401 || err?.code === 'blocked' || err?.code === 'verify_needed';
 
 /** Paint a send button: navy when ready, greyed (but still clickable) otherwise, really disabled while busy. */
 export function paintSendButton(btn, { ready, busy, label }) {
@@ -279,7 +280,11 @@ export function sendPanel({ pairId, level, bank, name, onSent, onReload, onMoved
       onSent?.(r);
     } catch (err) {
       busy = false;
-      if (!node?.isConnected || redirected(err)) return;
+      if (!node?.isConnected) return;
+      if (redirected(err)) {
+        if (err.code === 'verify_needed') paint(); // the sheet closed unverified: the lines stay, Send is free again
+        return;
+      }
       const j = Number(err.data?.index) - pick;
       const row = Number.isInteger(j) && j >= 0 && j < write ? j : -1;
       if (err.code === 'contact_detail') {

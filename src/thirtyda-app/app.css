@@ -1059,6 +1059,8 @@ body:has(.screen.conv) .toast { bottom: max(calc(24px + env(safe-area-inset-bott
 .tg-wait-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .tg-wait-text strong { font-size: 14px; font-weight: 800; line-height: 1.35; color: var(--ink); }
 .tg-wait-num { font-family: var(--mono); font-size: 12.5px; letter-spacing: 0.03em; color: var(--muted); }
+.tg-wait-match { margin-top: 4px; font-size: 13px; line-height: 1.35; color: var(--ink); }
+.tg-wait-match b { display: inline-block; margin-left: 2px; padding: 1px 8px; border-radius: 999px; background: #fff; border: 1px solid rgb(34 158 217 / 0.35); font-size: 15px; font-weight: 800; letter-spacing: 0.04em; white-space: nowrap; }
 .tg-wait-actions { display: flex; align-items: center; gap: 16px; padding-left: 46px; }
 .tg-wait-actions .tg-open { width: auto; min-height: 40px; padding: 0 16px; background: #1777ad; color: #fff; }
 .tg-wait-actions .tg-open:hover { background: #12659a; }
@@ -1068,3 +1070,13 @@ body:has(.screen.conv) .toast { bottom: max(calc(24px + env(safe-area-inset-bott
 
 /* Under "To chat, verify…": the number is only for verification and stays private (owner 2026-10-13). */
 .way-private { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 4px; font-size: 12.5px; color: var(--muted, #5b6478); }
+
+/* "Verify to chat" (owner 2026-10-13, screens/verify-chat.js): the sheet a profile with nothing verified gets when it
+   tries to talk to someone — the same number box and 5 round buttons as Create profile. */
+dialog.verify-sheet { overflow-y: auto; }
+.verify-chat { gap: 12px; padding-top: 14px; }
+.vc-head { display: flex; align-items: center; gap: 10px; }
+.vc-icon { flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--navy, #0b1c3f); color: #fff; }
+.verify-chat .sheet-title { font-size: 20px; }
+.vc-text { font-size: 14px; line-height: 1.45; color: var(--muted, #5b6478); }
+.vc-later { align-self: center; min-height: 40px; padding: 0 12px; font-size: 14px; color: var(--muted, #5b6478); }

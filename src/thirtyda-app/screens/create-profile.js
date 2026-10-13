@@ -1,6 +1,6 @@
 // Screen 2 · Create profile — face photo, app name (shown, max 7 characters) + birth year (ages 30+ only)
-// on one row, real name (not shown), I am, You are, and a verified phone (or Google / Facebook).
-// Then location, then Nearby.
+// on one row, real name (not shown), I am, You are, and a phone (or Google / Facebook / TikTok) to verify — which is
+// only needed to chat (owner 2026-10-13): Next works once the fields are filled. Then location, then Nearby.
 import {
   screen, el, icon, t, go, api, toast, modal, state, setLang, setMe, registerStrings,
   resizeImage, updateLocation, roleLabel, LANGS, LANG_CODES, LANG_NATIVE, LANG_FLAG, ROLES, charCount,
@@ -302,6 +302,7 @@ registerStrings({
     cp_tg_mismatch: 'The number in Telegram is not the one you typed. Check the number and try again.',
     cp_tg_expired: 'That took too long. Tap Telegram to try again.',
     cp_tg_number_first: 'Type your number first, then tap Telegram.',
+    cp_tg_match: 'Telegram shows the same sign:',
   },
   km: {
     cp_tg_wait: 'បើក Telegram ហើយចុច “ចែករំលែកលេខរបស់ខ្ញុំ”។',
@@ -311,6 +312,7 @@ registerStrings({
     cp_tg_mismatch: 'លេខក្នុង Telegram មិនមែនជាលេខដែលអ្នកបានវាយទេ។ សូមពិនិត្យលេខ ហើយសាកម្ដងទៀត។',
     cp_tg_expired: 'ចំណាយពេលយូរពេក។ សូមចុច Telegram ដើម្បីសាកម្ដងទៀត។',
     cp_tg_number_first: 'សូមវាយលេខទូរសព្ទរបស់អ្នកជាមុនសិន រួចចុច Telegram។',
+    cp_tg_match: 'Telegram បង្ហាញសញ្ញាដូចគ្នា៖',
   },
   zh: {
     cp_tg_wait: '打开 Telegram，点“分享我的号码”。',
@@ -320,6 +322,7 @@ registerStrings({
     cp_tg_mismatch: 'Telegram 里的号码和你输入的不一样。请检查号码后再试。',
     cp_tg_expired: '时间太久了。请再点一次 Telegram。',
     cp_tg_number_first: '请先输入你的号码，再点 Telegram。',
+    cp_tg_match: 'Telegram 会显示同样的标记：',
   },
   ko: {
     cp_tg_wait: 'Telegram을 열고 ‘내 번호 공유’를 누르세요.',
@@ -329,6 +332,7 @@ registerStrings({
     cp_tg_mismatch: 'Telegram의 번호가 입력한 번호와 달라요. 번호를 확인하고 다시 해 보세요.',
     cp_tg_expired: '시간이 너무 지났어요. Telegram을 다시 눌러 주세요.',
     cp_tg_number_first: '먼저 번호를 입력한 뒤 Telegram을 누르세요.',
+    cp_tg_match: 'Telegram에도 같은 표시가 나와요:',
   },
   ja: {
     cp_tg_wait: 'Telegram を開いて「自分の番号を共有」を押してください。',
@@ -338,6 +342,7 @@ registerStrings({
     cp_tg_mismatch: 'Telegram の番号が入力した番号と違います。番号を確認して、もう一度お試しください。',
     cp_tg_expired: '時間がかかりすぎました。もう一度 Telegram を押してください。',
     cp_tg_number_first: '先に番号を入力してから、Telegram を押してください。',
+    cp_tg_match: 'Telegram にも同じマークが出ます：',
   },
 });
 
@@ -345,6 +350,8 @@ function verifyErrorText(err) {
   if (err.code === 'wrong_code' || err.code === 'invalid') return t('cp_code_wrong');
   if (err.code === 'code_expired') return t('cp_code_expired');
   if (err.code === 'code_sending') return t('cp_code_on_way');
+  // "Verify to chat": verifying from a profile made without it — the number already has another profile.
+  if (err.code === 'phone_in_use') return t('cp_phone_in_use');
   if (err.status === 429) return t('cp_too_many');
   return err.status === 0 ? t('err_network') : t('err_generic');
 }
@@ -507,7 +514,8 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
   // ---------- the free Telegram bot (GET /auth/methods → telegram: 'bot'; owner 2026-10-13) ----------
   // No code: the number typed here goes to POST /auth/telegram/start, Telegram opens on the 30+DA bot, the person
   // taps "Share my number" there, and GET /auth/telegram/status (every 2 s, and on coming back to this tab) signs
-  // in this browser exactly like a good code. model.tg = { phone, link, until, opened, pin } while it waits.
+  // in this browser exactly like a good code. model.tg = { phone, link, until, opened, pin, match } while it waits.
+  // match ("🍊 47") is shown here and repeated by the bot: a person sent someone else's link sees no such screen.
   function botMode() { return methods?.telegram === 'bot'; }
   model.tg ||= null;
   let tgTimer = null;
@@ -553,7 +561,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     try {
       const pin = waitingPin(); // a returning person's waiting PIN goes with the check (the server keeps it hashed)
       const r = await api.post('/auth/telegram/start', { phone, lang: state.lang, ...(pin ? { pin } : {}) });
-      model.tg = { phone: r.phone || phone, link: r.link, until: Date.now() + (Number(r.expiresIn) || 600) * 1000, opened: false, pin: Boolean(pin) };
+      model.tg = { phone: r.phone || phone, link: r.link, until: Date.now() + (Number(r.expiresIn) || 600) * 1000, opened: false, pin: Boolean(pin), match: typeof r.match === 'string' ? r.match : null };
       openTelegram(r.link);
       waitForTelegram(Number(r.pollMs) || 2000);
     } catch (err) {
@@ -589,7 +597,9 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
       if (r.state !== 'waiting') {
         // Over without a number: their own number was another one, or it took too long (calm, one line).
         endTelegram();
-        showNote(t(r.state === 'mismatch' ? 'cp_tg_mismatch' : 'cp_tg_expired'), r.state === 'mismatch' ? 'flag' : 'clock');
+        // in_use ("Verify to chat"): Telegram proved a number that already has another profile.
+        const said = { mismatch: 'cp_tg_mismatch', in_use: 'cp_phone_in_use' }[r.state] || 'cp_tg_expired';
+        showNote(t(said), r.state === 'mismatch' || r.state === 'in_use' ? 'flag' : 'clock');
         render();
         return;
       }
@@ -603,7 +613,8 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
       tgBusy = false;
     }
     if (!model.tg) return;
-    if (Date.now() > model.tg.until + 60e3) {
+    // Past the server's verified grace (2 minutes after the 10) plus a little: only then give up on our own.
+    if (Date.now() > model.tg.until + 150e3) {
       endTelegram();
       showNote(t('cp_tg_expired'));
       render();
@@ -612,7 +623,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     waitForTelegram(next);
   }
 
-  /** While it waits: "Open Telegram and tap “Share my number”." · the number · [Open Telegram] · Cancel. */
+  /** While it waits: "Open Telegram and tap “Share my number”." · the number · the sign (🍊 47) · [Open Telegram] · Cancel. */
   function tgWaitBox() {
     tgEl = null;
     if (!model.tg) return null;
@@ -621,7 +632,8 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
         el('span', { class: 'tg-wait-mark', 'aria-hidden': 'true' }, brandMark('telegram')),
         el('div', { class: 'tg-wait-text' },
           el('strong', {}, t(model.tg.opened ? 'cp_tg_opened' : 'cp_tg_wait')),
-          el('span', { class: 'tg-wait-num' }, model.tg.phone))),
+          el('span', { class: 'tg-wait-num' }, model.tg.phone),
+          model.tg.match ? el('span', { class: 'tg-wait-match' }, t('cp_tg_match'), ' ', el('b', {}, model.tg.match)) : null)),
       el('div', { class: 'tg-wait-actions' },
         el('a', { class: 'btn btn-sm tg-open', href: model.tg.link, target: '_blank', rel: 'noopener noreferrer' }, t('cp_tg_open')),
         el('button', { type: 'button', class: 'link tg-cancel', on: { click: () => { endTelegram(); render(); } } }, t('cp_tg_cancel'))));
@@ -1161,13 +1173,16 @@ screen('/create', ({ root, query }) => {
   const fieldsReady = () => Boolean(draft.photo && checkAppName(draft.name).ok && checkBirthYear(draft.birthYear).ok
     && charCount(draft.realName.trim()) >= 2
     && draft.gender && draft.role);
-  const ready = () => fieldsReady() && Boolean(draft.phone.verified || draft.verified.gmail || draft.verified.facebook || draft.verified.tiktok);
+  // "Verify to chat" (owner 2026-10-13): Next works as soon as the fields are filled — verifying is only needed to
+  // chat. Verified here → the profile is made as before; not → { unverified: true } (screens/verify-chat.js asks later).
+  const verifiedHere = () => Boolean(draft.phone.verified || draft.verified.gmail || draft.verified.facebook || draft.verified.tiktok);
+  const ready = () => fieldsReady();
   function update() {
     const ok = ready();
     cont.disabled = !ok || saving;
-    // A few words, only while Next is still off: "Fill in every field first." / "Now pick a way to verify."
+    // A few words, only while Next is still off: "Fill in every field first."
     contNote.hidden = ok || saving;
-    contNote.textContent = t(fieldsReady() ? 'cp_need_way' : 'cp_need_all');
+    contNote.textContent = t('cp_need_all');
   }
 
   async function submit() {
@@ -1185,6 +1200,7 @@ screen('/create', ({ root, query }) => {
         role: draft.role, gender: draft.gender, lang: state.lang, photo: draft.photo,
         ...(typed?.phone ? { phone: typed.phone } : {}),
         ...(waitingPin() ? { pin: waitingPin() } : {}),
+        ...(verifiedHere() ? {} : { unverified: true }),
       });
       if (r.user?.pinSet) clearPinFlags();
       const extras = await heldExtras();
@@ -1236,6 +1252,8 @@ screen('/create', ({ root, query }) => {
       go('/create', { replace: true });
     } else if (err.code === 'profile_exists') {
       go('/nearby', { replace: true });
+    } else if (err.code === 'too_many_profiles') {
+      toast(t('cp_too_many_profiles'), 6000); // made without verifying: a few per connection per day
     } else {
       toast(err.status === 0 ? t('err_network') : t('err_generic'));
     }

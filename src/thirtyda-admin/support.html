@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Support · 30+DA Super admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..900&family=JetBrains+Mono:wght@400..600&display=swap">
+  <link rel="stylesheet" href="/30da/admin/app.css">
+  <link rel="stylesheet" href="/30da/admin/support.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-row">
+      <span class="wordmark">30+DA</span>
+      <span class="pill">Super admin</span>
+    </div>
+    <button class="link signout" id="signout" type="button">Sign out</button>
+  </header>
+
+  <div class="shell">
+    <nav class="sidenav" aria-label="Sections">
+      <a class="navitem" href="/30da/admin/monitor">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="4.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="8" y="1.5" width="4.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="1.5" y="8" width="4.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="8" y="8" width="4.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.3"/></svg>
+        Live overview
+      </a>
+      <a class="navitem" href="/30da/admin/monitor#users">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="5" cy="4.5" r="2.3" stroke="currentColor" stroke-width="1.3"/><path d="M1 12c.4-2.2 2-3.4 4-3.4s3.6 1.2 4 3.4M9.5 2.4a2.2 2.2 0 0 1 0 4.2M10.8 8.8c1.2.4 2 1.5 2.2 3.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        Users
+      </a>
+      <a class="navitem" href="/30da/admin/monitor#monitor">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 11.8 2.8 9A5 5 0 1 1 5 11.3L2 11.8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        Chat monitor
+      </a>
+      <a class="navitem" href="/30da/admin/questions">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5.6" stroke="currentColor" stroke-width="1.3"/><path d="M5.4 5.5a1.7 1.7 0 1 1 2.4 1.5c-.5.3-.8.6-.8 1.2v.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="10.2" r=".75" fill="currentColor"/></svg>
+        Questions
+      </a>
+      <a class="navitem" href="/30da/admin/connections">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="4.6" cy="9.4" r="2.7" stroke="currentColor" stroke-width="1.3"/><path d="M6.5 7.5 12.2 1.8M10.4 3.6l1.5 1.5M8.8 5.2l1.2 1.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        Code
+      </a>
+      <a class="navitem active" href="/30da/admin/support" aria-current="page">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5.6" stroke="currentColor" stroke-width="1.3"/><circle cx="7" cy="7" r="2.3" stroke="currentColor" stroke-width="1.3"/><path d="m3 3 2.4 2.4M11 3 8.6 5.4M3 11l2.4-2.4M11 11 8.6 8.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        Support
+        <span class="badge" id="support-badge" hidden></span>
+      </a>
+    </nav>
+
+    <main class="main sp-page">
+      <div class="head">
+        <h1>Support</h1>
+        <span class="label" id="state">Loading…</span>
+      </div>
+      <p class="sp-lede">
+        Questions people send to the 30+DA bot on Telegram. Your reply goes to them from the bot, as plain text:
+        they see the bot, never your name. The bot thanks them once a day, so they know a person will answer.
+      </p>
+      <p class="sp-banner" id="bot-banner" role="status" hidden></p>
+
+      <div class="sp-cols" id="cols">
+        <section class="panel sp-list" aria-labelledby="list-title">
+          <div class="panel-head">
+            <h2 id="list-title">Conversations</h2>
+            <span class="label" id="list-count"></span>
+          </div>
+          <ul class="sp-chats" id="chats"></ul>
+          <p class="empty" id="no-chats" hidden>No questions yet. When someone writes to the bot, it shows here.</p>
+        </section>
+
+        <section class="panel sp-thread" aria-label="Conversation">
+          <p class="sp-pick" id="pick">Pick a conversation to read it and reply.</p>
+          <div class="sp-open" id="open" hidden>
+            <div class="sp-thread-head">
+              <button type="button" class="link sp-back" id="back">← All conversations</button>
+              <h2 id="thread-title"></h2>
+              <div class="sp-who" id="who"></div>
+            </div>
+            <div class="sp-msgs" id="msgs" aria-live="polite"></div>
+            <form class="sp-reply" id="reply-form" novalidate>
+              <label class="label" for="reply">Reply from the bot</label>
+              <textarea id="reply" class="input sp-text" maxlength="2000" rows="3" placeholder="Write your reply…"></textarea>
+              <div class="sp-reply-row">
+                <span class="sp-count" id="count">0 / 2000</span>
+                <span class="sp-status" id="status" role="status"></span>
+                <button type="submit" class="btn-primary sp-send" id="send">Send</button>
+              </div>
+              <span class="sp-hint">Ctrl + Enter (⌘ + Enter) sends.</span>
+            </form>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script type="module" src="/30da/admin/support.js"></script>
+</body>
+</html>

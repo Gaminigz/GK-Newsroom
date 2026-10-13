@@ -8,7 +8,8 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import {
   PIN_TRIES, SERVER_IDLE_MS, COVER_MS, PIN_RESET_MS, lockInfo, hashPin, verifyPin, lockState, freshSigninFields,
-  legacyLockFields, activityAt, backgroundCall, nextActiveAt, whileLocked, pinSetPlan, afterWrongPin,
+  legacyLockFields, activityAt, backgroundCall, passiveCall, nextActiveAt, whileLocked, pinSetPlan, afterWrongPin,
+  pinHashStale, pepperFrom, PEPPER_MIN,
 } from './thirtyda-pin.mjs';
 import { API_ROUTES } from './thirtyda-app.mjs';
 
@@ -16,9 +17,12 @@ const MIN = 60e3;
 
 // ---------------------------------------------------------------- hash
 
+const NO_PEPPER = { pepper: null };
+const PEPPER = { pepper: 'test-pepper-0123456789abcdef' };
+
 test('hashPin: salted scrypt, never the PIN itself, a new salt every time', async () => {
-  const a = await hashPin('2580');
-  const b = await hashPin('2580');
+  const a = await hashPin('2580', NO_PEPPER);
+  const b = await hashPin('2580', NO_PEPPER);
   assert.match(a, /^scrypt\$16384\$8\$1\$[A-Za-z0-9_-]{22}\$[A-Za-z0-9_-]{43}$/);
   assert.notEqual(a, b, 'same PIN, different salt → different hash');
   assert.ok(!a.includes('2580'));
@@ -27,7 +31,7 @@ test('hashPin: salted scrypt, never the PIN itself, a new salt every time', asyn
 });
 
 test('verifyPin: right / wrong / Khmer digits / damaged or foreign hashes', async () => {
-  const h = await hashPin('2580');
+  const h = await hashPin('2580', NO_PEPPER);
   assert.equal(await verifyPin('2580', h), true);
   assert.equal(await verifyPin('២៥៨០', h), true, 'typed on a Khmer keyboard');
   assert.equal(await verifyPin('2581', h), false);
@@ -42,6 +46,40 @@ test('verifyPin: right / wrong / Khmer digits / damaged or foreign hashes', asyn
   const [pre, , , , salt, key] = h.split('$');
   const otherKey = Buffer.from(key, 'base64url').map((x) => x ^ 1).toString('base64url');
   assert.equal(await verifyPin('2580', [pre, 16384, 8, 1, salt, otherKey].join('$')), false);
+});
+
+test('the server pepper: "scrypt2" hashes need THIRTYDA_PIN_PEPPER; a copy of the database alone is not enough', async () => {
+  assert.equal(PEPPER_MIN, 16);
+  assert.equal(pepperFrom(undefined), null);
+  assert.equal(pepperFrom('short'), null, 'under 16 characters: not used');
+  assert.equal(pepperFrom('  ' + 'p'.repeat(16) + '  '), 'p'.repeat(16));
+  const h = await hashPin('2580', PEPPER);
+  assert.match(h, /^scrypt2\$16384\$8\$1\$[A-Za-z0-9_-]{22}\$[A-Za-z0-9_-]{43}$/);
+  assert.ok(!h.includes(PEPPER.pepper) && !h.includes('2580'), 'neither the pepper nor the PIN is in it');
+  assert.notEqual(h, await hashPin('2580', PEPPER), 'a new salt every time');
+  assert.equal(await verifyPin('2580', h, PEPPER), true);
+  assert.equal(await verifyPin('២៥៨០', h, PEPPER), true, 'typed on a Khmer keyboard');
+  assert.equal(await verifyPin('2581', h, PEPPER), false);
+  assert.equal(await verifyPin('2580', h, NO_PEPPER), false, 'without the pepper (a database copy): never matches');
+  assert.equal(await verifyPin('2580', h, { pepper: 'another-pepper-0123456789' }), false, 'another pepper: never matches');
+  // Trying all 10,000 PINs on the stored hash alone (no pepper) finds nothing: the key is not scrypt(PIN, salt).
+  const [, , , , salt, key] = h.split('$');
+  const crypto = await import('node:crypto');
+  const plain = crypto.scryptSync('2580', Buffer.from(salt, 'base64url'), 32, { N: 16384, r: 8, p: 1 }).toString('base64url');
+  assert.notEqual(plain, key, 'the right PIN without the pepper gives another key');
+  // The same salt + key under the old tag is not accepted as an unpeppered hash either.
+  assert.equal(await verifyPin('2580', h.replace(/^scrypt2\$/, 'scrypt$'), NO_PEPPER), false);
+});
+
+test('older hashes (no pepper) still open, and are made again with the pepper after the next right PIN', async () => {
+  const old = await hashPin('2580', NO_PEPPER);
+  assert.match(old, /^scrypt\$/);
+  assert.equal(await verifyPin('2580', old, PEPPER), true, 'a server that now has a pepper still opens the old hash');
+  assert.equal(pinHashStale(old, PEPPER), true, '→ hashed again with the pepper');
+  assert.equal(pinHashStale(old, NO_PEPPER), false, 'no pepper on this server: nothing to do');
+  assert.equal(pinHashStale(await hashPin('2580', PEPPER), PEPPER), false);
+  assert.equal(pinHashStale(null, PEPPER), false);
+  assert.equal(pinHashStale('', PEPPER), false);
 });
 
 // ---------------------------------------------------------------- lock state
@@ -96,6 +134,26 @@ test('background calls: the heartbeat and photo loads never count as use without
   assert.equal(backgroundCall('GET', '/pairs/P-1/conversation'), false, 'polling the conversation carries the header (the app)');
   assert.equal(backgroundCall('POST', '/me/photos'), false, 'an upload is the person acting');
   assert.equal(activityAt(undefined, now, { background: backgroundCall('GET', `/photos/${'b'.repeat(32)}`) }), null);
+});
+
+test('GET /me/pending ("something new is waiting") is never use, header or not', () => {
+  assert.equal(passiveCall('GET', '/me/pending'), true);
+  assert.equal(passiveCall('POST', '/me/pending'), false);
+  assert.equal(passiveCall('GET', '/me/pending/x'), false);
+  assert.equal(passiveCall('GET', '/me/heartbeat'), false);
+  assert.equal(passiveCall('GET', '/nearby'), false);
+  assert.equal(passiveCall('GET', undefined), false);
+  // A hidden, locked app asks every 5 minutes: the server's window is not moved, so it stays locked.
+  const t0 = 90_000_000;
+  let session = { ...freshSigninFields(t0) };
+  for (let s = 0; s <= 600; s += 30) {
+    const at = t0 + s * 1000;
+    if (!passiveCall('GET', '/me/pending')) {
+      const next = nextActiveAt(session, activityAt('0', at), 2 * MIN);
+      if (next) session = { ...session, activeAt: next };
+    }
+  }
+  assert.equal(lockState(session, t0 + 600e3, 2 * MIN).locked, true, 'never kept open by it');
 });
 
 test('nextActiveAt: never moves back, writes at most every 5 s (a tenth of a short window)', () => {
@@ -157,6 +215,7 @@ const SAMPLES = [
   ['DELETE', '/me/photos/2', null],
   ['POST', '/me/location', null],
   ['POST', '/me/heartbeat', null],
+  ['GET', '/me/pending', 'open'],
   ['POST', '/me/lock', 'open'],
   ['POST', '/me/unlock', 'open'],
   ['POST', '/me/pin', 'open'],
@@ -198,6 +257,8 @@ test('423 gate: wrong methods and look-alike paths are not let through', () => {
   assert.equal(whileLocked('POST', '/me/pins'), null);
   assert.equal(whileLocked('POST', '/me/pin/forgot/x'), null);
   assert.equal(whileLocked('POST', '/me/unlock/../nearby'), null);
+  assert.equal(whileLocked('POST', '/me/pending'), null, 'only GET /me/pending, and it is a number only');
+  assert.equal(whileLocked('GET', '/me/pending?x=1'), null);
   assert.equal(whileLocked('GET', '/auth/send-code'), 'open', 'not a real route (404 anyway), and not a sign-in');
   assert.equal(whileLocked('POST', ''), null);
   assert.equal(whileLocked('POST', undefined), null);

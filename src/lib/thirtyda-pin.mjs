@@ -4,6 +4,8 @@
  *
  *   - A person's PIN is 4 digits (shared/pin.js: no 0000-style repeats, no 1234 / 4321 runs). Only a salted
  *     scrypt hash is kept on the profile (users.pinHash); the PIN itself is never stored, logged or returned.
+ *     With THIRTYDA_PIN_PEPPER set (server env only, never in Mongo) the hash also needs that secret
+ *     ("scrypt2$…"), so a copy of the users collection alone cannot be tried against all 10,000 PINs.
  *   - A session is OPEN only after a sign-in (Google / Facebook / phone code) or the right PIN, and only while
  *     the person really uses the app: no real activity for SERVER_IDLE_MS (2 minutes) → locked. Real activity
  *     comes from the app's X-30DA-Input-Age header (seconds since the last touch / mouse / key / scroll), so
@@ -41,34 +43,79 @@ export const lockInfo = () => ({ coverMs: COVER_MS, idleMs: SERVER_IDLE_MS, trie
 
 const SCRYPT = { N: 16384, r: 8, p: 1 };
 const KEY_BYTES = 32;
-const HASH_RE = /^scrypt\$(\d{1,7})\$(\d{1,2})\$(\d)\$([A-Za-z0-9_-]{16,64})\$([A-Za-z0-9_-]{32,128})$/;
+// "scrypt$" = the PIN alone (before the pepper, or a server without one); "scrypt2$" = HMAC-SHA256(pepper, PIN).
+const HASH_RE = /^(scrypt2?)\$(\d{1,7})\$(\d{1,2})\$(\d)\$([A-Za-z0-9_-]{16,64})\$([A-Za-z0-9_-]{32,128})$/;
 
-function scrypt(pin, salt, { N, r, p }, keylen = KEY_BYTES) {
+/** The server's PIN pepper: at least 16 characters, else none (a short one would be a false comfort). */
+export const PEPPER_MIN = 16;
+export function pepperFrom(raw) {
+  const v = typeof raw === "string" ? raw.trim() : "";
+  return v.length >= PEPPER_MIN ? v : null;
+}
+/**
+ * THIRTYDA_PIN_PEPPER — a server secret mixed into every new PIN hash and never stored in Mongo. Its own value
+ * (not THIRTYDA_SECRET_KEY, which may be rotated): changing or removing it later means every "scrypt2" PIN stops
+ * matching, and those people use "Forgot PIN?" (sign in again, set a new PIN).
+ */
+const PIN_PEPPER = pepperFrom(process.env.THIRTYDA_PIN_PEPPER);
+if (process.env.THIRTYDA_PIN_PEPPER && !PIN_PEPPER) {
+  console.warn(`[30da pin] THIRTYDA_PIN_PEPPER is shorter than ${PEPPER_MIN} characters, so it is not used.`);
+}
+/** true when this server hashes new PINs with the pepper (never says what it is). */
+export const pinPepperSet = () => Boolean(PIN_PEPPER);
+
+function scrypt(secret, salt, { N, r, p }, keylen = KEY_BYTES) {
   return new Promise((resolve, reject) => {
-    crypto.scrypt(pin, salt, keylen, { N, r, p, maxmem: 64 * 1024 * 1024 }, (err, key) => (err ? reject(err) : resolve(key)));
+    crypto.scrypt(secret, salt, keylen, { N, r, p, maxmem: 64 * 1024 * 1024 }, (err, key) => (err ? reject(err) : resolve(key)));
   });
 }
 
-/** 4 digits → "scrypt$N$r$p$salt$key" (random 16-byte salt). Async: never blocks the server. */
-export async function hashPin(pin) {
+/** What scrypt is given: the 4 digits, or with a pepper HMAC-SHA256(pepper, digits). */
+const secretFor = (digits, pepper) => (pepper ? crypto.createHmac("sha256", pepper).update(digits).digest() : digits);
+
+let warnedNoPepper = false;
+/**
+ * 4 digits → "scrypt2$N$r$p$salt$key" with the pepper ("scrypt$…" without one; random 16-byte salt either way).
+ * Async: never blocks the server. `opts.pepper` is for tests; the server uses THIRTYDA_PIN_PEPPER.
+ */
+export async function hashPin(pin, { pepper = PIN_PEPPER } = {}) {
   if (typeof pin !== "string" || !/^\d{4}$/.test(pin)) throw new Error("A PIN is 4 digits.");
+  const key = pepperFrom(pepper);
+  // Said once on a real database (not the _dev one, not under node --test), never with any value in it.
+  if (!key && !warnedNoPepper && !String(process.env.MONGO_DB || "yaikh").endsWith("_dev") && !process.env.NODE_TEST_CONTEXT) {
+    warnedNoPepper = true;
+    console.warn("[30da pin] THIRTYDA_PIN_PEPPER is not set: PINs are hashed without the server pepper.");
+  }
   const salt = crypto.randomBytes(16);
-  const key = await scrypt(pin, salt, SCRYPT);
-  return `scrypt$${SCRYPT.N}$${SCRYPT.r}$${SCRYPT.p}$${salt.toString("base64url")}$${key.toString("base64url")}`;
+  const out = await scrypt(secretFor(pin, key), salt, SCRYPT);
+  return `${key ? "scrypt2" : "scrypt"}$${SCRYPT.N}$${SCRYPT.r}$${SCRYPT.p}$${salt.toString("base64url")}$${out.toString("base64url")}`;
 }
 
-/** true when `pin` (as typed: Khmer / full-width digits are fine) matches the stored hash. Constant-time compare. */
-export async function verifyPin(pin, stored) {
+/**
+ * true when `pin` (as typed: Khmer / full-width digits are fine) matches the stored hash. Constant-time compare.
+ * A "scrypt2" hash needs the same pepper (none, or another one → false); an older "scrypt" hash needs none.
+ */
+export async function verifyPin(pin, stored, { pepper = PIN_PEPPER } = {}) {
   const m = HASH_RE.exec(String(stored ?? ""));
   if (!m) return false;
-  const [N, r, p] = [m[1], m[2], m[3]].map(Number);
+  const [N, r, p] = [m[2], m[3], m[4]].map(Number);
   // Only parameters this module writes (a planted huge N must not tie the server up).
   if (N !== SCRYPT.N || r !== SCRYPT.r || p !== SCRYPT.p) return false;
+  const key = m[1] === "scrypt2" ? pepperFrom(pepper) : null;
+  if (m[1] === "scrypt2" && !key) return false;
   const digits = pinDigits(pin);
   if (digits.length !== PIN_LENGTH) return false;
-  const want = Buffer.from(m[5], "base64url");
-  const got = await scrypt(digits, Buffer.from(m[4], "base64url"), { N, r, p }, want.length);
+  const want = Buffer.from(m[6], "base64url");
+  const got = await scrypt(secretFor(digits, key), Buffer.from(m[5], "base64url"), { N, r, p }, want.length);
   return got.length === want.length && crypto.timingSafeEqual(got, want);
+}
+
+/**
+ * true when a stored hash was made without the pepper this server now has: after the next right PIN it is
+ * hashed again with the pepper (so old profiles move over without anyone setting a new PIN).
+ */
+export function pinHashStale(stored, { pepper = PIN_PEPPER } = {}) {
+  return Boolean(pepperFrom(pepper)) && /^scrypt\$/.test(String(stored ?? ""));
 }
 
 // ---------------------------------------------------------------- lock state
@@ -124,6 +171,14 @@ export function backgroundCall(method, sub) {
 }
 
 /**
+ * Calls that are NEVER use, header or not: GET /me/pending, the check a hidden, locked app makes for "Remind me"
+ * (owner 2026-10-13). It must not keep a session open, so it never moves the last activity.
+ */
+export function passiveCall(method, sub) {
+  return method === "GET" && String(sub || "") === "/me/pending";
+}
+
+/**
  * The activeAt to store after a call that showed activity at `at`, or null when there is nothing to write:
  * never moves back, and skips writes closer than a tenth of the window (≤ 5 s) to the stored one — so the
  * server may lock up to that much before the full window, never after it.
@@ -139,7 +194,8 @@ export function nextActiveAt(session, at, idleMs = SERVER_IDLE_MS) {
 /**
  * What a LOCKED session may still call (sub = path under /30da/api):
  *   'signin' — the sign-in steps, as if signed out (a locked session never lends its profile to a new sign-in);
- *   'open'   — the rest of /auth/* (methods, sign out) and the PIN routes (lock, unlock, set / change, forgot);
+ *   'open'   — the rest of /auth/* (methods, sign out), the PIN routes (lock, unlock, set / change, forgot) and
+ *              GET /me/pending ("something new is waiting": a number only, for the notification of a locked app);
  *   null     — everything else: 423 locked. (The version check and static files never reach the API router.)
  */
 export function whileLocked(method, sub) {
@@ -149,6 +205,7 @@ export function whileLocked(method, sub) {
   if ((method === "POST" && path === "/auth/telegram/start") || (method === "GET" && path === "/auth/telegram/status")) return "signin";
   if (/^\/auth\//.test(path)) return "open";
   if (method === "POST" && /^\/me\/(lock|unlock|pin|pin\/forgot)$/.test(path)) return "open";
+  if (passiveCall(method, path)) return "open";
   return null;
 }
 

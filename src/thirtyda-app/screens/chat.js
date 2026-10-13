@@ -636,6 +636,8 @@ export function mountChat(root, { pair, data, gate, history = null, header: head
       case 'chat_closed':
         toWait();
         return;
+      case 'verify_needed': // the "Verify to chat" sheet already said why; the line stays in the box
+        return;
       default:
         if (err?.status !== 401 && err?.code !== 'blocked') toast(errorText(err));
     }

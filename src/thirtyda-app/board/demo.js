@@ -490,8 +490,9 @@
       gender: u.gender ?? null,
       lang: u.lang ?? 'en',
       phone: u.phone ?? null,
+      phoneUnverified: u.phone ? null : u.phoneUnverified ?? null,
       birthYear: Number.isInteger(u.birthYear) ? u.birthYear : null,
-      verified: { phone: Boolean(u.verified?.phone), gmail: Boolean(u.verified?.gmail), facebook: Boolean(u.verified?.facebook) },
+      verified: { phone: Boolean(u.verified?.phone), gmail: Boolean(u.verified?.gmail), facebook: Boolean(u.verified?.facebook), tiktok: Boolean(u.verified?.tiktok) },
       photos: slotUrls(u),
       photoSlots: { max: R.PHOTO_MAX, allowed: R.PHOTO_MAX, levels: [...R.PHOTO_SLOT_LEVELS], filled: filledCount(u) },
       area: u.area ?? '',
@@ -799,6 +800,7 @@
     if ((method === 'POST' && sub === '/auth/telegram/start') || (method === 'GET' && sub === '/auth/telegram/status')) return 'signin';
     if (/^\/auth\//.test(sub)) return 'open';
     if (method === 'POST' && /^\/me\/(lock|unlock|pin|pin\/forgot)$/.test(sub)) return 'open';
+    if (method === 'GET' && sub === '/me/pending') return 'open'; // "something new is waiting": a number only
     return null;
   }
   const lockedError = (u) => fail(423, 'locked', 'Enter your PIN.', { pin: Boolean(u?.pin), lock: lockInfo() });
@@ -916,7 +918,9 @@
     if (!phone) throw invalid('That phone number does not look right.', { field: 'phone' });
     const newPin = waitingPinOf(body);
     W.tgCheck = { phone, newPin, at: Date.now(), state: 'waiting' };
-    return { ok: true, phone, link: 'https://t.me/ThirtyDA_demo_bot?start=demo', bot: 'ThirtyDA_demo_bot', expiresIn: 600, pollMs: 2000 };
+    // match: the sign the waiting box shows and the bot repeats (server: "🍊 47", random per check).
+    const match = `${['🍊', '🍋', '🍉', '🍇', '🐢', '🦋'][Math.floor(Math.random() * 6)]} ${10 + Math.floor(Math.random() * 90)}`;
+    return { ok: true, phone, link: 'https://t.me/ThirtyDA_demo_bot?start=demo', bot: 'ThirtyDA_demo_bot', expiresIn: 600, pollMs: 2000, match };
   }
 
   function telegramStatus({ locked }) {
@@ -932,6 +936,7 @@
     W.tgCheck = null;
     const current = locked ? null : me();
     let user = [...W.users.values()].find((x) => x.phone === c.phone) ?? null;
+    if (inUseFor(current, user)) return { state: 'in_use' }; // "Verify to chat": another profile has this number
     const byPhone = Boolean(user);
     if (!user && current) {
       current.phone = c.phone;
@@ -981,6 +986,8 @@
     W.otps.delete(phone);
     const current = locked ? null : me();
     let user = [...W.users.values()].find((x) => x.phone === phone) ?? null;
+    // "Verify to chat": from a profile with nothing verified, a number another profile has is refused (no switch).
+    if (inUseFor(current, user)) throw fail(409, 'phone_in_use', 'This phone number already has a profile.');
     const byPhone = Boolean(user);
     if (!user && current) {
       current.phone = phone;
@@ -1013,10 +1020,28 @@
     return { ok: true };
   }
 
+  // "Verify to chat" (owner 2026-10-13, server: src/lib/thirtyda-verify.mjs): a profile can be made without verifying
+  // ({ unverified: true }, a few per day — here per frame), and talking to someone waits for one verified way.
+  const UNVERIFIED_PER_DAY = 3;
+  const canTalk = (u) => ['phone', 'gmail', 'facebook', 'tiktok'].some((k) => u?.verified?.[k] === true);
+  const TALK_ROUTES = [
+    ['POST', /^\/pairs$/], ['POST', /^\/pairs\/(P-\d+)\/sets$/], ['PUT', /^\/pairs\/(P-\d+)\/replies$/],
+    ['POST', /^\/pairs\/(P-\d+)\/answers$/], ['POST', /^\/pairs\/(P-\d+)\/decide$/], ['POST', /^\/pairs\/(P-\d+)\/messages$/],
+  ];
+  const talksToSomeone = (method, sub) => TALK_ROUTES.some(([m, re]) => m === method && re.test(sub));
+  /** A number another profile has, proved from a profile with nothing verified: refused, never a switch or a merge. */
+  const inUseFor = (current, user) => Boolean(current && user && user.id !== current.id && !canTalk(current));
+  let unverifiedMade = 0;
+
   function createProfile({ body }) {
     if (me()) throw fail(409, 'profile_exists', 'You already have a profile.');
     const s = W.session;
-    if (!s.phoneVerified && !s.verified?.gmail && !s.verified?.facebook && !s.verified?.tiktok) throw fail(403, 'not_verified', 'Verify your phone, Google, Facebook or TikTok first.');
+    const proved = Boolean(s && (s.phoneVerified || s.verified?.gmail || s.verified?.facebook || s.verified?.tiktok));
+    const unverified = !proved && body.unverified === true;
+    if (!proved && !unverified) {
+      if (!s) throw fail(401, 'signed_out', 'Please sign in.');
+      throw fail(403, 'not_verified', 'Verify your phone, Google, Facebook or TikTok first.');
+    }
     const name = checkName(body.name);
     const birthYear = checkBirth(body.birthYear);
     const realName = String(body.realName ?? '').trim().replace(/\s+/g, ' ');
@@ -1025,18 +1050,28 @@
     if (!['man', 'woman', 'other'].includes(body.gender)) throw invalid('Choose male, female or other.', { field: 'gender' });
     const lang = checkLang(body.lang);
     const newPin = waitingPinOf(body);
-    const phone = s.phoneVerified ? s.phone : null;
+    const phone = proved && s.phoneVerified ? s.phone : null;
     if (phone && [...W.users.values()].some((x) => x.phone === phone)) throw fail(409, 'phone_in_use', 'This phone number already has a profile.');
+    // A number typed but never proved: kept as phoneUnverified (never `phone`, never verified.phone).
+    const typed = phone || body.phone == null || body.phone === '' ? null : normalizePhone(body.phone);
+    if (!phone && body.phone != null && body.phone !== '' && !typed) throw invalid('That phone number does not look right.', { field: 'phone' });
+    if (unverified && unverifiedMade >= UNVERIFIED_PER_DAY) {
+      throw fail(429, 'too_many_profiles', 'Too many new profiles from this connection today. Please try again tomorrow.');
+    }
     const photo = checkPhoto(body.photo);
     const id = nextId('user', 'U-');
     const user = {
-      id, name, realName, birthYear, role, gender: body.gender, lang, phone,
-      verified: { phone: Boolean(phone), gmail: Boolean(s.verified?.gmail), facebook: Boolean(s.verified?.facebook), tiktok: Boolean(s.verified?.tiktok) },
+      id, name, realName, birthYear, role, gender: body.gender, lang, phone, phoneUnverified: typed,
+      verified: { phone: Boolean(phone), gmail: Boolean(s?.verified?.gmail), facebook: Boolean(s?.verified?.facebook), tiktok: Boolean(s?.verified?.tiktok) },
       photos: [photo], seeded: false, location: null, km: 0, area: '', city: '', hearts: { red: 0, orange: 0 },
       level: 1, blocked: false, notices: [], pin: newPin, pinTries: 0,
     };
     W.users.set(id, user);
-    Object.assign(s, { userId: id, pinOk: true, pinTries: 0, pinResetUntil: 0 });
+    if (unverified) {
+      unverifiedMade++;
+      startSession({ userId: id, phone: null, phoneVerified: false, verified: { gmail: false, facebook: false, tiktok: false } });
+    }
+    Object.assign(W.session, { userId: id, pinOk: true, pinTries: 0, pinResetUntil: 0 });
     return { user: meView(user) };
   }
 
@@ -1131,6 +1166,12 @@
     const views = visiblePairs(u).map((p) => pairView(p, u)).sort((x, y) => String(y.updatedAt).localeCompare(String(x.updatedAt)));
     const actions = views.filter((v) => v.turn);
     return { actions, notices: [] };
+  }
+
+  /** GET /me/pending (server: open while locked, never use): how many conversations wait — nothing else. */
+  function pendingCount() {
+    const u = me();
+    return { count: visiblePairs(u).map((p) => pairView(p, u)).filter((v) => v.turn).length };
   }
 
   function nearby({ url }) {
@@ -1544,7 +1585,7 @@
     ['POST', /^\/auth\/telegram\/start$/, telegramStart, { auth: 'none' }],
     ['GET', /^\/auth\/telegram\/status$/, telegramStatus, { auth: 'none' }],
     ['POST', /^\/auth\/signout$/, signout, { auth: 'none' }],
-    ['POST', /^\/profile$/, createProfile, { auth: 'session' }],
+    ['POST', /^\/profile$/, createProfile, { auth: 'none' }],
     ['GET', /^\/me$/, getMe, { auth: 'none' }],
     ['PATCH', /^\/me$/, patchMe],
     ['POST', /^\/me\/photos$/, addPhoto],
@@ -1552,6 +1593,7 @@
     ['DELETE', /^\/me\/photos\/([0-3])$/, removePhoto],
     ['POST', /^\/me\/location$/, setLocation],
     ['POST', /^\/me\/heartbeat$/, heartbeat],
+    ['GET', /^\/me\/pending$/, pendingCount],
     ['POST', /^\/me\/lock$/, lockMe, { auth: 'session' }],
     ['POST', /^\/me\/unlock$/, unlockMe],
     ['POST', /^\/me\/pin$/, setPin],
@@ -1594,6 +1636,7 @@
     const auth = found.opts.auth ?? 'user';
     if (auth !== 'none' && !W.session) throw fail(401, 'signed_out', 'Please sign in.');
     if (auth === 'user' && !me()) throw fail(401, 'no_profile', 'Create your profile first.');
+    if (me() && talksToSomeone(method, sub) && !canTalk(me())) throw fail(403, 'verify_needed', 'Verify your phone, Google, Facebook or TikTok to chat.');
     const out = found.fn(ctx);
     return { status: ctx.status, out };
   }

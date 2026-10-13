@@ -11,6 +11,7 @@ import { clearSettingsCache, SETTINGS_COLLECTION, fieldsStatus } from './thirtyd
 import { codeChannelConfigured, testCodesAllowed } from './thirtyda-code-send.mjs';
 import {
   BOT_SETTING, TG_CHECKS, CHECK_TTL_MS, HOOK_PATH, BOT_TEXT, BOT_LANGS, SECRET_HEADER,
+  CHECK_COOKIE_MAX_AGE_S, VERIFIED_GRACE_MS, MATCH_RE, maskPhone, phnomPenhTime, askVars,
   checkBotToken, saveBot, tryBot, removeBot, botOffer, botOffered, botView, botConfig, startCheck, pollCheck, checkId,
   newBrowserKey, readCheckCookie, checkCookie, hookSecretOk, parseUpdate, contactVerdict, phoneDigits, processUpdate,
   botReply, handleTelegramHook, startLink, cleanDescription, windowLimiter,
@@ -292,7 +293,12 @@ test('check: only the token hash is stored, 10 minutes, bound to the browser, on
 test('check cookie: HttpOnly, SameSite=Lax, only for /30da/api/auth/telegram, Secure on https', () => {
   const v = newBrowserKey();
   const https = checkCookie({ headers: { host: 'ggmt.sg' } }, v);
-  assert.match(https, new RegExp(`^thirtyda_tg=${v}; HttpOnly; SameSite=Lax; Path=/30da/api/auth/telegram; Max-Age=600; Secure$`));
+  assert.match(https, new RegExp(`^thirtyda_tg=${v}; HttpOnly; SameSite=Lax; Path=/30da/api/auth/telegram; Max-Age=720; Secure$`));
+  // The cookie outlives every check the server may still hand over: the 10 minutes + the verified grace.
+  const maxAge = Number(https.match(/Max-Age=(\d+)/)[1]);
+  assert.ok(maxAge >= (CHECK_TTL_MS + VERIFIED_GRACE_MS) / 1000, `Max-Age ${maxAge}`);
+  assert.equal(CHECK_COOKIE_MAX_AGE_S, maxAge);
+  assert.match(checkCookie({ headers: { host: 'ggmt.sg' } }, '', 0), /; Max-Age=0; Secure$/, 'clearing it');
   assert.ok(!checkCookie({ headers: { host: 'localhost:8096' } }, v).includes('Secure'));
   assert.equal(readCheckCookie({ headers: { cookie: `a=1; thirtyda_tg=${v}; b=2` } }), v);
   assert.equal(readCheckCookie({ headers: { cookie: 'thirtyda_tg=zzz' } }), null);
@@ -334,8 +340,33 @@ test('status → sign-in: a verified check signs in ONCE (single use), its PIN h
   assert.deepEqual(await pollCheck(d, newBrowserKey(), { onVerified, now }), { state: 'none' });
 });
 
+test('verified in the last minutes: still collected after the 10 minutes (the grace), and the cookie lasts that long', async () => {
+  const d = fakeDb();
+  const browser = newBrowserKey();
+  const t0 = Date.now();
+  const { token } = await startCheck(d, { phone: PHONE, browser, now: t0 });
+  const sharedAt = t0 + 9.5 * 60e3; // shared at 9:30
+  await processUpdate(d, parseUpdate(startUpdate(token, 111)), sharedAt);
+  assert.equal(kl(await processUpdate(d, parseUpdate(contactUpdate(111, { user_id: 111, phone_number: '85512345678' })), sharedAt)).kind, 'done');
+  const pollAt = t0 + 11 * 60e3; // the next poll comes at 11:00 (back from Telegram late, or a hidden tab)
+  assert.ok(pollAt < t0 + CHECK_COOKIE_MAX_AGE_S * 1000, 'the browser still has its cookie then');
+  const signed = [];
+  const r = await pollCheck(d, browser, { now: pollAt, onVerified: async (c) => { signed.push(c.phone); return { ok: true }; } });
+  assert.deepEqual(r, { ok: true, state: 'verified' });
+  assert.deepEqual(signed, [PHONE]);
+  // Past the grace, a verified check that nobody collected reads expired.
+  const b2 = newBrowserKey();
+  const { token: t2 } = await startCheck(d, { phone: PHONE, browser: b2, now: t0 });
+  await processUpdate(d, parseUpdate(startUpdate(t2, 222)), sharedAt);
+  await processUpdate(d, parseUpdate(contactUpdate(222, { user_id: 222, phone_number: '85512345678' })), sharedAt);
+  assert.deepEqual(await pollCheck(d, b2, { now: sharedAt + VERIFIED_GRACE_MS + 1 }), { state: 'expired' });
+  assert.ok(CHECK_COOKIE_MAX_AGE_S * 1000 >= 9.99 * 60e3 + VERIFIED_GRACE_MS, 'a share in the last second is still collectable');
+});
+
 // ---------------------------------------------------------------- the webhook
 
+/** A plan's kind + language (an ask's vars are checked on their own). */
+const kl = (plan) => (plan ? { kind: plan.kind, lang: plan.lang } : plan);
 let updateId = 1;
 const person = (id, lang = 'en') => ({ id, is_bot: false, first_name: 'P', language_code: lang });
 const startUpdate = (token, from, lang) => ({ update_id: updateId++, message: { message_id: 1, from: person(from, lang), chat: { id: from, type: 'private' }, date: 1, text: `/start ${token}` } });
@@ -352,9 +383,10 @@ test('secret header: only the saved secret matches', () => {
 
 test('updates: /start <token>, contacts, text; groups, channels, bots and edits are ignored', () => {
   const tok = 'A'.repeat(32);
-  assert.deepEqual(parseUpdate(startUpdate(tok, 5, 'km')), { fromId: 5, chatId: 5, langCode: 'km', kind: 'start', token: tok, hadParam: true });
+  // [support] messageId (to delete a shared contact), firstName + username (who wrote, for the Support page).
+  assert.deepEqual(parseUpdate(startUpdate(tok, 5, 'km')), { fromId: 5, chatId: 5, langCode: 'km', messageId: 1, firstName: 'P', username: null, kind: 'start', token: tok, hadParam: true });
   assert.equal(parseUpdate(textUpdate(5, `/start@ThirtyDA_bot ${tok}`)).token, tok);
-  assert.deepEqual(parseUpdate(textUpdate(5, '/start')), { fromId: 5, chatId: 5, langCode: 'en', kind: 'start', token: null, hadParam: false });
+  assert.deepEqual(parseUpdate(textUpdate(5, '/start')), { fromId: 5, chatId: 5, langCode: 'en', messageId: 3, firstName: 'P', username: null, kind: 'start', token: null, hadParam: false });
   assert.equal(parseUpdate(textUpdate(5, '/start not-a-token')).token, null);
   assert.equal(parseUpdate(textUpdate(5, '+855 12 345 678')).kind, 'other');
   assert.deepEqual(parseUpdate(contactUpdate(5, { user_id: 5, phone_number: '85512345678' })).contact, { userId: 5, phone: '85512345678' });
@@ -381,19 +413,19 @@ test('bot: /start binds the check to the FIRST Telegram user; a typed number is 
   const browser = newBrowserKey();
   const now = Date.now();
   const { token } = await startCheck(d, { phone: PHONE, lang: 'ko', browser, now });
-  assert.deepEqual(await processUpdate(d, parseUpdate(startUpdate(token, 111, 'en')), now), { kind: 'ask', lang: 'ko' }, 'the check\'s language wins');
+  assert.deepEqual(kl(await processUpdate(d, parseUpdate(startUpdate(token, 111, 'en')), now)), { kind: 'ask', lang: 'ko' }, 'the check\'s language wins');
   assert.equal((await pollCheck(d, browser, { now })).opened, true);
-  assert.deepEqual(await processUpdate(d, parseUpdate(startUpdate(token, 222)), now), { kind: 'expired', lang: 'ko' }, 'a second Telegram user cannot take the link');
-  assert.deepEqual(await processUpdate(d, parseUpdate(startUpdate(token, 111)), now), { kind: 'ask', lang: 'ko' }, 'the same person may open it again');
-  assert.deepEqual(await processUpdate(d, parseUpdate(textUpdate(111, '85512345678')), now), { kind: 'ask', lang: 'ko' }, 'text → the button again');
-  assert.deepEqual(await processUpdate(d, parseUpdate(contactUpdate(111, { user_id: 999, phone_number: '85512345678' })), now), { kind: 'not_own', lang: 'ko' });
-  assert.deepEqual(await processUpdate(d, parseUpdate(contactUpdate(222, { user_id: 222, phone_number: '85512345678' })), now), { kind: 'help', lang: 'en' }, 'not bound to 222');
+  assert.deepEqual(kl(await processUpdate(d, parseUpdate(startUpdate(token, 222)), now)), { kind: 'expired', lang: 'ko' }, 'a second Telegram user cannot take the link');
+  assert.deepEqual(kl(await processUpdate(d, parseUpdate(startUpdate(token, 111)), now)), { kind: 'ask', lang: 'ko' }, 'the same person may open it again');
+  assert.deepEqual(kl(await processUpdate(d, parseUpdate(textUpdate(111, '85512345678')), now)), { kind: 'ask', lang: 'ko' }, 'text → the button again');
+  assert.deepEqual(kl(await processUpdate(d, parseUpdate(contactUpdate(111, { user_id: 999, phone_number: '85512345678' })), now)), { kind: 'not_own', lang: 'ko' });
+  assert.deepEqual(kl(await processUpdate(d, parseUpdate(contactUpdate(222, { user_id: 222, phone_number: '85512345678' })), now)), { kind: 'help', lang: 'en' }, 'not bound to 222');
   assert.equal((await pollCheck(d, browser, { now })).state, 'waiting', 'still waiting after all that');
-  assert.deepEqual(await processUpdate(d, parseUpdate(contactUpdate(111, { user_id: 111, phone_number: '+85512345678' })), now), { kind: 'done', lang: 'ko' });
+  assert.deepEqual(kl(await processUpdate(d, parseUpdate(contactUpdate(111, { user_id: 111, phone_number: '+85512345678' })), now)), { kind: 'done', lang: 'ko' });
   assert.equal((await d.collection(TG_CHECKS).findOne({ _id: checkId(token) })).state, 'verified');
   // Late or repeated updates change nothing.
-  assert.deepEqual(await processUpdate(d, parseUpdate(contactUpdate(111, { user_id: 111, phone_number: '85599999999' })), now), { kind: 'help', lang: 'en' });
-  assert.deepEqual(await processUpdate(d, parseUpdate(startUpdate(token, 111)), now), { kind: 'expired', lang: 'ko' });
+  assert.deepEqual(kl(await processUpdate(d, parseUpdate(contactUpdate(111, { user_id: 111, phone_number: '85599999999' })), now)), { kind: 'help', lang: 'en' });
+  assert.deepEqual(kl(await processUpdate(d, parseUpdate(startUpdate(token, 111)), now)), { kind: 'expired', lang: 'ko' });
   assert.equal((await d.collection(TG_CHECKS).findOne({ _id: checkId(token) })).state, 'verified');
 });
 
@@ -403,34 +435,71 @@ test('bot: their own number but not the typed one → mismatch (said once to the
   const now = Date.now();
   const { token } = await startCheck(d, { phone: PHONE, browser, now });
   await processUpdate(d, parseUpdate(startUpdate(token, 111)), now);
-  assert.deepEqual(await processUpdate(d, parseUpdate(contactUpdate(111, { user_id: 111, phone_number: '85587654321' })), now), { kind: 'mismatch', lang: 'en' });
+  assert.deepEqual(kl(await processUpdate(d, parseUpdate(contactUpdate(111, { user_id: 111, phone_number: '85587654321' })), now)), { kind: 'mismatch', lang: 'en' });
   assert.deepEqual(await pollCheck(d, browser, { now }), { state: 'mismatch' });
   assert.deepEqual(await pollCheck(d, browser, { now }), { state: 'none' });
   // Expired: /start after 10 minutes.
   const b2 = newBrowserKey();
   const { token: t2 } = await startCheck(d, { phone: PHONE, browser: b2, now });
-  assert.deepEqual(await processUpdate(d, parseUpdate(startUpdate(t2, 111, 'ja')), now + CHECK_TTL_MS + 1), { kind: 'expired', lang: 'en' });
+  assert.deepEqual(kl(await processUpdate(d, parseUpdate(startUpdate(t2, 111, 'ja')), now + CHECK_TTL_MS + 1)), { kind: 'expired', lang: 'en' });
   // A link that never existed, or no token: calm words in the person's Telegram language.
-  assert.deepEqual(await processUpdate(d, parseUpdate(startUpdate('B'.repeat(32), 5, 'zh-hans')), now), { kind: 'expired', lang: 'zh' });
-  assert.deepEqual(await processUpdate(d, parseUpdate(textUpdate(5, '/start')), now), { kind: 'help', lang: 'en' });
+  assert.deepEqual(kl(await processUpdate(d, parseUpdate(startUpdate('B'.repeat(32), 5, 'zh-hans')), now)), { kind: 'expired', lang: 'zh' });
+  assert.deepEqual(kl(await processUpdate(d, parseUpdate(textUpdate(5, '/start')), now)), { kind: 'help', lang: 'en' });
   assert.equal(await processUpdate(d, { kind: 'ignore' }, now), null);
 });
 
 test('bot replies: the one-button keyboard asks for the contact; done / mismatch remove it; 5 languages', () => {
-  const ask = botReply('ask', 'km', 77);
+  const vars = { phone: '+855 ••••• 678', time: '14:05', mark: '🍊 47' };
+  const ask = botReply('ask', 'km', 77, vars);
   assert.equal(ask.chat_id, 77);
-  assert.equal(ask.text, BOT_TEXT.km.ask);
+  assert.equal(ask.text, BOT_TEXT.km.ask.replace('{phone}', vars.phone).replace('{time}', vars.time).replace('{mark}', vars.mark));
   assert.deepEqual(ask.reply_markup, { keyboard: [[{ text: BOT_TEXT.km.button, request_contact: true }]], one_time_keyboard: true, resize_keyboard: true });
   assert.ok(botReply('not_own', 'en', 1).reply_markup.keyboard[0][0].request_contact);
   for (const k of ['done', 'mismatch', 'expired', 'help']) assert.deepEqual(botReply(k, 'en', 1).reply_markup, { remove_keyboard: true }, k);
-  assert.equal(BOT_TEXT.en.done, 'Done ✓ Go back to 30+DA.');
-  assert.equal(BOT_TEXT.en.mismatch, 'That number is not the one you typed in 30+DA.');
+  assert.equal(BOT_TEXT.en.done, 'Number verified ✓ Go back to 30+DA.');
+  assert.equal(BOT_TEXT.en.mismatch, 'That number is not the one you typed in 30+DA. In 30+DA, type the same number your Telegram uses, with its country code, then tap Telegram again.');
   assert.equal(BOT_TEXT.en.button, 'Share my number');
   for (const lang of BOT_LANGS) {
     for (const k of Object.keys(BOT_TEXT.en)) assert.ok(BOT_TEXT[lang][k]?.length > 1, `${lang}.${k}`);
     assert.ok(BOT_TEXT[lang].done.includes('✓') && BOT_TEXT[lang].done.includes('30+DA'), lang);
   }
-  assert.equal(botReply('ask', 'xx', 1).text, BOT_TEXT.en.ask);
+  assert.equal(botReply('ask', 'xx', 1, vars).text, botReply('ask', 'en', 1, vars).text, 'an unknown language → English');
+  assert.ok(!/[{}]/.test(botReply('ask', 'en', 1).text), 'never a raw {placeholder}, even without vars');
+});
+
+test('a forwarded link is caught: the ask names the Phnom Penh time and the sign the app shows (never the number); it warns', async () => {
+  const d = fakeDb();
+  const browser = newBrowserKey();
+  const t0 = Date.UTC(2026, 9, 13, 7, 5); // 14:05 in Phnom Penh (UTC+7), whatever the server's own zone
+  const { token, match } = await startCheck(d, { phone: PHONE, lang: 'en', browser, now: t0 });
+  assert.match(match, MATCH_RE, 'a sign + 2 digits, e.g. "🍊 47"');
+  assert.equal((await d.collection(TG_CHECKS).findOne({ _id: checkId(token) })).match, match, 'kept on the check (not a secret)');
+  const marks = new Set();
+  for (let i = 0; i < 40; i++) marks.add((await startCheck(fakeDb(), { phone: PHONE, browser: newBrowserKey(), now: t0 })).match);
+  assert.ok(marks.size > 20, `signs vary (${marks.size}/40 different)`);
+  assert.equal(maskPhone(PHONE), '+855 ••••• 678');
+  assert.equal(maskPhone('+12'), '•••');
+  assert.equal(phnomPenhTime(t0), '14:05');
+  assert.equal(phnomPenhTime(Date.UTC(2026, 9, 13, 20, 30)), '03:30', 'past midnight in Phnom Penh');
+  const plan = await processUpdate(d, parseUpdate(startUpdate(token, 111)), t0 + 60e3);
+  assert.equal(plan.kind, 'ask');
+  // [support] owner 2026-10-13: "I do not want it to show my number" — the ask names the time and the sign only.
+  assert.deepEqual(plan.vars, { time: '14:05', mark: match });
+  assert.deepEqual(askVars(null), { time: '—', mark: '—' });
+  const text = botReply(plan.kind, plan.lang, 111, plan.vars).text;
+  assert.equal(text, `Signing in to 30+DA (14:05, Phnom Penh time)?\nCheck that your 30+DA screen shows ${match}, then tap the button to share your number.\nIf someone sent you this link, do not tap.`);
+  assert.ok(!text.includes(PHONE) && !text.includes('678') && !text.includes('•'), 'never the number, not even masked');
+  // A number typed as text gets the same ask again (words that are not a number go to support instead).
+  const again = await processUpdate(d, parseUpdate(textUpdate(111, '012 345 678')), t0 + 61e3);
+  assert.deepEqual(again.vars, plan.vars);
+  // Every language names the time and the sign, never a {phone}, and warns (a link someone sent: do not tap).
+  const warn = { en: 'If someone sent you this link', km: 'នរណាម្នាក់ផ្ញើតំណនេះ', zh: '别人发给你的', ko: '누군가 이 링크를', ja: '誰かからこのリンク' };
+  for (const lang of BOT_LANGS) {
+    for (const k of ['{time}', '{mark}']) assert.ok(BOT_TEXT[lang].ask.includes(k), `${lang}.ask has ${k}`);
+    assert.ok(!BOT_TEXT[lang].ask.includes('{phone}'), `${lang}.ask has no {phone}`);
+    const filled = botReply('ask', lang, 1, plan.vars).text;
+    assert.ok(filled.includes(match) && !filled.includes('•') && filled.includes('14:05') && filled.includes(warn[lang]) && !/[{}]/.test(filled), lang);
+  }
 });
 
 // ---------------------------------------------------------------- the webhook over HTTP
@@ -465,7 +534,9 @@ test('webhook: a wrong or missing secret header → 401, nothing read, nothing s
     const res = hookRes();
     await handleTelegramHook(hookReq({ [SECRET_HEADER]: hookSecret }, startUpdate(token, 111)), res, { db: async () => d, fetchImpl: api });
     assert.equal(res.status, 200);
-    assert.equal(api.state.sent.at(-1).text, BOT_TEXT.km.ask);
+    const check = await d.collection(TG_CHECKS).findOne({ _id: checkId(token) });
+    assert.equal(api.state.sent.at(-1).text, botReply('ask', 'km', 111, askVars(check)).text);
+    assert.ok(api.state.sent.at(-1).text.includes(check.match), 'the sign the app shows');
     assert.equal(api.state.sent.at(-1).reply_markup.keyboard[0][0].request_contact, true);
     // Someone else's contact: refused, still waiting.
     await handleTelegramHook(hookReq({ [SECRET_HEADER]: hookSecret }, contactUpdate(111, { user_id: 5, phone_number: '85512345678' })), hookRes(), { db: async () => d, fetchImpl: api });

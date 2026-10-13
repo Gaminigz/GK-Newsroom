@@ -1,6 +1,7 @@
 // 30+DA web app entry: loads every screen module, restores the session, starts the hash
 // router, keeps the heartbeat going and shows admin notices as a blocking dialog. The PIN lock (lock.js)
-// covers the app when the session is locked, after 30 s without a touch, and when the app is hidden.
+// covers the app when the session is locked, after 30 s without a touch, and when the app is hidden; while
+// locked and hidden, "Remind me" only checks how many conversations wait (GET /me/pending).
 import {
   state, api, bus, t, el, icon, go, modal, heartbeat, startRouter, setMe, registerStrings, actionLabel, pairRoute,
 } from './core.js';
@@ -21,6 +22,8 @@ const SCREENS = [
   ['level-wait', () => import('./screens/level-wait.js')],
   ['chat', () => import('./screens/chat.js')],
   ['conversation', () => import('./screens/conversation.js')],
+  // "Verify to chat": the sheet for a profile with nothing verified yet, and #/verified (the way back from Google & co).
+  ['verify-chat', () => import('./screens/verify-chat.js')],
 ];
 
 const OPEN_PATHS = new Set(['/opening', '/pin', '/create']);
@@ -115,9 +118,10 @@ function showNotices() {
 
 const notified = new Set();
 const actionKey = (p) => `${p.id}:${p.stage}:${p.next}`;
+const notificationsAllowed = () => typeof Notification !== 'undefined' && Notification.permission === 'granted';
 
 function notifyActions(actions) {
-  const allowed = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+  const allowed = notificationsAllowed();
   for (const p of actions) {
     const key = actionKey(p);
     if (notified.has(key)) continue;
@@ -135,16 +139,43 @@ function notifyActions(actions) {
   }
 }
 
+// A hidden app is locked (lock.js), so the heartbeat stops. "Remind me" still works: GET /me/pending (open while
+// locked, never counted as use) gives only how many conversations wait, and the notification says only that
+// something new is waiting — no name, no text: the phone is locked (owner 2026-10-13).
+let pendingSeen = null; // how many the person already knows about (the last heartbeat before the lock, then each check)
+
+async function checkPending() {
+  if (!notificationsAllowed() || !document.hidden || state.me?.blocked) return;
+  let count;
+  try {
+    count = Number((await api.get('/me/pending', { redirect: false }))?.count) || 0;
+  } catch {
+    return; // signed out, offline: nothing to say
+  }
+  // The first check after the app opened locked knows nothing yet: it only notes what is already there.
+  const known = pendingSeen ?? (state.me ? state.actions.length : null);
+  pendingSeen = count;
+  if (known === null || count <= known) return;
+  try {
+    const n = new Notification('30+DA', { body: t('app_pending_note'), tag: '30da-pending' });
+    n.onclick = () => {
+      window.focus(); // the PIN screen first, then the app
+      n.close();
+    };
+  } catch { /* some browsers only allow notifications from a service worker */ }
+}
+
 // ---------------------------------------------------------------- heartbeat
 
 let beatTimer = null;
 
 function scheduleBeat() {
   clearTimeout(beatTimer);
-  const allowed = typeof Notification !== 'undefined' && Notification.permission === 'granted';
-  if (document.hidden && !allowed) return; // resumes on visibilitychange
+  if (document.hidden && !notificationsAllowed()) return; // resumes on visibilitychange
   beatTimer = setTimeout(async () => {
-    await heartbeat();
+    // Locked (the PIN screen covers the app): no heartbeat, only the "something new is waiting" check.
+    if (state.locked) await checkPending();
+    else await heartbeat();
     scheduleBeat();
   }, document.hidden ? BEAT_HIDDEN_MS : BEAT_VISIBLE_MS);
 }
@@ -166,6 +197,7 @@ async function boot() {
   let meId = state.me?.id ?? null;
   bus.addEventListener('me', () => {
     const id = state.me?.id ?? null;
+    if (id !== meId) pendingSeen = null; // another person (or nobody) on this phone now
     if (id && id !== meId) { // just signed in (new profile or "welcome back")
       heartbeat();
       showNotices();
@@ -175,6 +207,7 @@ async function boot() {
   // Back from the PIN screen: the news and messages that waited.
   bus.addEventListener('unlocked', () => {
     noticeOpen = false; // the cover closed every dialog, a notice too: it shows again
+    pendingSeen = null; // seen now: the next lock starts from the next heartbeat
     heartbeat();
     showNotices();
   });
@@ -192,30 +225,35 @@ registerStrings({
     app_notice_title: 'A message from 30+DA',
     app_notice_ok: 'I understand',
     app_notice_warning: 'We stopped a message that broke the 30+DA rules. Contact details are never allowed. Next time the account is blocked.',
+    app_pending_note: 'Something new is waiting for you.',
   },
   km: {
     app_offline_title: 'មិនអាចភ្ជាប់ទៅ 30+DA បានទេ',
     app_notice_title: 'សារពី 30+DA',
     app_notice_ok: 'ខ្ញុំយល់ហើយ',
     app_notice_warning: 'យើងបានបញ្ឈប់សារមួយដែលបំពានច្បាប់របស់ 30+DA។ ព័ត៌មានទំនាក់ទំនងមិនត្រូវបានអនុញ្ញាតឡើយ។ បើកើតឡើងម្ដងទៀត គណនីនឹងត្រូវបិទ។',
+    app_pending_note: 'មានអ្វីថ្មីកំពុងរង់ចាំអ្នក។',
   },
   zh: {
     app_offline_title: '无法连接 30+DA',
     app_notice_title: '来自 30+DA 的通知',
     app_notice_ok: '我明白了',
     app_notice_warning: '我们拦截了一条违反 30+DA 规则的消息。任何联系方式都不允许分享。如再违规，账号将被封禁。',
+    app_pending_note: '有新动态在等你。',
   },
   ko: {
     app_offline_title: '30+DA에 연결할 수 없어요',
     app_notice_title: '30+DA 안내',
     app_notice_ok: '알겠습니다',
     app_notice_warning: '30+DA 규칙을 어긴 메시지를 저희가 막았어요. 연락처는 절대 공유할 수 없어요. 다시 그러면 계정이 차단됩니다.',
+    app_pending_note: '새로운 소식이 기다리고 있어요.',
   },
   ja: {
     app_offline_title: '30+DAに接続できません',
     app_notice_title: '30+DAからのお知らせ',
     app_notice_ok: 'わかりました',
     app_notice_warning: '30+DAのルールに違反するメッセージを停止しました。連絡先の共有は一切できません。次回はアカウントが停止されます。',
+    app_pending_note: '新しいお知らせが届いています。',
   },
 });
 

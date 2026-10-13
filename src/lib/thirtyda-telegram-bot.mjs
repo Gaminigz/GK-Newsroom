@@ -14,22 +14,34 @@
  *
  * The check — the app (src/lib/thirtyda-app.mjs):
  *   POST /30da/api/auth/telegram/start { phone, lang?, pin? } → startCheck: thirtyda_tg_checks
- *        { _id: SHA-256(token), browser: SHA-256(cookie), phone (E.164), lang, state, expires (10 min), purgeAt, pinHash? }
- *        The token (24 random bytes, base64url) goes only into https://t.me/<bot>?start=<token>; the browser gets a
- *        fresh random cookie (thirtyda_tg: HttpOnly, SameSite=Lax, Path=/30da/api/auth/telegram), like the sign-in state.
+ *        { _id: SHA-256(token), browser: SHA-256(cookie), phone (E.164), lang, match, state, expires (10 min), purgeAt,
+ *        pinHash? }. The token (24 random bytes, base64url) goes only into https://t.me/<bot>?start=<token>; the browser
+ *        gets a fresh random cookie (thirtyda_tg: HttpOnly, SameSite=Lax, Path=/30da/api/auth/telegram, 12 minutes = the
+ *        check + the verified grace), like the sign-in state. match ("🍊 47") is shown in the app's waiting box and
+ *        repeated by the bot, so a forwarded link is caught: the bot names who is asking (masked number, Phnom Penh
+ *        time, the sign) and says "If someone sent you this link, do not tap."
  *   GET  /30da/api/auth/telegram/status → pollCheck: { state: waiting | verified | mismatch | expired | none } for THIS
  *        browser's check. verified is taken ONCE (state → used) and signs in exactly like a good code.
  * The bot — POST /30da/api/telegram/hook (handleTelegramHook): Telegram's X-Telegram-Bot-Api-Secret-Token must match the
  *   saved one, else 401 and nothing happens.
  *   "/start <token>"  → the check is bound to this Telegram user (the first one only) and the bot asks for the number
- *                       with a one-button keyboard { request_contact: true, text: "Share my number" } (one_time_keyboard).
+ *                       with a one-button keyboard { request_contact: true, text: "Share my number" } (one_time_keyboard),
+ *                       saying when it was asked: "Signing in to 30+DA (14:05, Phnom Penh time)? Check that your 30+DA
+ *                       screen shows 🍊 47 … If someone sent you this link, do not tap." (owner 2026-10-13: the bot never
+ *                       shows the number, not even masked.)
  *   a contact         → ACCEPTED ONLY IF contact.user_id === from.id (their own number) AND its digits are the typed
- *                       number's → verified, "Done ✓ Go back to 30+DA." (keyboard removed). Their own number but another
- *                       one → mismatch, "That number is not the one you typed in 30+DA." Someone else's contact → asked
- *                       again. A number typed as text is never believed; anything else → a short help line.
- *   Replies are in the check's language (en/km/zh/ko/ja), else the person's Telegram language, else English.
+ *                       number's → verified, "Number verified ✓ Go back to 30+DA." (keyboard removed). Their own number
+ *                       but another one → mismatch, "That number is not the one you typed in 30+DA." + how to type it.
+ *                       Someone else's contact → asked again. Every shared contact is then DELETED from the chat
+ *                       (deleteMessage; a failed delete is ignored), so the number does not stay on screen.
+ *                       A number typed as text is never believed (the button again).
+ *   any other text    → support (src/lib/thirtyda-support.mjs): stored for the admin Support page; the bot thanks them
+ *                       once a day. "/help" → the help line (it says they can ask here).
+ *   Replies are in the check's language (en/km/zh/ko/ja), else the person's Telegram language, else English. No reply
+ *   ever carries a phone number.
  * Never stored: the shared contact's number (only compared) or a check token (only its hash). The Telegram user id is
- * kept on the check (it binds the check to one person). Never logged, returned or audited: the bot key, the webhook
+ * kept on the check (it binds the check to one person), and once verified in thirtyda_tg_links next to the number that
+ * was typed in the app (so support can name their 30+DA profile). Never logged, returned or audited: the bot key, the webhook
  * secret, a check token.
  *
  * Pure apart from the `d` (Mongo Db) and `fetchImpl` handed in, so the unit tests run without a database or network.
@@ -45,11 +57,18 @@ export const BOT_SETTING = "telegram_bot";
 export const BOT_API_ORIGIN = "https://api.telegram.org";
 export const HOOK_PATH = "/30da/api/telegram/hook";
 export const TG_CHECKS = "thirtyda_tg_checks";
+/** Telegram user id → the number the bot verified for them ({ _id, phone, at }), so support can name their profile. */
+export const TG_LINKS = "thirtyda_tg_links";
 export const CHECK_TTL_MS = 10 * 60e3;
 /** A check that ended stays readable this long after it expires (status can say "expired"); a TTL index on purgeAt drops it. */
 export const CHECK_KEEP_MS = 30 * 60e3;
 /** A check verified close to its end may still be collected this long after the verification. */
 export const VERIFIED_GRACE_MS = 2 * 60e3;
+/**
+ * The browser's cookie lives as long as the server may still hand over a verified check (10 minutes + the grace),
+ * else a number shared at 9:30 and collected after 10:00 finds no cookie and reads "took too long".
+ */
+export const CHECK_COOKIE_MAX_AGE_S = (CHECK_TTL_MS + VERIFIED_GRACE_MS) / 1000;
 export const CHECK_COOKIE = "thirtyda_tg";
 export const CHECK_COOKIE_PATH = "/30da/api/auth/telegram";
 export const SECRET_HEADER = "x-telegram-bot-api-secret-token";
@@ -311,8 +330,26 @@ export const newCheckToken = () => crypto.randomBytes(24).toString("base64url");
 export const newBrowserKey = () => crypto.randomBytes(32).toString("hex");
 export const checkId = (token) => sha256(token);
 
-/** The browser's cookie for its check (Max-Age 0 clears it). Secure whenever the page is https. */
-export function checkCookie(req, value, maxAgeS = CHECK_TTL_MS / 1000) {
+/**
+ * The sign the app's waiting box shows and the bot repeats ("🍊 47"): the person shares only when both show the same.
+ * A forwarded link fails that test (the person has no 30+DA screen asking), so a stranger who typed someone else's
+ * number cannot quietly borrow their "Share my number". Not a secret, and no words: the same in every language.
+ */
+export const MATCH_SIGNS = ["🍊", "🍋", "🍉", "🍇", "🍓", "🍒", "🍍", "🥝", "🥥", "🌽", "🐟", "🐢", "🐘", "🦋", "🌙", "⭐"];
+export const MATCH_RE = new RegExp(`^(?:${MATCH_SIGNS.join("|")}) [1-9]\\d$`, "u");
+export const newMatchMark = () => `${MATCH_SIGNS[crypto.randomInt(MATCH_SIGNS.length)]} ${crypto.randomInt(10, 100)}`;
+
+/** The typed number with its middle hidden ("+855 ••••• 678"): its owner knows it, a stranger learns little. */
+export function maskPhone(p) {
+  const s = String(p ?? "");
+  return s.length < 8 ? "•••" : `${s.slice(0, 4)} ${"•".repeat(s.length - 7)} ${s.slice(-3)}`;
+}
+
+/** A moment as a Phnom Penh clock shows it ("14:05"): fixed UTC+7, never the server's own time zone. */
+export const phnomPenhTime = (t) => new Date(new Date(t).getTime() + 7 * 3600e3).toISOString().slice(11, 16);
+
+/** The browser's cookie for its check (12 minutes: the check + the grace; Max-Age 0 clears it). Secure on https. */
+export function checkCookie(req, value, maxAgeS = CHECK_COOKIE_MAX_AGE_S) {
   const secure = publicOrigin(req).startsWith("https:");
   return `${CHECK_COOKIE}=${value}; HttpOnly; SameSite=Lax; Path=${CHECK_COOKIE_PATH}; Max-Age=${maxAgeS}${secure ? "; Secure" : ""}`;
 }
@@ -324,25 +361,28 @@ export function readCheckCookie(req) {
 
 /**
  * A new check for `phone` (E.164), bound to `browser` (the new cookie value). The browser's earlier check (its old
- * cookie, `previousBrowser`) ends. Only the token's hash is stored. → { token, expiresAt }.
+ * cookie, `previousBrowser`) ends. Only the token's hash is stored. → { token, expiresAt, match } (match: the sign
+ * the app shows and the bot repeats).
  */
 export async function startCheck(d, { phone, lang = "en", browser, previousBrowser = null, pinHash = null, now = Date.now() }) {
   if (!BROWSER_RE.test(String(browser))) throw new Error("A check needs a browser key.");
   const col = d.collection(TG_CHECKS);
   if (previousBrowser && BROWSER_RE.test(previousBrowser)) await col.deleteMany({ browser: sha256(previousBrowser) });
   const token = newCheckToken();
+  const match = newMatchMark();
   await col.insertOne({
     _id: checkId(token),
     browser: sha256(browser),
     phone: String(phone),
     lang: BOT_LANGS.includes(lang) ? lang : "en",
+    match,
     state: "waiting",
     created: new Date(now),
     expires: new Date(now + CHECK_TTL_MS),
     purgeAt: new Date(now + CHECK_TTL_MS + CHECK_KEEP_MS),
     ...(pinHash ? { pinHash } : {}),
   });
-  return { token, expiresAt: now + CHECK_TTL_MS };
+  return { token, expiresAt: now + CHECK_TTL_MS, match };
 }
 
 const expiresAt = (c) => new Date(c.expires).getTime();
@@ -394,8 +434,9 @@ export function hookSecretOk(given, stored) {
 
 /**
  * A Telegram update → what it is. Only private chats with a person count (groups, channels, other bots, edits → ignore).
- *   { kind:'start', token|null, hadParam } · { kind:'contact', contact:{ userId, phone } } · { kind:'other' } · { kind:'ignore' }
- * plus fromId, chatId, langCode.
+ *   { kind:'start', token|null, hadParam } · { kind:'contact', contact:{ userId, phone } } · { kind:'help' } (/help) ·
+ *   { kind:'other', text } (a text, or a photo's caption; '' for anything else) · { kind:'ignore' }
+ * plus fromId, chatId, langCode, messageId (to delete a shared contact), firstName and username (support's "from").
  */
 export function parseUpdate(update) {
   const m = update?.message;
@@ -405,7 +446,12 @@ export function parseUpdate(update) {
   if (!from || from.is_bot || !Number.isSafeInteger(from.id) || chat?.type !== "private" || !Number.isSafeInteger(chat?.id)) {
     return { kind: "ignore" };
   }
-  const base = { fromId: from.id, chatId: chat.id, langCode: String(from.language_code ?? "").slice(0, 12) };
+  const base = {
+    fromId: from.id, chatId: chat.id, langCode: String(from.language_code ?? "").slice(0, 12),
+    messageId: Number.isSafeInteger(m.message_id) ? m.message_id : null,
+    firstName: String(from.first_name ?? "").slice(0, 64),
+    username: USERNAME_RE.test(String(from.username ?? "")) ? from.username : null,
+  };
   if (m.contact && typeof m.contact === "object") {
     const userId = Number.isSafeInteger(m.contact.user_id) ? m.contact.user_id : null;
     return { ...base, kind: "contact", contact: { userId, phone: String(m.contact.phone_number ?? "").slice(0, 32) } };
@@ -413,11 +459,16 @@ export function parseUpdate(update) {
   const text = typeof m.text === "string" ? m.text.trim() : "";
   const s = text.match(/^\/start(?:@\w+)?(?:\s+(\S+))?\s*$/);
   if (s) return { ...base, kind: "start", token: s[1] && TOKEN_RE.test(s[1]) ? s[1] : null, hadParam: Boolean(s[1]) };
-  return { ...base, kind: "other" };
+  if (/^\/help(?:@\w+)?\s*$/i.test(text)) return { ...base, kind: "help" };
+  const said = typeof m.text === "string" ? m.text : typeof m.caption === "string" ? m.caption : "";
+  return { ...base, kind: "other", text: said.trim().slice(0, 4096) };
 }
 
 /** Only the digits of a phone number ("+855 12-345 678" → "85512345678"). */
 export const phoneDigits = (p) => String(p ?? "").replace(/\D/g, "");
+
+/** A text that is only a phone number ("+855 12 345 678", "012-345-678"): a try at the check, never a support message. */
+export const looksLikePhone = (text) => /^[\s+\-().\d]+$/.test(String(text ?? "")) && phoneDigits(text).length >= 6;
 
 /**
  * A shared contact against the number typed in the app:
@@ -438,72 +489,96 @@ export function langFor(check, langCode) {
   return BOT_LANGS.includes(l) ? l : "en";
 }
 
-/** The bot's words, short and plain, in the 5 app languages. */
+/**
+ * The bot's words, short and plain, in the 5 app languages. `ask` says when it was asked — {time} (Phnom Penh) and
+ * {mark} (the sign the app's waiting box shows) — and warns against a link someone sent. No text ever carries a phone
+ * number, not even masked (owner 2026-10-13: "just: number verified"). support_ack: the once-a-day thanks for a
+ * support message (src/lib/thirtyda-support.mjs).
+ */
 export const BOT_TEXT = {
   en: {
-    ask: "Tap the button to share your number with 30+DA.\nOnly do this if you are signing in to 30+DA right now.",
+    ask: "Signing in to 30+DA ({time}, Phnom Penh time)?\nCheck that your 30+DA screen shows {mark}, then tap the button to share your number.\nIf someone sent you this link, do not tap.",
     button: "Share my number",
-    done: "Done ✓ Go back to 30+DA.",
-    mismatch: "That number is not the one you typed in 30+DA.",
+    done: "Number verified ✓ Go back to 30+DA.",
+    mismatch: "That number is not the one you typed in 30+DA. In 30+DA, type the same number your Telegram uses, with its country code, then tap Telegram again.",
     not_own: "Please share your own number with the button below.",
     expired: "This link has expired. Go back to 30+DA and tap Telegram again.",
-    help: "To sign in, open 30+DA, type your number and tap Telegram.",
+    help: "To sign in, open 30+DA, type your number and tap Telegram. You can also ask us anything here.",
+    support_ack: "Thanks — the 30+DA team will reply here.",
   },
   km: {
-    ask: "ចុចប៊ូតុង ដើម្បីចែករំលែកលេខទូរសព្ទរបស់អ្នកជាមួយ 30+DA។\nធ្វើបែបនេះ លុះត្រាតែអ្នកកំពុងចូល 30+DA ឥឡូវនេះ។",
+    ask: "អ្នកកំពុងចូល 30+DA ({time} ម៉ោងភ្នំពេញ) មែនទេ?\nសូមពិនិត្យថា អេក្រង់ 30+DA របស់អ្នកបង្ហាញ {mark} រួចចុចប៊ូតុង ដើម្បីចែករំលែកលេខរបស់អ្នក។\nបើមាននរណាម្នាក់ផ្ញើតំណនេះមកអ្នក សូមកុំចុច។",
     button: "ចែករំលែកលេខរបស់ខ្ញុំ",
-    done: "រួចរាល់ ✓ សូមត្រឡប់ទៅ 30+DA វិញ។",
-    mismatch: "លេខនេះមិនមែនជាលេខដែលអ្នកបានវាយក្នុង 30+DA ទេ។",
+    done: "បានផ្ទៀងផ្ទាត់លេខ ✓ សូមត្រឡប់ទៅ 30+DA វិញ។",
+    mismatch: "លេខនេះមិនមែនជាលេខដែលអ្នកបានវាយក្នុង 30+DA ទេ។ នៅក្នុង 30+DA សូមវាយលេខដូចគ្នានឹងលេខដែល Telegram របស់អ្នកប្រើ ជាមួយលេខកូដប្រទេស រួចចុច Telegram ម្ដងទៀត។",
     not_own: "សូមចែករំលែកលេខផ្ទាល់ខ្លួនរបស់អ្នក ដោយប្រើប៊ូតុងខាងក្រោម។",
     expired: "តំណនេះផុតកំណត់ហើយ។ សូមត្រឡប់ទៅ 30+DA ហើយចុច Telegram ម្ដងទៀត។",
-    help: "ដើម្បីចូល សូមបើក 30+DA វាយលេខទូរសព្ទរបស់អ្នក ហើយចុច Telegram។",
+    help: "ដើម្បីចូល សូមបើក 30+DA វាយលេខទូរសព្ទរបស់អ្នក ហើយចុច Telegram។ អ្នកក៏អាចសួរយើងអ្វីក៏បាននៅទីនេះ។",
+    support_ack: "អរគុណ — ក្រុម 30+DA នឹងឆ្លើយតបនៅទីនេះ។",
   },
   zh: {
-    ask: "点击按钮，把你的号码分享给 30+DA。\n只有在你正在登录 30+DA 时才这样做。",
+    ask: "你正在登录 30+DA 吗？（金边时间 {time}）\n请确认你的 30+DA 屏幕上显示 {mark}，再点按钮分享你的号码。\n如果这个链接是别人发给你的，请不要点。",
     button: "分享我的号码",
-    done: "完成 ✓ 请回到 30+DA。",
-    mismatch: "这个号码不是你在 30+DA 里输入的号码。",
+    done: "号码已验证 ✓ 请回到 30+DA。",
+    mismatch: "这个号码不是你在 30+DA 里输入的号码。请在 30+DA 里输入你的 Telegram 用的同一个号码（带国家区号），再点一次 Telegram。",
     not_own: "请用下面的按钮分享你自己的号码。",
     expired: "这个链接已过期。请回到 30+DA，再点一次 Telegram。",
-    help: "要登录，请打开 30+DA，输入你的号码，然后点 Telegram。",
+    help: "要登录，请打开 30+DA，输入你的号码，然后点 Telegram。你也可以在这里问我们任何问题。",
+    support_ack: "谢谢！30+DA 团队会在这里回复你。",
   },
   ko: {
-    ask: "버튼을 눌러 30+DA에 번호를 공유하세요.\n지금 30+DA에 로그인하는 중일 때만 누르세요.",
+    ask: "30+DA에 로그인하는 중인가요? (프놈펜 시간 {time})\n30+DA 화면에 {mark} 표시가 있는지 확인한 뒤, 버튼을 눌러 번호를 공유하세요.\n누군가 이 링크를 보내 줬다면 누르지 마세요.",
     button: "내 번호 공유",
-    done: "완료 ✓ 30+DA로 돌아가세요.",
-    mismatch: "이 번호는 30+DA에 입력한 번호가 아니에요.",
+    done: "번호 인증 완료 ✓ 30+DA로 돌아가세요.",
+    mismatch: "이 번호는 30+DA에 입력한 번호가 아니에요. 30+DA에서 Telegram에 쓰는 번호를 국가 번호와 함께 입력한 뒤 Telegram을 다시 누르세요.",
     not_own: "아래 버튼으로 본인 번호를 공유해 주세요.",
     expired: "이 링크는 만료됐어요. 30+DA로 돌아가 Telegram을 다시 누르세요.",
-    help: "로그인하려면 30+DA를 열고 번호를 입력한 뒤 Telegram을 누르세요.",
+    help: "로그인하려면 30+DA를 열고 번호를 입력한 뒤 Telegram을 누르세요. 궁금한 점은 여기에서 물어보셔도 돼요.",
+    support_ack: "고마워요 — 30+DA 팀이 여기에서 답해 드릴게요.",
   },
   ja: {
-    ask: "ボタンを押して、30+DA に電話番号を共有してください。\n今 30+DA にログインしている場合だけ押してください。",
+    ask: "30+DA にログインしようとしていますか？（プノンペン時間 {time}）\n30+DA の画面に {mark} が出ているか確かめてから、ボタンを押して番号を共有してください。\n誰かからこのリンクが送られてきた場合は、押さないでください。",
     button: "自分の番号を共有",
-    done: "完了 ✓ 30+DA に戻ってください。",
-    mismatch: "この番号は 30+DA で入力した番号ではありません。",
+    done: "番号を確認しました ✓ 30+DA に戻ってください。",
+    mismatch: "この番号は 30+DA で入力した番号ではありません。30+DA で、Telegram で使っている番号を国番号から入力し、もう一度 Telegram を押してください。",
     not_own: "下のボタンで、ご自分の番号を共有してください。",
     expired: "このリンクは期限切れです。30+DA に戻って、もう一度 Telegram を押してください。",
-    help: "ログインするには、30+DA を開いて番号を入力し、Telegram を押してください。",
+    help: "ログインするには、30+DA を開いて番号を入力し、Telegram を押してください。ご質問があれば、ここで何でも聞いてください。",
+    support_ack: "ありがとうございます。30+DA チームがここで返信します。",
   },
 };
 
-/** The sendMessage parameters for one reply (kind: ask | not_own | done | mismatch | expired | help). */
-export function botReply(kind, lang, chatId) {
+/** What `ask` names for one check: { time (Phnom Penh, when it was started), mark } — never the number. */
+export const askVars = (check) => ({
+  time: check?.created ? phnomPenhTime(check.created) : "—",
+  mark: check?.match || "—",
+});
+
+/**
+ * The sendMessage parameters for one reply (kind: ask | not_own | done | mismatch | expired | help | support_ack);
+ * vars fill ask. support_ack leaves the keyboard alone (a "Share my number" button may still be waiting).
+ */
+export function botReply(kind, lang, chatId, vars = null) {
   const T = BOT_TEXT[lang] ?? BOT_TEXT.en;
   const button = { keyboard: [[{ text: T.button, request_contact: true }]], one_time_keyboard: true, resize_keyboard: true };
-  const text = T[kind] ?? T.help;
+  const fill = { ...askVars(null), ...(vars ?? {}) };
+  const text = (T[kind] ?? T.help).replace(/\{(time|mark)\}/g, (_, k) => String(fill[k]));
+  if (kind === "support_ack") return { chat_id: chatId, text };
   const askAgain = kind === "ask" || kind === "not_own";
   return { chat_id: chatId, text, reply_markup: askAgain ? button : { remove_keyboard: true } };
 }
 
 /**
- * What one update does to the checks, and which reply it gets → { kind, lang } | null (no reply).
+ * What one update does to the checks, and which reply it gets → { kind, lang, vars? } | null (no reply). An ask
+ * carries vars (askVars: the time, the sign) so the person can tell it is their own sign-in before sharing.
+ * kind 'support': a text that is not part of a check — handleTelegramHook hands it to src/lib/thirtyda-support.mjs.
  * Every write is conditional (still waiting, still live), so a repeated or late update changes nothing.
  */
 export async function processUpdate(d, u, now = Date.now()) {
   if (!u || u.kind === "ignore") return null;
   const col = d.collection(TG_CHECKS);
   const live = { state: "waiting", expires: { $gt: new Date(now) } };
+  if (u.kind === "help") return { kind: "help", lang: langFor(null, u.langCode) };
   if (u.kind === "start") {
     if (!u.token) return { kind: u.hadParam ? "expired" : "help", lang: langFor(null, u.langCode) };
     const id = checkId(u.token);
@@ -515,13 +590,15 @@ export async function processUpdate(d, u, now = Date.now()) {
       { _id: id, ...live, $or: [{ tgUserId: { $exists: false } }, { tgUserId: u.fromId }] },
       { $set: { tgUserId: u.fromId, openedAt: new Date(now) } },
     );
-    return { kind: r.matchedCount ? "ask" : "expired", lang };
+    return r.matchedCount ? { kind: "ask", lang, vars: askVars(c) } : { kind: "expired", lang };
   }
   // A contact, or anything else: about this person's most recently opened live check.
   const c = await col.findOne({ tgUserId: u.fromId, ...live }, { sort: { openedAt: -1 } });
   const lang = langFor(c, u.langCode);
+  // Words that are not a number: a question for the team (support), even in the middle of a check.
+  if (u.kind === "other" && u.text && !looksLikePhone(u.text)) return { kind: "support", lang };
   if (!c) return { kind: "help", lang };
-  if (u.kind !== "contact") return { kind: "ask", lang }; // a number typed as text is never believed: the button again
+  if (u.kind !== "contact") return { kind: "ask", lang, vars: askVars(c) }; // a number typed as text is never believed: the button again
   const verdict = contactVerdict(u.contact, u.fromId, c.phone);
   if (verdict === "not_own") return { kind: "not_own", lang };
   if (verdict === "mismatch") {
@@ -532,6 +609,11 @@ export async function processUpdate(d, u, now = Date.now()) {
     { _id: c._id, state: "waiting" },
     { $set: { state: "verified", verifiedAt: new Date(now) }, $max: { expires: new Date(now + VERIFIED_GRACE_MS) } },
   );
+  if (r.matchedCount) {
+    // Support can name this person's 30+DA profile later (best effort: the check itself is what signs in).
+    await d.collection(TG_LINKS).updateOne({ _id: u.fromId }, { $set: { phone: c.phone, at: new Date(now) } }, { upsert: true })
+      .catch(() => {});
+  }
   return { kind: r.matchedCount ? "done" : "expired", lang };
 }
 
@@ -583,9 +665,22 @@ export async function handleTelegramHook(req, res, { db, fetchImpl = fetch, now 
     }
     const update = await readSmallJson(req);
     const u = parseUpdate(update);
-    const plan = await processUpdate(d, u, now ?? Date.now());
+    const at = now ?? Date.now();
+    let plan = await processUpdate(d, u, at);
+    // A shared contact does not stay in the chat (owner 2026-10-13: the number is only compared): bots may delete
+    // incoming messages in private chats. A delete Telegram refuses changes nothing else.
+    if (u.kind === "contact" && u.messageId != null) {
+      const del = await botCall(cfg.token, "deleteMessage", { chat_id: u.chatId, message_id: u.messageId }, { fetchImpl });
+      if (!del.ok) console.warn(`[30da telegram] a shared contact was not deleted: ${del.reason}`);
+    }
+    // Words for the team: kept for the admin Support page; the bot thanks them once a day (or says nothing).
+    if (plan?.kind === "support") {
+      const { recordSupport } = await import("./thirtyda-support.mjs"); // loaded here: it imports this module
+      const s = await recordSupport(d, u, { now: at, lang: plan.lang });
+      plan = s.ack ? { kind: "support_ack", lang: s.lang } : null;
+    }
     if (plan) {
-      const sent = await botCall(cfg.token, "sendMessage", botReply(plan.kind, plan.lang, u.chatId), { fetchImpl });
+      const sent = await botCall(cfg.token, "sendMessage", botReply(plan.kind, plan.lang, u.chatId, plan.vars), { fetchImpl });
       if (!sent.ok) {
         console.warn(`[30da telegram] the bot's reply was not sent: ${sent.reason}`);
         // Telegram no longer takes this key: the app stops offering the bot until the admin saves and tries again.

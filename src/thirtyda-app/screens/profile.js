@@ -74,7 +74,8 @@ function actionButton(person, pair, { reload, stops }) {
         go(pairRoute(r.pair));
       } catch (err) {
         b.disabled = false;
-        if (err.status !== 401 && err.code !== 'blocked') toast(pairError(err));
+        // verify_needed: the "Verify to chat" sheet was closed without verifying (it already said why).
+        if (err.status !== 401 && err.code !== 'blocked' && err.code !== 'verify_needed') toast(pairError(err));
       }
     });
     return b;
