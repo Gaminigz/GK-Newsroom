@@ -1065,3 +1065,6 @@ body:has(.screen.conv) .toast { bottom: max(calc(24px + env(safe-area-inset-bott
 .tg-wait-actions .tg-cancel { font-size: 13px; color: var(--muted); }
 @keyframes tg-wait-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .tg-wait-mark::after { animation: none; border-color: #229ed9; } }
+
+/* Under "To chat, verify…": the number is only for verification and stays private (owner 2026-10-13). */
+.way-private { display: flex; align-items: center; justify-content: center; gap: 5px; margin-top: 4px; font-size: 12.5px; color: var(--muted, #5b6478); }

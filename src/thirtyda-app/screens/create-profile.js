@@ -751,7 +751,9 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     // Create profile: one short line for all the ways ("To chat, verify: add your phone number, tap one of the apps and wait for its reply.").
     // #/me: "Your code comes by Telegram." — which of the two the Send button uses; only when that one is offered.
     const hint = signin
-      ? el('p', { class: 'way-hint way-watch', id: `${uid}-by`, hidden: model.codeSent }, t('cp_code_watch'))
+      ? el('p', { class: 'way-hint way-watch', id: `${uid}-by`, hidden: model.codeSent }, t('cp_code_watch'),
+        // Owner: say the number is only for verification and stays private.
+        el('span', { class: 'way-private' }, icon('lock', 12), t('cp_code_private')))
       : el('p', { class: 'way-hint', id: `${uid}-by`, hidden: model.codeSent || !codeOn(model.channel) },
         t('cp_code_comes_by', { channel: channelName(model.channel) }));
     // #/me with no code channel offered at all (and no code out): no phone box and Send button that can only
@@ -1347,6 +1349,7 @@ registerStrings({
     cp_phone_in_use: 'This phone number already has a profile.',
     cp_verified: 'Verified',
     cp_code_watch: 'To chat, verify: add your phone number, tap one of the apps and wait for its reply.',
+    cp_code_private: 'Only for verification — kept safe and private.',
     cp_next: 'Next',
     cp_need_all: 'Fill in every field first.',
     cp_need_way: 'Now pick a way to verify.',
@@ -1437,6 +1440,7 @@ registerStrings({
     cp_phone_in_use: 'លេខទូរស័ព្ទនេះមានប្រវត្តិរូបរួចហើយ។',
     cp_verified: 'បានផ្ទៀងផ្ទាត់',
     cp_code_watch: 'ដើម្បីជជែក សូមផ្ទៀងផ្ទាត់៖ បញ្ចូលលេខទូរស័ព្ទ ចុចកម្មវិធីណាមួយ ហើយរង់ចាំការឆ្លើយតប។',
+    cp_code_private: 'សម្រាប់តែការផ្ទៀងផ្ទាត់ — រក្សាទុកដោយសុវត្ថិភាព និងជាការសម្ងាត់។',
     cp_next: 'បន្ទាប់',
     cp_need_all: 'សូមបំពេញគ្រប់ចន្លោះជាមុនសិន។',
     cp_need_way: 'ឥឡូវ សូមជ្រើសរើសវិធីផ្ទៀងផ្ទាត់។',
@@ -1527,6 +1531,7 @@ registerStrings({
     cp_phone_in_use: '这个手机号已经有资料了。',
     cp_verified: '已验证',
     cp_code_watch: '想聊天请先验证：填写手机号，点选任一应用，然后等待回复。',
+    cp_code_private: '仅用于验证——安全保密。',
     cp_next: '下一步',
     cp_need_all: '请先填写所有信息。',
     cp_need_way: '现在请选择一种验证方式。',
@@ -1617,6 +1622,7 @@ registerStrings({
     cp_phone_in_use: '이 전화번호로 이미 만든 프로필이 있어요.',
     cp_verified: '인증됨',
     cp_code_watch: '채팅하려면 인증하세요: 전화번호를 넣고 앱 하나를 누른 뒤 답을 기다리세요.',
+    cp_code_private: '인증에만 쓰여요 — 안전하게 비공개로 지켜요.',
     cp_next: '다음',
     cp_need_all: '먼저 모든 항목을 채워 주세요.',
     cp_need_way: '이제 인증 방법을 골라 주세요.',
@@ -1707,6 +1713,7 @@ registerStrings({
     cp_phone_in_use: 'この電話番号のプロフィールはすでにあります。',
     cp_verified: '確認済み',
     cp_code_watch: 'チャットするには確認を：電話番号を入れて、アプリを1つ選び、返事を待ってください。',
+    cp_code_private: '確認のためだけに使います — 安全に非公開で守ります。',
     cp_next: '次へ',
     cp_need_all: 'まずすべての項目を入力してください。',
     cp_need_way: 'あとは確認方法を選んでください。',
