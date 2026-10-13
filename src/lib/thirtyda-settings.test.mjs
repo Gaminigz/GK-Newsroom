@@ -6,10 +6,11 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import {
   settingsKey, keyReady, sealSecret, openSecret, secretView, saveSecret, removeSecret, readSecret, secretStatus,
-  noteSecretUse, clearSettingsCache, SettingsError, SETTINGS_COLLECTION,
+  noteSecretUse, clearSettingsCache, secretSaved, SettingsError, SETTINGS_COLLECTION,
 } from './thirtyda-settings.mjs';
 import {
   deliverCode, classifyTelegramError, checkTelegramToken, channelLive, telegramToken, TELEGRAM_SEND_URL, CODE_TTL_S,
+  codeChannelConfigured, testCodesAllowed,
 } from './thirtyda-code-send.mjs';
 
 const KEY_HEX = crypto.randomBytes(32).toString('hex');
@@ -244,6 +245,50 @@ test('channels: Telegram is live with a saved token (or THIRTYDA_TG_TOKEN); What
   } finally {
     if (prev.key === undefined) delete process.env.THIRTYDA_SECRET_KEY; else process.env.THIRTYDA_SECRET_KEY = prev.key;
     if (prev.tg !== undefined) process.env.THIRTYDA_TG_TOKEN = prev.tg;
+    clearSettingsCache();
+  }
+});
+
+test('on-screen test codes: only in test mode AND with no code channel set up (saved-but-unreadable counts as set up)', async () => {
+  clearSettingsCache();
+  const d = fakeDb();
+  const prev = { key: process.env.THIRTYDA_SECRET_KEY, tg: process.env.THIRTYDA_TG_TOKEN };
+  process.env.THIRTYDA_SECRET_KEY = KEY_HEX;
+  delete process.env.THIRTYDA_TG_TOKEN;
+  try {
+    assert.equal(await testCodesAllowed(d, false), false, 'never without THIRTYDA_DEV_AUTH=1');
+    assert.equal(await secretSaved(d, 'telegram'), false);
+    assert.equal(await codeChannelConfigured(d), false);
+    assert.equal(await testCodesAllowed(d, true), true, 'test mode, nothing set up → test codes');
+
+    // Telegram saved → live → no channel shows a code any more (WhatsApp included: it is not live either).
+    await saveSecret(d, 'telegram', TOKEN);
+    assert.equal(await channelLive(d, 'whatsapp'), false);
+    assert.equal(await codeChannelConfigured(d), true);
+    assert.equal(await testCodesAllowed(d, true), false, 'a live channel ends test codes everywhere');
+
+    // THIRTYDA_SECRET_KEY changed since the save: Telegram cannot send, but it does not fall back to test codes.
+    clearSettingsCache();
+    process.env.THIRTYDA_SECRET_KEY = OTHER_HEX;
+    const orig = console.error;
+    console.error = () => {};
+    try {
+      assert.equal(await channelLive(d, 'telegram'), false, 'unreadable → not live');
+      assert.equal(await secretSaved(d, 'telegram'), true, 'but still saved');
+      assert.equal(await testCodesAllowed(d, true), false, 'fail closed: no on-screen codes');
+    } finally {
+      console.error = orig;
+    }
+
+    // Removed → test codes again (test mode only); THIRTYDA_TG_TOKEN alone also counts as set up.
+    await removeSecret(d, 'telegram');
+    assert.equal(await secretSaved(d, 'telegram'), false);
+    assert.equal(await testCodesAllowed(d, true), true);
+    process.env.THIRTYDA_TG_TOKEN = 'ENV_FAKE_TOKEN_0123456789';
+    assert.equal(await testCodesAllowed(d, true), false, 'the env token makes Telegram live too');
+  } finally {
+    if (prev.key === undefined) delete process.env.THIRTYDA_SECRET_KEY; else process.env.THIRTYDA_SECRET_KEY = prev.key;
+    if (prev.tg === undefined) delete process.env.THIRTYDA_TG_TOKEN; else process.env.THIRTYDA_TG_TOKEN = prev.tg;
     clearSettingsCache();
   }
 });

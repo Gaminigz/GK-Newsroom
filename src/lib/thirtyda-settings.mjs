@@ -98,7 +98,7 @@ export function secretView(doc) {
 }
 
 // ---------- cache ----------
-const cache = new Map(); // name → { at, value: string | null }
+const cache = new Map(); // name → { at, value: string | null, saved: boolean }
 export function clearSettingsCache(name) {
   if (name) cache.delete(name);
   else cache.clear();
@@ -113,11 +113,10 @@ function warnUnreadable(name, why) {
 
 // ---------- reads ----------
 
-/** The plain value of `name`, or null (not saved, or not readable with this server's key). Cached briefly. */
-export async function readSecret(d, name, { rawKey } = {}) {
+async function cachedSecret(d, name, rawKey) {
   checkName(name);
   const hit = cache.get(name);
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit;
   const doc = await d.collection(SETTINGS_COLLECTION).findOne({ _id: name });
   let value = null;
   if (doc?.box) {
@@ -127,8 +126,23 @@ export async function readSecret(d, name, { rawKey } = {}) {
       warnUnreadable(name, err instanceof SettingsError ? err.code : "wrong key or damaged value");
     }
   }
-  cache.set(name, { at: Date.now(), value });
-  return value;
+  const entry = { at: Date.now(), value, saved: Boolean(doc?.box) };
+  cache.set(name, entry);
+  return entry;
+}
+
+/** The plain value of `name`, or null (not saved, or not readable with this server's key). Cached briefly. */
+export async function readSecret(d, name, { rawKey } = {}) {
+  return (await cachedSecret(d, name, rawKey)).value;
+}
+
+/**
+ * true when a value is saved for `name`, readable or not (a changed THIRTYDA_SECRET_KEY leaves it saved but
+ * unreadable). Shares readSecret's cache. Callers use it to fail closed: a saved channel that cannot be read
+ * must not quietly fall back to on-screen test codes.
+ */
+export async function secretSaved(d, name, { rawKey } = {}) {
+  return (await cachedSecret(d, name, rawKey)).saved;
 }
 
 /** The admin's view of `name`: secretView + whether this server can open it + the last live use. Never the value. */

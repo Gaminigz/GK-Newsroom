@@ -40,9 +40,10 @@ const RULES = [
   '.chat-stack > .chat-photo { position: relative; box-shadow: 0 0 0 2px #fff; }',
   '.chat-stack > .chat-photo + .chat-photo { margin-left: -20px; }',
   '.chat-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
-  // Level 3: the real name, small under the app name. It wraps to a second line rather than cutting a
-  // two- or three-part name short next to 4 photos; only a very long one ends in "…" (the profile has it whole).
-  '.chat-real { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-size: 12.5px; font-weight: 600; line-height: 1.25; color: var(--muted); }',
+  // Level 3: the real name, small under the app name. It wraps (up to 3 lines) rather than cutting a two- or
+  // three-part name short next to 4 photos ("Chan / Sokunthea / Sreypov" in ~92px); only a very long one ends in
+  // "…" (the whole name is its title, and the profile view shows it in full).
+  '.chat-real { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; font-size: 12.5px; font-weight: 600; line-height: 1.25; color: var(--muted); }',
   '.chat-lang { gap: 5px; padding: 0 10px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em; white-space: nowrap; }',
   '.chat > .banner { flex: none; }',
   '.chat-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; margin: 0 calc(var(--gutter) * -1); }',

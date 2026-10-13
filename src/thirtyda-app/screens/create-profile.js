@@ -147,6 +147,7 @@ function sendErrorText(err, channel) {
 function verifyErrorText(err) {
   if (err.code === 'wrong_code' || err.code === 'invalid') return t('cp_code_wrong');
   if (err.code === 'code_expired') return t('cp_code_expired');
+  if (err.code === 'code_sending') return t('cp_code_on_way');
   if (err.status === 429) return t('cp_too_many');
   return err.status === 0 ? t('err_network') : t('err_generic');
 }
@@ -653,6 +654,7 @@ registerStrings({
     cp_phone_invalid: 'Enter a valid phone number.',
     cp_code_wrong: 'That code is not right. Try again.',
     cp_code_expired: 'That code has expired. Ask for a new one.',
+    cp_code_on_way: 'A new code is on its way. Enter the new code when it arrives.',
     cp_too_many: 'Too many tries. Please wait a few minutes.',
     cp_sms_off: 'Text messages are not available yet. Verify with Google or Facebook for now.',
     cp_code_by: 'Get the code by',
@@ -718,6 +720,7 @@ registerStrings({
     cp_phone_invalid: 'សូមបញ្ចូលលេខទូរស័ព្ទឲ្យបានត្រឹមត្រូវ។',
     cp_code_wrong: 'លេខកូដនោះមិនត្រឹមត្រូវទេ។ សូមព្យាយាមម្ដងទៀត។',
     cp_code_expired: 'លេខកូដនោះផុតកំណត់ហើយ។ សូមស្នើលេខកូដថ្មី។',
+    cp_code_on_way: 'លេខកូដថ្មីកំពុងផ្ញើមក។ សូមបញ្ចូលលេខកូដថ្មីនៅពេលវាមកដល់។',
     cp_too_many: 'ព្យាយាមច្រើនដងពេក។ សូមរង់ចាំប៉ុន្មាននាទីសិន។',
     cp_sms_off: 'សារ SMS មិនទាន់អាចប្រើបាននៅឡើយទេ។ សូមផ្ទៀងផ្ទាត់ជាមួយ Google ឬ Facebook សិន។',
     cp_code_by: 'ទទួលលេខកូដតាម',
@@ -783,6 +786,7 @@ registerStrings({
     cp_phone_invalid: '请输入有效的手机号码。',
     cp_code_wrong: '验证码不正确，请重试。',
     cp_code_expired: '验证码已过期，请重新获取。',
+    cp_code_on_way: '新验证码正在发送中，收到后请输入新的验证码。',
     cp_too_many: '尝试次数过多，请稍等几分钟。',
     cp_sms_off: '短信验证暂未开通，请先用 Google 或 Facebook 验证。',
     cp_code_by: '验证码接收方式',
@@ -848,6 +852,7 @@ registerStrings({
     cp_phone_invalid: '올바른 전화번호를 입력해 주세요.',
     cp_code_wrong: '코드가 맞지 않아요. 다시 입력해 주세요.',
     cp_code_expired: '코드가 만료됐어요. 새 코드를 받아 주세요.',
+    cp_code_on_way: '새 코드를 보내는 중이에요. 도착하면 새 코드를 입력해 주세요.',
     cp_too_many: '시도 횟수가 너무 많아요. 몇 분 뒤에 다시 해 주세요.',
     cp_sms_off: '아직 문자 인증을 쓸 수 없어요. 지금은 Google 또는 Facebook으로 인증해 주세요.',
     cp_code_by: '코드 받을 곳',
@@ -913,6 +918,7 @@ registerStrings({
     cp_phone_invalid: '正しい電話番号を入力してください。',
     cp_code_wrong: 'コードが正しくありません。もう一度お試しください。',
     cp_code_expired: 'コードの有効期限が切れました。新しいコードを送信してください。',
+    cp_code_on_way: '新しいコードを送信中です。届いたら新しいコードを入力してください。',
     cp_too_many: '試行回数が多すぎます。数分お待ちください。',
     cp_sms_off: 'SMSはまだ利用できません。今はGoogleまたはFacebookで確認してください。',
     cp_code_by: 'コードの受け取り方法',

@@ -799,8 +799,10 @@
     };
   }
 
-  // The server's channels (src/lib/thirtyda-code-send.mjs). The demo never delivers: every channel is
-  // "not live", so it answers like the server's test mode (devCode for the "Test code" note).
+  // The server's channels (src/lib/thirtyda-code-send.mjs). The demo never delivers: no channel is set up,
+  // so it answers like the server's test mode (devCode for the "Test code" note). On the server, once any
+  // channel is set up no channel shows a code (503 channel_unavailable), and a live send is not checkable
+  // until delivered (verify-code 409 code_sending): neither can happen here.
   const CODE_CHANNELS = ['telegram', 'whatsapp'];
 
   function sendCode({ body }) {

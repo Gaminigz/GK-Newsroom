@@ -104,10 +104,21 @@ function tokenLine(c) {
   return [h('b', { text: 'Not set' })];
 }
 
-function appLine(c, devAuth) {
-  if (c.live) return 'People who pick Telegram get a real code in Telegram. No test codes are shown.';
-  if (devAuth) return 'Test mode: the code is shown on screen (THIRTYDA_DEV_AUTH=1) until a token is saved.';
+function appLine(c, { testCodes }) {
+  if (c.live) return 'People who pick Telegram get a real code in Telegram. No code is shown on screen, on any channel, while Telegram is set up.';
+  if (c.set) return 'No codes go out and none are shown on screen until the token is saved again.';
+  if (testCodes) return 'Test mode: the code is shown on screen (THIRTYDA_DEV_AUTH=1) until a token is saved.';
   return 'People cannot get a code by Telegram until a token is saved.';
+}
+
+/** Red, whenever test mode is on: on-screen codes let anyone sign in as any number. */
+function devWarning(data) {
+  if (!data.devAuth) return '';
+  const where = data.onRailway ? 'This is the live server: turn it off now' : 'Turn it off on the live server';
+  if (data.testCodes) {
+    return `Test mode is on (THIRTYDA_DEV_AUTH=1). Sign-in codes are shown on screen, so anyone can sign in as any phone number. ${where} (Railway variables: remove THIRTYDA_DEV_AUTH) before saving a token or letting real people in.`;
+  }
+  return `Test mode is on (THIRTYDA_DEV_AUTH=1). While Telegram is set up no code is shown on screen on any channel, but the Google and Facebook test buttons still mark people as checked without checking. ${where} (Railway variables: remove THIRTYDA_DEV_AUTH).`;
 }
 
 function lastSendLine(s) {
@@ -135,7 +146,8 @@ function testResult() {
       r.detail ? `${r.reason ? ' · ' : ''}Telegram said: ${r.detail}` : '') : null);
 }
 
-function telegramCard(c, { keyReady, devAuth }) {
+function telegramCard(c, data) {
+  const { keyReady } = data;
   const st = telegramStatus(c);
   const err = h('p', { class: 'cx-err', id: 'tg-token-err', role: 'alert', hidden: true });
   const input = h('input', {
@@ -235,7 +247,7 @@ function telegramCard(c, { keyReady, devAuth }) {
       h('span', { class: `cx-pill ${st.pill}`, text: st.text })),
     h('dl', { class: 'cx-status' },
       row('Token', ...tokenLine(c)),
-      row('In the app', appLine(c, devAuth)),
+      row('In the app', appLine(c, data)),
       lastSendLine(c.lastSend)),
     h('div', { class: 'cx-split' },
       form,
@@ -250,7 +262,7 @@ function telegramCard(c, { keyReady, devAuth }) {
 
 async function removeToken() {
   const devAuth = state.data?.devAuth;
-  const question = `Remove the Telegram token?\n\nCodes by Telegram stop until a new token is saved.${devAuth ? ' Test mode shows codes on screen instead.' : ''}`;
+  const question = `Remove the Telegram token?\n\nCodes by Telegram stop until a new token is saved.${devAuth ? ' Test mode (THIRTYDA_DEV_AUTH=1) then shows codes on screen instead, on every channel.' : ''}`;
   if (!confirm(question)) return;
   const r = await call('DELETE', `${API}/telegram`, {});
   if (!r.ok) return toast(r.data.error || 'Could not remove the token.');
@@ -263,7 +275,7 @@ async function removeToken() {
 const NEXT = {
   whatsapp: {
     sub: 'Sign-in codes by WhatsApp message',
-    note: 'People can already pick WhatsApp on the phone step. Until it is set up they get a test code (test mode) or are asked to use Telegram.',
+    note: 'People can already pick WhatsApp on the phone step. Until it is set up they are asked to use Telegram (a test code shows only in test mode while no channel is set up).',
     field: 'WhatsApp access token',
   },
   google: { sub: 'Sign in with a Google account', note: 'Comes after WhatsApp. Today the app\'s Google button only works in test mode.', field: 'Google OAuth client ID' },
@@ -290,7 +302,10 @@ function render(data) {
   $('key-banner').hidden = data.keyReady;
   $('key-banner').textContent = data.keyReady ? ''
     : 'THIRTYDA_SECRET_KEY is missing or is not 64 hex characters on this server, so tokens cannot be saved. Set it on the server (Railway variables), then reload.';
-  $('state').textContent = tg.live ? 'Telegram live' : data.devAuth ? 'Test codes · nothing live yet' : 'No code channel live';
+  const warning = devWarning(data);
+  $('dev-banner').hidden = !warning;
+  $('dev-banner').textContent = warning;
+  $('state').textContent = tg.live ? 'Telegram live' : tg.set ? 'Telegram needs attention' : data.testCodes ? 'Test codes · nothing live yet' : 'No code channel live';
   $('cards').replaceChildren(
     telegramCard(tg, data),
     h('div', { class: 'cx-next' }, data.connections.filter((c) => c.comingNext).map(nextCard)));

@@ -14,7 +14,7 @@
  *   PUT  /30da/admin/api/questions/L1|L2  { slots, titles?, updatedAt? } → saved level | 422 { problems } | 409 changed
  *   POST /30da/admin/api/questions/L1|L2/reset   back to the built-in choices
  *   GET  /30da/admin/connections          how people get their code / sign in (Telegram now; WhatsApp, Google, Facebook next)
- *   GET  /30da/admin/api/connections      { keyReady, connections:[{ id, name, set, last4, updatedAt, updatedBy, live, … }] }
+ *   GET  /30da/admin/api/connections      { keyReady, devAuth, testCodes, onRailway, connections:[{ id, name, set, last4, updatedAt, updatedBy, live, … }] }
  *   PUT  /30da/admin/api/connections/telegram        { token } → saved (encrypted) | 422 bad format | 503 no key
  *   DELETE /30da/admin/api/connections/telegram      remove the saved token
  *   POST /30da/admin/api/connections/telegram/test   { phone } → a real Telegram code to that phone, or why not
@@ -39,7 +39,7 @@ import {
 } from "./thirtyda-questions.mjs";
 import { LEVEL_RULES } from "../thirtyda-app/shared/questions.js";
 import { keyReady, saveSecret, removeSecret, secretStatus, SettingsError } from "./thirtyda-settings.mjs";
-import { checkTelegramToken, deliverCode, CODE_TTL_S } from "./thirtyda-code-send.mjs";
+import { checkTelegramToken, deliverCode, testCodesAllowed, CODE_TTL_S } from "./thirtyda-code-send.mjs";
 import { normalizePhone } from "./thirtyda-app.mjs";
 import { QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS } from "../thirtyda-app/shared/question-slots.js";
 
@@ -296,9 +296,14 @@ async function connectionsView(d) {
   const tg = await secretStatus(d, "telegram");
   const envToken = String(process.env.THIRTYDA_TG_TOKEN ?? "").trim();
   const { readable, lastSend, ...view } = tg;
+  const devAuth = process.env.THIRTYDA_DEV_AUTH === "1";
   return {
     keyReady: keyReady(),
-    devAuth: process.env.THIRTYDA_DEV_AUTH === "1",
+    devAuth,
+    // Exactly what the app does (same rule): on-screen test codes only in test mode with no channel set up.
+    testCodes: await testCodesAllowed(d, devAuth),
+    // On Railway (the live server) test mode must be off: the page shows a red warning while it is on.
+    onRailway: Boolean(process.env.RAILWAY_ENVIRONMENT),
     connections: [
       {
         id: "telegram",

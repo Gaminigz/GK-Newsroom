@@ -36,7 +36,7 @@ import { savePhoto, readPhoto, deletePhoto, isPhotoId, PhotoError } from "./thir
 import { translate, translateAll, translateEnabled } from "./thirtyda-translate.mjs";
 import { areaFor, haversineKm } from "./thirtyda-geo.mjs";
 import { clientIp } from "./thirtyda-net.mjs";
-import { CODE_CHANNELS, DEFAULT_CHANNEL, CHANNEL_NAMES, channelLive, deliverCode } from "./thirtyda-code-send.mjs";
+import { CODE_CHANNELS, DEFAULT_CHANNEL, CHANNEL_NAMES, channelLive, testCodesAllowed, deliverCode } from "./thirtyda-code-send.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
   PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
@@ -66,6 +66,8 @@ const OTP_RESEND_S = 30;
 const OTP_SENDS = 3;
 const OTP_ATTEMPTS = 5;
 const IP_SENDS = 30; // per IP per window; loose because carriers put many phones behind one NAT address
+const IP_GUESSES = 60; // code checks per IP per window (a right code is not counted); same NAT reasoning
+const OTP_GIVE_BACKS = 2; // failed live sends per number per window that do not use up a send (see failCodeSend)
 const LOC_MOVE_MS = 2 * 60e3; // one location move every 2 minutes
 const LOC_DAY_MAX = 30; // location moves per 24 hours
 const LOC_OFFSET_KM = [0.3, 0.5]; // every stored point sits this far from the real one (see setLocation)
@@ -725,6 +727,30 @@ const ERROR_TEXT = {
 // ---------------------------------------------------------------- auth handlers
 
 const ipSends = new Map(); // ip -> [timestamps]
+const ipGuesses = new Map(); // ip -> [timestamps] of code checks (verify-code)
+const giveBacks = new Map(); // phone -> [timestamps] of failed live sends that were given back
+
+/** Timestamps of `key` still inside the window (the list is stored back, pruned). */
+function inWindowFor(map, key, now) {
+  const list = (map.get(key) || []).filter((t) => now - t < OTP_WINDOW_MS);
+  map.set(key, list);
+  return list;
+}
+/** Drop keys with nothing left in the window, so the limiter maps cannot grow without end. */
+setInterval(() => {
+  const now = Date.now();
+  for (const map of [ipSends, ipGuesses, giveBacks]) {
+    for (const [key, list] of map) if (!list.some((t) => now - t < OTP_WINDOW_MS)) map.delete(key);
+  }
+}, OTP_WINDOW_MS).unref();
+
+/** true (and counted) when this number may have one more failed live send given back in this window. */
+function takeGiveBack(phone, now) {
+  const list = inWindowFor(giveBacks, phone, now);
+  if (list.length >= OTP_GIVE_BACKS) return false;
+  list.push(now);
+  return true;
+}
 
 /** Who gets the code where: the person picks Telegram (default) or WhatsApp on the phone step. */
 const CHANNEL_FAILED_TEXT = {
@@ -735,10 +761,14 @@ const CHANNEL_FAILED_TEXT = {
 /**
  * POST /auth/send-code { phone, channel:'telegram'|'whatsapp' } (channel defaults to telegram).
  * Live channel (configured on the admin Connections page) → the code really goes out and is never
- * returned, test mode or not. If delivery fails the claimed send is undone (the number keeps its turn:
- * no 30 s wait, no use of its 3 per 15 minutes) → 422 channel_failed { channel, reason, message }.
- * The address's count stays used, so failing numbers cannot be used to hammer the provider.
- * Not live → THIRTYDA_DEV_AUTH=1: test mode as before (devCode for the "Test code" note); else 503 channel_unavailable.
+ * returned, test mode or not. The new code is claimed PENDING: verify-code checks nothing against it (nor
+ * against the number's older code) until Telegram has accepted it, so a send that fails was never guessable.
+ * If delivery fails → 422 channel_failed { channel, reason, message }: the number's older code comes back
+ * exactly as it was (its tries already used stay used), and the send itself is given back (no 30 s wait,
+ * no use of its 3 per 15 minutes) at most OTP_GIVE_BACKS times per number per 15 minutes; after that a
+ * failed send counts like a sent one. The address's count always stays used.
+ * Not live → on-screen test code (devCode for the "Test code" note) only when THIRTYDA_DEV_AUTH=1 and no
+ * code channel is set up at all (testCodesAllowed); otherwise 503 channel_unavailable.
  */
 async function sendCode(ctx) {
   const { d, body, req } = ctx;
@@ -749,21 +779,22 @@ async function sendCode(ctx) {
   const name = CHANNEL_NAMES[channel];
   const other = CHANNEL_NAMES[CODE_CHANNELS.find((c) => c !== channel)];
   const live = await channelLive(d, channel);
-  if (!live && !DEV_AUTH) throw fail(503, "channel_unavailable", `Codes by ${name} are not available yet.`, { channel });
+  if (!live && !(await testCodesAllowed(d, DEV_AUTH))) {
+    throw fail(503, "channel_unavailable", `Codes by ${name} are not available yet.`, { channel });
+  }
 
   const now = Date.now();
   const ip = clientIp(req);
-  const recent = (ipSends.get(ip) || []).filter((t) => now - t < OTP_WINDOW_MS);
+  const recent = inWindowFor(ipSends, ip, now);
   if (recent.length >= IP_SENDS) throw fail(429, "rate_limited", "Too many codes. Try again in 15 minutes.");
   // Counted before any await, so parallel requests from one address all see each other.
   recent.push(now);
-  ipSends.set(ip, recent);
 
   const code = String(crypto.randomInt(0, 1e6)).padStart(6, "0");
   const codeHash = hashCode(phone, code);
   let claim;
   try {
-    claim = await claimCodeSend(d, phone, codeHash, now);
+    claim = await claimCodeSend(d, phone, codeHash, now, { pending: live });
   } catch (err) {
     const list = ipSends.get(ip) || [];
     const k = list.indexOf(now);
@@ -778,40 +809,57 @@ async function sendCode(ctx) {
     } catch (err) {
       sent = { ok: false, reason: "other", detail: err instanceof Error ? err.message.slice(0, 80) : "error" };
     }
-    if (!sent.ok) {
-      try {
-        await undoCodeSend(d, phone, codeHash, claim.prev);
-      } catch (err) {
-        console.error("[30da api] could not undo a failed code send:", err instanceof Error ? err.message : err);
-      }
-      console.warn(`[30da api] ${channel} code not delivered: ${sent.reason}${sent.detail ? ` (${sent.detail})` : ""}`);
-      const reason = sent.reason === "not_on_telegram" ? "not_on_telegram" : "unavailable";
-      throw fail(422, "channel_failed", CHANNEL_FAILED_TEXT[reason](name, other), { channel, reason });
+    if (sent.ok) {
+      // Delivered: only now can the code be checked.
+      await d.collection(C.otps).updateOne({ _id: phone, codeHash, pending: true }, { $unset: { pending: "" } });
+      return { ok: true, phone, channel, live: true, resendIn: OTP_RESEND_S };
     }
-    return { ok: true, phone, channel, live: true, resendIn: OTP_RESEND_S };
+    const givenBack = takeGiveBack(phone, now);
+    try {
+      await failCodeSend(d, phone, codeHash, claim.prev, { givenBack });
+    } catch (err) {
+      console.error("[30da api] could not clear a failed code send:", err instanceof Error ? err.message : err);
+    }
+    console.warn(`[30da api] ${channel} code not delivered: ${sent.reason}${sent.detail ? ` (${sent.detail})` : ""}${givenBack ? "" : " · send counted"}`);
+    const reason = sent.reason === "not_on_telegram" ? "not_on_telegram" : "unavailable";
+    throw fail(422, "channel_failed", CHANNEL_FAILED_TEXT[reason](name, other), { channel, reason });
   }
-  // Not live (test mode only, checked above): the code comes back for the "Test code" note.
+  // Not live (test mode with no channel set up, checked above): the code comes back for the "Test code" note.
   return { ok: true, phone, channel, live: false, resendIn: OTP_RESEND_S, devCode: code };
 }
 
-/** Put the number's code record back as it was before a claim whose delivery failed (only our own claim). */
-async function undoCodeSend(d, phone, codeHash, prev) {
+/**
+ * A pending send whose delivery failed (only our own claim: same codeHash, still pending). The undelivered
+ * code is never left checkable. Nothing was checked while it was pending, so the record from before the
+ * claim (`prev`) still has the right tries count: putting it back never lowers it.
+ *   givenBack → the record is exactly as before the claim (older code, its tries, its sends and 30 s gap);
+ *               no record before → none now.
+ *   otherwise → the send stays counted (sentAt, sends) but carries no code: the older code is dropped too,
+ *               as asking for a new one does, so verify-code answers code_expired.
+ */
+async function failCodeSend(d, phone, codeHash, prev, { givenBack }) {
   const otps = d.collection(C.otps);
-  if (!prev) {
-    await otps.deleteOne({ _id: phone, codeHash });
+  const ours = { _id: phone, codeHash, pending: true };
+  if (!givenBack) {
+    await otps.updateOne(ours, { $unset: { codeHash: "", attempts: "", pending: "" } });
     return;
   }
-  const { _id, ...was } = prev;
-  await otps.replaceOne({ _id: phone, codeHash }, was);
+  if (!prev) {
+    await otps.deleteOne(ours);
+    return;
+  }
+  const { _id, pending, ...was } = prev;
+  await otps.replaceOne(ours, was);
 }
 
 /**
  * Store a new code for `phone` only if the 30 s resend gap and the 3-per-15-minutes limit allow
  * it — checked and written in one atomic update, so a burst of parallel requests gets one code,
  * not ten. Throws 429 too_soon / rate_limited otherwise. → { prev }: the record as it was before
- * (null when there was none), so a failed delivery can put it back (undoCodeSend).
+ * (null when there was none), so a failed delivery can put it back (failCodeSend).
+ * pending:true (a live channel) → the code cannot be checked until the send succeeds and clears the flag.
  */
-async function claimCodeSend(d, phone, codeHash, now) {
+async function claimCodeSend(d, phone, codeHash, now, { pending = false } = {}) {
   const otps = d.collection(C.otps);
   const inWindow = {
     $filter: { input: { $ifNull: ["$sends", []] }, as: "t", cond: { $gt: ["$$t", new Date(now - OTP_WINDOW_MS)] } },
@@ -822,12 +870,12 @@ async function claimCodeSend(d, phone, codeHash, now) {
       _id: phone,
       $expr: { $and: [{ $lte: ["$sentAt", new Date(now - OTP_RESEND_S * 1000)] }, { $lt: [{ $size: inWindow }, OTP_SENDS] }] },
     },
-    [{ $set: { ...fields, sends: { $concatArrays: [inWindow, [new Date(now)]] } } }],
+    [{ $set: { ...fields, pending: pending ? true : "$$REMOVE", sends: { $concatArrays: [inWindow, [new Date(now)]] } } }],
     { returnDocument: "before" },
   );
   if (claimed) return { prev: claimed };
   try {
-    await otps.insertOne({ _id: phone, ...fields, sends: [new Date(now)] });
+    await otps.insertOne({ _id: phone, ...fields, ...(pending ? { pending: true } : {}), sends: [new Date(now)] });
     return { prev: null };
   } catch (err) {
     if (err?.code !== 11000) throw err; // a code exists: fall through and say why it cannot be resent
@@ -843,28 +891,43 @@ async function claimCodeSend(d, phone, codeHash, now) {
   throw fail(429, "rate_limited", "Too many codes for this number. Try again later.", { retryIn });
 }
 
+/**
+ * POST /auth/verify-code { phone, code }. 5 tries per code (counted before comparing, so parallel guesses
+ * cannot exceed it), IP_GUESSES checks per address per 15 minutes (a right code gives its check back), and
+ * nothing is compared while a live send is pending (409 code_sending): a code is checkable only once delivered.
+ */
 async function verifyCode(ctx) {
-  const { d, body, me } = ctx;
+  const { d, body, me, req } = ctx;
   const phone = normalizePhone(body.phone);
   const code = String(body.code ?? "").replace(/\D/g, "");
   if (!phone || code.length !== 6) throw invalid("Enter the 6-digit code.", { field: "code" });
 
+  const now = Date.now();
+  const ip = clientIp(req);
+  const guesses = inWindowFor(ipGuesses, ip, now);
+  if (guesses.length >= IP_GUESSES) throw fail(429, "rate_limited", "Too many tries. Try again in 15 minutes.");
+  guesses.push(now); // before any await, like the send limit
+
   const otps = d.collection(C.otps);
-  // Count the attempt before comparing so parallel guesses cannot exceed the limit.
+  const checkable = { _id: phone, codeHash: { $exists: true }, pending: { $ne: true }, expires: { $gt: new Date() } };
   const otp = await otps.findOneAndUpdate(
-    { _id: phone, expires: { $gt: new Date() }, attempts: { $lt: OTP_ATTEMPTS } },
+    { ...checkable, attempts: { $lt: OTP_ATTEMPTS } },
     { $inc: { attempts: 1 } },
     { returnDocument: "after" },
   );
   if (!otp) {
-    const left = await otps.findOne({ _id: phone, expires: { $gt: new Date() } });
+    const left = await otps.findOne({ _id: phone, codeHash: { $exists: true }, expires: { $gt: new Date() } });
+    if (left?.pending) throw fail(409, "code_sending", "A new code is on its way. Enter the new code when it arrives.");
     if (left) throw fail(429, "too_many_attempts", "Too many tries. Ask for a new code.");
     throw fail(400, "code_expired", "That code has expired. Ask for a new one.");
   }
   if (!safeEqualHex(otp.codeHash, hashCode(phone, code))) {
     throw fail(400, "wrong_code", "That code is not right.", { attemptsLeft: Math.max(0, OTP_ATTEMPTS - otp.attempts) });
   }
-  await otps.deleteOne({ _id: phone });
+  const list = ipGuesses.get(ip) || [];
+  const k = list.indexOf(now);
+  if (k >= 0) list.splice(k, 1); // a right code does not count against the address
+  await otps.deleteOne({ _id: phone, codeHash: otp.codeHash });
 
   const users = d.collection(C.users);
   let user = await users.findOne({ phone });

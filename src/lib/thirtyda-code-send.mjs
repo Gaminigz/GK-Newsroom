@@ -6,7 +6,8 @@
  *              src/lib/thirtyda-settings.mjs), else the THIRTYDA_TG_TOKEN env var.
  *   whatsapp — not wired yet (never live).
  * The app (src/lib/thirtyda-app.mjs, POST /30da/api/auth/send-code) really delivers on a live channel and
- * falls back to on-screen test codes only when a channel is not live and THIRTYDA_DEV_AUTH=1.
+ * shows on-screen test codes only when THIRTYDA_DEV_AUTH=1 AND no channel is set up at all (testCodesAllowed):
+ * once Telegram is saved, picking WhatsApp (not live) is refused instead of showing a code.
  *
  * Telegram Gateway API (https://core.telegram.org/gateway/api):
  *   POST https://gatewayapi.telegram.org/sendVerificationMessage
@@ -17,7 +18,7 @@
  * network, anything else). The token is never logged or returned.
  */
 
-import { readSecret, noteSecretUse } from "./thirtyda-settings.mjs";
+import { readSecret, secretSaved, noteSecretUse } from "./thirtyda-settings.mjs";
 
 export const CODE_CHANNELS = ["telegram", "whatsapp"];
 export const DEFAULT_CHANNEL = "telegram";
@@ -48,6 +49,25 @@ export async function telegramToken(d, env = process.env) {
 export async function channelLive(d, channel) {
   if (channel === "telegram") return Boolean(await telegramToken(d));
   return false;
+}
+
+/**
+ * true when ANY code channel is set up: live, or saved but unreadable (THIRTYDA_SECRET_KEY changed since).
+ * Once one is, real codes are the only codes: no channel may show a code on screen any more.
+ */
+export async function codeChannelConfigured(d) {
+  for (const channel of CODE_CHANNELS) if (await channelLive(d, channel)) return true;
+  return d ? secretSaved(d, "telegram") : false;
+}
+
+/**
+ * On-screen test codes (the "Test code" note): only in test mode (THIRTYDA_DEV_AUTH=1) AND while no code
+ * channel is set up. Picking a channel that is not live never shows a code once another one is live, so
+ * test mode cannot be used to sign in as a number that is not yours next to a real channel.
+ */
+export async function testCodesAllowed(d, devAuth = process.env.THIRTYDA_DEV_AUTH === "1") {
+  if (!devAuth) return false;
+  return !(await codeChannelConfigured(d));
 }
 
 const TEXT = {
