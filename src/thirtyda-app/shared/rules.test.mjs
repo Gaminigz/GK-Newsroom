@@ -62,7 +62,9 @@ test('stageOpenLevel: what a pair has opened, for photos', () => {
   for (const s of ['l1_ask', 'l1_answer', 'l2_wait', undefined, null, 'nope']) assert.equal(stageOpenLevel(s), 1, String(s));
   assert.equal(stageOpenLevel('l2_open'), 2);
   assert.equal(stageOpenLevel('l3_wait'), 2);
+  assert.equal(stageOpenLevel('l3_decide'), 2);
   assert.equal(stageOpenLevel('l3_open'), 3);
+  assert.equal(stageOpenLevel('ended'), 1); // "Forget it": only the main photo again
 });
 
 test('photoVisible: slot 1 for everyone, slot 2 at Level 2, slots 3–4 at Level 3', () => {

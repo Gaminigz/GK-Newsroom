@@ -11,9 +11,10 @@
  *   ?fast=1  the 24-hour waits last 10 seconds
  *
  * Screens 5–12 are the ONE conversation screen (#/c/P-1) in different states: Level 1 and Level 2 run both
- * ways (each person sends their own 5 and replies to the other's line by line), Level 3 is the chat with
- * everything before it above. The other person is simulated: after you act they reply one line at a time
- * and send their own 5 when they have not yet.
+ * ways (each person sends their own 5 and replies to the other's line by line, one tap each), after Level 2
+ * each chooses "Open the chat" or "Forget it", and Level 3 is the chat with everything before it above and
+ * the real names in the header. The other person is simulated: after you act they reply one line at a time,
+ * send their own 5 when they have not yet, and choose to open the chat after you do.
  *
  * Photos: no real images. Single photo fields (Nearby faces, the big profile photo, PairView) are null
  * so the app draws its grey silhouette; photo LISTS (my slots, the profile strip, the chat header) are
@@ -51,7 +52,7 @@
     7: { hash: CONV, lang: 'en', me: DARA, stage: 'l2_wait', sets: L1_DONE, opensIn: DAY - 27e3 },
     8: { hash: CONV, lang: 'en', me: DARA, stage: 'l2_open', sets: { ...L1_DONE, '2s': 0 } },
     9: { hash: CONV, lang: 'en', me: SOPHEA, stage: 'l2_open', sets: { ...L1_DONE, '2d': 2, '2s': 3 } },
-    10: { hash: CONV, lang: 'en', me: DARA, stage: 'l3_wait', sets: { ...L1_DONE, '2d': 5, '2s': 5 }, opensIn: DAY - 161e3 },
+    10: { hash: CONV, lang: 'en', me: DARA, stage: 'l3_decide', sets: { ...L1_DONE, '2d': 5, '2s': 5 } },
     11: { hash: CONV, lang: 'en', me: DARA, stage: 'l3_open', sets: { ...L1_DONE, '2d': 5, '2s': 5 } },
     12: { hash: CONV, lang: 'km', me: SOPHEA, stage: 'l3_open', sets: { ...L1_DONE, '2d': 5, '2s': 5 } },
   };
@@ -246,42 +247,19 @@
   // ------------------------------------------------------------------ texts written by Dara and Sophea
 
   // Written lines (original + translation; the bank covers the picked ones in all 5 languages).
-  // Level 1: 4 picked + 1 written (Yes / No reply); Level 2: 3 picked + 2 written (replies in words).
-  // Picked line k is always one of list k's 5 choices (see linesOf).
+  // Level 1: 4 picked + 1 written; Level 2: 3 picked + 2 written. Every reply is one tap: a picked line
+  // Yes / No / Not really / Maybe, a written line Yes / No. Picked line k is one of list k's 5 choices.
   const Q_NOISY = 'l1_noisy'; // Dara's own Level 1 line reads exactly like this bank line
   const SOPHEA_L1 = { km: 'តើអ្នកចូលចិត្តផឹកកាហ្វេទេ?', en: 'Do you like coffee?' };
   const DARA_L2 = [
-    { en: 'What does your morning look like?', km: 'តើពេលព្រឹករបស់អ្នកជាធម្មតាយ៉ាងដូចម្ដេច?', answer: 'morning' },
-    { en: 'What will you do this evening?', km: 'តើល្ងាចនេះអ្នកនឹងធ្វើអ្វី?', answer: 'evening' },
+    { en: 'Do you like early mornings?', km: 'តើអ្នកចូលចិត្តពេលព្រឹកព្រលឹមទេ?' },
+    { en: 'Will you go out this evening?', km: 'តើល្ងាចនេះអ្នកនឹងចេញទៅក្រៅទេ?' },
   ];
   const SOPHEA_L2 = [
-    { km: 'តើអ្នកចូលចិត្តភ្លៀង ឬថ្ងៃក្តៅជាង?', en: 'Do you prefer rain or hot days?', answer: 'rain' },
-    { km: 'តើសៀវភៅចុងក្រោយដែលអ្នកបានអានគឺជាអ្វី?', en: 'What was the last book you read?', answer: 'book' },
+    { km: 'តើអ្នកចូលចិត្តភ្លៀងទេ?', en: 'Do you like the rain?' },
+    { km: 'តើអ្នកចូលចិត្តអានសៀវភៅទេ?', en: 'Do you like reading books?' },
   ];
-  const L1_REPLIES = ['yes', 'not_really', 'no', 'maybe', 'yes']; // 5th = the written line: Yes / No only
-
-  // Level 2 answers in words: by system key, or by which written question they answer.
-  const ANSWERS = {
-    l2_window: { en: 'A small park and lots of motorbikes.', km: 'សួនតូចមួយ និងម៉ូតូច្រើនណាស់។' },
-    l2_weather: { en: 'Sunny and very hot today.', km: 'មានពន្លឺថ្ងៃ ហើយក្តៅខ្លាំងណាស់ថ្ងៃនេះ។' },
-    l2_fav_place: { en: 'A small café near the pagoda.', km: 'ហាងកាហ្វេតូចមួយក្បែរវត្ត។' },
-    l2_morning_drink: { en: 'Iced coffee with milk.', km: 'កាហ្វេទឹកកកទឹកដោះគោ។' },
-    l2_morning: { en: 'A short walk and a milk coffee.', km: 'ដើរលេងបន្តិច ហើយផឹកកាហ្វេទឹកដោះគោ។' },
-    l2_evening: { en: 'Cook dinner and watch a film.', km: 'ចម្អិនម្ហូប ហើយមើលភាពយន្ត។' },
-    l2_fav_food: { en: 'Fish amok, and my mum’s soup.', km: 'អាម៉ុកត្រី និងសម្លរបស់ម្ដាយខ្ញុំ។' },
-    l2_weekend: { en: 'A long walk by the river.', km: 'ដើរលេងយូរនៅមាត់ទន្លេ។' },
-    place: { en: 'A small café near the pagoda.', km: 'ហាងកាហ្វេតូចមួយក្បែរវត្ត។' },
-    morning: { en: 'A short walk and a milk coffee.', km: 'ដើរលេងបន្តិច ហើយផឹកកាហ្វេទឹកដោះគោ។' },
-    evening: { en: 'Cook dinner and watch a film.', km: 'ចម្អិនម្ហូប ហើយមើលភាពយន្ត។' },
-    rain: { en: 'Rain, it makes the city calm.', km: 'ភ្លៀង ព្រោះវាធ្វើឲ្យទីក្រុងស្ងប់។' },
-    book: { en: 'A book about old Phnom Penh.', km: 'សៀវភៅអំពីភ្នំពេញសម័យមុន។' },
-    music: { en: 'Old Khmer songs and some jazz.', km: 'ចម្រៀងខ្មែរសម័យដើម និង jazz ខ្លះ។' },
-  };
-  const GENERIC_ANSWERS = [
-    { en: 'Nice one! I will tell you in the chat.', km: 'ល្អណាស់! ខ្ញុំនឹងប្រាប់អ្នកពេលជជែក។' },
-    { en: 'In short: I really like it.', km: 'និយាយឲ្យខ្លី៖ ខ្ញុំចូលចិត្តវាណាស់។' },
-    { en: 'I need to think about that, haha.', km: 'ខ្ញុំត្រូវគិតបន្តិចសិន ហាហា។' },
-  ];
+  const TAP_REPLIES = ['yes', 'not_really', 'no', 'maybe', 'yes'];
 
   // The design's Level 3 conversation (original + translation), and what each side replies when you write.
   const CHAT = [
@@ -340,8 +318,7 @@
     translations: bankTr((l) => R.questionText(level, key, l)),
   });
   const writtenQ = (n, tr, lang) => ({ n, source: 'written', key: null, text: tr[lang] ?? tr.en, lang, translations: fullTr(tr) });
-  const l1Answer = (n, key, lang, at) => ({ n, key, text: null, lang, translations: bankTr((l) => R.answerText(key, l)), at });
-  const l2Answer = (n, tr, lang, at) => ({ n, key: null, text: tr[lang] ?? tr.en, lang, translations: fullTr(tr), at });
+  const tapAnswer = (n, key, lang, at) => ({ n, key, text: null, lang, translations: bankTr((l) => R.answerText(key, l)), at });
 
   function newSet(pairId, level, from, to, questions, sentAt) {
     const set = { id: nextId('set', 'S-'), pairId, level, from, to, questions, answers: [], sentAt, completedAt: null };
@@ -366,19 +343,10 @@
     return [...picks.map((k, i) => bankQ(level, k, i + 1, lang)), ...written.map((w, j) => writtenQ(picks.length + j + 1, w, lang))];
   }
 
-  /** What a person replies to one Level 2 line (by key, by the written text, else a friendly line). */
-  function answerTextFor(q, i) {
-    if (q.source === 'system' && ANSWERS[q.key]) return ANSWERS[q.key];
-    const norm = (s) => String(s ?? '').trim().toLowerCase();
-    const texts = [q.text, ...Object.values(q.translations || {})].filter(Boolean).map(norm);
-    const known = [...DARA_L2, ...SOPHEA_L2].find((w) => [w.en, w.km].some((x) => texts.includes(norm(x))));
-    return known ? ANSWERS[known.answer] : GENERIC_ANSWERS[i % GENERIC_ANSWERS.length];
-  }
-
-  /** `user`'s reply to line `q` (the i-th) of a set. */
+  /** `user`'s tap reply to line `q` (the i-th) of a set: a written line gets Yes / No only. */
   function botReply(set, q, i, user, at) {
-    const lang = user.lang === 'km' ? 'km' : 'en';
-    return set.level === 1 ? l1Answer(q.n, L1_REPLIES[i % L1_REPLIES.length], user.lang, at) : l2Answer(q.n, answerTextFor(q, i), lang, at);
+    const key = q.source === 'written' ? (i % 2 ? 'no' : 'yes') : TAP_REPLIES[i % TAP_REPLIES.length];
+    return tapAnswer(q.n, key, user.lang, at);
   }
 
   /** The first `count` lines of a set get `user`'s replies; all 5 = complete. */
@@ -431,9 +399,14 @@
       }
       add(2, SOPHEA, DARA);
       add(2, DARA, SOPHEA);
-      if (st === 'l3_wait' || st === 'l3_open') {
-        const done = st === 'l3_wait' ? now - (DAY - SC.opensIn) : now - DAY - 2 * 3600e3;
-        pair.l3OpensAt = st === 'l3_wait' ? waitEnd(done) : iso(done + DAY);
+      if (st === 'l3_decide' || st === 'l3_open') {
+        // Level 2 done 161 s ago (screen 10: both still to choose), or a day ago and both chose the chat.
+        const done = st === 'l3_decide' ? now - 161e3 : now - DAY - 2 * 3600e3;
+        pair.decisions = {};
+        if (st === 'l3_open') {
+          pair.decisions = { [SOPHEA]: { open: true, at: iso(done + 600e3) }, [DARA]: { open: true, at: iso(done + 900e3) } };
+          pair.l3OpensAt = iso(done + 900e3);
+        }
         pair.updatedAt = iso(done);
       }
       if (st === 'l3_open') {
@@ -545,7 +518,8 @@
     const frozen = !other || Boolean(other.blocked);
     const lvl = R.openSetLevel(stage);
     const cur = R.currentSetLevel(stage);
-    const next = R.nextStep({ stage, mine: lvl ? findSet(pair, lvl, u.id) : null, theirs: lvl ? findSet(pair, lvl, otherId) : null, frozen });
+    const decided = R.decisionOf(pair.decisions, u.id);
+    const next = R.nextStep({ stage, mine: lvl ? findSet(pair, lvl, u.id) : null, theirs: lvl ? findSet(pair, lvl, otherId) : null, frozen, decided });
     const lastFrom = pair.lastChat ? (pair.lastChat.from === u.id ? 'me' : 'them') : null;
     const mine = cur ? findSet(pair, cur, u.id) : null;
     const theirs = cur ? findSet(pair, cur, otherId) : null;
@@ -560,6 +534,8 @@
         : { id: otherId, name: '', gender: null, lang: 'en', photo: null },
       l2OpensAt: pair.l2OpensAt ?? null,
       l3OpensAt: pair.l3OpensAt ?? null,
+      decision: stage === 'l3_decide' || stage === 'l3_open' || stage === 'ended' ? decided : null,
+      endedAt: stage === 'ended' ? pair.endedAt ?? null : null,
       remind: Boolean(pair.remind?.[u.id]),
       next,
       turn: !frozen && R.isMyTurn(next, lastFrom),
@@ -573,22 +549,20 @@
 
   const hiddenFrom = (pair, u) => isDraft(pair) && pair.a !== u.id && !pair.opened?.[u.id];
 
-  /** l2_wait → l2_open and l3_wait → l3_open once their time has come (lazily, like the server). */
+  /** l2_wait → l2_open once its time has come (lazily, like the server); an old l3_wait → l3_decide. */
   function settle(pair) {
     const now = Date.now();
     if (pair.stage === 'l2_wait' && Date.parse(pair.l2OpensAt) <= now) {
       Object.assign(pair, { stage: 'l2_open', level: 2, updatedAt: pair.l2OpensAt });
     }
-    if (pair.stage === 'l3_wait' && Date.parse(pair.l3OpensAt) <= now) {
-      Object.assign(pair, { stage: 'l3_open', level: 3, updatedAt: pair.l3OpensAt });
-    }
+    if (pair.stage === 'l3_wait') Object.assign(pair, { stage: 'l3_decide', level: 2 });
     return pair;
   }
 
-  /** users.level = the highest level `u` has OPENED with anyone (l2_open / l3_wait → 2, l3_open → 3). */
+  /** users.level = the highest level `u` has OPENED with anyone (l2_open / l3_decide → 2, l3_open → 3, ended → 2). */
   function syncLevel(u) {
     const mine = W.pairs.filter((p) => p.members.includes(u.id)).map(settle);
-    u.level = mine.reduce((m, p) => Math.max(m, R.stageOpenLevel(p.stage)), 1);
+    u.level = mine.reduce((m, p) => Math.max(m, p.stage === 'ended' ? 2 : R.stageOpenLevel(p.stage)), 1);
     return u;
   }
 
@@ -714,7 +688,7 @@
 
   const later = (fn, ms) => setTimeout(() => { try { fn(); } catch (e) { console.warn('[30da demo]', e); } }, ms);
 
-  /** A set got its last reply: when both sets of its level are complete, the level is done and the next one waits. */
+  /** A set got its last reply: when both sets of its level are complete, Level 2 waits, or (after Level 2) both choose. */
   function onSetComplete(pair, set) {
     const back = findSet(pair, set.level, set.to);
     if (!R.levelComplete(set, back)) return;
@@ -722,7 +696,7 @@
     if (set.level === 1 && R.convStage(pair.stage) === 'l1') {
       Object.assign(pair, { stage: 'l2_wait', l2OpensAt: iso(Date.now() + WAIT_MS), updatedAt: at });
     } else if (set.level === 2 && pair.stage === 'l2_open') {
-      Object.assign(pair, { stage: 'l3_wait', l3OpensAt: iso(Date.now() + WAIT_MS), updatedAt: at });
+      Object.assign(pair, { stage: 'l3_decide', decisions: {}, updatedAt: at });
     }
   }
 
@@ -750,6 +724,12 @@
       botTimers.delete(pair.id);
       try {
         settle(pair);
+        // After Level 2 the other person chooses to open the chat once I have chosen it (the screen shows
+        // "waiting for …" first); a "Forget it" has already ended it.
+        if (pair.stage === 'l3_decide') {
+          if (R.decisionOf(pair.decisions, u.id) === true) decideFor(pair, other, true);
+          return;
+        }
         const lvl = R.openSetLevel(pair.stage);
         if (!lvl) return;
         const mine = findSet(pair, lvl, u.id);
@@ -1017,10 +997,12 @@
     if (pair && hiddenFrom(pair, u)) pair = null;
     const view = pair && x.id !== u.id ? pairView(pair, u) : null;
     const { photos, lockedPhotos } = photosFor(x, { isOwner: x.id === u.id, openLevel: R.stageOpenLevel(view?.stage) });
+    const real = view ? realNameFor(x, view.stage) : null;
     return {
       person: {
         id: x.id,
         name: x.name,
+        ...(real ? { realName: real } : {}),
         gender: x.gender ?? null,
         role: x.role ?? null,
         lang: x.lang ?? 'en',
@@ -1138,7 +1120,7 @@
   }
 
   function answerView(a, level, lang) {
-    if (level === 1) {
+    if (level === 1 || a.key) {
       return { n: a.n, key: a.key, text: R.answerText(a.key, lang), original: R.answerText(a.key, a.lang), originalLang: a.lang };
     }
     const tr = a.lang === lang ? null : a.translations?.[lang] ?? null;
@@ -1186,32 +1168,20 @@
     const { pair, other } = pairFor(u, params[0], { write: true });
     const set = replyableSet(pair, u, level);
     const list = Array.isArray(body.answers) ? body.answers : [];
-    if (level === 2) {
-      const texts = list.map((a) => String(a?.text ?? '').trim());
-      stopContactDetails(u, pair, other, texts, { level, kind: 'answer' });
-      stopSplitContactDetails(u, pair, other, texts, { level, kind: 'answer' });
-    }
     if (list.length !== set.questions.length) throw invalid(`Reply to all ${set.questions.length}.`, { index: list.length });
     const seen = new Set();
     list.forEach((a, i) => {
       const n = Number(a?.n);
       if (!set.questions.some((q) => q.n === n) || seen.has(n)) throw invalid('Reply to each line once.', { index: i });
       seen.add(n);
-      if (level === 1) {
-        const source = set.questions.find((q) => q.n === n)?.source;
-        if (!R.l1Answers(source).some((x) => x.key === a.key)) {
-          throw invalid(source === 'written' ? 'Reply to the written line with Yes or No.' : 'Pick one of the replies.', { index: i });
-        }
-      } else {
-        const r = R.checkWrittenAnswer(String(a.text ?? '').trim());
-        if (!r.ok) throw invalid(ERROR_TEXT[r.error] || 'Check this reply.', { index: i, reason: r.error });
+      const source = set.questions.find((q) => q.n === n)?.source;
+      if (!R.replyOptions(source).some((x) => x.key === a.key)) {
+        throw invalid(source === 'written' ? 'Reply to the written line with Yes or No.' : 'Pick one of the replies.', { index: i });
       }
     });
     const lang = u.lang ?? 'en';
     const at = nowIso();
-    for (const a of [...list].sort((x, y) => Number(x.n) - Number(y.n))) {
-      putReply(pair, set, level === 1 ? l1Answer(Number(a.n), a.key, lang, at) : l2Answer(Number(a.n), { [lang]: String(a.text).trim() }, lang, at));
-    }
+    for (const a of [...list].sort((x, y) => Number(x.n) - Number(y.n))) putReply(pair, set, tapAnswer(Number(a.n), a.key, lang, at));
     botTick(pair, u);
     return { pair: pairView(pair, u), conversation: conversationOf(pair, u) };
   }
@@ -1236,7 +1206,7 @@
         n: v.n, source: v.source, topic: null, text: v.text, original: v.original, originalLang: v.originalLang, translated: v.translated,
         reply: replyView(set.answers.find((a) => a.n === q.n), level, lang),
       };
-      if (level === 1 && from === 'them') line.options = R.l1Answers(q.source).map((o) => ({ key: o.key, text: o.text[lang] || o.text.en }));
+      if (from === 'them') line.options = R.replyOptions(q.source).map((o) => ({ key: o.key, text: o.text[lang] || o.text.en }));
       return line;
     });
     return {
@@ -1264,16 +1234,53 @@
     const canSend = !frozen && lvl && !findSet(pair, lvl, u.id) ? { level: lvl, ...R.setRules(lvl), slots: slotsView(lvl, lang) } : null;
     const view = pairView(pair, u);
     const seen = other ? photosFor(other, { openLevel: R.stageOpenLevel(stage) }) : { photos: [], lockedPhotos: [] };
+    const real = realNameFor(other, stage);
     return {
       pair: view,
       other: other
-        ? { id: other.id, name: other.name, gender: other.gender ?? null, lang: other.lang ?? 'en', photos: seen.photos, lockedPhotos: seen.lockedPhotos }
+        ? {
+          id: other.id, name: other.name, gender: other.gender ?? null, lang: other.lang ?? 'en', photos: seen.photos, lockedPhotos: seen.lockedPhotos,
+          ...(real ? { realName: real } : {}),
+        }
         : { id: otherId, name: '', gender: null, lang: 'en', photos: [], lockedPhotos: [] },
       levels,
       canSend,
-      chat: { open: stage === 'l3_open', opensAt: pair.l3OpensAt ?? null, phoneNeeded: !u.verified?.phone },
+      chat: { open: stage === 'l3_open', opensAt: null, phoneNeeded: !u.verified?.phone },
+      decision: { canDecide: stage === 'l3_decide' && !frozen && view.decision === null, mine: view.decision, ended: stage === 'ended', endedAt: view.endedAt },
       next: view.next,
     };
+  }
+
+  /** The other person's real name: only once the chat (Level 3) is open, never for a blocked person. */
+  const realNameFor = (other, stage) => (other && !other.blocked && R.convStage(stage) === 'l3_open' && other.realName ? other.realName : null);
+
+  /** One person's choice after Level 2 (as POST /decide on the server): both open → the chat; one forget → ended. */
+  function decideFor(pair, u, open) {
+    const at = nowIso();
+    pair.decisions = { ...(pair.decisions || {}), [u.id]: { open, at } };
+    pair.updatedAt = at;
+    chatLog(pair).push({
+      id: nextId('msg', 'M-'), from: u.id, at, kind: 'decision', level: 2, open,
+      text: open ? 'Chose to open the chat (Level 3)' : 'Chose to forget it: the conversation ended for both', lang: 'en', flagId: null, stopped: false,
+    });
+    const to = R.afterDecisions(pair.decisions, pair.members);
+    if (to === 'ended') Object.assign(pair, { stage: 'ended', endedAt: at, endedBy: u.id });
+    else if (to === 'l3_open') Object.assign(pair, { stage: 'l3_open', level: 3, l3OpensAt: at });
+  }
+
+  /** POST /pairs/:id/decide { open } — idempotent; "open" may still turn into "forget it" while the other has not chosen. */
+  function decide({ body, params }) {
+    const u = me();
+    if (typeof body.open !== 'boolean') throw invalid('Choose to open the chat or forget it.', { field: 'open' });
+    const { pair } = pairFor(u, params[0], { write: true });
+    const stage = R.convStage(pair.stage);
+    const mine = R.decisionOf(pair.decisions, u.id);
+    if (mine === body.open && ['l3_decide', 'l3_open', 'ended'].includes(stage)) return { conversation: conversationOf(pair, u) };
+    if (stage === 'ended') throw fail(409, 'conversation_ended', 'This conversation has ended.');
+    if (stage !== 'l3_decide') throw notYourTurn();
+    decideFor(pair, u, body.open);
+    if (body.open) botTick(pair, u);
+    return { conversation: conversationOf(pair, u) };
   }
 
   function getConversation({ params }) {
@@ -1281,7 +1288,7 @@
     return conversationOf(pairFor(u, params[0]).pair, u);
   }
 
-  /** PUT /pairs/:id/replies { level, n, key } | { level, n, text } — one reply, changeable until all 5 are in. */
+  /** PUT /pairs/:id/replies { level, n, key } — one tap reply (both levels), changeable until all 5 are in. */
   function saveReply({ body, params }) {
     const u = me();
     const level = levelParam(body.level);
@@ -1290,26 +1297,11 @@
     const n = Number(body.n);
     const q = set.questions.find((x) => x.n === n);
     if (!q) throw invalid('Reply to one of the lines.', { field: 'n', n: body.n ?? null });
-    const lang = u.lang ?? 'en';
-    const at = nowIso();
-    let reply;
-    if (level === 1) {
-      if (!R.l1Answers(q.source).some((x) => x.key === body.key)) {
-        throw invalid(q.source === 'written' ? 'Reply to this line with Yes or No.' : 'Pick one of the replies.', { field: 'key', n });
-      }
-      reply = l1Answer(n, body.key, lang, at);
-    } else {
-      const text = String(body.text ?? '').trim();
-      const c = R.findContactDetails(text);
-      if (!c.ok) {
-        recordStopped(u, pair, other, { text, level, kind: 'answer', hits: c.hits, reason: c.reason });
-        throw fail(422, 'contact_detail', c.reason || 'Contact details are not allowed.', { n, hits: c.hits, reason: c.reason });
-      }
-      const r = R.checkWrittenAnswer(text);
-      if (!r.ok) throw invalid(ERROR_TEXT[r.error] || 'Check this reply.', { field: 'text', n, reason: r.error });
-      reply = l2Answer(n, { [lang]: text }, lang, at);
+    if (body.key === undefined && body.text !== undefined) throw invalid('Reply with one tap.', { field: 'key', n, reason: 'taps_only' });
+    if (!R.replyOptions(q.source).some((x) => x.key === body.key)) {
+      throw invalid(q.source === 'written' ? 'Reply to this line with Yes or No.' : 'Pick one of the replies.', { field: 'key', n });
     }
-    putReply(pair, set, reply);
+    putReply(pair, set, tapAnswer(n, body.key, u.lang ?? 'en', nowIso()));
     botTick(pair, u);
     return { conversation: conversationOf(pair, u) };
   }
@@ -1334,7 +1326,12 @@
     const lang = u.lang ?? 'en';
     const msgs = chatLog(pair).filter((m) => m.kind === 'chat' && !m.stopped && (Number.isNaN(after) || Date.parse(m.at) > after));
     return {
-      other: other ? { id: other.id, name: other.name, lang: other.lang ?? 'en', photos: photosFor(other, { openLevel: R.stageOpenLevel(pair.stage) }).photos } : null,
+      other: other
+        ? {
+          id: other.id, name: other.name, lang: other.lang ?? 'en', photos: photosFor(other, { openLevel: R.stageOpenLevel(pair.stage) }).photos,
+          ...(realNameFor(other, pair.stage) ? { realName: realNameFor(other, pair.stage) } : {}),
+        }
+        : null,
       messages: msgs.map((m) => ({
         id: m.id, mine: m.from === u.id, at: m.at, text: m.text, lang: m.lang,
         translated: m.lang === lang ? null : m.translations?.[lang] ?? null,
@@ -1403,6 +1400,7 @@
     ['GET', /^\/pairs\/(P-\d+)\/incoming$/, (ctx) => setFor(ctx, 'in')],
     ['GET', /^\/pairs\/(P-\d+)\/outgoing$/, (ctx) => setFor(ctx, 'out')],
     ['POST', /^\/pairs\/(P-\d+)\/answers$/, sendAnswers],
+    ['POST', /^\/pairs\/(P-\d+)\/decide$/, decide],
     ['POST', /^\/pairs\/(P-\d+)\/remind$/, remind],
     ['GET', /^\/pairs\/(P-\d+)\/messages$/, listMessages],
     ['POST', /^\/pairs\/(P-\d+)\/messages$/, postMessage],

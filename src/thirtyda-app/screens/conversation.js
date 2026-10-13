@@ -4,26 +4,28 @@
 // chat; the things above just become texts: what you told me before and what you asked me before.")
 //
 // Level 1 and Level 2: each person sends the other ONE set of 5 lines per level, in any order, and replies
-// to the 5 they got, line by line (Level 1: one tap — Yes / No / Not really / Maybe, a written line Yes /
-// No; Level 2: in words, saved as you type). Everything stays above as plain history, oldest first, like
-// a chat: their lines on the left with my replies under them, my lines on the right with theirs. The
-// bottom of the screen is the one thing to do now: send your 5, reply, wait, or (Level 3) chat.
-// GET /pairs/:id/conversation is the one read model; replies save one at a time with PUT /replies.
+// to the 5 they got, line by line, with one tap — Yes / No / Not really / Maybe, the sender's own written
+// line Yes / No (Level 2 sets replied to in words before the taps read back as they were). Everything
+// stays above as plain history, oldest first, like a chat: their lines on the left with my replies under
+// them, my lines on the right with theirs.
+// After Level 2 each person chooses "Open the chat (Level 3)" or "Forget it" ("after these 10 answers the
+// sender can activate Level 3 or forget it"): the chat opens as soon as both chose it — under the
+// history, with each other's real name in the header — and one "Forget it" ends the conversation for
+// both (it stays readable, nothing more can be sent). The bottom of the screen is the one thing to do
+// now: send your 5, reply, wait, choose, or (Level 3) chat.
+// GET /pairs/:id/conversation is the one read model; replies save one at a time with PUT /replies, the
+// choice with POST /decide.
 import {
-  screen, el, icon, t, go, api, toast, topBar, levelBar, countdown, errorText, registerStrings, heartbeat,
-  stageLevel, nextKind, l1Answers, answerText, checkWrittenAnswer,
+  screen, el, icon, t, go, api, toast, modal, topBar, levelBar, countdown, errorText, registerStrings, heartbeat,
+  stageLevel, nextKind, l1Answers, answerText,
 } from '../core.js';
-import {
-  sendPanel, ruleMessage, showError, translateNote, redirected, ANSWER_MAX, myLang, enc,
-} from './level-ask.js';
+import { sendPanel, translateNote, redirected, myLang, enc } from './level-ask.js';
 import { mountChat, ensureStyles, partnerHeader, fmtTime, dayLabel } from './chat.js';
 
-const POLL_MS = 4000; // the other person's lines and replies show up while you look
+const POLL_MS = 4000; // the other person's lines, replies and choice show up while you look
 const POLL_MAX_MS = 30000; // back-off ceiling while offline
-const SAVE_PAUSE_MS = 1800; // Level 2 words save after a pause in typing (and on leaving the box)
 
 // Survive leaving the screen (not a reload).
-const replyDrafts = new Map(); // `${pairId}|${setId}|${n}` → Level 2 words typed and not saved yet
 const panelOpen = new Map(); // pairId → the send panel opened (true) or folded (false) by hand
 
 const unwrap = (r) => (r && typeof r === 'object' && r.conversation ? r.conversation : r);
@@ -70,7 +72,7 @@ screen('/c/:pairId', async ({ params, root }) => {
   return mountConversation(root, base, conv, null);
 });
 
-/** chat = null (Levels 1–2), or the chat's first read ({ v: messages } | { e: phone_needed }). */
+/** chat = null (Levels 1–2, the choice, an ended conversation), or the chat's first read ({ v: messages } | { e: phone_needed }). */
 function mountConversation(root, base, initial, chat) {
   let conv = initial;
   const pairId = conv.pair?.id;
@@ -81,62 +83,55 @@ function mountConversation(root, base, initial, chat) {
   let polling = false;
   let fails = 0;
   let clocks = [];
-  let deferred = false; // a timeline paint waits until the reply box being typed in lets go
+  let deferred = false; // a timeline paint waits until the finger on it lets go
   let pressing = false;
   let remindBusy = false;
+  let deciding = false; // "Open the chat" / "Forget it" is being saved
   const editing = new Set(); // reply keys reopened to change
   const busy = new Set(); // reply keys being saved
-  const again = new Set(); // reply keys changed while their save was in flight
-  const failed = new Set(); // reply keys whose last save did not go through
-  const serverErr = new Map(); // reply key → the server's verdict, until the box changes
-  const stopped = new Map(); // reply key → the text the server stopped (not posted twice)
-  const saveTimers = new Map();
 
   const name = () => conv.other?.name || conv.pair?.other?.name || '';
   const theirLang = () => conv.other?.lang || conv.pair?.other?.lang || 'en';
-  const frozen = () => nextKind(conv.next) === 'frozen' || conv.pair?.next === 'frozen';
+  const stage = () => conv.pair?.stage || null;
+  const ended = () => stage() === 'ended' || nextKind(conv.next) === 'ended' || Boolean(conv.decision?.ended);
+  const choosing = () => !ended() && stage() === 'l3_decide';
+  const frozen = () => !ended() && (nextKind(conv.next) === 'frozen' || conv.pair?.next === 'frozen');
   const setLevels = () => (conv.levels || []).filter((L) => L && (L.level === 1 || L.level === 2)).sort((a, b) => a.level - b.level);
   const levelOf = (n) => setLevels().find((L) => L.level === n) || null;
   const openLevel = () => setLevels().find((L) => L.state === 'open') || null;
-  const draftKey = (key) => `${pairId}|${key}`;
   const keyOf = (s, line) => `${s.id}|${line.n}`;
   const lineId = (key) => `cv-q-${key.replace(/[^\w-]/g, '-')}`;
   // The server says so per set (canReply); older answers are worked out the same way here.
-  const canReply = (s) => !chatMode && !frozen() && !s.completedAt && s.from !== 'me'
+  const canReply = (s) => !chatMode && !frozen() && !ended() && !s.completedAt && s.from !== 'me'
     && (typeof s.canReply === 'boolean' ? s.canReply : levelOf(s.level)?.state === 'open');
-
-  /** The line (and its set) for a reply key, in the current conversation. */
-  function find(key) {
-    for (const L of setLevels()) {
-      for (const s of [L.mine, L.theirs]) {
-        if (!s) continue;
-        const line = (s.lines || []).find((l) => keyOf(s, l) === key);
-        if (line) return { s, line };
-      }
-    }
-    return null;
-  }
+  // A reply as words in my language: a tap's option, or (Level 2 sets from before the taps) the words.
+  const replyText = (r) => (r?.key ? answerText(r.key, myLang()) || r.text || '' : r?.original ?? r?.text ?? '');
 
   /** The first line sent to me (in the open level) that has no reply from me yet. */
   function firstUnreplied() {
     const L = openLevel();
     const s = L?.theirs;
-    if (!s || s.completedAt || frozen()) return null;
+    if (!s || s.completedAt || frozen() || ended()) return null;
     const line = [...(s.lines || [])].sort((a, b) => a.n - b.n).find((l) => !l.reply);
     return line ? { s, line } : null;
   }
 
-  // ------------------------------------------------ header: back, photos (per level), name, level, EN⇄KM
+  // ------------------------------------------------ header: back, photos (per level), name, real name (Level 3), level, EN⇄KM
 
   function headerNode() {
-    const stage = conv.pair?.stage;
-    const fallback = stage === 'l2_wait' ? 1 : stage === 'l3_wait' ? 2 : stageLevel(conv.pair);
+    const st = stage();
+    const fallback = st === 'l2_wait' ? 1 : st === 'l3_wait' ? 2 : stageLevel(conv.pair);
     const level = conv.chat?.open ? 3 : Math.max(1, Math.min(3, Number(conv.pair?.level) || fallback));
     const photos = (conv.other?.photos?.length ? conv.other.photos : [conv.pair?.other?.photo]).filter(Boolean).slice(0, 4);
-    const sub = el('span', { class: 'conv-sub' }, el('span', {}, t('cv_level_bar', { n: level })), levelBar(level));
-    return partnerHeader({ name: name(), photos, myLang: myLang(), theirLang: theirLang(), sub });
+    const sub = el('span', { class: 'conv-sub' },
+      el('span', {}, t(ended() ? 'cv_ended_bar' : 'cv_level_bar', { n: level })), levelBar(level));
+    // The real name only once the chat is open (the server sends it only then).
+    const realName = conv.chat?.open ? conv.other?.realName || '' : '';
+    return partnerHeader({ name: name(), photos, myLang: myLang(), theirLang: theirLang(), sub, realName });
   }
-  const headerSig = (c) => JSON.stringify([c.other?.name, c.other?.lang, c.other?.photos, c.pair?.level, c.pair?.stage, c.chat?.open]);
+  const headerSig = (c) => JSON.stringify([
+    c.other?.name, c.other?.lang, c.other?.photos, c.other?.realName, c.pair?.level, c.pair?.stage, c.chat?.open,
+  ]);
 
   // ------------------------------------------------ timeline (oldest first)
 
@@ -175,11 +170,9 @@ function mountConversation(root, base, initial, chat) {
     return parts;
   }
 
-  /** Their reply under one of my lines: a Level 1 option, or their words (and my language under them). */
-  function theirReply(r, level) {
-    if (level === 1) {
-      return el('div', { class: 'bubble theirs conv-reply' }, el('span', { class: 'orig' }, answerText(r.key, myLang()) || r.text || ''));
-    }
+  /** Their reply under one of my lines: a tap (in my language), or — Level 2 from before the taps — their words. */
+  function theirReply(r) {
+    if (r.key) return el('div', { class: 'bubble theirs conv-reply' }, el('span', { class: 'orig' }, replyText(r)));
     const orig = r.original ?? r.text ?? '';
     const tr = r.text && !same(r.text, orig) ? r.text : null;
     const untranslated = !tr && theirLang() !== myLang() && r.translated !== true;
@@ -188,11 +181,11 @@ function mountConversation(root, base, initial, chat) {
       tr ? el('span', { class: 'trans', lang: myLang() }, tr) : untranslated ? el('span', { class: 'trans-note' }, t('cv_no_translation')) : null);
   }
 
-  function myLine(s, line) {
+  function myLine(line) {
     return el('div', { class: 'conv-line mine' },
       el('div', { class: 'bubble mine' }, lineParts(line, true)),
       line.reply
-        ? theirReply(line.reply, s.level)
+        ? theirReply(line.reply)
         : el('span', { class: 'conv-pending' }, icon('clock', 12), el('span', {}, t('cv_waiting'))));
   }
 
@@ -203,21 +196,19 @@ function mountConversation(root, base, initial, chat) {
       myReply(s, line, key));
   }
 
-  /** My reply under one of their lines: a bubble (tap to change while the set is not complete), or the controls. */
+  /** My reply under one of their lines: the tap I gave (tap it to change while the set is not complete), or the choices. */
   function myReply(s, line, key) {
     const r = line.reply;
     const open = canReply(s);
-    const hasDraft = s.level === 2 && replyDrafts.has(draftKey(key));
-    if (r && (!open || (!editing.has(key) && !hasDraft))) {
-      const text = s.level === 1 ? answerText(r.key, myLang()) || r.text || '' : r.original ?? r.text ?? '';
+    if (r && (!open || !editing.has(key))) {
+      const text = replyText(r);
       if (!open) return el('div', { class: 'bubble mine conv-reply' }, el('span', { class: 'orig' }, text));
       return el('button', {
         type: 'button', class: 'bubble mine conv-reply can-change', 'aria-label': t('cv_change_aria', { text }),
         on: { click: () => startEdit(key) },
       }, el('span', { class: 'orig' }, text));
     }
-    if (!open) return null;
-    return s.level === 1 ? replyChips(s, line, key) : replyBox(s, line, key);
+    return open ? replyChips(s, line, key) : null;
   }
 
   // Yes / No / Not really / Maybe; the sender's own written line: Yes / No (the server lists them per line).
@@ -229,63 +220,8 @@ function mountConversation(root, base, initial, chat) {
     return el('div', { class: 'chips conv-chips', role: 'group', 'aria-labelledby': lineId(key) },
       options.map((a) => el('button', {
         type: 'button', class: 'chip', 'aria-pressed': String(current === a.key), disabled: busy.has(key),
-        dataset: { answer: a.key }, on: { click: () => replyL1(s, line, a.key, key) },
+        dataset: { answer: a.key }, on: { click: () => replyTap(s, line, a.key, key) },
       }, answerText(a.key, myLang()) || a.text || a.key)));
-  }
-
-  function replyBox(s, line, key) {
-    const dk = draftKey(key);
-    const savedText = line.reply ? line.reply.original ?? line.reply.text ?? '' : '';
-    const errId = `${lineId(key)}-err`;
-    const err = el('p', { class: 'field-error', id: errId, 'aria-live': 'polite', hidden: true });
-    const status = el('span', { class: 'conv-save-state', 'aria-live': 'polite' });
-    const box = el('textarea', {
-      class: 'textarea conv-box', rows: 2, placeholder: t('cv_reply_ph'), autocapitalize: 'sentences', maxlength: 400,
-      value: replyDrafts.has(dk) ? replyDrafts.get(dk) : savedText,
-      'aria-labelledby': lineId(key), 'aria-describedby': errId, dataset: { key },
-    });
-    const send = el('button', { type: 'button', class: 'round-btn conv-send', 'aria-label': t('cv_save_reply') }, icon('send', 16));
-    const paint = () => {
-      const text = box.value; // the box is the truth while it is on screen (a saved draft is dropped)
-      const check = checkWrittenAnswer(text.trim());
-      const msg = serverErr.get(key) || ruleMessage(check, ANSWER_MAX);
-      box.classList.toggle('is-error', Boolean(msg));
-      box.setAttribute('aria-invalid', String(Boolean(msg)));
-      showError(err, msg);
-      const saved = Boolean(text.trim()) && same(text, find(key)?.line.reply?.original ?? find(key)?.line.reply?.text);
-      status.replaceChildren(...(busy.has(key)
-        ? [t('cv_saving')]
-        : saved ? [icon('check', 12), t('cv_saved')] : failed.has(key) ? [t('cv_not_saved')] : []));
-      send.setAttribute('aria-disabled', String(busy.has(key) || saved || !(check.ok || check.error === 'contact')));
-    };
-    box.addEventListener('input', () => {
-      replyDrafts.set(dk, box.value);
-      serverErr.delete(key);
-      failed.delete(key);
-      paint();
-      clearTimeout(saveTimers.get(key));
-      saveTimers.set(key, setTimeout(() => saveL2(key, false), SAVE_PAUSE_MS));
-    });
-    // Leaving the box is "done with this reply": it saves, and a contact detail goes to the server once,
-    // which stops it and records the attempt for the admin (the pause save never sends one).
-    box.addEventListener('blur', () => {
-      saveL2(key, true).then(() => {
-        if (!alive || document.activeElement === box || replyDrafts.has(dk)) return;
-        editing.delete(key);
-        renderSoon();
-      });
-    });
-    box.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.isComposing) {
-        e.preventDefault();
-        saveL2(key, true);
-      }
-    });
-    send.addEventListener('mousedown', (e) => e.preventDefault()); // keep the keyboard up
-    send.addEventListener('click', () => saveL2(key, true));
-    box.repaint = paint;
-    paint();
-    return el('div', { class: 'conv-edit' }, el('div', { class: 'conv-edit-row' }, box, send), err, status);
   }
 
   /** "Sophea replied 2 of 5" under my set; "You replied 2 of 5" (+ how replying works) under theirs. */
@@ -299,7 +235,7 @@ function mountConversation(root, base, initial, chat) {
     } else {
       text = done ? t('cv_you_replied_all', { total }) : t('cv_you_replied', { n: replied, total });
     }
-    const hint = !mine && !done && canReply(s) ? t(`cv_hint_${s.level}`) : null;
+    const hint = !mine && !done && canReply(s) ? t('cv_hint') : null;
     return el('div', { class: ['conv-progress', done && 'ok'] },
       el('span', { class: 'conv-progress-line' }, done ? icon('check', 13) : null, el('span', {}, text)),
       hint ? el('span', { class: 'conv-hint' }, hint) : null);
@@ -313,7 +249,7 @@ function mountConversation(root, base, initial, chat) {
     const who = mine ? t('cv_you') : name();
     return [
       el('p', { class: 'conv-cap label' }, s.sentAt ? `${who} · ${dayLabel(s.sentAt)} ${fmtTime(s.sentAt)}` : who),
-      ...lines.map((line) => (mine ? myLine(s, line) : theirLine(s, line))),
+      ...lines.map((line) => (mine ? myLine(line) : theirLine(s, line))),
       progress(s, mine, replied, total),
     ].filter(Boolean);
   }
@@ -344,13 +280,13 @@ function mountConversation(root, base, initial, chat) {
     return b;
   }
 
-  /** "Level 2 opens in 23:59:12 · Remind me" (Level 3: "Chat opens in …"). */
+  /** "Level 2 opens in 23:59:12 · Remind me" (the one wait left: between Level 1 and Level 2). */
   function waitBanner(level, until) {
     const time = el('b', { class: 'tabular', role: 'timer', 'aria-live': 'off' }, '--:--:--');
     // At zero the server opens the level on its next read; never loop on a time already past.
     const future = ms(until) > Date.now();
     clocks.push(countdown(time, until, future ? () => setTimeout(() => poll(true), 700) : null));
-    const [before, after = ''] = t(level === 3 ? 'cv_chat_opens_in' : 'cv_opens_in', { n: level }).split('{time}');
+    const [before, after = ''] = t('cv_opens_in', { n: level }).split('{time}');
     return el('div', { class: 'conv-wait' },
       el('span', { class: 'conv-wait-icon', 'aria-hidden': 'true' }, icon('clock', 16)),
       el('span', { class: 'conv-wait-text' }, before, time, after),
@@ -372,13 +308,10 @@ function mountConversation(root, base, initial, chat) {
       out.push(divider(t('cv_level', { n: L.level })));
       for (const s of sets) out.push(...setNodes(s));
     }
-    const l3 = (conv.levels || []).find((L) => L?.level === 3);
-    if (!conv.chat?.open && (conv.pair?.stage === 'l3_wait' || l3?.state === 'wait')) {
-      out.push(waitBanner(3, l3?.opensAt || conv.chat?.opensAt || conv.pair?.l3OpensAt));
-    }
+    if (ended()) out.push(divider(t('cv_ended_divider')));
     return out;
   }
-  const timelineSig = (c) => JSON.stringify([c.levels, c.pair?.stage, c.pair?.l2OpensAt, c.pair?.l3OpensAt, c.pair?.next, c.next, c.chat]);
+  const timelineSig = (c) => JSON.stringify([c.levels, c.pair?.stage, c.pair?.l2OpensAt, c.pair?.next, c.next, c.chat, c.decision?.ended]);
 
   // ------------------------------------------------ Level 3: the chat under the history
 
@@ -396,18 +329,13 @@ function mountConversation(root, base, initial, chat) {
     };
   }
 
-  // ------------------------------------------------ Levels 1–2
+  // ------------------------------------------------ Levels 1–2, the choice after Level 2, an ended conversation
 
   const timeline = el('div', { class: 'conv-thread' });
   const scroller = el('div', { class: 'chat-scroll' }, timeline);
   const body = el('div', { class: 'chat-body' }, scroller);
   const foot = el('div', { class: 'chat-foot conv-foot' });
   let header = headerNode();
-
-  const typing = () => {
-    const a = document.activeElement;
-    return Boolean(a && a.tagName === 'TEXTAREA' && timeline.contains(a));
-  };
 
   // Repaint in place; someone reading the newest (at the bottom) stays at the bottom, where it grew.
   function renderTimeline() {
@@ -418,15 +346,14 @@ function mountConversation(root, base, initial, chat) {
     scroller.scrollTop = atEnd ? scroller.scrollHeight : top;
   }
 
-  // Never rebuild under a box someone is typing in (or under a finger): paint when they let go.
+  // Never rebuild under a finger: paint when it lets go.
   function renderSoon() {
-    if (typing() || pressing) deferred = true;
+    if (pressing) deferred = true;
     else renderTimeline();
   }
   const flush = () => setTimeout(() => {
-    if (alive && deferred && !typing() && !pressing) renderTimeline();
+    if (alive && deferred && !pressing) renderTimeline();
   }, 60);
-  timeline.addEventListener('focusout', flush);
   scroller.addEventListener('pointerdown', () => { pressing = true; }, true);
   const release = () => {
     if (!pressing) return;
@@ -440,20 +367,14 @@ function mountConversation(root, base, initial, chat) {
     editing.add(key);
     renderTimeline();
     const line = timeline.querySelector(`[data-key="${key}"]`);
-    const box = line?.querySelector('textarea');
-    if (box) {
-      box.focus();
-      box.setSelectionRange?.(box.value.length, box.value.length);
-    } else {
-      (line?.querySelector('.chip[aria-pressed="true"]') || line?.querySelector('.chip'))?.focus();
-    }
+    (line?.querySelector('.chip[aria-pressed="true"]') || line?.querySelector('.chip'))?.focus();
   }
 
-  /** After a Level 1 tap: bring the next line waiting for a reply into view when it is off screen. */
+  /** After a tap: bring the next line waiting for a reply into view when it is off screen. */
   function revealNext(key) {
     const lines = [...timeline.querySelectorAll('.conv-line.theirs')];
     const from = lines.findIndex((n) => n.dataset.key === key);
-    const next = lines.slice(from + 1).find((n) => n.querySelector('.conv-chips, .conv-edit'));
+    const next = lines.slice(from + 1).find((n) => n.querySelector('.conv-chips'));
     if (!next) return;
     const box = next.getBoundingClientRect();
     const view = scroller.getBoundingClientRect();
@@ -463,31 +384,26 @@ function mountConversation(root, base, initial, chat) {
   }
 
   function scrollToUnreplied() {
-    const node = timeline.querySelector('.conv-chips, .conv-edit')?.closest('.conv-line');
+    const node = timeline.querySelector('.conv-chips')?.closest('.conv-line');
     if (node) node.scrollIntoView({ block: 'center' });
     return Boolean(node);
   }
 
-  // ------------------------------------------------ replies
+  // ------------------------------------------------ replies (one tap each, at Level 1 and Level 2)
 
-  function replyFailed(err, key, text) {
+  function replyFailed(err) {
     if (!alive || redirected(err)) return;
-    if (err.code === 'contact_detail') {
-      stopped.set(key, text);
-      serverErr.set(key, ruleMessage({ error: 'contact', hits: err.data?.hits }, ANSWER_MAX));
-      toast(t('lv_stopped'));
-    } else if (err.code === 'invalid' || err.status === 422) {
-      serverErr.set(key, err.data?.reason === 'too_long' ? t('lv_too_long', { max: ANSWER_MAX }) : t('cv_check'));
-    } else if (err.status === 409 || err.status === 404) {
+    if (err.status === 409 || err.status === 404) {
       toast(err.code === 'other_blocked' ? t('cv_closed') : t('cv_moved'));
       poll(true);
+    } else if (err.status === 422) {
+      toast(t('cv_check'));
     } else {
-      failed.add(key);
       toast(errorText(err));
     }
   }
 
-  async function replyL1(s, line, answer, key) {
+  async function replyTap(s, line, answer, key) {
     if (!alive || busy.has(key)) return;
     if (line.reply?.key === answer) {
       editing.delete(key);
@@ -502,61 +418,72 @@ function mountConversation(root, base, initial, chat) {
       c.disabled = true;
     });
     try {
-      const r = await api.put(`${base}/replies`, { level: 1, n: line.n, key: answer });
+      const r = await api.put(`${base}/replies`, { level: s.level, n: line.n, key: answer });
       busy.delete(key);
       editing.delete(key);
       apply(unwrap(r));
       if (alive) revealNext(key);
     } catch (err) {
       busy.delete(key);
-      replyFailed(err, key);
+      replyFailed(err);
       if (alive) renderTimeline();
     }
   }
 
-  const repaintBox = (key) => timeline.querySelector(`textarea[data-key="${key}"]`)?.repaint?.();
+  // ------------------------------------------------ after Level 2: open the chat or forget it
 
-  /** Save one Level 2 reply. force = the send button: a contact detail still goes (the server stops and records it). */
-  async function saveL2(key, force) {
-    clearTimeout(saveTimers.get(key));
-    saveTimers.delete(key);
-    const dk = draftKey(key);
-    const found = find(key);
-    if (!alive || !found || !replyDrafts.has(dk)) return;
-    const text = replyDrafts.get(dk).trim();
-    if (same(text, found.line.reply?.original ?? found.line.reply?.text) && text) {
-      replyDrafts.delete(dk);
-      repaintBox(key);
-      return;
-    }
-    const check = checkWrittenAnswer(text);
-    if (!check.ok && !(force && check.error === 'contact')) return; // the box already says why
-    if (check.error === 'contact' && stopped.get(key) === text) {
-      toast(t('lv_stopped'));
-      return;
-    }
-    if (busy.has(key)) {
-      again.add(key);
-      return;
-    }
-    busy.add(key);
-    failed.delete(key);
+  async function choose(open) {
+    if (!alive || deciding) return;
+    deciding = true;
     ver++;
-    repaintBox(key);
+    renderFoot();
     try {
-      const r = await api.put(`${base}/replies`, { level: 2, n: found.line.n, text });
-      busy.delete(key);
-      if (same(replyDrafts.get(dk), text)) replyDrafts.delete(dk);
+      const r = await api.post(`${base}/decide`, { open });
+      deciding = false;
+      heartbeat(); // My conversations: the red dot goes now, not at the next beat
       apply(unwrap(r));
     } catch (err) {
-      busy.delete(key);
-      replyFailed(err, key, text);
+      deciding = false;
+      if (!alive || redirected(err)) return;
+      if (err.status === 409 || err.status === 404) {
+        toast(err.code === 'conversation_ended' ? t('cv_ended') : err.code === 'other_blocked' ? t('cv_closed') : t('cv_moved'));
+        poll(true);
+      } else {
+        toast(errorText(err));
+      }
     }
-    repaintBox(key);
-    if (again.delete(key) && alive) await saveL2(key, false);
+    if (alive) renderFoot();
   }
 
-  // ------------------------------------------------ bottom: send your 5 · your turn · waiting · closed
+  /** "Forget it" ends the conversation for both, so it asks once. */
+  function confirmForget() {
+    if (deciding) return;
+    const yes = el('button', { type: 'button', class: 'btn btn-danger' }, t('cv_forget_yes'));
+    const no = el('button', { type: 'button', class: 'btn btn-secondary' }, t('cv_forget_no'));
+    const dlg = modal(el('div', { class: 'dialog-body' },
+      el('h2', { class: 'dialog-title' }, t('cv_forget_q')),
+      el('p', { class: 'conv-dialog-text' }, t('cv_forget_text', { name: name() })),
+      el('div', { class: 'dialog-actions' }, yes, no)), { label: t('cv_forget_q') });
+    yes.addEventListener('click', () => {
+      dlg.close();
+      choose(false);
+    });
+    no.addEventListener('click', () => dlg.close());
+    no.focus(); // a stray Enter never ends it
+  }
+
+  function decideNode() {
+    const open = el('button', { type: 'button', class: 'btn btn-primary', disabled: deciding, on: { click: () => choose(true) } },
+      icon('chat', 18), el('span', { class: 'btn-text' }, t('cv_open_chat')));
+    const forget = el('button', { type: 'button', class: 'btn btn-secondary', disabled: deciding, on: { click: confirmForget } },
+      el('span', { class: 'btn-text' }, t('cv_forget')));
+    return el('div', { class: 'conv-decide', role: 'group', 'aria-labelledby': 'cv-decide-title' },
+      el('p', { class: 'conv-decide-title', id: 'cv-decide-title' }, t('cv_decide_title', { name: name() })),
+      el('p', { class: 'conv-decide-note' }, t('cv_decide_note', { name: name() })),
+      el('div', { class: 'conv-decide-actions' }, open, forget));
+  }
+
+  // ------------------------------------------------ bottom: send your 5 · your turn · waiting · choose · ended · closed
 
   let panel = null;
   let panelSig = null;
@@ -566,7 +493,12 @@ function mountConversation(root, base, initial, chat) {
   let footSig = null;
 
   function footKind() {
+    if (ended()) return 'ended';
     if (frozen()) return 'closed';
+    if (choosing()) {
+      const mine = conv.decision ? conv.decision.mine : nextKind(conv.next) === 'wait_them' ? true : null;
+      return mine === true ? 'decided' : 'decide';
+    }
     if (conv.canSend) return 'send';
     if (firstUnreplied()) return 'reply';
     if (openLevel()) return 'wait';
@@ -577,7 +509,7 @@ function mountConversation(root, base, initial, chat) {
   function footState() {
     const L = openLevel();
     const count = (x) => (x ? [(x.lines || []).filter((l) => l.reply).length, Boolean(x.completedAt)] : null);
-    return [L?.level ?? null, count(L?.mine), count(L?.theirs)];
+    return [L?.level ?? null, count(L?.mine), count(L?.theirs), name()];
   }
 
   function statusRow(iconName, text, action = null) {
@@ -594,7 +526,7 @@ function mountConversation(root, base, initial, chat) {
     if (panel && sig === panelSig && foot.contains(panel.node)) {
       if (panelTitle && panelTitle.textContent !== title) panelTitle.textContent = title;
       // Their 5 just arrived while the panel stood open on its own: fold it so their lines and my reply
-      // boxes get the screen (not while I type in it, nor when I opened it by hand).
+      // chips get the screen (not while I type in it, nor when I opened it by hand).
       if (toReply && !panelHadReplies && !panelOpen.has(pairId) && !foot.contains(document.activeElement)) panelFold?.();
       panelHadReplies = toReply;
       return;
@@ -656,7 +588,7 @@ function mountConversation(root, base, initial, chat) {
       return;
     }
     // A status line repaints only when it says something new (it is a live region).
-    const sig = JSON.stringify([kind, kind === 'closed' ? null : footState()]);
+    const sig = JSON.stringify([kind, kind === 'closed' || kind === 'ended' ? null : footState(), deciding]);
     if (sig === footSig && !panel) return;
     footSig = sig;
     panel = null;
@@ -666,6 +598,16 @@ function mountConversation(root, base, initial, chat) {
     foot.hidden = kind === 'none';
     if (kind === 'closed') {
       foot.replaceChildren(el('p', { class: 'lock-note chat-closed', role: 'status' }, icon('lock', 14), el('span', {}, t('cv_closed'))));
+    } else if (kind === 'ended') {
+      // Calm, the same for both, never who chose it.
+      foot.replaceChildren(el('div', { class: 'conv-ended', role: 'status' },
+        el('strong', {}, t('cv_ended')), el('span', {}, t('cv_ended_note'))));
+    } else if (kind === 'decide') {
+      foot.replaceChildren(decideNode());
+    } else if (kind === 'decided') {
+      // Waiting for their choice; "Forget it" is still there (it asks first).
+      const forget = el('button', { type: 'button', class: 'link', disabled: deciding, on: { click: confirmForget } }, t('cv_forget'));
+      foot.replaceChildren(statusRow('clock', t('cv_decided_wait', { name: name() }), forget));
     } else if (kind === 'reply') {
       const { s } = firstUnreplied();
       const total = (s.lines || []).length || 5;
@@ -689,9 +631,9 @@ function mountConversation(root, base, initial, chat) {
     }
   }
 
-  // ------------------------------------------------ updates (replies, sends, polls)
+  // ------------------------------------------------ updates (replies, sends, choices, polls)
 
-  /** Toasts for what just changed: my replies all in, theirs all in, a level open. */
+  /** Toasts for what just changed: my replies all in, theirs all in, a level open, the conversation ended. */
   function announce(prev, next) {
     for (const L of (next.levels || [])) {
       const P = (prev.levels || []).find((x) => x?.level === L?.level);
@@ -703,6 +645,7 @@ function mountConversation(root, base, initial, chat) {
       if (P.mine && !P.mine.completedAt && L.mine?.completedAt) toast(t('cv_they_all', { name: name() }));
       if (P.state !== 'open' && L.state === 'open' && L.level === 2) toast(t('cv_level_open', { n: 2 }));
     }
+    if (prev.pair?.stage !== 'ended' && next.pair?.stage === 'ended') toast(t('cv_ended'));
   }
 
   function apply(next) {
@@ -726,7 +669,8 @@ function mountConversation(root, base, initial, chat) {
   function schedule(delay = POLL_MS) {
     clearTimeout(pollTimer);
     pollTimer = null;
-    if (!alive || document.hidden) return;
+    // An ended conversation never changes again: nothing to poll for.
+    if (!alive || document.hidden || ended()) return;
     pollTimer = setTimeout(() => poll(false), delay);
   }
 
@@ -740,7 +684,7 @@ function mountConversation(root, base, initial, chat) {
     try {
       const r = unwrap(await api.get(`${base}/conversation`));
       fails = 0;
-      if (alive && (now || (v === ver && !busy.size))) apply(r);
+      if (alive && (now || (v === ver && !busy.size && !deciding))) apply(r);
     } catch (err) {
       if (redirected(err)) {
         alive = false;
@@ -801,7 +745,6 @@ function mountConversation(root, base, initial, chat) {
   return () => {
     alive = false;
     clearTimeout(pollTimer);
-    for (const id of saveTimers.values()) clearTimeout(id);
     stopClocks();
     document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('pointerup', release, true);
@@ -819,21 +762,15 @@ registerStrings({
     cv_chat_level: 'Level 3 · Chat',
     cv_you: 'You',
     cv_intro_1: 'Start with 5 short lines. {name} replies to each one, and can send you 5 too.',
-    cv_intro_2: 'Level 2 is open. 5 new lines each — this time the replies come back in words.',
+    cv_intro_2: 'Level 2 is open. 5 new lines each — 3 picked and 2 of your own. Replies are one tap again.',
     cv_waiting: 'Waiting',
     cv_they_replied: '{name} replied {n} of {total}',
     cv_they_replied_all: '{name} replied to all {total}',
     cv_they_none: 'Waiting for {name} to reply',
     cv_you_replied: 'You replied {n} of {total}',
     cv_you_replied_all: 'You replied to all {total}',
-    cv_hint_1: 'One tap each. You can change a reply until all 5 are done.',
-    cv_hint_2: 'Your words save as you type. You can change them until all 5 are done.',
+    cv_hint: 'One tap each. You can change a reply until all 5 are done.',
     cv_change_aria: 'Your reply: {text}. Tap to change it.',
-    cv_reply_ph: 'Reply in your own words',
-    cv_save_reply: 'Send this reply',
-    cv_saving: 'Saving…',
-    cv_saved: 'Saved',
-    cv_not_saved: 'Not saved. Try again.',
     cv_check: 'Check this reply.',
     cv_no_translation: 'Translation not available yet.',
     cv_start_level: 'Start Level {n}',
@@ -844,7 +781,6 @@ registerStrings({
     cv_wait_replies: 'Sent. Waiting for {name} to reply.',
     cv_replying: '{name} is replying · {n}/{total}',
     cv_opens_in: 'Level {n} opens in {time}',
-    cv_chat_opens_in: 'Chat opens in {time}',
     cv_remind: 'Remind me',
     cv_remind_on: 'Reminder on',
     cv_notify_off: 'Notifications are off in this browser, so you will see it here.',
@@ -853,6 +789,19 @@ registerStrings({
     cv_level_open: 'Level {n} is open.',
     cv_closed: 'This conversation is closed.',
     cv_moved: 'This conversation has moved on.',
+    cv_ended_bar: 'Level {n}/3 · Ended',
+    cv_ended_divider: 'The conversation ended',
+    cv_decide_title: 'Level 2 is done. Open the chat with {name}?',
+    cv_decide_note: 'The chat (Level 3) opens as soon as you both choose it, and you see each other’s real names. If either of you chooses “Forget it”, the conversation ends for both.',
+    cv_open_chat: 'Open the chat (Level 3)',
+    cv_forget: 'Forget it',
+    cv_forget_q: 'Forget it?',
+    cv_forget_text: 'The conversation with {name} ends for both of you. You can still read it, but nothing more can be sent.',
+    cv_forget_yes: 'Forget it',
+    cv_forget_no: 'Go back',
+    cv_decided_wait: 'You chose to open the chat — waiting for {name}',
+    cv_ended: 'This conversation has ended',
+    cv_ended_note: 'You can still read it above.',
   },
   km: {
     cv_level: 'កម្រិត {n}',
@@ -860,21 +809,15 @@ registerStrings({
     cv_chat_level: 'កម្រិត 3 · ជជែក',
     cv_you: 'អ្នក',
     cv_intro_1: 'ចាប់ផ្ដើមដោយឃ្លាខ្លីៗ 5។ {name} នឹងឆ្លើយតបឃ្លានីមួយៗ ហើយក៏អាចផ្ញើឃ្លា 5 មកអ្នកវិញដែរ។',
-    cv_intro_2: 'កម្រិត 2 បានបើកហើយ។ ម្នាក់ៗផ្ញើឃ្លាថ្មី 5 — លើកនេះ ការឆ្លើយតបមកជាពាក្យ។',
+    cv_intro_2: 'កម្រិត 2 បានបើកហើយ។ ម្នាក់ៗផ្ញើឃ្លាថ្មី 5 — ជ្រើស 3 និងសរសេរខ្លួនឯង 2។ ការឆ្លើយតបនៅតែចុចម្ដងដដែល។',
     cv_waiting: 'កំពុងរង់ចាំ',
     cv_they_replied: '{name} បានឆ្លើយតប {n} ក្នុងចំណោម {total}',
     cv_they_replied_all: '{name} បានឆ្លើយតបទាំង {total}',
     cv_they_none: 'កំពុងរង់ចាំ {name} ឆ្លើយតប',
     cv_you_replied: 'អ្នកបានឆ្លើយតប {n} ក្នុងចំណោម {total}',
     cv_you_replied_all: 'អ្នកបានឆ្លើយតបទាំង {total}',
-    cv_hint_1: 'ចុចម្ដងសម្រាប់ឃ្លានីមួយៗ។ អ្នកអាចប្ដូរការឆ្លើយតបបាន រហូតដល់ឆ្លើយគ្រប់ទាំង 5។',
-    cv_hint_2: 'ពាក្យរបស់អ្នករក្សាទុកដោយខ្លួនឯង ពេលអ្នកវាយ។ អ្នកអាចកែបាន រហូតដល់ឆ្លើយគ្រប់ទាំង 5។',
+    cv_hint: 'ចុចម្ដងសម្រាប់ឃ្លានីមួយៗ។ អ្នកអាចប្ដូរការឆ្លើយតបបាន រហូតដល់ឆ្លើយគ្រប់ទាំង 5។',
     cv_change_aria: 'ការឆ្លើយតបរបស់អ្នក៖ {text}។ ចុចដើម្បីប្ដូរ។',
-    cv_reply_ph: 'ឆ្លើយតបតាមពាក្យរបស់អ្នកផ្ទាល់',
-    cv_save_reply: 'ផ្ញើការឆ្លើយតបនេះ',
-    cv_saving: 'កំពុងរក្សាទុក…',
-    cv_saved: 'បានរក្សាទុក',
-    cv_not_saved: 'មិនទាន់បានរក្សាទុកទេ។ សូមព្យាយាមម្ដងទៀត។',
     cv_check: 'សូមពិនិត្យការឆ្លើយតបនេះ។',
     cv_no_translation: 'មិនទាន់មានការបកប្រែនៅឡើយទេ។',
     cv_start_level: 'ចាប់ផ្ដើមកម្រិត {n}',
@@ -885,7 +828,6 @@ registerStrings({
     cv_wait_replies: 'បានផ្ញើហើយ។ កំពុងរង់ចាំ {name} ឆ្លើយតប។',
     cv_replying: '{name} កំពុងឆ្លើយតប · {n}/{total}',
     cv_opens_in: 'កម្រិត {n} បើកក្នុងរយៈពេល {time}',
-    cv_chat_opens_in: 'ការជជែកបើកក្នុងរយៈពេល {time}',
     cv_remind: 'រំលឹកខ្ញុំ',
     cv_remind_on: 'ការរំលឹកបានបើក',
     cv_notify_off: 'ការជូនដំណឹងត្រូវបានបិទនៅក្នុងកម្មវិធីរុករកនេះ ដូច្នេះអ្នកនឹងឃើញវានៅទីនេះ។',
@@ -894,6 +836,19 @@ registerStrings({
     cv_level_open: 'កម្រិត {n} បានបើកហើយ។',
     cv_closed: 'ការសន្ទនានេះត្រូវបានបិទ។',
     cv_moved: 'ការសន្ទនានេះបានបន្តទៅមុខរួចហើយ។',
+    cv_ended_bar: 'កម្រិត {n}/3 · បានបញ្ចប់',
+    cv_ended_divider: 'ការសន្ទនាបានបញ្ចប់',
+    cv_decide_title: 'កម្រិត 2 បានចប់ហើយ។ បើកការជជែកជាមួយ {name} ទេ?',
+    cv_decide_note: 'ការជជែក (កម្រិត 3) នឹងបើកភ្លាម ពេលអ្នកទាំងពីរជ្រើសវា ហើយអ្នកនឹងឃើញឈ្មោះពិតរបស់គ្នា។ បើម្នាក់ណាជ្រើស «ឈប់ត្រឹមនេះ» ការសន្ទនានឹងបញ្ចប់សម្រាប់អ្នកទាំងពីរ។',
+    cv_open_chat: 'បើកការជជែក (កម្រិត 3)',
+    cv_forget: 'ឈប់ត្រឹមនេះ',
+    cv_forget_q: 'ឈប់ត្រឹមនេះមែនទេ?',
+    cv_forget_text: 'ការសន្ទនាជាមួយ {name} នឹងបញ្ចប់សម្រាប់អ្នកទាំងពីរ។ អ្នកនៅតែអាចអានវាបាន ប៉ុន្តែមិនអាចផ្ញើអ្វីបន្ថែមទៀតបានទេ។',
+    cv_forget_yes: 'ឈប់ត្រឹមនេះ',
+    cv_forget_no: 'ត្រឡប់ក្រោយ',
+    cv_decided_wait: 'អ្នកបានជ្រើសបើកការជជែក — កំពុងរង់ចាំ {name}',
+    cv_ended: 'ការសន្ទនានេះបានបញ្ចប់ហើយ',
+    cv_ended_note: 'អ្នកនៅតែអាចអានវានៅខាងលើបាន។',
   },
   zh: {
     cv_level: '等级 {n}',
@@ -901,21 +856,15 @@ registerStrings({
     cv_chat_level: '等级 3 · 聊天',
     cv_you: '你',
     cv_intro_1: '先发 5 句简短的话。{name} 会逐句回复，也可以给你发 5 句。',
-    cv_intro_2: '等级 2 已开启。各自再发 5 句新的话——这次用文字回复。',
+    cv_intro_2: '等级 2 已开启。各自再发 5 句新的话——选 3 句，自己写 2 句。回复还是点一下就好。',
     cv_waiting: '等待中',
     cv_they_replied: '{name} 已回复 {n}/{total}',
     cv_they_replied_all: '{name} 已回复全部 {total} 句',
     cv_they_none: '等待 {name} 回复',
     cv_you_replied: '你已回复 {n}/{total}',
     cv_you_replied_all: '你已回复全部 {total} 句',
-    cv_hint_1: '每句点一下即可。5 句全部回复之前，都可以修改。',
-    cv_hint_2: '输入时会自动保存。5 句全部回复之前，都可以修改。',
+    cv_hint: '每句点一下即可。5 句全部回复之前，都可以修改。',
     cv_change_aria: '你的回复：{text}。点一下可以修改。',
-    cv_reply_ph: '用你自己的话回复',
-    cv_save_reply: '发送这条回复',
-    cv_saving: '保存中…',
-    cv_saved: '已保存',
-    cv_not_saved: '未保存，请重试。',
     cv_check: '请检查这条回复。',
     cv_no_translation: '暂时还没有翻译。',
     cv_start_level: '开始等级 {n}',
@@ -926,7 +875,6 @@ registerStrings({
     cv_wait_replies: '已发送，等待 {name} 回复。',
     cv_replying: '{name} 正在回复 · {n}/{total}',
     cv_opens_in: '等级 {n} 将在 {time} 后开启',
-    cv_chat_opens_in: '聊天将在 {time} 后开启',
     cv_remind: '提醒我',
     cv_remind_on: '提醒已开启',
     cv_notify_off: '此浏览器已关闭通知，你会在这里看到提醒。',
@@ -935,6 +883,19 @@ registerStrings({
     cv_level_open: '等级 {n} 已开启。',
     cv_closed: '此对话已关闭。',
     cv_moved: '这段对话已经往下进行了。',
+    cv_ended_bar: '等级 {n}/3 · 已结束',
+    cv_ended_divider: '对话已结束',
+    cv_decide_title: '等级 2 已完成。要和 {name} 开始聊天吗？',
+    cv_decide_note: '你们两人都选择后，聊天（等级 3）就会马上开启，你们也会看到彼此的真实姓名。只要有一方选择“算了”，对话就会对双方结束。',
+    cv_open_chat: '开始聊天（等级 3）',
+    cv_forget: '算了',
+    cv_forget_q: '确定算了吗？',
+    cv_forget_text: '和 {name} 的对话将对你们双方结束。你仍然可以阅读，但不能再发送任何内容。',
+    cv_forget_yes: '算了',
+    cv_forget_no: '返回',
+    cv_decided_wait: '你已选择开始聊天 — 等待 {name}',
+    cv_ended: '这段对话已经结束',
+    cv_ended_note: '你仍然可以在上方阅读。',
   },
   ko: {
     cv_level: '레벨 {n}',
@@ -942,21 +903,15 @@ registerStrings({
     cv_chat_level: '레벨 3 · 채팅',
     cv_you: '나',
     cv_intro_1: '짧은 한마디 5개로 시작해 보세요. {name}님이 하나씩 답장하고, {name}님도 5개를 보낼 수 있어요.',
-    cv_intro_2: '레벨 2가 열렸어요. 서로 새 한마디 5개씩 — 이번에는 글로 답장해요.',
+    cv_intro_2: '레벨 2가 열렸어요. 서로 새 한마디 5개씩 — 3개 고르고 2개 직접 써요. 답장은 이번에도 한 번 누르기예요.',
     cv_waiting: '기다리는 중',
     cv_they_replied: '{name}님이 {total}개 중 {n}개에 답장했어요',
     cv_they_replied_all: '{name}님이 {total}개 모두 답장했어요',
     cv_they_none: '{name}님의 답장을 기다리는 중',
     cv_you_replied: '{total}개 중 {n}개 답장했어요',
     cv_you_replied_all: '{total}개 모두 답장했어요',
-    cv_hint_1: '한마디마다 한 번만 누르세요. 5개 모두 답하기 전까지는 바꿀 수 있어요.',
-    cv_hint_2: '쓰는 동안 자동으로 저장돼요. 5개 모두 답하기 전까지는 고칠 수 있어요.',
+    cv_hint: '한마디마다 한 번만 누르세요. 5개 모두 답하기 전까지는 바꿀 수 있어요.',
     cv_change_aria: '내 답장: {text}. 눌러서 바꾸기.',
-    cv_reply_ph: '내 말로 답장해 주세요',
-    cv_save_reply: '이 답장 보내기',
-    cv_saving: '저장하는 중…',
-    cv_saved: '저장됨',
-    cv_not_saved: '저장하지 못했어요. 다시 시도해 주세요.',
     cv_check: '이 답장을 확인해 주세요.',
     cv_no_translation: '아직 번역이 없어요.',
     cv_start_level: '레벨 {n} 시작하기',
@@ -967,7 +922,6 @@ registerStrings({
     cv_wait_replies: '보냈어요. {name}님의 답장을 기다리는 중이에요.',
     cv_replying: '{name}님이 답장하는 중 · {n}/{total}',
     cv_opens_in: '레벨 {n}까지 {time}',
-    cv_chat_opens_in: '채팅까지 {time}',
     cv_remind: '알려 주세요',
     cv_remind_on: '알림 켜짐',
     cv_notify_off: '이 브라우저는 알림이 꺼져 있어서 여기에서 알려 드려요.',
@@ -976,6 +930,19 @@ registerStrings({
     cv_level_open: '레벨 {n} 열림',
     cv_closed: '이 대화는 종료되었어요.',
     cv_moved: '이 대화는 이미 다음으로 넘어갔어요.',
+    cv_ended_bar: '레벨 {n}/3 · 끝남',
+    cv_ended_divider: '대화가 끝났어요',
+    cv_decide_title: '레벨 2가 끝났어요. {name}님과 채팅을 열까요?',
+    cv_decide_note: '두 사람 모두 고르면 채팅(레벨 3)이 바로 열리고, 서로의 실명이 보여요. 한 사람이라도 ‘그만두기’를 고르면 대화는 두 사람 모두에게 끝나요.',
+    cv_open_chat: '채팅 열기 (레벨 3)',
+    cv_forget: '그만두기',
+    cv_forget_q: '그만둘까요?',
+    cv_forget_text: '{name}님과의 대화가 두 사람 모두에게 끝나요. 지금까지의 대화는 읽을 수 있지만, 더 보낼 수는 없어요.',
+    cv_forget_yes: '그만두기',
+    cv_forget_no: '돌아가기',
+    cv_decided_wait: '채팅 열기를 골랐어요 — {name}님을 기다리는 중',
+    cv_ended: '이 대화는 끝났어요',
+    cv_ended_note: '위에서 계속 읽을 수 있어요.',
   },
   ja: {
     cv_level: 'レベル{n}',
@@ -983,21 +950,15 @@ registerStrings({
     cv_chat_level: 'レベル3 · チャット',
     cv_you: 'あなた',
     cv_intro_1: 'まずは短いひとことを5つ。{name}さんがひとつずつ返信し、{name}さんからも5つ届きます。',
-    cv_intro_2: 'レベル2が開きました。お互いに新しいひとことを5つずつ。今度は言葉で返信します。',
+    cv_intro_2: 'レベル2が開きました。お互いに新しいひとことを5つずつ——3つ選んで2つ書きます。返信は今回もワンタップです。',
     cv_waiting: '返信待ち',
     cv_they_replied: '{name}さんが{total}つ中{n}つに返信',
     cv_they_replied_all: '{name}さんが{total}つすべてに返信',
     cv_they_none: '{name}さんの返信を待っています',
     cv_you_replied: '{total}つ中{n}つに返信済み',
     cv_you_replied_all: '{total}つすべてに返信済み',
-    cv_hint_1: 'ひとことごとに1回タップ。5つすべて返すまでは変更できます。',
-    cv_hint_2: '入力すると自動で保存されます。5つすべて返すまでは直せます。',
+    cv_hint: 'ひとことごとに1回タップ。5つすべて返すまでは変更できます。',
     cv_change_aria: 'あなたの返信：{text}。タップして変更。',
-    cv_reply_ph: '自分の言葉で返信する',
-    cv_save_reply: 'この返信を送る',
-    cv_saving: '保存中…',
-    cv_saved: '保存済み',
-    cv_not_saved: '保存できませんでした。もう一度お試しください。',
     cv_check: 'この返信を確認してください。',
     cv_no_translation: '翻訳はまだありません。',
     cv_start_level: 'レベル{n}を始める',
@@ -1008,7 +969,6 @@ registerStrings({
     cv_wait_replies: '送信しました。{name}さんの返信を待っています。',
     cv_replying: '{name}さんが返信中 · {n}/{total}',
     cv_opens_in: 'レベル{n}まで {time}',
-    cv_chat_opens_in: 'チャットまで {time}',
     cv_remind: '知らせる',
     cv_remind_on: 'リマインダーON',
     cv_notify_off: 'このブラウザでは通知がオフのため、ここでお知らせします。',
@@ -1017,5 +977,18 @@ registerStrings({
     cv_level_open: 'レベル{n}が開きました。',
     cv_closed: 'この会話は終了しました。',
     cv_moved: 'この会話はすでに先に進んでいます。',
+    cv_ended_bar: 'レベル {n}/3 · 終了',
+    cv_ended_divider: '会話は終了しました',
+    cv_decide_title: 'レベル2が終わりました。{name}さんとのチャットを開きますか？',
+    cv_decide_note: '2人とも選ぶとすぐにチャット（レベル3）が開き、お互いの本名が表示されます。どちらかが「やめておく」を選ぶと、会話は2人とも終了します。',
+    cv_open_chat: 'チャットを開く（レベル3）',
+    cv_forget: 'やめておく',
+    cv_forget_q: 'やめておきますか？',
+    cv_forget_text: '{name}さんとの会話は2人とも終了します。これまでの会話は読めますが、もう送ることはできません。',
+    cv_forget_yes: 'やめておく',
+    cv_forget_no: '戻る',
+    cv_decided_wait: 'チャットを開くを選びました — {name}さんを待っています',
+    cv_ended: 'この会話は終了しました',
+    cv_ended_note: '上でいつでも読めます。',
   },
 });

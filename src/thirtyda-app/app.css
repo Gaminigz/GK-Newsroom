@@ -753,6 +753,7 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .waiting-row::-webkit-scrollbar { display: none; }
 .wait-item { position: relative; flex: none; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; box-shadow: 0 0 0 2px var(--navy); }
 .wait-item .dot { position: absolute; top: -1px; right: -1px; width: 12px; height: 12px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 2px #fff; }
+.wait-item.ended { opacity: 0.55; box-shadow: 0 0 0 2px var(--line); } /* "Forget it": still readable, no dot */
 .count-line { margin-top: 22px; }
 .people { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px 12px; margin-top: 14px; }
 .people > .empty { grid-column: 1 / -1; }
@@ -778,6 +779,8 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .profile-photo > button { border-radius: 50%; }
 .profile-name { margin-top: 14px; text-align: center; font-size: 30px; overflow-wrap: anywhere; }
 .profile-role { margin-top: 4px; text-align: center; font-size: 16px; font-weight: 600; color: var(--ink); }
+/* Level 3 only: the real name, under the app name. */
+.profile-real { margin-top: 2px; text-align: center; font-size: 15px; font-weight: 700; color: var(--muted); overflow-wrap: anywhere; }
 .profile-km { margin-top: 4px; text-align: center; font-size: 14px; color: var(--muted); }
 .thumbs { display: flex; justify-content: center; gap: 8px; margin-top: 14px; }
 .thumb { width: 64px; height: 64px; border-radius: 12px; overflow: hidden; background: var(--field); }
@@ -917,16 +920,6 @@ button.bubble { display: block; text-align: left; font-size: 15px; line-height: 
 .conv-progress-line { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: var(--muted); }
 .conv-progress.ok .conv-progress-line { color: var(--green); }
 .conv-hint { max-width: 32ch; font-size: 12px; line-height: 1.4; color: var(--muted); }
-/* Level 2: my reply in words, right-aligned like my bubbles; saves as I type. */
-.conv-edit { align-self: flex-end; width: 88%; display: flex; flex-direction: column; gap: 5px; }
-.conv-edit-row { display: flex; align-items: flex-end; gap: 8px; }
-.conv-box { flex: 1; min-width: 0; min-height: 64px; border-radius: 16px; border-bottom-right-radius: 5px; border-color: var(--line); background: #fff; font-size: 16px; resize: none; }
-.conv-box:focus { border-color: var(--navy); box-shadow: 0 0 0 3px rgb(11 28 63 / 0.08); }
-.conv-send { width: 40px; height: 40px; }
-.conv-send[aria-disabled="true"] { background: var(--disabled-bg); border-color: var(--disabled-bg); color: var(--disabled-ink); cursor: default; }
-.conv-save-state { align-self: flex-end; display: inline-flex; align-items: center; gap: 4px; margin-right: 48px; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted-2); }
-.conv-save-state:empty { display: none; }
-.conv-edit .field-error { justify-content: flex-end; text-align: right; margin-right: 48px; }
 /* Nothing sent yet at this level. */
 .conv-intro { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px 12px 6px; text-align: center; font-size: 14px; line-height: 1.5; color: var(--muted); }
 .conv-intro-icon { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: var(--field); color: var(--navy); }
@@ -952,5 +945,15 @@ button.bubble { display: block; text-align: left; font-size: 15px; line-height: 
 .conv-compose .qlist { gap: 12px; }
 .conv-compose .ask-actions { margin-top: 14px; }
 @media (prefers-reduced-motion: reduce) { .conv-panel-head > .icon { transition: none; } }
+/* After Level 2: "Open the chat (Level 3)" or "Forget it", under the history. */
+.conv-decide { display: flex; flex-direction: column; gap: 6px; padding: 2px 0; }
+.conv-decide-title { font-size: 15.5px; font-weight: 800; line-height: 1.3; color: var(--ink); }
+.conv-decide-note { font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.conv-decide-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+/* An ended conversation ("Forget it"): calm, the same for both. */
+.conv-ended { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 2px; text-align: center; }
+.conv-ended strong { font-size: 14.5px; font-weight: 800; color: var(--ink); }
+.conv-ended span { font-size: 12.5px; color: var(--muted); }
+.conv-dialog-text { font-size: 14px; line-height: 1.5; color: var(--muted); }
 /* Toasts sit above the conversation's bottom line, not on it. */
 body:has(.screen.conv) .toast { bottom: calc(84px + env(safe-area-inset-bottom)); }

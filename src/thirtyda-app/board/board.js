@@ -86,34 +86,34 @@
     8: {
       title: 'Level 2 · Send your 5', who: 'Dara · English',
       notes: [
-        'Level 2 works the same way, both ways: 3 lines picked from the admin’s lists + 2 of his own.',
-        'Sophea already sent her Level 2: her lines wait on the left for Dara’s words.',
-        'Replies come back in words. Phone numbers and chat handles are never allowed.',
+        'Level 2 works the same way, both ways: 3 lines picked from the admin’s lists + 2 of his own (numbered 6–10).',
+        'Sophea already sent her Level 2: her lines wait on the left for Dara’s replies.',
+        'Replies are one tap again: Yes / No / Not really / Maybe, his own written lines Yes / No. Phone numbers and chat handles are never allowed.',
       ],
     },
     9: {
-      title: 'Level 2 · Reply in words', who: 'Sophea · English',
+      title: 'Level 2 · Reply with a tap', who: 'Sophea · English',
       notes: [
-        'Under each of Dara’s lines: a text box that saves when she pauses or leaves it.',
-        'She has replied 2 of 5; Dara has replied 3 of 5 to hers. Each reply shows to the other as soon as it is saved.',
-        'A contact detail is stopped: the box turns red, nothing is sent, and the admin sees the attempt.',
+        'Under each of Dara’s lines: Yes / No / Not really / Maybe (his own written lines: Yes / No), like Level 1.',
+        'She has replied 2 of 5; Dara has replied 3 of 5 to hers. Each tap shows to the other as soon as it is saved.',
+        'A reply can be changed until all 5 are in. (Level 2 sets replied to in words before the taps still read back.)',
         'Level 2 is done when both sets have all 5 replies → 10.',
       ],
     },
     10: {
-      title: 'Level 2 done · wait 24 h', who: 'Dara · English',
+      title: 'Level 2 done · open the chat or forget it', who: 'Dara · English',
       notes: [
-        'Level 1 and Level 2 stay above as text.',
-        'Banner: the chat opens in 24 hours + Remind me.',
-        'Level 3 is a text chat. Phone numbers and chat handles are still not allowed; no photos, voice or video (strongly advise to stay text only).',
-        'When the time is up the chat opens under the history → 11.',
+        'Level 1 and Level 2 stay above as text. Under them, each person chooses: “Open the chat (Level 3)” or “Forget it”.',
+        'No wait: the chat opens as soon as both chose it (here Sophea chooses right after Dara; meanwhile “You chose to open the chat — waiting for Sophea”).',
+        '“Forget it” (asked once) ends the conversation for both: “This conversation has ended”, calm, never who chose it; it stays readable, nothing more can be sent.',
+        'Level 3 is a text chat. Phone numbers and chat handles are still not allowed; no photos, voice or video → 11.',
       ],
     },
     11: {
       title: 'Level 3 · Chat (Dara)', who: 'Dara · English ⇄ Sophea · ខ្មែរ',
       notes: [
         'The chat carries on under the Level 1 and Level 2 history: what you told each other and what you asked each other.',
-        'Top row: the partner’s photos (photo 1 always, photo 2 from Level 2, photos 3–4 at Level 3), name, language pair EN⇄KM.',
+        'Top row: the partner’s photos (photo 1 always, photo 2 from Level 2, photos 3–4 at Level 3), app name with the real name under it (only now, at Level 3), language pair EN⇄KM.',
         'Real-time translation: Sophea’s messages show her Khmer and the English under it; Dara’s own messages show what he wrote.',
         'Type, or tap the mic for speech-to-text (sent as text, never as voice).',
         'Each message must be 20–30 characters. Bar and counter show progress; Send stays off outside the range.',

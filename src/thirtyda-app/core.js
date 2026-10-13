@@ -521,16 +521,21 @@ export function modal(content, { sheet = false, dismissible = true, label = '', 
   return handle;
 }
 
-/** 1 for l1 / l1_*, 2 for l2_*, 3 for l3_* — the level the stage belongs to (wait stages: the level about to open). */
+/**
+ * 1 for l1 / l1_*, 2 for l2_*, 3 for l3_* — the level the stage belongs to (wait stages: the level about
+ * to open). The choice after Level 2 (l3_decide) and an ended conversation are still Level 2: the chat
+ * (Level 3) is not open there.
+ */
 export function stageLevel(pair) {
   const s = String(pair?.stage || '');
+  if (s === 'l3_decide' || s === 'ended') return 2;
   return s.startsWith('l3') ? 3 : s.startsWith('l2') ? 2 : 1;
 }
 
 /**
  * PairView.next in the conversation's words: 'send' (I can send my 5), 'reply' (their lines wait for my
- * replies), 'send_reply' (both), 'wait_them', 'wait_timer', 'chat', 'frozen'. Older servers said
- * 'ask' / 'answer' / 'ask_answer'.
+ * replies), 'send_reply' (both), 'wait_them', 'wait_timer', 'decide' (after Level 2: open the chat or
+ * forget it), 'chat', 'ended', 'frozen'. Older servers said 'ask' / 'answer' / 'ask_answer'.
  */
 export function nextKind(next) {
   return { ask: 'send', answer: 'reply', ask_answer: 'send_reply' }[next] || next || null;
@@ -547,10 +552,14 @@ export function actionLabel(pair) {
   const name = pair?.other?.name || '';
   const lvl = stageLevel(pair);
   switch (nextKind(pair?.next)) {
-    case 'reply': return lvl >= 2 ? t('act_reply', { name }) : t('act_answer', { name });
-    case 'send': return lvl >= 2 ? t('act_level_open', { n: lvl }) : t('act_ask', { name });
+    // Their lines wait for my replies (whoever started): "Reply to Sophea".
+    case 'reply': return t('act_reply', { name });
+    // Level 1 with their 5 already here (replied): my own 5 are still to send.
+    case 'send': return lvl >= 2 ? t('act_level_open', { n: lvl }) : pair?.myIncoming?.received ? t('act_send_yours', { name }) : t('act_ask', { name });
     case 'send_reply': return lvl >= 2 ? t('act_level_open', { n: lvl }) : t('act_answer', { name });
+    case 'decide': return t('act_decide', { name });
     case 'chat': return t('act_chat', { name });
+    case 'ended': return t('act_ended', { name });
     case 'wait_timer': return t('act_level_soon', { n: lvl });
     case 'wait_them': return t('act_waiting', { name });
     default: return name;
@@ -672,9 +681,12 @@ registerStrings({
     act_answer: '{name} started a conversation',
     act_reply: 'Reply to {name}',
     act_ask: 'Start a conversation with {name}',
+    act_send_yours: 'Send your 5 to {name}',
     act_level_open: 'Level {n} is open — your turn',
     act_level_soon: 'Level {n} opens soon',
     act_chat: 'Chat with {name}',
+    act_decide: 'Level 2 is done: open the chat with {name}?',
+    act_ended: 'Your conversation with {name} has ended',
     act_waiting: 'Waiting for {name}',
     core_more_photo: 'You can now add 1 more photo',
     core_more_photos: 'You can now add {n} more photos',
@@ -695,9 +707,12 @@ registerStrings({
     act_answer: '{name} បានចាប់ផ្ដើមការសន្ទនា',
     act_reply: 'ឆ្លើយតបទៅ {name}',
     act_ask: 'ចាប់ផ្ដើមការសន្ទនាជាមួយ {name}',
+    act_send_yours: 'ផ្ញើឃ្លា 5 របស់អ្នកទៅ {name}',
     act_level_open: 'កម្រិត {n} បានបើកហើយ — ដល់វេនអ្នក',
     act_level_soon: 'កម្រិត {n} នឹងបើកឆាប់ៗ',
     act_chat: 'ជជែកជាមួយ {name}',
+    act_decide: 'កម្រិត 2 បានចប់ហើយ៖ បើកការជជែកជាមួយ {name} ទេ?',
+    act_ended: 'ការសន្ទនារបស់អ្នកជាមួយ {name} បានបញ្ចប់ហើយ',
     act_waiting: 'កំពុងរង់ចាំ {name}',
     core_more_photo: 'ឥឡូវនេះ អ្នកអាចបន្ថែមរូបថត 1 សន្លឹកទៀត',
     core_more_photos: 'ឥឡូវនេះ អ្នកអាចបន្ថែមរូបថត {n} សន្លឹកទៀត',
@@ -718,9 +733,12 @@ registerStrings({
     act_answer: '{name} 开始了对话',
     act_reply: '回复 {name}',
     act_ask: '和 {name} 开始对话',
+    act_send_yours: '给 {name} 发你的 5 句',
     act_level_open: '等级 {n} 已开启 — 轮到你了',
     act_level_soon: '等级 {n} 即将开启',
     act_chat: '和 {name} 聊天',
+    act_decide: '等级 2 已完成：要和 {name} 开始聊天吗？',
+    act_ended: '你和 {name} 的对话已经结束',
     act_waiting: '等待 {name} 回应',
     core_more_photo: '现在你可以再添加 1 张照片',
     core_more_photos: '现在你可以再添加 {n} 张照片',
@@ -741,9 +759,12 @@ registerStrings({
     act_answer: '{name}님이 대화를 시작했어요',
     act_reply: '{name}님에게 답장하기',
     act_ask: '{name}님과 대화 시작하기',
+    act_send_yours: '{name}님에게 내 한마디 5개 보내기',
     act_level_open: '레벨 {n} 열림 — 내 차례',
     act_level_soon: '레벨 {n} 곧 열림',
     act_chat: '{name}님과 채팅',
+    act_decide: '레벨 2 완료: {name}님과 채팅을 열까요?',
+    act_ended: '{name}님과의 대화가 끝났어요',
     act_waiting: '{name}님을 기다리는 중',
     core_more_photo: '이제 사진을 1장 더 올릴 수 있어요',
     core_more_photos: '이제 사진을 {n}장 더 올릴 수 있어요',
@@ -764,9 +785,12 @@ registerStrings({
     act_answer: '{name}さんが会話を始めました',
     act_reply: '{name}さんに返信する',
     act_ask: '{name}さんと会話を始める',
+    act_send_yours: '{name}さんに5つ送る',
     act_level_open: 'レベル{n}が開きました — あなたの番',
     act_level_soon: 'まもなくレベル{n}',
     act_chat: '{name}さんとチャット',
+    act_decide: 'レベル2が終わりました：{name}さんとのチャットを開きますか？',
+    act_ended: '{name}さんとの会話は終了しました',
     act_waiting: '{name}さんを待っています',
     core_more_photo: '写真をあと1枚追加できるようになりました',
     core_more_photos: '写真をあと{n}枚追加できるようになりました',

@@ -32,10 +32,13 @@ export function photoSlotLevel(index) {
   return PHOTO_SLOT_LEVELS[Math.min(i, PHOTO_MAX - 1)];
 }
 
-/** The level a pair has opened, for photos: l2_open / l3_wait → 2, l3_open → 3, anything else → 1. */
+/**
+ * The level a pair has opened, for photos: l2_open / l3_wait / l3_decide → 2, l3_open → 3, anything else
+ * → 1. An ended conversation ("Forget it") shows only the main photo again, like to everyone else.
+ */
 export function stageOpenLevel(stage) {
   if (stage === 'l3_open') return 3;
-  if (stage === 'l2_open' || stage === 'l3_wait') return 2;
+  if (stage === 'l2_open' || stage === 'l3_wait' || stage === 'l3_decide') return 2;
   return 1;
 }
 
@@ -900,7 +903,8 @@ export function checkWrittenQuestion(text, level) {
   return checkWritten(text, QUESTION_LIMITS[level] || QUESTION_LIMITS[2]);
 }
 
-// Level 2 answers in words: 2–120 characters.
+// Answers in words, 2–120 characters: Level 2 took them until replies became taps (2026-10-13). Nothing
+// sends words any more; kept for the rule's tests and for reading what was written before.
 export function checkWrittenAnswer(text) {
   return checkWritten(text, ANSWER_LIMITS);
 }

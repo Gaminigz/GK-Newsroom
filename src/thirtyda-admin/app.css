@@ -329,6 +329,8 @@ mark.hit { background: none; color: var(--red); font-weight: 800; }
 .msg-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
 .msg-meta b { color: var(--ink); }
 .msg.flagged .bubble { outline: 2px solid var(--red); background: #fff; }
+.msg.decision .bubble { background: none; border: 1px dashed var(--line, #d6dbe4); font-style: italic; }
+.tag.ended { background: #fdecec; color: #b42318; }
 .msg .note { margin-top: 4px; font-family: var(--mono); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--red); }
 
 .toast {

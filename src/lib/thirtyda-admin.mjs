@@ -135,10 +135,13 @@ async function chatFor({ flag, user }) {
     id: chat.id,
     level: chat.level,
     levelName: LEVEL_NAMES[chat.level],
+    // Someone chose "Forget it" after Level 2: the conversation is over (the 'decision' rows say who).
+    endedAt: chat.endedAt ?? null,
     people,
     messages: chat.messages.map((m) => {
       const f = m.flagId && flags.find((x) => x.id === m.flagId);
-      return { ...m, fromName: people[m.from], flag: f ? { kind: f.kind, reason: f.reason, status: f.status } : null };
+      // A 'decision' row with no sender is the app's own note ("Both chose to open the chat").
+      return { ...m, fromName: m.from ? people[m.from] : "30+DA", flag: f ? { kind: f.kind, reason: f.reason, status: f.status } : null };
     }),
   };
 }

@@ -1,7 +1,7 @@
 // Run: node --test src/thirtyda-app/shared/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SYSTEM_QUESTIONS, LEVEL_RULES, L1_ANSWERS, ROLES, questionText, answerText } from './questions.js';
+import { SYSTEM_QUESTIONS, LEVEL_RULES, L1_ANSWERS, ROLES, questionText, answerText, replyOptions, l1Answers } from './questions.js';
 import { LANGS, findContactDetails, checkWrittenQuestion } from './rules.js';
 
 // A real translation is written in its own script, not a copy of the English.
@@ -85,6 +85,14 @@ test('level rules: always 5 questions', () => {
     assert.equal(LEVEL_RULES[level].pick + LEVEL_RULES[level].write, 5);
     assert.ok(SYSTEM_QUESTIONS[level].length >= LEVEL_RULES[level].pick);
   }
+});
+
+test('replies are taps at both levels: a picked line 4 options, a written line Yes / No', () => {
+  assert.deepEqual(replyOptions('system').map((x) => x.key), ['yes', 'no', 'not_really', 'maybe']);
+  assert.deepEqual(replyOptions('written').map((x) => x.key), ['yes', 'no']);
+  assert.equal(l1Answers, replyOptions); // the older name
+  // A Level 2 reply in words from before the taps has no key: answerText gives null, the words read back.
+  assert.equal(answerText(null, 'en'), null);
 });
 
 test('Level 1 answers and roles match the contract', () => {

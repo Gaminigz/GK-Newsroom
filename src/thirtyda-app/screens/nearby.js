@@ -108,7 +108,8 @@ screen('/nearby', ({ root }) => {
 
   // --- waiting strip, count, grid
   const waitRow = el('div', { class: 'waiting-row' });
-  // My conversations: every ongoing pair as a round photo; a red dot when it is my turn.
+  // My conversations: every pair as a round photo; a red dot when it is my turn. An ended one ("Forget it")
+  // has no dot and sits last, faded: it can still be opened and read.
   const waiting = el('section', { class: 'waiting', hidden: true, 'aria-label': t('nb_my_convos') },
     el('span', { class: 'label ink' }, t('nb_my_convos')), waitRow);
   let pairs = [];
@@ -117,12 +118,14 @@ screen('/nearby', ({ root }) => {
     // GET /pairs says it too (PairView.turn), so the dot is there on the first paint, before the heartbeat.
     for (const p of pairs) if (p?.other && p.turn === true && !mine.has(p.id)) mine.set(p.id, p);
     const items = [...pairs.filter((p) => p?.other && !mine.has(p.id)), ...mine.values()];
-    items.sort((a, b) => Number(mine.has(b.id)) - Number(mine.has(a.id))); // my turn first
+    const ended = (p) => p.stage === 'ended';
+    // My turn first, ended last.
+    items.sort((a, b) => Number(mine.has(b.id)) - Number(mine.has(a.id)) || Number(ended(a)) - Number(ended(b)));
     waiting.hidden = !items.length;
     waitRow.replaceChildren(...items.map((p) => {
-      const turn = mine.has(p.id);
-      const label = turn ? actionLabel(p) : p.other.name;
-      return el('button', { type: 'button', class: 'wait-item', 'aria-label': label, title: label, on: { click: () => go(pairRoute(p)) } },
+      const turn = mine.has(p.id) && !ended(p);
+      const label = turn || ended(p) ? actionLabel(p) : p.other.name;
+      return el('button', { type: 'button', class: ['wait-item', ended(p) && 'ended'], 'aria-label': label, title: label, on: { click: () => go(pairRoute(p)) } },
         avatar(p.other.photo || null, 44), turn ? el('span', { class: 'dot', 'aria-hidden': 'true' }) : null);
     }));
   }

@@ -15,8 +15,11 @@
  *
  * A conversation (shared/conversation.js): Level 1 and Level 2 each run both ways. Each person sends
  * the other ONE set of 5 lines per level, in any order, and replies to the set they got line by line
- * (PUT /pairs/:id/replies saves one reply at a time; a reply can change until all 5 are in). A level is
- * done when both sets are complete; the next one opens after the wait. Level 3 is the chat.
+ * with one tap (PUT /pairs/:id/replies saves one reply at a time; a reply can change until all 5 are in).
+ * A level is done when both sets are complete. Level 2 opens after the wait. After Level 2 each person
+ * chooses (POST /pairs/:id/decide): the chat (Level 3) opens as soon as both chose to open it, and one
+ * "Forget it" ends the conversation for both (stage 'ended': readable, nothing more to send). Real names
+ * are shown to the other person only once the chat is open.
  * GET /pairs/:id/conversation is the one read model the conversation screen lives on.
  *
  * Collections: thirtyda_users, thirtyda_user_sessions, thirtyda_otps,
@@ -33,16 +36,16 @@ import { areaFor, haversineKm } from "./thirtyda-geo.mjs";
 import { clientIp } from "./thirtyda-net.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
-  checkWrittenAnswer, PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
+  PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
   NAME_MIN, NAME_MAX, AGE_MIN, AGE_MAX, checkAppName, checkBirthYear,
 } from "../thirtyda-app/shared/rules.js";
 import {
-  LEVEL_RULES, L1_ANSWERS, l1Answers, ROLES, questionText, answerText,
+  LEVEL_RULES, replyOptions, ROLES, questionText, answerText,
 } from "../thirtyda-app/shared/questions.js";
 import { questionConfig, slotsView, flatView } from "./thirtyda-questions.mjs";
 import {
   convStage, L1_STAGES, openSetLevel, currentSetLevel, levelState, repliedCount, allReplied, levelComplete,
-  nextStep, isMyTurn,
+  nextStep, isMyTurn, decisionOf, afterDecisions,
 } from "../thirtyda-app/shared/conversation.js";
 
 const BASE = "/30da";
@@ -379,9 +382,11 @@ function setsAt(sets, level, meId, otherId) {
 
 /**
  * PairView for `me`. `sets` = this pair's sets (questions/answers may be projected to their `n`).
- * next: 'send' | 'reply' | 'send_reply' | 'wait_them' | 'wait_timer' | 'chat' | 'frozen' (shared/conversation.js);
- * turn = my turn (I can send my set for the open level, their set to me has lines without my reply, or
- * the chat's last line is theirs) — the red dot and the heartbeat's actions.
+ * next: 'send' | 'reply' | 'send_reply' | 'wait_them' | 'wait_timer' | 'decide' | 'chat' | 'ended' | 'frozen'
+ * (shared/conversation.js); turn = my turn (I can send my set for the open level, their set to me has lines
+ * without my reply, I still have to choose after Level 2, or the chat's last line is theirs) — the red dot
+ * and the heartbeat's actions. decision = MY choice after Level 2 (true open / false forget / null); the
+ * other person's choice is never shown, and an ended conversation never says who ended it.
  */
 function pairView(pair, me, other, sets) {
   // A draft is shown to each side as their own ("a", opened when they tapped), so nothing tells B that A tapped first.
@@ -393,7 +398,8 @@ function pairView(pair, me, other, sets) {
   const open = setsAt(sets, openSetLevel(stage), me._id, otherId);
   const cur = setsAt(sets, currentSetLevel(stage), me._id, otherId);
   const total = (s) => s?.questions?.length || 5;
-  const next = nextStep({ stage, mine: open.mine, theirs: open.theirs, frozen });
+  const decided = decisionOf(pair.decisions, me._id);
+  const next = nextStep({ stage, mine: open.mine, theirs: open.theirs, frozen, decided });
   const lastFrom = pair.lastChat ? (pair.lastChat.from === me._id ? "me" : "them") : null;
   const curLevel = currentSetLevel(stage);
   const replies = (level) => sets.filter((s) => s.level === level).reduce((n, s) => n + repliedCount(s), 0);
@@ -408,6 +414,8 @@ function pairView(pair, me, other, sets) {
       : { id: otherId, name: "", gender: null, lang: "en", photo: null },
     l2OpensAt: pair.l2OpensAt ?? null,
     l3OpensAt: pair.l3OpensAt ?? null,
+    decision: stage === "l3_decide" || stage === "l3_open" || stage === "ended" ? decided : null,
+    endedAt: stage === "ended" ? pair.endedAt ?? null : null,
     remind: Boolean(pair.remind?.[me._id]),
     next,
     turn: !frozen && isMyTurn(next, lastFrom),
@@ -427,12 +435,20 @@ function pairView(pair, me, other, sets) {
 /** A draft is hidden from the other person until they open it themselves (tap Start a conversation). */
 const hiddenFrom = (pair, me) => isDraft(pair) && pair.a !== me._id && !pair.opened?.[me._id];
 
-/** Move l2_wait → l2_open and l3_wait → l3_open once their time has come. */
+/**
+ * Move l2_wait → l2_open once its time has come. A pair from before the choice (l3_wait: Level 2 done, the
+ * old 24 h wait for the chat) moves to l3_decide at once: both people choose, like every pair after Level 2.
+ */
 async function settle(d, pair) {
+  if (pair.stage === "l3_wait") {
+    const moved = await d.collection(C.pairs).findOneAndUpdate(
+      { _id: pair._id, stage: "l3_wait" }, { $set: { stage: "l3_decide", level: 2 } }, { returnDocument: "after" },
+    );
+    return settle(d, moved ?? await d.collection(C.pairs).findOne({ _id: pair._id }));
+  }
   const now = Date.now();
   let to = null;
   if (pair.stage === "l2_wait" && Date.parse(pair.l2OpensAt) <= now) to = { stage: "l2_open", level: 2, at: pair.l2OpensAt };
-  else if (pair.stage === "l3_wait" && Date.parse(pair.l3OpensAt) <= now) to = { stage: "l3_open", level: 3, at: pair.l3OpensAt };
   if (!to) return pair;
   // A frozen pair (someone is blocked) keeps its stage and levels; it moves on once the block is lifted.
   if (await d.collection(C.users).countDocuments({ _id: { $in: pair.members }, blocked: true }, { limit: 1 })) return pair;
@@ -450,18 +466,19 @@ async function settle(d, pair) {
 }
 
 /**
- * users.level = the highest level `me` has OPENED with anyone (l2_open / l3_wait → 2, l3_open → 3,
- * else 1). Pairs whose timer has run out are settled first, so a level that just opened counts at
- * once. The stored field (the admin's column) is corrected when it disagrees. Returns `me`.
+ * users.level = the highest level `me` has OPENED with anyone (l2_open / l3_decide → 2, l3_open → 3, an
+ * ended conversation the level it reached, else 1). Pairs whose timer has run out are settled first, so
+ * a level that just opened counts at once. The stored field (the admin's column) is corrected when it
+ * disagrees. Returns `me`.
  */
 async function syncLevel(d, me) {
   const pairs = d.collection(C.pairs);
   const due = await pairs.find({ members: me._id, stage: { $in: ["l2_wait", "l3_wait"] } }).toArray();
   await Promise.all(due.map((p) => settle(d, p)));
   const open = await pairs
-    .find({ members: me._id, stage: { $in: ["l2_open", "l3_wait", "l3_open"] } }, { projection: { stage: 1 } })
+    .find({ members: me._id, stage: { $in: ["l2_open", "l3_wait", "l3_decide", "l3_open", "ended"] } }, { projection: { stage: 1, level: 1 } })
     .toArray();
-  const level = open.reduce((m, p) => Math.max(m, stageOpenLevel(p.stage)), 1);
+  const level = open.reduce((m, p) => Math.max(m, p.stage === "ended" ? Math.min(2, Number(p.level) || 2) : stageOpenLevel(p.stage)), 1);
   if (me.level !== level) {
     await d.collection(C.users).updateOne({ _id: me._id }, { $set: { level } });
     me.level = level;
@@ -1206,10 +1223,13 @@ async function person(ctx) {
   const photo = photoUrl(u.photos?.[0]);
   // What this viewer may see of u's photos (viewOf settled the pair), plus how many are still locked.
   const { photos, lockedPhotos } = photosFor(u, { isOwner: u._id === me._id, openLevel: stageOpenLevel(view?.stage) });
+  // The real name: only for the other person once the chat (Level 3) is open between us.
+  const real = view ? realNameFor(u, view.stage) : null;
   return {
     person: {
       id: u._id,
       name: u.name,
+      ...(real ? { realName: real } : {}),
       gender: u.gender ?? null,
       role: u.role ?? null,
       lang: u.lang ?? "en",
@@ -1394,7 +1414,7 @@ function questionView(q, level, lang, titles = []) {
 }
 
 function answerView(a, level, lang) {
-  if (level === 1) {
+  if (level === 1 || a.key) {
     return { n: a.n, key: a.key, text: answerText(a.key, lang), original: answerText(a.key, a.lang), originalLang: a.lang };
   }
   const tr = a.lang === lang ? null : a.translations?.[lang] ?? null;
@@ -1422,8 +1442,9 @@ function replyView(a, level, lang) {
 /**
  * SetView: one set of 5 lines with the replies so far. from 'me' = the set I sent (its replies are theirs:
  * the sender sees "2 of 5" and the words as they come); 'them' = the set sent to me (the replies are mine,
- * and `canReply` while the level is open and the set is not complete). Level 1 lines I reply to carry their
- * `options` (a written line: Yes / No only). Stopped texts are never saved, so they never show.
+ * and `canReply` while the level is open and the set is not complete). Lines I reply to carry their tap
+ * `options` at both levels (a written line: Yes / No only). Level 2 sets replied to in words before the
+ * taps (2026-10-13) read back as they were. Stopped texts are never saved, so they never show.
  */
 function setView(set, meId, lang, titles, { open }) {
   const level = set.level;
@@ -1435,7 +1456,7 @@ function setView(set, meId, lang, titles, { open }) {
       n: v.n, source: v.source, topic: v.topic ?? null, text: v.text, original: v.original, originalLang: v.originalLang,
       translated: v.translated, reply: replyView(byN.get(q.n), level, lang),
     };
-    if (level === 1 && from === "them") line.options = l1Answers(q.source).map((o) => ({ key: o.key, text: o.text[lang] || o.text.en }));
+    if (from === "them") line.options = replyOptions(q.source).map((o) => ({ key: o.key, text: o.text[lang] || o.text.en }));
     return line;
   });
   return {
@@ -1446,10 +1467,11 @@ function setView(set, meId, lang, titles, { open }) {
 
 /**
  * GET /pairs/:id/conversation for `me`:
- * { pair: PairView, other: { id, name, gender, lang, photos, lockedPhotos }, levels: [{ level: 1|2,
+ * { pair: PairView, other: { id, name, gender, lang, photos, lockedPhotos, realName? }, levels: [{ level: 1|2,
  *   state: 'open'|'wait'|'done'|'locked', opensAt, rules: { pick, write }, mine: SetView|null, theirs: SetView|null }],
- *   canSend: { level, pick, write, slots } | null, chat: { open, opensAt, phoneNeeded }, next }.
- * `sets` may be passed when already loaded (full documents).
+ *   canSend: { level, pick, write, slots } | null, chat: { open, opensAt, phoneNeeded },
+ *   decision: { canDecide, mine: true|false|null, ended, endedAt }, next }.
+ * other.realName is there only once the chat (Level 3) is open. `sets` may be passed when already loaded.
  */
 async function conversationFor(d, me, pair, other, sets = null) {
   const lang = me.lang ?? "en";
@@ -1479,17 +1501,30 @@ async function conversationFor(d, me, pair, other, sets = null) {
 
   const view = pairView(pair, me, other, sets);
   const seen = other ? photosFor(other, { openLevel: stageOpenLevel(stage) }) : { photos: [], lockedPhotos: [] };
+  const real = realNameFor(other, stage);
   return {
     pair: view,
     other: other
-      ? { id: other._id, name: other.name, gender: other.gender ?? null, lang: other.lang ?? "en", photos: seen.photos, lockedPhotos: seen.lockedPhotos }
+      ? {
+        id: other._id, name: other.name, gender: other.gender ?? null, lang: other.lang ?? "en", photos: seen.photos, lockedPhotos: seen.lockedPhotos,
+        ...(real ? { realName: real } : {}),
+      }
       : { id: otherId, name: "", gender: null, lang: "en", photos: [], lockedPhotos: [] },
     levels,
     canSend,
-    chat: { open: stage === "l3_open", opensAt: pair.l3OpensAt ?? null, phoneNeeded: !me.verified?.phone },
+    chat: { open: stage === "l3_open", opensAt: null, phoneNeeded: !me.verified?.phone },
+    decision: {
+      canDecide: stage === "l3_decide" && !frozen && view.decision === null,
+      mine: view.decision,
+      ended: stage === "ended",
+      endedAt: view.endedAt,
+    },
     next: view.next,
   };
 }
+
+/** The other person's real name: only once the chat (Level 3) is open, never for a blocked person. */
+const realNameFor = (other, stage) => (other && !other.blocked && convStage(stage) === "l3_open" && other.realName ? other.realName : null);
 
 async function getConversation(ctx) {
   const { pair, other } = await pairFor(ctx, ctx.params[0]);
@@ -1539,7 +1574,8 @@ async function replyableSet(d, pair, me, level) {
 
 /**
  * A set got its last reply: the admin's chat log gets the 5 replies (once), and when both sets of the
- * level are complete the level is done and the next one opens after the wait.
+ * level are complete the level is done: Level 2 opens after the wait; after Level 2 both people choose
+ * (l3_decide) — no wait any more.
  */
 async function onSetComplete(d, pair, set) {
   const at = set.completedAt;
@@ -1552,39 +1588,19 @@ async function onSetComplete(d, pair, set) {
   })));
   const back = await d.collection(C.sets).findOne({ pairId: pair._id, level: set.level, from: set.to });
   if (!levelComplete(set, back)) return;
-  const opensAt = new Date(Date.now() + WAIT_MS).toISOString();
   const pairs = d.collection(C.pairs);
   if (set.level === 1) {
+    const opensAt = new Date(Date.now() + WAIT_MS).toISOString();
     await pairs.updateOne({ _id: pair._id, stage: { $in: L1_STAGES } }, { $set: { stage: "l2_wait", l2OpensAt: opensAt, updatedAt: at } });
   } else {
-    await pairs.updateOne({ _id: pair._id, stage: "l2_open" }, { $set: { stage: "l3_wait", l3OpensAt: opensAt, updatedAt: at } });
+    await pairs.updateOne({ _id: pair._id, stage: "l2_open" }, { $set: { stage: "l3_decide", decisions: {}, updatedAt: at } });
   }
 }
 
 /**
- * A contact detail spread over my replies to one set ("012 887" on one line, "766" on the next): my
- * saved replies and the new one are read together in line order, and a hit that reaches into the new
- * reply stops it. The joined text is kept as one stopped message, so the admin sees the whole attempt.
- */
-async function stopSplitReply(ctx, pair, other, set, n, text) {
-  const ordered = [...set.questions].sort((x, y) => x.n - y.n);
-  const parts = ordered.map((q) => (q.n === n ? text : set.answers?.find((a) => a.n === q.n && a.text)?.text ?? null));
-  const used = parts.map((x, i) => (x ? i : -1)).filter((i) => i >= 0);
-  const k = used.indexOf(ordered.findIndex((q) => q.n === n));
-  if (used.length < 2 || k < 0) return;
-  const c = findContactDetailsAcross(used.map((i) => parts[i]));
-  if (c.ok) return;
-  const hits = c.hits.filter((h) => h.index <= k && k <= h.lastIndex);
-  if (!hits.length) return;
-  const reason = CONTACT_REASONS[hits[0].type] ?? c.reason;
-  await recordStopped(ctx, pair, other, { text: c.text, level: set.level, kind: "answer", hits, reason });
-  throw fail(422, "contact_detail", reason || "Contact details are not allowed.", { n, hits: plainHits(hits), reason });
-}
-
-/**
- * PUT /pairs/:id/replies { level, n, key } (Level 1) | { level, n, text } (Level 2) → { conversation }.
- * One reply, saved on its own; it can be changed until the set is complete (all 5 replied). A contact
- * detail is refused (422 + a stopped flag) and nothing is saved.
+ * PUT /pairs/:id/replies { level, n, key } → { conversation }. One tap reply at Level 1 and Level 2:
+ * Yes / No / Not really / Maybe to a picked line, Yes / No to the sender's own written line. Saved on its
+ * own; it can be changed until the set is complete (all 5 replied). Replies in words are no longer taken.
  */
 async function saveReply(ctx) {
   const { d, me, body, params } = ctx;
@@ -1595,31 +1611,20 @@ async function saveReply(ctx) {
   const q = set.questions.find((x) => x.n === n);
   if (!q) throw invalid("Reply to one of the lines.", { field: "n", n: body.n ?? null });
 
+  // Level 2 used to take replies in words; every reply is one tap now (old word replies still read back).
+  if (body.key === undefined && body.text !== undefined) {
+    throw invalid("Reply with one tap.", { field: "key", n, reason: "taps_only" });
+  }
+  if (!replyOptions(q.source).some((x) => x.key === body.key)) {
+    throw invalid(q.source === "written" ? "Reply to this line with Yes or No." : "Pick one of the replies.", { field: "key", n });
+  }
   const lang = me.lang ?? "en";
   const at = nowIso();
-  let reply;
-  if (level === 1) {
-    if (!l1Answers(q.source).some((x) => x.key === body.key)) {
-      throw invalid(q.source === "written" ? "Reply to this line with Yes or No." : "Pick one of the replies.", { field: "key", n });
-    }
-    reply = { n, key: body.key, text: null, lang, translations: bankTranslations((l) => answerText(body.key, l)), at };
-  } else {
-    const text = String(body.text ?? "").trim();
-    const c = findContactDetails(text);
-    if (!c.ok) {
-      await recordStopped(ctx, pair, other, { text, level, kind: "answer", hits: c.hits, reason: c.reason });
-      throw fail(422, "contact_detail", c.reason || "Contact details are not allowed.", { n, hits: c.hits, reason: c.reason });
-    }
-    await stopSplitReply(ctx, pair, other, set, n, text);
-    const r = checkWrittenAnswer(text);
-    if (!r.ok) throw invalid(ERROR_TEXT[r.error] || "Check this reply.", { field: "text", n, reason: r.error });
-    const { translations } = await translateAll(text, lang);
-    reply = { n, key: null, text, lang, translations, at };
-  }
+  const reply = { n, key: body.key, text: null, lang, translations: bankTranslations((l) => answerText(body.key, l)), at };
 
   const sets = d.collection(C.sets);
   // Replace this line's reply in one atomic update, only while the set is still open ($literal: the
-  // words are data, never a field path, even when they start with "$").
+  // reply is data, never a field path).
   let saved = await sets.findOneAndUpdate(
     { _id: set._id, completedAt: null },
     [{
@@ -1648,7 +1653,7 @@ async function saveReply(ctx) {
   return { conversation: await conversationFor(d, me, fresh, other) };
 }
 
-/** POST /pairs/:id/answers — all replies to a set at once (the older screens). Same rules as saveReply. */
+/** POST /pairs/:id/answers — all replies to a set at once (the older screens). Same rules as saveReply: taps only. */
 async function sendAnswers(ctx) {
   const { d, me, body, params } = ctx;
   const level = levelParam(body.level);
@@ -1657,40 +1662,22 @@ async function sendAnswers(ctx) {
   const set = await replyableSet(d, pair, me, level);
 
   const list = Array.isArray(body.answers) ? body.answers : [];
-  if (level === 2) {
-    const texts = list.map((a) => String(a?.text ?? "").trim());
-    await stopContactDetails(ctx, pair, other, texts, { level, kind: "answer" });
-    await stopSplitContactDetails(ctx, pair, other, texts, { level, kind: "answer" });
-  }
   if (list.length !== set.questions.length) throw invalid(`Reply to all ${set.questions.length}.`, { index: list.length });
   const seen = new Set();
   list.forEach((a, i) => {
     const n = Number(a?.n);
     if (!set.questions.some((q) => q.n === n) || seen.has(n)) throw invalid("Reply to each line once.", { index: i });
     seen.add(n);
-    if (level === 1) {
-      const source = set.questions.find((q) => q.n === n)?.source;
-      if (!l1Answers(source).some((x) => x.key === a.key)) {
-        throw invalid(source === "written" ? "Reply to the written line with Yes or No." : "Pick one of the replies.", { index: i });
-      }
-    } else {
-      const r = checkWrittenAnswer(String(a.text ?? "").trim());
-      if (!r.ok) throw invalid(ERROR_TEXT[r.error] || "Check this reply.", { index: i, reason: r.error });
+    const source = set.questions.find((q) => q.n === n)?.source;
+    if (!replyOptions(source).some((x) => x.key === a.key)) {
+      throw invalid(source === "written" ? "Reply to the written line with Yes or No." : "Pick one of the replies.", { index: i });
     }
   });
 
   const lang = me.lang ?? "en";
   const at = nowIso();
-  const answers = await Promise.all(
-    [...list].sort((x, y) => Number(x.n) - Number(y.n)).map(async (a) => {
-      if (level === 1) {
-        return { n: Number(a.n), key: a.key, text: null, lang, translations: bankTranslations((l) => answerText(a.key, l)), at };
-      }
-      const text = String(a.text).trim();
-      const { translations } = await translateAll(text, lang);
-      return { n: Number(a.n), key: null, text, lang, translations, at };
-    }),
-  );
+  const answers = [...list].sort((x, y) => Number(x.n) - Number(y.n))
+    .map((a) => ({ n: Number(a.n), key: a.key, text: null, lang, translations: bankTranslations((l) => answerText(a.key, l)), at }));
   const saved = await sets.findOneAndUpdate(
     { _id: set._id, completedAt: null }, { $set: { answers, completedAt: at } }, { returnDocument: "after" },
   );
@@ -1701,6 +1688,71 @@ async function sendAnswers(ctx) {
   await pairs.updateOne({ _id: pair._id }, { $set: { updatedAt: at } });
   const fresh = await settle(d, await pairs.findOne({ _id: pair._id }));
   return { pair: await viewOf(d, me, fresh), conversation: await conversationFor(d, me, fresh, other) };
+}
+
+// The admin's chat log notes each choice after Level 2 (kind 'decision'; never shown in the app).
+const DECISION_TEXT = {
+  open: "Chose to open the chat (Level 3)",
+  forget: "Chose to forget it: the conversation ended for both",
+  opened: "Both chose to open the chat: Level 3 is open",
+};
+
+/**
+ * POST /pairs/:id/decide { open: true|false } → { conversation }. After Level 2 (stage l3_decide) each
+ * person chooses: open the chat or forget it. The chat opens at once when both chose to open it; one
+ * "Forget it" ends the conversation for both (stage 'ended'). Idempotent: the same choice again answers
+ * with the conversation as it is now. "Open" can still turn into "Forget it" while the other has not
+ * chosen; nothing else changes a choice (409). Either person, in any order; every choice is in the
+ * admin's chat log.
+ */
+async function decide(ctx) {
+  const { d, me, body, params } = ctx;
+  if (typeof body.open !== "boolean") throw invalid("Choose to open the chat or forget it.", { field: "open" });
+  const open = body.open;
+  const { pair, other } = await pairFor(ctx, params[0], { write: true });
+  const pairs = d.collection(C.pairs);
+  const answer = async () => {
+    const fresh = await pairs.findOne({ _id: pair._id });
+    return { conversation: await conversationFor(d, me, fresh, other) };
+  };
+  const stage = stageOf(pair);
+  const mine = decisionOf(pair.decisions, me._id);
+  if (mine === open && ["l3_decide", "l3_open", "ended"].includes(stage)) return answer();
+  if (stage === "ended") throw fail(409, "conversation_ended", "This conversation has ended.");
+  if (stage !== "l3_decide") throw notYourTurn();
+
+  const at = nowIso();
+  const set = { [`decisions.${me._id}`]: { open, at }, updatedAt: at };
+  if (!open) Object.assign(set, { stage: "ended", endedAt: at, endedBy: me._id });
+  // Only while the choice is still open: the other person may have just ended it.
+  const saved = await pairs.findOneAndUpdate({ _id: pair._id, stage: "l3_decide" }, { $set: set }, { returnDocument: "after" });
+  if (!saved) {
+    const now = await pairs.findOne({ _id: pair._id });
+    if (now?.stage === "ended") throw fail(409, "conversation_ended", "This conversation has ended.");
+    throw notYourTurn();
+  }
+  const log = [{ from: me._id, text: open ? DECISION_TEXT.open : DECISION_TEXT.forget, open }];
+  if (open && afterDecisions(saved.decisions, saved.members) === "l3_open") {
+    // Both chose it: the chat opens now (only one of two racing requests moves it).
+    const opened = await pairs.updateOne(
+      { _id: pair._id, stage: "l3_decide", [`decisions.${saved.a}.open`]: true, [`decisions.${saved.b}.open`]: true },
+      { $set: { stage: "l3_open", level: 3, l3OpensAt: at, updatedAt: at } },
+    );
+    if (opened.modifiedCount) {
+      log.push({ from: null, text: DECISION_TEXT.opened, open: true });
+      await Promise.all([
+        d.collection(C.users).updateMany({ _id: { $in: saved.members } }, { $max: { level: 3 } }),
+        d.collection(C.chats).updateOne({ _id: pair._id }, { $max: { level: 3 } }),
+      ]);
+    }
+  }
+  const ids = await nextIds(d, "msg", log.length);
+  await appendMessages(d, pair, log.map((m, i) => ({
+    id: ids[i], from: m.from, at, kind: "decision", level: 2, open: m.open, text: m.text, lang: "en", english: null,
+    translations: { en: m.text }, hit: null, flagId: null, stopped: false,
+  })));
+  if (!open) await d.collection(C.chats).updateOne({ _id: pair._id }, { $set: { endedAt: at } });
+  return answer();
 }
 
 async function remind(ctx) {
@@ -1729,8 +1781,12 @@ async function listMessages(ctx) {
   await backfillMessages(d, pair._id, msgs, lang);
   return {
     other: other
-      // A blocked partner's photos are gone (the pair is frozen; GET /people says 404).
-      ? { id: other._id, name: other.name, lang: other.lang ?? "en", photos: photosFor(other, { openLevel: stageOpenLevel(pair.stage) }).photos }
+      // A blocked partner's photos are gone (the pair is frozen; GET /people says 404). The chat is open
+      // here (chatGate), so the real name shows.
+      ? {
+        id: other._id, name: other.name, lang: other.lang ?? "en", photos: photosFor(other, { openLevel: stageOpenLevel(pair.stage) }).photos,
+        ...(realNameFor(other, pair.stage) ? { realName: realNameFor(other, pair.stage) } : {}),
+      }
       : null,
     messages: msgs.map((m) => ({
       id: m.id,
@@ -1846,6 +1902,7 @@ const ROUTES = [
   ["GET", /^\/pairs\/(P-\d+)\/incoming$/, (ctx) => setFor(ctx, "in")],
   ["GET", /^\/pairs\/(P-\d+)\/outgoing$/, (ctx) => setFor(ctx, "out")],
   ["POST", /^\/pairs\/(P-\d+)\/answers$/, sendAnswers],
+  ["POST", /^\/pairs\/(P-\d+)\/decide$/, decide],
   ["POST", /^\/pairs\/(P-\d+)\/remind$/, remind],
   ["GET", /^\/pairs\/(P-\d+)\/messages$/, listMessages],
   ["POST", /^\/pairs\/(P-\d+)\/messages$/, postMessage],

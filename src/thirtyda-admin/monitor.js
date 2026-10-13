@@ -181,12 +181,14 @@ function logHtml() {
     const note = m.flag
       ? `<div class="note">${m.flag.kind === 'stopped' ? 'Stopped by the app · not delivered' : 'Delivered · reported'} · ${esc(m.flag.reason)}${m.flag.status !== 'open' ? ` · ${esc(m.flag.status)}` : ''}</div>`
       : '';
-    return `<div class="msg ${m.flag ? 'flagged' : ''}">
+    // After Level 2: each person's choice (open the chat / forget it), shown as a note, not a message.
+    return `<div class="msg ${m.flag ? 'flagged' : ''} ${m.kind === 'decision' ? 'decision' : ''}">
       <div class="msg-meta"><b>${esc(m.fromName)}</b><time datetime="${m.at}">${ago(m.at)}</time></div>
       ${bubble(m)}${note}
     </div>`;
   }).join('');
-  return `<div class="chatlog-head"><b>${esc(names[0])} ↔ ${esc(names[1])}</b> · <span class="tag">Level ${c.level} ${esc(c.levelName)}</span></div>${msgs}`;
+  const ended = c.endedAt ? ` · <span class="tag ended">Ended ${ago(c.endedAt)}</span>` : '';
+  return `<div class="chatlog-head"><b>${esc(names[0])} ↔ ${esc(names[1])}</b> · <span class="tag">Level ${c.level} ${esc(c.levelName)}</span>${ended}</div>${msgs}`;
 }
 
 // ---------- toast with undo ----------

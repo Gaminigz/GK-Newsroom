@@ -40,6 +40,8 @@ const RULES = [
   '.chat-stack > .chat-photo { position: relative; box-shadow: 0 0 0 2px #fff; }',
   '.chat-stack > .chat-photo + .chat-photo { margin-left: -20px; }',
   '.chat-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+  // Level 3: the real name, small under the app name.
+  '.chat-real { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; line-height: 1.25; color: var(--muted); }',
   '.chat-lang { gap: 5px; padding: 0 10px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em; white-space: nowrap; }',
   '.chat > .banner { flex: none; }',
   '.chat-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; margin: 0 calc(var(--gutter) * -1); }',
@@ -245,9 +247,10 @@ function square(url) {
 
 /**
  * Header row of a conversation: back, the partner's photos (only the ones I may see; a tap opens them),
- * name over `sub` (text or a node), and the translation chip (EN⇄KM; a tap says who writes in what).
+ * app name, their real name under it (`realName`: only at Level 3, the server sends it then), `sub` (text
+ * or a node), and the translation chip (EN⇄KM; a tap says who writes in what).
  */
-export function partnerHeader({ name = '', photos = [], myLang = 'en', theirLang = 'en', sub = null }) {
+export function partnerHeader({ name = '', photos = [], myLang = 'en', theirLang = 'en', sub = null, realName = '' }) {
   let photoBtns;
   if (photos.length > 1) {
     photoBtns = [el('button', {
@@ -274,6 +277,10 @@ export function partnerHeader({ name = '', photos = [], myLang = 'en', theirLang
   }, icon('translate', 14), pairCode);
   const bar = topBar({ left: 'back', title: el('span', { class: 'chat-name' }, name), sub, right: chip });
   bar.insertBefore(el('div', { class: 'chat-photos' }, photoBtns), bar.querySelector('.topbar-title'));
+  if (realName) {
+    bar.querySelector('.topbar-h')?.after(el('div', { class: 'chat-real' },
+      el('span', { class: 'visually-hidden' }, `${t('chat_real_name')}: `), realName));
+  }
   return bar;
 }
 
@@ -313,7 +320,7 @@ export function mountChat(root, { pair, data, gate, history = null, header: head
   let reportOpen = false;
 
   // --- header: back, the partner's photos, name + LEVEL 3, translation chip
-  const header = () => partnerHeader({ name, photos, myLang, theirLang, sub: t('chat_level3') });
+  const header = () => partnerHeader({ name, photos, myLang, theirLang, sub: t('chat_level3'), realName: other.realName || '' });
 
   // --- thread
   const thread = el('div', { class: 'thread', role: 'log', 'aria-live': 'polite', 'aria-relevant': 'additions' });
@@ -775,6 +782,7 @@ screen('/chat/:pairId', ({ params }) => {
 registerStrings({
   en: {
     chat_level3: 'Level 3',
+    chat_real_name: 'Real name',
     chat_text_only: 'Text only. No photos, voice or video.',
     chat_today: 'Today',
     chat_yesterday: 'Yesterday',
@@ -829,6 +837,7 @@ registerStrings({
   },
   km: {
     chat_level3: 'កម្រិត 3',
+    chat_real_name: 'ឈ្មោះពិត',
     chat_text_only: 'អក្សរតែប៉ុណ្ណោះ។ គ្មានរូបថត សំឡេង ឬវីដេអូទេ។',
     chat_today: 'ថ្ងៃនេះ',
     chat_yesterday: 'ម្សិលមិញ',
@@ -883,6 +892,7 @@ registerStrings({
   },
   zh: {
     chat_level3: '等级 3',
+    chat_real_name: '真实姓名',
     chat_text_only: '仅限文字。不能发照片、语音或视频。',
     chat_today: '今天',
     chat_yesterday: '昨天',
@@ -937,6 +947,7 @@ registerStrings({
   },
   ko: {
     chat_level3: '레벨 3',
+    chat_real_name: '실명',
     chat_text_only: '텍스트만 가능해요. 사진, 음성, 영상은 보낼 수 없어요.',
     chat_today: '오늘',
     chat_yesterday: '어제',
@@ -991,6 +1002,7 @@ registerStrings({
   },
   ja: {
     chat_level3: 'レベル 3',
+    chat_real_name: '本名',
     chat_text_only: 'テキストのみ。写真・音声・動画は送れません。',
     chat_today: '今日',
     chat_yesterday: '昨日',

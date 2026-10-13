@@ -48,7 +48,7 @@ export const SYSTEM_QUESTIONS = {
     q('l1_window', 'Is there a window near you?',
       'តើនៅជិតអ្នកមានបង្អួចទេ?', '你附近有窗户吗？', '가까이에 창문이 있나요?', '近くに窓がありますか？'),
   ],
-  // Level 2: open questions, answered in words.
+  // Level 2: open lines (older sets were answered in words; since 2026-10-13 every reply is one tap).
   2: [
     q('l2_window', 'What can you see from your window?',
       'តើអ្នកឃើញអ្វីខ្លះពីបង្អួចរបស់អ្នក?', '从你的窗户能看到什么？', '창밖으로 무엇이 보이나요?', '窓から何が見えますか？'),
@@ -97,7 +97,7 @@ export const SYSTEM_QUESTIONS = {
 // given + 2 text"). Level 2 sets sent earlier with pick 2 + write 3 keep their own lines and still read back.
 export const LEVEL_RULES = { 1: { pick: 4, write: 1 }, 2: { pick: 3, write: 2 } };
 
-// One tap per Level 1 question.
+// One tap per line, at Level 1 and Level 2 (Gamini 2026-10-13: "Level 2 replies are taps, like Level 1").
 export const L1_ANSWERS = [
   q('yes', 'Yes', 'បាទ/ចាស', '是的', '네', 'はい'),
   q('no', 'No', 'ទេ', '不是', '아니요', 'いいえ'),
@@ -105,10 +105,16 @@ export const L1_ANSWERS = [
   q('maybe', 'Maybe', 'ប្រហែលជា', '可能吧', '아마도요', 'たぶん'),
 ];
 
-/** Level 1 answers for one question: the asker's own written question gets Yes / No only. */
-export function l1Answers(source) {
+/**
+ * The taps that reply to one line, at Level 1 and Level 2: a picked line gets Yes / No / Not really / Maybe,
+ * the sender's own written line gets Yes / No only.
+ */
+export function replyOptions(source) {
   return source === 'written' ? L1_ANSWERS.filter((a) => a.key === 'yes' || a.key === 'no') : L1_ANSWERS;
 }
+
+/** The same taps under their older name (Level 1 had them first). */
+export const l1Answers = replyOptions;
 
 // "YOU ARE" on the profile.
 export const ROLES = [

@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SET_LEVELS, convStage, openSetLevel, currentSetLevel, stageLevel, levelState, setRules, repliedCount, allReplied,
-  setComplete, levelComplete, withReply, NEXT_STEPS, nextStep, isMyTurn, L1_STAGES,
+  setComplete, levelComplete, withReply, NEXT_STEPS, nextStep, isMyTurn, L1_STAGES, DECIDE_STAGE, ENDED_STAGE,
+  decisionOf, afterDecisions,
 } from './conversation.js';
 
 const lines = (k = 5) => Array.from({ length: k }, (_, i) => ({ n: i + 1, source: i < 4 ? 'system' : 'written' }));
@@ -14,7 +15,9 @@ const set = (replied = 0, done = false) => ({
 test('stages: old l1_ask / l1_answer read as l1', () => {
   assert.deepEqual(SET_LEVELS, [1, 2]);
   for (const s of ['l1', 'l1_ask', 'l1_answer', undefined, null, 'nope']) assert.equal(convStage(s), 'l1', String(s));
-  for (const s of ['l2_wait', 'l2_open', 'l3_wait', 'l3_open']) assert.equal(convStage(s), s);
+  for (const s of ['l2_wait', 'l2_open', 'l3_wait', 'l3_decide', 'l3_open', 'ended']) assert.equal(convStage(s), s);
+  assert.equal(DECIDE_STAGE, 'l3_decide');
+  assert.equal(ENDED_STAGE, 'ended');
   assert.deepEqual([...L1_STAGES].sort(), ['l1', 'l1_answer', 'l1_ask']);
 });
 
@@ -22,7 +25,7 @@ test('open level, current level, level bar', () => {
   const rows = [
     // stage, open set level, current set level, level bar
     ['l1_ask', 1, 1, 1], ['l1_answer', 1, 1, 1], ['l1', 1, 1, 1], ['l2_wait', null, 1, 1],
-    ['l2_open', 2, 2, 2], ['l3_wait', null, 2, 2], ['l3_open', null, null, 3],
+    ['l2_open', 2, 2, 2], ['l3_wait', null, 2, 2], ['l3_decide', null, 2, 2], ['ended', null, 2, 2], ['l3_open', null, null, 3],
   ];
   for (const [s, open, cur, bar] of rows) {
     assert.equal(openSetLevel(s), open, `open ${s}`);
@@ -38,7 +41,9 @@ test('levelState: open / wait / done / locked', () => {
     l2_wait: ['done', 'wait', 'locked'],
     l2_open: ['done', 'open', 'locked'],
     l3_wait: ['done', 'done', 'wait'],
+    l3_decide: ['done', 'done', 'decide'],
     l3_open: ['done', 'done', 'open'],
+    ended: ['done', 'done', 'ended'],
   };
   for (const [s, want] of Object.entries(rows)) assert.deepEqual([1, 2, 3].map((l) => levelState(l, s)), want, s);
   assert.equal(levelState(4, 'l3_open'), 'locked');
@@ -92,14 +97,44 @@ test('nextStep: both directions, any order', () => {
   assert.equal(nextStep({ stage: 'l2_open', mine: null, theirs: set(1) }), 'send_reply');
   // Waits, chat, frozen.
   assert.equal(nextStep({ stage: 'l2_wait' }), 'wait_timer');
-  assert.equal(nextStep({ stage: 'l3_wait' }), 'wait_timer');
+  assert.equal(nextStep({ stage: 'l3_wait' }), 'wait_timer'); // an old pair before the server moves it on
   assert.equal(nextStep({ stage: 'l3_open' }), 'chat');
   assert.equal(nextStep({ stage: 'l1', frozen: true }), 'frozen');
 });
 
-test('isMyTurn: send, reply, or their chat line last', () => {
-  for (const n of ['send', 'reply', 'send_reply']) assert.equal(isMyTurn(n), true, n);
-  for (const n of ['wait_them', 'wait_timer', 'frozen']) assert.equal(isMyTurn(n, 'them'), false, n);
+test('nextStep after Level 2: choose, wait for their choice, chat or ended', () => {
+  for (const s of ['decide', 'ended']) assert.ok(NEXT_STEPS.includes(s), s);
+  // Level 2 complete: each still has to choose.
+  assert.equal(nextStep({ stage: 'l3_decide' }), 'decide');
+  assert.equal(nextStep({ stage: 'l3_decide', decided: null }), 'decide');
+  // I chose to open the chat: waiting for their choice.
+  assert.equal(nextStep({ stage: 'l3_decide', decided: true }), 'wait_them');
+  // Both chose it: the chat.
+  assert.equal(nextStep({ stage: 'l3_open', decided: true }), 'chat');
+  // Someone chose "Forget it": ended for both, whatever I chose, even when the other is blocked.
+  for (const decided of [null, true, false]) assert.equal(nextStep({ stage: 'ended', decided }), 'ended');
+  assert.equal(nextStep({ stage: 'ended', frozen: true }), 'ended');
+  assert.equal(nextStep({ stage: 'l3_decide', frozen: true }), 'frozen');
+});
+
+test('decisions: one forget ends it, both open open the chat', () => {
+  const m = ['U-1', 'U-2'];
+  assert.equal(decisionOf(null, 'U-1'), null);
+  assert.equal(decisionOf({ 'U-1': { open: true } }, 'U-1'), true);
+  assert.equal(decisionOf({ 'U-1': { open: false } }, 'U-1'), false);
+  assert.equal(decisionOf({ 'U-1': { open: 'yes' } }, 'U-1'), null);
+  assert.equal(afterDecisions({}, m), 'l3_decide');
+  assert.equal(afterDecisions({ 'U-1': { open: true } }, m), 'l3_decide');
+  assert.equal(afterDecisions({ 'U-1': { open: true }, 'U-2': { open: true } }, m), 'l3_open');
+  assert.equal(afterDecisions({ 'U-1': { open: false } }, m), 'ended');
+  assert.equal(afterDecisions({ 'U-1': { open: true }, 'U-2': { open: false } }, m), 'ended');
+  // A stray id that is not a member never opens it.
+  assert.equal(afterDecisions({ 'U-1': { open: true }, 'U-9': { open: true } }, m), 'l3_decide');
+});
+
+test('isMyTurn: send, reply, choose, or their chat line last', () => {
+  for (const n of ['send', 'reply', 'send_reply', 'decide']) assert.equal(isMyTurn(n), true, n);
+  for (const n of ['wait_them', 'wait_timer', 'frozen', 'ended']) assert.equal(isMyTurn(n, 'them'), false, n);
   assert.equal(isMyTurn('chat', 'them'), true);
   assert.equal(isMyTurn('chat', 'me'), false);
   assert.equal(isMyTurn('chat', null), false);

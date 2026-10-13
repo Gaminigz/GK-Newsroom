@@ -1,7 +1,8 @@
 // Screen 4 · Profile view — verified chips, big photo, hearts, "You and Sophea · Level n/3", the photos this
 // viewer may see (slot 2 from Level 2, slots 3–4 from Level 3; the rest as locked placeholders) and one
 // primary action driven by pair.next. Every state opens the one conversation screen (#/c/:pairId):
-// start, reply, see where it is while waiting, or chat.
+// start, reply, see where it is while waiting, choose after Level 2, chat, or read an ended one.
+// The real name shows under the app name only once the chat (Level 3) is open (the server sends it then).
 import {
   screen, el, icon, t, go, api, toast, modal, state, topBar, levelBar, avatar, countdown, pronoun, fmtKm,
   pairRoute, stageLevel, nextKind, registerStrings, morePhotosPrompt, stageOpenLevel, roleLabel,
@@ -61,8 +62,8 @@ function actionButton(person, pair, { reload, stops }) {
   const secondary = (label, iconName, onClick) => el('button', { type: 'button', class: 'btn btn-secondary', on: { click: onClick } },
     icon(iconName, 18), el('span', {}, label));
   const open = () => go(pairRoute(pair));
-  // Level 1: start the conversation; Level 2: carry it on.
-  const startLabel = () => (stageLevel(pair) >= 2 ? t('pf_continue', { name }) : t(`pf_ask5_${pr}`, { name }));
+  // Level 1: start the conversation (or carry it on when their 5 are already here); Level 2: carry it on.
+  const startLabel = () => (stageLevel(pair) >= 2 || pair?.myIncoming?.received ? t('pf_continue', { name }) : t(`pf_ask5_${pr}`, { name }));
 
   if (!pair) {
     const b = el('button', { type: 'button', class: 'btn btn-primary' }, icon('chat', 18), el('span', {}, t(`pf_ask_${pr}`, { name })));
@@ -99,8 +100,14 @@ function actionButton(person, pair, { reload, stops }) {
       return el('button', { type: 'button', class: 'btn btn-primary', on: { click: open } },
         icon('clock', 18), el('span', {}, before, time, after));
     }
+    case 'decide':
+      // Level 2 is done: open the chat or forget it (the choice is on the conversation screen).
+      return primary(t('pf_decide'), 'chat', open);
     case 'chat':
       return primary(t('pf_chat_with', { name }), 'chat', open);
+    case 'ended':
+      // "Forget it": nothing more to send, but what was said can still be read.
+      return secondary(t('pf_ended'), 'lock', open);
     default:
       return disabled(t('pf_frozen'), 'lock');
   }
@@ -134,6 +141,7 @@ screen('/person/:id', async ({ params, root }) => {
   const name = person.name;
   const level = pair?.level || 1;
   const chatOpen = pair?.stage === 'l3_open';
+  const ended = pair?.stage === 'ended';
   const reload = () => go(`/person/${encodeURIComponent(person.id)}`, { replace: true });
 
   // Native replaceChildren() would print "null", so optional parts are filtered out.
@@ -144,6 +152,9 @@ screen('/person/:id', async ({ params, root }) => {
         ? el('button', { type: 'button', 'aria-label': t('pf_view_photo'), on: { click: () => viewPhoto(person.photo, name) } }, avatar(person.photo, 170))
         : avatar(null, 170)),
     el('h1', { class: 'display profile-name' }, name),
+    person.realName
+      ? el('p', { class: 'profile-real' }, el('span', { class: 'visually-hidden' }, `${t('pf_real_name')}: `), person.realName)
+      : null,
     person.role ? el('p', { class: 'profile-role' }, roleLabel(person.role)) : null,
     person.km != null ? el('p', { class: 'profile-km' }, t('pf_km_away', { km: fmtKm(person.km) })) : null,
     el('div', { class: 'heart-cards' },
@@ -157,7 +168,7 @@ screen('/person/:id', async ({ params, root }) => {
     morePhotosPrompt(stageOpenLevel(pair?.stage)),
     el('div', { class: 'profile-actions' },
       actionButton(person, pair, { reload, stops }),
-      chatOpen ? null : el('div', { class: 'btn btn-dashed', role: 'note' }, icon('lock', 16), el('span', {}, t('pf_chat_opens'))),
+      chatOpen || ended ? null : el('div', { class: 'btn btn-dashed', role: 'note' }, icon('lock', 16), el('span', {}, t('pf_chat_opens'))),
       pair?.next === 'chat' && !state.me?.verified?.phone
         ? el('p', { class: 'lock-note' }, icon('lock', 14), el('span', {}, t('pf_phone_needed')),
           el('button', { type: 'button', class: 'link', on: { click: () => go('/me') } }, t('pf_verify_phone')))
@@ -195,6 +206,9 @@ registerStrings({
     pf_opens_in: 'Level {n} opens in {time}',
     pf_chat_with: 'Chat with {name}',
     pf_chat_opens: 'Chat opens at Level 3',
+    pf_decide: 'Open the chat or forget it',
+    pf_ended: 'This conversation has ended',
+    pf_real_name: 'Real name',
     pf_frozen: 'This conversation is closed',
     pf_phone_needed: 'Verify your phone number to chat.',
     pf_verify_phone: 'Verify now',
@@ -228,6 +242,9 @@ registerStrings({
     pf_opens_in: 'កម្រិត {n} បើកក្នុងរយៈពេល {time}',
     pf_chat_with: 'ជជែកជាមួយ {name}',
     pf_chat_opens: 'ការជជែកបើកនៅកម្រិត 3',
+    pf_decide: 'បើកការជជែក ឬឈប់ត្រឹមនេះ',
+    pf_ended: 'ការសន្ទនានេះបានបញ្ចប់ហើយ',
+    pf_real_name: 'ឈ្មោះពិត',
     pf_frozen: 'ការសន្ទនានេះត្រូវបានបិទ',
     pf_phone_needed: 'សូមផ្ទៀងផ្ទាត់លេខទូរស័ព្ទ ដើម្បីជជែក។',
     pf_verify_phone: 'ផ្ទៀងផ្ទាត់ឥឡូវនេះ',
@@ -261,6 +278,9 @@ registerStrings({
     pf_opens_in: '等级 {n} 将在 {time} 后开启',
     pf_chat_with: '和 {name} 聊天',
     pf_chat_opens: '等级 3 开放聊天',
+    pf_decide: '开始聊天，还是算了',
+    pf_ended: '这段对话已经结束',
+    pf_real_name: '真实姓名',
     pf_frozen: '此对话已关闭',
     pf_phone_needed: '请先验证手机号才能聊天。',
     pf_verify_phone: '立即验证',
@@ -294,6 +314,9 @@ registerStrings({
     pf_opens_in: '레벨 {n}까지 {time}',
     pf_chat_with: '{name}님과 채팅',
     pf_chat_opens: '채팅은 레벨 3에서 열려요',
+    pf_decide: '채팅 열기 또는 그만두기',
+    pf_ended: '이 대화는 끝났어요',
+    pf_real_name: '실명',
     pf_frozen: '이 대화는 종료되었어요',
     pf_phone_needed: '채팅하려면 전화번호를 인증해 주세요.',
     pf_verify_phone: '지금 인증',
@@ -327,6 +350,9 @@ registerStrings({
     pf_opens_in: 'レベル{n}まで {time}',
     pf_chat_with: '{name}さんとチャット',
     pf_chat_opens: 'チャットはレベル3で開きます',
+    pf_decide: 'チャットを開くか、やめておくか',
+    pf_ended: 'この会話は終わりました',
+    pf_real_name: '本名',
     pf_frozen: 'この会話は終了しました',
     pf_phone_needed: 'チャットするには電話番号の確認が必要です。',
     pf_verify_phone: '今すぐ確認',
