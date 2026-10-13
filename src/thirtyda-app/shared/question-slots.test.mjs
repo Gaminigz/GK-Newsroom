@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { SYSTEM_QUESTIONS, LEVEL_RULES } from './questions.js';
 import { LANGS } from './rules.js';
 import {
-  QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS, dealSlots, flattenSlots, defaultSlots, checkQuestionChoice, checkQuestionSlots,
+  QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS, dealSlots, flattenSlots, defaultSlots, defaultTitles, checkQuestionChoice, checkQuestionSlots,
   checkQuestionTitle, checkQuestionTitles, hasTitle, fillSlots,
 } from './question-slots.js';
 
@@ -46,14 +46,24 @@ test('defaultSlots: Level 1 = 4 × 5 from the whole bank, Level 2 = 3 × 5 from 
   assert.deepEqual(l1.map((s) => s[0].text.en), [
     'Is it raining where you are?', 'Is it busy around you right now?', 'Are you outside right now?', 'Is it a quiet day for you?',
   ]);
-  assert.deepEqual(l2.map((s) => s[0].text.en), [
-    'What can you see from your window?', 'What is the weather like there?', 'What is your favourite place near you?',
-  ]);
+  // Level 2 = the owner's lists, each list whole: Intentions, Time of Comfort, Venue Vibe.
+  assert.deepEqual(l2.map((s) => s[0].text.en), ['Meeting in person is better.', 'After work fits best.', 'A coffee shop works well.']);
+  assert.deepEqual(l2.map((s) => s.map((q) => q.key)), ['inten', 'time', 'venue'].map((p) => [1, 2, 3, 4, 5].map((j) => `${p}_${j}`)));
   // Bank keys are kept, so sets already in the database still resolve.
   assert.equal(l1[0][0].key, 'l1_rain');
-  assert.equal(l2[1][0].key, 'l2_weather');
+  assert.equal(l2[1][0].key, 'time_1');
   for (const q of [...l1.flat(), ...l2.flat()]) assert.deepEqual(Object.keys(q.text).sort(), [...LANGS].sort());
   assert.deepEqual(defaultSlots(3), []);
+});
+
+test('defaultTitles: Level 2 lists carry the owner\'s topics, Level 1 none; valid as the admin saves them', () => {
+  assert.deepEqual(defaultTitles(1), [null, null, null, null]);
+  assert.deepEqual(defaultTitles(2).map((t) => t.en), ['Intentions', 'Time of Comfort', 'Venue Vibe']);
+  assert.deepEqual(checkQuestionTitles(defaultTitles(2), 2), { ok: true, problems: [] });
+  assert.deepEqual(defaultTitles(3), []);
+  const a = defaultTitles(2);
+  a[0].en = 'changed';
+  assert.equal(defaultTitles(2)[0].en, 'Intentions'); // fresh copies
 });
 
 test('defaultSlots returns fresh copies (editing them never touches the bank)', () => {

@@ -29,6 +29,24 @@ const POLL_MAX_MS = 30000; // back-off ceiling while offline
 const panelOpen = new Map(); // pairId → the send panel opened (true) or folded (false) by hand
 
 const unwrap = (r) => (r && typeof r === 'object' && r.conversation ? r.conversation : r);
+
+// Toasts sit just above the bottom of the screen, however tall it is now: a status line, the choice after
+// Level 2 (~220px), the send panel or the chat composer (app.css reads --conv-foot-h). The newest screen owns it.
+let footOwner = 0;
+function trackFoot(node) {
+  const id = ++footOwner;
+  const docEl = document.documentElement;
+  const set = () => {
+    if (footOwner === id) docEl.style.setProperty('--conv-foot-h', `${Math.round(node?.isConnected && !node.hidden ? node.offsetHeight : 0)}px`);
+  };
+  set();
+  const ro = node && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(set) : null;
+  ro?.observe(node);
+  return () => {
+    ro?.disconnect();
+    if (footOwner === id) docEl.style.removeProperty('--conv-foot-h');
+  };
+}
 const ms = (iso) => Date.parse(iso) || 0;
 const same = (a, b) => String(a ?? '').trim() === String(b ?? '').trim();
 
@@ -322,9 +340,11 @@ function mountConversation(root, base, initial, chat) {
       el('div', { class: 'banner', role: 'note' }, icon('shield', 16), el('span', {}, t('chat_text_only'))));
     const gate = frozen() ? 'closed' : chat.e?.code === 'phone_needed' ? 'phone' : null;
     const stop = mountChat(root, { pair: conv.pair, data: chat.v || null, gate, history, header: headerNode() });
+    const stopFoot = trackFoot(root.querySelector('.chat-foot'));
     return () => {
       alive = false;
       stopClocks();
+      stopFoot();
       stop?.();
     };
   }
@@ -633,8 +653,15 @@ function mountConversation(root, base, initial, chat) {
 
   // ------------------------------------------------ updates (replies, sends, choices, polls)
 
-  /** Toasts for what just changed: my replies all in, theirs all in, a level open, the conversation ended. */
+  /**
+   * Toasts for what just changed: my replies all in, theirs all in, a level open, the conversation ended.
+   * Not when Level 2 just finished: the choice under the history says so ("Level 2 is done …").
+   */
   function announce(prev, next) {
+    if (prev.pair?.stage !== 'l3_decide' && next.pair?.stage === 'l3_decide') {
+      heartbeat();
+      return;
+    }
     for (const L of (next.levels || [])) {
       const P = (prev.levels || []).find((x) => x?.level === L?.level);
       if (!P) continue;
@@ -731,6 +758,7 @@ function mountConversation(root, base, initial, chat) {
   // ------------------------------------------------ mount
 
   root.replaceChildren(header, body, foot);
+  const stopFoot = trackFoot(foot);
   renderTimeline();
   renderFoot();
   // Land on the first line waiting for my reply; otherwise on the newest.
@@ -750,6 +778,7 @@ function mountConversation(root, base, initial, chat) {
     window.removeEventListener('pointerup', release, true);
     window.removeEventListener('pointercancel', release, true);
     stopViewport();
+    stopFoot();
   };
 }
 

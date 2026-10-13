@@ -24,7 +24,9 @@
  *
  * Collections: thirtyda_users, thirtyda_user_sessions, thirtyda_otps,
  * thirtyda_pairs, thirtyda_sets, thirtyda_chats, thirtyda_flags, thirtyda_counters; reads the
- * admin's question choices from thirtyda_questions (src/lib/thirtyda-questions.mjs).
+ * admin's question choices from thirtyda_questions (src/lib/thirtyda-questions.mjs) and the code
+ * channels' settings from thirtyda_settings (src/lib/thirtyda-code-send.mjs: Telegram codes are real
+ * once the admin saves a Telegram Gateway token on the Connections page).
  */
 
 import crypto from "node:crypto";
@@ -34,6 +36,7 @@ import { savePhoto, readPhoto, deletePhoto, isPhotoId, PhotoError } from "./thir
 import { translate, translateAll, translateEnabled } from "./thirtyda-translate.mjs";
 import { areaFor, haversineKm } from "./thirtyda-geo.mjs";
 import { clientIp } from "./thirtyda-net.mjs";
+import { CODE_CHANNELS, DEFAULT_CHANNEL, CHANNEL_NAMES, channelLive, deliverCode } from "./thirtyda-code-send.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
   PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
@@ -637,8 +640,8 @@ async function backfillMessages(d, pairId, messages, lang) {
 
 const DIGITS = { "០": 0, "១": 1, "២": 2, "៣": 3, "៤": 4, "៥": 5, "៦": 6, "៧": 7, "៨": 8, "៩": 9 };
 
-/** E.164, +855 by default. null when it does not look like a phone number. */
-function normalizePhone(raw) {
+/** E.164, +855 by default. null when it does not look like a phone number. (The admin's test send uses it too.) */
+export function normalizePhone(raw) {
   let s = String(raw ?? "")
     .replace(/[០-៩]/g, (c) => String(DIGITS[c]))
     .replace(/[０-９＋]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
@@ -723,11 +726,30 @@ const ERROR_TEXT = {
 
 const ipSends = new Map(); // ip -> [timestamps]
 
+/** Who gets the code where: the person picks Telegram (default) or WhatsApp on the phone step. */
+const CHANNEL_FAILED_TEXT = {
+  not_on_telegram: (name, other) => `We could not send a ${name} code to this number. Check the number, or get the code by ${other}.`,
+  unavailable: (name, other) => `${name} codes are not working right now. Try ${other}.`,
+};
+
+/**
+ * POST /auth/send-code { phone, channel:'telegram'|'whatsapp' } (channel defaults to telegram).
+ * Live channel (configured on the admin Connections page) → the code really goes out and is never
+ * returned, test mode or not. If delivery fails the claimed send is undone (the number keeps its turn:
+ * no 30 s wait, no use of its 3 per 15 minutes) → 422 channel_failed { channel, reason, message }.
+ * The address's count stays used, so failing numbers cannot be used to hammer the provider.
+ * Not live → THIRTYDA_DEV_AUTH=1: test mode as before (devCode for the "Test code" note); else 503 channel_unavailable.
+ */
 async function sendCode(ctx) {
   const { d, body, req } = ctx;
   const phone = normalizePhone(body.phone);
   if (!phone) throw invalid("That phone number does not look right.", { field: "phone" });
-  if (!DEV_AUTH) throw fail(503, "sms_unavailable", "Text-message codes are not available yet.");
+  const channel = body.channel == null || body.channel === "" ? DEFAULT_CHANNEL : body.channel;
+  if (!CODE_CHANNELS.includes(channel)) throw invalid("Choose Telegram or WhatsApp.", { field: "channel" });
+  const name = CHANNEL_NAMES[channel];
+  const other = CHANNEL_NAMES[CODE_CHANNELS.find((c) => c !== channel)];
+  const live = await channelLive(d, channel);
+  if (!live && !DEV_AUTH) throw fail(503, "channel_unavailable", `Codes by ${name} are not available yet.`, { channel });
 
   const now = Date.now();
   const ip = clientIp(req);
@@ -738,22 +760,56 @@ async function sendCode(ctx) {
   ipSends.set(ip, recent);
 
   const code = String(crypto.randomInt(0, 1e6)).padStart(6, "0");
+  const codeHash = hashCode(phone, code);
+  let claim;
   try {
-    await claimCodeSend(d, phone, hashCode(phone, code), now);
+    claim = await claimCodeSend(d, phone, codeHash, now);
   } catch (err) {
     const list = ipSends.get(ip) || [];
     const k = list.indexOf(now);
     if (k >= 0) list.splice(k, 1); // nothing was sent: give the address its turn back
     throw err;
   }
-  // No SMS provider yet: in dev the code comes back for the "Test code" note.
-  return { ok: true, phone, resendIn: OTP_RESEND_S, ...(DEV_AUTH ? { devCode: code } : {}) };
+
+  if (live) {
+    let sent;
+    try {
+      sent = await deliverCode(channel, phone, code, { d });
+    } catch (err) {
+      sent = { ok: false, reason: "other", detail: err instanceof Error ? err.message.slice(0, 80) : "error" };
+    }
+    if (!sent.ok) {
+      try {
+        await undoCodeSend(d, phone, codeHash, claim.prev);
+      } catch (err) {
+        console.error("[30da api] could not undo a failed code send:", err instanceof Error ? err.message : err);
+      }
+      console.warn(`[30da api] ${channel} code not delivered: ${sent.reason}${sent.detail ? ` (${sent.detail})` : ""}`);
+      const reason = sent.reason === "not_on_telegram" ? "not_on_telegram" : "unavailable";
+      throw fail(422, "channel_failed", CHANNEL_FAILED_TEXT[reason](name, other), { channel, reason });
+    }
+    return { ok: true, phone, channel, live: true, resendIn: OTP_RESEND_S };
+  }
+  // Not live (test mode only, checked above): the code comes back for the "Test code" note.
+  return { ok: true, phone, channel, live: false, resendIn: OTP_RESEND_S, devCode: code };
+}
+
+/** Put the number's code record back as it was before a claim whose delivery failed (only our own claim). */
+async function undoCodeSend(d, phone, codeHash, prev) {
+  const otps = d.collection(C.otps);
+  if (!prev) {
+    await otps.deleteOne({ _id: phone, codeHash });
+    return;
+  }
+  const { _id, ...was } = prev;
+  await otps.replaceOne({ _id: phone, codeHash }, was);
 }
 
 /**
  * Store a new code for `phone` only if the 30 s resend gap and the 3-per-15-minutes limit allow
  * it — checked and written in one atomic update, so a burst of parallel requests gets one code,
- * not ten. Throws 429 too_soon / rate_limited otherwise.
+ * not ten. Throws 429 too_soon / rate_limited otherwise. → { prev }: the record as it was before
+ * (null when there was none), so a failed delivery can put it back (undoCodeSend).
  */
 async function claimCodeSend(d, phone, codeHash, now) {
   const otps = d.collection(C.otps);
@@ -767,12 +823,12 @@ async function claimCodeSend(d, phone, codeHash, now) {
       $expr: { $and: [{ $lte: ["$sentAt", new Date(now - OTP_RESEND_S * 1000)] }, { $lt: [{ $size: inWindow }, OTP_SENDS] }] },
     },
     [{ $set: { ...fields, sends: { $concatArrays: [inWindow, [new Date(now)]] } } }],
-    { returnDocument: "after" },
+    { returnDocument: "before" },
   );
-  if (claimed) return;
+  if (claimed) return { prev: claimed };
   try {
     await otps.insertOne({ _id: phone, ...fields, sends: [new Date(now)] });
-    return;
+    return { prev: null };
   } catch (err) {
     if (err?.code !== 11000) throw err; // a code exists: fall through and say why it cannot be resent
   }
@@ -1724,10 +1780,16 @@ async function decide(ctx) {
   const at = nowIso();
   const set = { [`decisions.${me._id}`]: { open, at }, updatedAt: at };
   if (!open) Object.assign(set, { stage: "ended", endedAt: at, endedBy: me._id });
-  // Only while the choice is still open: the other person may have just ended it.
-  const saved = await pairs.findOneAndUpdate({ _id: pair._id, stage: "l3_decide" }, { $set: set }, { returnDocument: "after" });
+  // Only while the choice is still open (the other person may have just ended it) and only when it changes
+  // my choice: of two identical requests at once (two tabs, a retry) one writes and logs, the other answers.
+  const saved = await pairs.findOneAndUpdate(
+    { _id: pair._id, stage: "l3_decide", [`decisions.${me._id}.open`]: { $ne: open } },
+    { $set: set },
+    { returnDocument: "after" },
+  );
   if (!saved) {
     const now = await pairs.findOne({ _id: pair._id });
+    if (now && decisionOf(now.decisions, me._id) === open && ["l3_decide", "l3_open", "ended"].includes(stageOf(now))) return answer();
     if (now?.stage === "ended") throw fail(409, "conversation_ended", "This conversation has ended.");
     throw notYourTurn();
   }

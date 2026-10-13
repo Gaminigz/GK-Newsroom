@@ -13,6 +13,14 @@
  *   GET  /30da/admin/api/questions        both levels: [{ id:'L1', slots:[[{key,text:{en,km,zh,ko,ja}}×5]×4], titles, … }]
  *   PUT  /30da/admin/api/questions/L1|L2  { slots, titles?, updatedAt? } → saved level | 422 { problems } | 409 changed
  *   POST /30da/admin/api/questions/L1|L2/reset   back to the built-in choices
+ *   GET  /30da/admin/connections          how people get their code / sign in (Telegram now; WhatsApp, Google, Facebook next)
+ *   GET  /30da/admin/api/connections      { keyReady, connections:[{ id, name, set, last4, updatedAt, updatedBy, live, … }] }
+ *   PUT  /30da/admin/api/connections/telegram        { token } → saved (encrypted) | 422 bad format | 503 no key
+ *   DELETE /30da/admin/api/connections/telegram      remove the saved token
+ *   POST /30da/admin/api/connections/telegram/test   { phone } → a real Telegram code to that phone, or why not
+ *
+ * Secrets (src/lib/thirtyda-settings.mjs) are sealed with THIRTYDA_SECRET_KEY and never sent back:
+ * only { set, last4, updatedAt, updatedBy }. The audit log never carries them either.
  *
  * Auth: one access code from the THIRTYDA_ADMIN_CODE env var — NO default,
  * NEVER in the repo (public). Unset means sign-in fails closed.
@@ -30,6 +38,9 @@ import {
   QUESTION_LEVELS, levelDocId, levelFromId, questionConfig, saveQuestions, resetQuestions,
 } from "./thirtyda-questions.mjs";
 import { LEVEL_RULES } from "../thirtyda-app/shared/questions.js";
+import { keyReady, saveSecret, removeSecret, secretStatus, SettingsError } from "./thirtyda-settings.mjs";
+import { checkTelegramToken, deliverCode, CODE_TTL_S } from "./thirtyda-code-send.mjs";
+import { normalizePhone } from "./thirtyda-app.mjs";
 import { QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS } from "../thirtyda-app/shared/question-slots.js";
 
 const BASE = "/30da/admin";
@@ -43,6 +54,7 @@ const MAX_FAILURES = 20; // wrong codes from everyone together per window: caps 
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_WRITES = 30; // question saves/resets per admin session per window
 const QUESTIONS_BODY_MAX = 200_000; // 20 choices × 5 languages × 100 characters, with room to spare
+const MAX_TESTS = 10; // real Telegram test codes per admin session per window (each one costs money)
 
 const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
@@ -265,6 +277,47 @@ function writeLimited(req) {
   return false;
 }
 
+const tests = new Map(); // admin session → [timestamps of test sends]
+function testLimited(req) {
+  const key = tokenOf(req) || clientIp(req);
+  const now = Date.now();
+  const list = (tests.get(key) || []).filter((t) => now - t < WINDOW_MS);
+  tests.set(key, list);
+  if (list.length >= MAX_TESTS) return true;
+  list.push(now);
+  return false;
+}
+
+/** "+85512345678" → "+855•••••678": enough for the audit to tell test numbers apart. */
+const maskPhone = (p) => (p ? `${p.slice(0, 4)}${"•".repeat(Math.max(0, p.length - 7))}${p.slice(-3)}` : null);
+
+/** The Connections page's data. Never a secret: Telegram shows only its last 4 characters. */
+async function connectionsView(d) {
+  const tg = await secretStatus(d, "telegram");
+  const envToken = String(process.env.THIRTYDA_TG_TOKEN ?? "").trim();
+  const { readable, lastSend, ...view } = tg;
+  return {
+    keyReady: keyReady(),
+    devAuth: process.env.THIRTYDA_DEV_AUTH === "1",
+    connections: [
+      {
+        id: "telegram",
+        name: "Telegram",
+        kind: "code",
+        ...view,
+        readable,
+        lastSend,
+        // THIRTYDA_TG_TOKEN is used only while nothing readable is saved here.
+        envFallback: envToken ? { last4: envToken.slice(-4) } : null,
+        live: (view.set && readable) || Boolean(envToken),
+      },
+      { id: "whatsapp", name: "WhatsApp", kind: "code", comingNext: true, live: false },
+      { id: "google", name: "Google sign-in", kind: "signin", comingNext: true, live: false },
+      { id: "facebook", name: "Facebook sign-in", kind: "signin", comingNext: true, live: false },
+    ],
+  };
+}
+
 /** One level as the Questions page edits it. */
 function questionsView(level, config) {
   return {
@@ -289,7 +342,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
   const path = url.pathname.replace(/\/+$/, "") || "/";
   const sub = path.slice(BASE.length) || "/";
 
-  const asset = sub.match(/^\/(app\.css|signin\.js|monitor\.js|questions\.js)$/);
+  const asset = sub.match(/^\/(app\.css|signin\.js|monitor\.js|questions\.js|connections\.js)$/);
   if (req.method === "GET" && asset) return serveFile(res, asset[1]);
 
   if (req.method !== "GET" && req.method !== "HEAD" && sub.startsWith("/api/")) {
@@ -342,6 +395,11 @@ export async function handleThirtyDaAdmin(req, res, url) {
     if (!me) return send(res, 302, "", { Location: BASE });
     await audit(req, "view_questions");
     return serveFile(res, "questions.html");
+  }
+  if (req.method === "GET" && sub === "/connections") {
+    if (!me) return send(res, 302, "", { Location: BASE });
+    await audit(req, "view_connections");
+    return serveFile(res, "connections.html");
   }
 
   if (sub.startsWith("/api/") && !me) return json(res, 401, { error: "signed_out" });
@@ -400,6 +458,66 @@ export async function handleThirtyDaAdmin(req, res, url) {
     }
     await audit(req, "questions_update", { level: m[1], changes: r.diff.changes, summary: r.diff.summary });
     return json(res, 200, { ...questionsView(level, r.config), changes: r.diff.changes, summary: r.diff.summary });
+  }
+
+  if (req.method === "GET" && sub === "/api/connections") return json(res, 200, await connectionsView(await db()));
+
+  m = sub.match(/^\/api\/connections\/([a-z]+)(\/test)?$/);
+  if (m && ((m[2] && req.method === "POST") || (!m[2] && (req.method === "PUT" || req.method === "DELETE")))) {
+    if (m[1] !== "telegram") {
+      req.resume();
+      return json(res, 404, { error: "That connection is coming next. Only Telegram can be set up now." });
+    }
+    if (writeLimited(req)) {
+      req.resume();
+      return json(res, 429, { error: "Too many changes. Try again in a few minutes." });
+    }
+    const d = await db();
+
+    if (m[2]) {
+      // A real code to a real phone through the saved token (or THIRTYDA_TG_TOKEN): proves the setup works.
+      const body = await readJsonBody(req, 1e4);
+      if (body.bad || body.tooLarge) return json(res, 400, { error: "Send { phone }." });
+      const phone = normalizePhone(body.value.phone);
+      if (!phone) return json(res, 422, { error: "That phone number does not look right. Write it with the country code, e.g. +855 12 345 678.", reason: "bad_phone" });
+      const view = await connectionsView(d);
+      if (!view.connections[0].live) {
+        return json(res, 400, { error: "Save a Telegram token first, then send a test code.", reason: "not_set" });
+      }
+      if (testLimited(req)) return json(res, 429, { error: `That is ${MAX_TESTS} test codes in 15 minutes. Try again later.` });
+      const code = String(crypto.randomInt(0, 1e6)).padStart(6, "0");
+      const r = await deliverCode("telegram", phone, code, { d, record: false });
+      await audit(req, "connection_test", {
+        connection: "telegram", phone: maskPhone(phone), ok: r.ok, ...(r.ok ? { requestId: r.requestId } : { reason: r.reason, detail: r.detail }),
+      });
+      if (!r.ok) return json(res, 422, { ok: false, error: r.message, reason: r.reason, detail: r.detail, phone });
+      // The test code is not a sign-in code (nothing stores it): showing it lets the admin match what arrives.
+      return json(res, 200, { ok: true, phone, code, ttl: CODE_TTL_S, requestId: r.requestId, cost: r.cost, balance: r.balance });
+    }
+
+    if (req.method === "DELETE") {
+      req.resume();
+      const r = await removeSecret(d, "telegram");
+      await audit(req, "connection_remove", { connection: "telegram", removed: r.removed });
+      return json(res, 200, await connectionsView(d));
+    }
+
+    const body = await readJsonBody(req, 1e4);
+    if (body.tooLarge) return json(res, 413, { error: "That is far too long for a token." });
+    if (body.bad) return json(res, 400, { error: "Send { token }." });
+    const c = checkTelegramToken(body.value.token);
+    if (!c.ok) return json(res, 422, { error: c.error, field: "token" });
+    try {
+      const saved = await saveSecret(d, "telegram", c.token, { by: "superadmin" });
+      await audit(req, "connection_save", { connection: "telegram", last4: saved.last4 });
+    } catch (err) {
+      if (err instanceof SettingsError && err.code === "no_key") {
+        await audit(req, "connection_save_refused", { connection: "telegram", reason: "no_key" });
+        return json(res, 503, { error: err.message, reason: "no_key" });
+      }
+      throw err;
+    }
+    return json(res, 200, await connectionsView(d));
   }
 
   m = sub.match(/^\/api\/users\/(U-\d+)\/(block|unblock)$/);

@@ -4,7 +4,7 @@
 // the live app and the admin never create fake users.
 
 import { LANGS, LANG_ENGLISH, stageOpenLevel, currentYear } from "../thirtyda-app/shared/rules.js";
-import { SYSTEM_QUESTIONS, questionText, answerText } from "../thirtyda-app/shared/questions.js";
+import { SYSTEM_QUESTIONS, SYSTEM_TOPICS, RETIRED_QUESTIONS, questionText, answerText } from "../thirtyda-app/shared/questions.js";
 
 const CENTER = { lat: 11.549, lng: 104.928 }; // BKK1
 const KM_LAT = 1 / 110.574;
@@ -49,18 +49,27 @@ const AGES = {
 const L1_EXAMPLES = [
   'Is it raining where you are?', 'Is it busy around you right now?', 'Are you outside right now?', 'Is it a quiet day for you?',
 ];
-const L2_EXAMPLES = ['What can you see from your window?', 'What is the weather like there?', 'What is your favourite place near you?'];
+// Level 2: choice 1 of each list (Intentions, Time of Comfort, Venue Vibe).
+const L2_EXAMPLES = ['Meeting in person is better.', 'After work fits best.', 'A coffee shop works well.'];
 // Choice 2 of each Level 2 list, so the two people in a pair do not send the very same lines.
-const L2_SECOND = ['How did your morning start today?', 'What are your plans for this evening?', 'What is your favourite food?'];
-// Level 2 sets sent before it picked 3 had 2 picked + 3 written lines; P-3 keeps that shape (it still reads back).
-const L2_OLD = L2_EXAMPLES.slice(0, 2);
-const keyOf = (level, en, i) => (SYSTEM_QUESTIONS[level].find((q) => q.text.en === en) ?? SYSTEM_QUESTIONS[level][i]).key;
+const L2_SECOND = ['Prefer chatting a bit first.', 'Weekends take planning.', 'Lunch or dinner is fine.'];
+// Level 2 sets sent before 2026-10-13 were picked from the older open lines (RETIRED_QUESTIONS) and replied to
+// in words; P-5 keeps them, and P-3 the shape before that (2 picked + 3 written). All of it still reads back.
+const L2_OLD = ['What can you see from your window?', 'What is the weather like there?', 'What is your favourite place near you?'];
+const L2_OLD_SECOND = ['How did your morning start today?', 'What are your plans for this evening?', 'What is your favourite food?'];
+const L2_OLDER = L2_OLD.slice(0, 2);
+const keyOf = (level, en, i) => {
+  const bank = [...SYSTEM_QUESTIONS[level], ...(RETIRED_QUESTIONS[level] ?? [])];
+  return (bank.find((q) => q.text.en === en) ?? SYSTEM_QUESTIONS[level][i]).key;
+};
+// The topic a picked line was sent with (as POST /sets stores it): its built-in list's topic, none for retired lines.
+const topicOf = (level, key, n) => (SYSTEM_QUESTIONS[level].some((q) => q.key === key) ? SYSTEM_TOPICS[level]?.[n - 1] ?? null : null);
 
 // Hand-written lines: { <writer lang>: original, en, <reader lang> }.
 const T = {
   meiCoffee: { zh: '你喜欢喝咖啡吗？', en: 'Do you like coffee?', km: 'តើអ្នកចូលចិត្តផឹកកាហ្វេទេ?' },
-  meiWeekend: { zh: '你周末喜欢做什么？', en: 'What do you like to do at the weekend?', km: 'តើអ្នកចូលចិត្តធ្វើអ្វីនៅចុងសប្តាហ៍?' },
-  meiYears: { zh: '你在金边住了多久？', en: 'How long have you lived in Phnom Penh?', km: 'តើអ្នករស់នៅភ្នំពេញបានប៉ុន្មានឆ្នាំហើយ?' },
+  meiWeekend: { zh: '你周末常出去玩吗？', en: 'Do you often go out at the weekend?', km: 'តើអ្នកតែងចេញទៅលេងនៅចុងសប្តាហ៍ទេ?' },
+  meiYears: { zh: '你在金边住很久了吗？', en: 'Have you lived in Phnom Penh long?', km: 'តើអ្នករស់នៅភ្នំពេញយូរហើយឬនៅ?' },
   meiFood: { zh: '你最喜欢哪家餐厅？', en: 'Which restaurant do you like best?', km: 'តើអ្នកចូលចិត្តភោជនីយដ្ឋានណាជាងគេ?' },
   visalRiver: { km: 'ខ្ញុំចូលចិត្តដើរលេងតាមមាត់ទន្លេ។', en: 'I like walking by the river.', zh: '我喜欢在河边散步。' },
   tomNew: { en: 'Hi Anna, are you new in Phnom Penh too?' },
@@ -112,8 +121,8 @@ const T = {
   bophaBike: { km: 'តើអ្នកជិះកង់ទេ?', en: 'Do you ride a bicycle?' },
   minjunCoffee: { ko: '커피 좋아하세요?', en: 'Do you like coffee?', km: 'តើអ្នកចូលចិត្តកាហ្វេទេ?' },
   kanhaRain: { km: 'តើអ្នកចូលចិត្តភ្លៀងទេ?', en: 'Do you like the rain?', ko: '비 좋아하세요?' },
-  minjunWork: { ko: '요즘 일은 어때요?', en: 'How is work these days?', km: 'ការងារថ្មីៗនេះយ៉ាងម៉េចដែរ?' },
-  minjunSunday: { ko: '일요일에는 보통 뭐 해요?', en: 'What do you usually do on Sundays?', km: 'ជាធម្មតាអ្នកធ្វើអ្វីនៅថ្ងៃអាទិត្យ?' },
+  minjunWork: { ko: '요즘 일이 바빠요?', en: 'Is work busy these days?', km: 'ថ្មីៗនេះការងាររវល់ទេ?' },
+  minjunSunday: { ko: '일요일에는 보통 쉬어요?', en: 'Do you usually rest on Sundays?', km: 'ជាធម្មតាអ្នកសម្រាកនៅថ្ងៃអាទិត្យទេ?' },
   kanhaWindow: { km: 'ខ្ញុំឃើញដើមដូង និងផ្ទះអ្នកជិតខាង។', en: 'A coconut tree and my neighbour’s house.', ko: '야자나무와 이웃집이 보여요.' },
   kanhaWeather: { km: 'ភ្លៀងតិចៗពេលល្ងាច។', en: 'Light rain in the evening.', ko: '저녁에 비가 조금 와요.' },
   kanhaPlace: { km: 'ផ្សាររុស្ស៊ីនៅព្រឹកថ្ងៃអាទិត្យ។', en: 'The Russian Market on Sunday morning.', ko: '일요일 아침의 러시안 마켓이요.' },
@@ -128,10 +137,10 @@ const T = {
   minjunHome: { ko: '가끔요, 특히 겨울에요.', en: 'Sometimes, mostly in winter.', km: 'ពេលខ្លះ ជាពិសេសនៅរដូវរងា។' },
   sakuraWalk: { ja: '散歩は好きですか？', en: 'Do you like walking?' },
   jamesCats: { en: 'Do you like cats?', ja: '猫は好きですか？' },
-  sakuraBook: { ja: '最近読んだ本は何ですか？', en: 'What book did you read recently?' },
-  sakuraHome: { ja: 'どこの出身ですか？', en: 'Where are you from?' },
+  sakuraBook: { ja: '本を読むのは好きですか？', en: 'Do you enjoy reading?' },
+  sakuraHome: { ja: 'プノンペンの出身ですか？', en: 'Are you from Phnom Penh?' },
   jamesWindow: { en: 'A busy street and a pagoda roof.', ja: 'にぎやかな通りとお寺の屋根です。' },
-  jamesWeekend: { en: 'What are you doing this weekend?', ja: '今週末は何をしますか？' },
+  jamesWeekend: { en: 'Are you free this weekend?', ja: '今週末は空いていますか？' },
   jamesKhmer: { en: 'Are you learning any Khmer?', ja: 'クメール語を勉強していますか？' },
   sakuraMorning: { ja: 'ヨガをしてからコーヒーを飲みました。', en: 'Yoga, then coffee.' },
   sakuraEvening: { ja: '友だちと夕ご飯を食べます。', en: 'Dinner with a friend.' },
@@ -176,6 +185,7 @@ export function buildDemo(now = Date.now()) {
   const sysQ = (level, key, n, lang) => ({
     n, source: 'system', key, slot: n, text: questionText(level, key, lang), lang,
     translations: Object.fromEntries(LANGS.map((l) => [l, questionText(level, key, l)])),
+    ...(topicOf(level, key, n) ? { topic: { ...topicOf(level, key, n) } } : {}),
   });
   const writtenQ = (map, n, lang) => ({ n, source: 'written', key: null, text: map[lang] ?? map.en, lang, translations: all(map) });
   const l1Reply = (n, key, lang, at) => ({
@@ -207,7 +217,7 @@ export function buildDemo(now = Date.now()) {
   }
 
   // P-1 Mei ⇄ Visal · Level 2 open: Level 1 done both ways; Mei sent her Level 2 and Visal has tapped 2 of 5
-  // replies; Visal has not sent his yet (earlier he tried to share his Telegram).
+  // replies; Visal has not sent his yet (earlier he tried to send a line with his Telegram).
   addSet({ pairId: 'P-1', level: 1, from: 'U-10644', to: 'U-10418', written: [T.meiCoffee], replies: ['no', 'yes', 'yes', 'maybe', 'yes'], sentMin: 3000, replyMin: 2950 });
   addSet({ pairId: 'P-1', level: 1, from: 'U-10418', to: 'U-10644', written: [T.visalRice], replies: ['yes', 'not_really', 'no', 'yes', 'yes'], sentMin: 2990, replyMin: 2900 });
   addSet({ pairId: 'P-1', level: 2, from: 'U-10644', to: 'U-10418', written: [T.meiWeekend, T.meiYears], replies: ['yes', 'maybe'], sentMin: 10, replyMin: 5 });
@@ -216,14 +226,14 @@ export function buildDemo(now = Date.now()) {
   // P-3 Lina ⇄ Chen · Level 3 chat (Lina reported Chen). An older pair: Level 1 went one way only, and its
   // Level 2 sets have the old shape (2 picked + 3 written) and replies in words. All of it still reads back.
   addSet({ pairId: 'P-3', level: 1, from: 'U-10735', to: 'U-10611', written: [T.linaWalks], replies: ['yes', 'ok', 'no', 'yes', 'yes'], sentMin: 7200, replyMin: 7100 });
-  addSet({ pairId: 'P-3', level: 2, from: 'U-10735', to: 'U-10611', sys: L2_OLD, written: [T.linaWork, T.linaFood, T.linaCame], replies: [T.chenWindow, T.chenWeather, T.chenWork, T.chenFood, T.chenCame], sentMin: 5600, replyMin: 5300 });
-  addSet({ pairId: 'P-3', level: 2, from: 'U-10611', to: 'U-10735', sys: L2_OLD, written: [T.chenWeekend, T.chenMusic, T.chenMorning], replies: [T.linaWindow, T.linaWeather, T.linaWeekend, T.linaMusic, T.linaMorning], sentMin: 5550, replyMin: 4400 });
+  addSet({ pairId: 'P-3', level: 2, from: 'U-10735', to: 'U-10611', sys: L2_OLDER, written: [T.linaWork, T.linaFood, T.linaCame], replies: [T.chenWindow, T.chenWeather, T.chenWork, T.chenFood, T.chenCame], sentMin: 5600, replyMin: 5300 });
+  addSet({ pairId: 'P-3', level: 2, from: 'U-10611', to: 'U-10735', sys: L2_OLDER, written: [T.chenWeekend, T.chenMusic, T.chenMorning], replies: [T.linaWindow, T.linaWeather, T.linaWeekend, T.linaMusic, T.linaMorning], sentMin: 5550, replyMin: 4400 });
   // P-5 Sophea ⇄ Dara · Level 3 open, nothing said yet; Level 1 and Level 2 both ways above it (their Level 2
   // was replied to in words, before the taps: it reads back as it was).
   addSet({ pairId: 'P-5', level: 1, from: 'U-10231', to: 'U-10232', written: [T.sopheaDogs], replies: ['yes', 'not_really', 'yes', 'maybe', 'yes'], sentMin: 8000, replyMin: 7950 });
   addSet({ pairId: 'P-5', level: 1, from: 'U-10232', to: 'U-10231', written: [T.daraTea], replies: ['no', 'yes', 'maybe', 'yes', 'no'], sentMin: 7990, replyMin: 7900 });
-  addSet({ pairId: 'P-5', level: 2, from: 'U-10231', to: 'U-10232', written: [T.sopheaCook, T.sopheaEvening], replies: [T.daraWindow, T.daraWeather, T.daraPlace, T.daraCook, T.daraEvening], sentMin: 6400, replyMin: 6000 });
-  addSet({ pairId: 'P-5', level: 2, from: 'U-10232', to: 'U-10231', sys: L2_SECOND, written: [T.daraRelax, T.daraTrip], replies: [T.sopheaMorning, T.sopheaNight, T.sopheaFood, T.sopheaRelax, T.sopheaTrip], sentMin: 6300, replyMin: 5900 });
+  addSet({ pairId: 'P-5', level: 2, from: 'U-10231', to: 'U-10232', sys: L2_OLD, written: [T.sopheaCook, T.sopheaEvening], replies: [T.daraWindow, T.daraWeather, T.daraPlace, T.daraCook, T.daraEvening], sentMin: 6400, replyMin: 6000 });
+  addSet({ pairId: 'P-5', level: 2, from: 'U-10232', to: 'U-10231', sys: L2_OLD_SECOND, written: [T.daraRelax, T.daraTrip], replies: [T.sopheaMorning, T.sopheaNight, T.sopheaFood, T.sopheaRelax, T.sopheaTrip], sentMin: 6300, replyMin: 5900 });
   // P-6 Ji-ho ⇄ Ling · Level 1 done both ways; Level 2 opens in about 20 hours.
   addSet({ pairId: 'P-6', level: 1, from: 'U-10790', to: 'U-10245', written: [T.jihoFood], replies: ['yes', 'no', 'yes', 'not_really', 'yes'], sentMin: 390, replyMin: 300 });
   addSet({ pairId: 'P-6', level: 1, from: 'U-10245', to: 'U-10790', written: [T.lingTea], replies: ['maybe', 'yes', 'no', 'yes', 'no'], sentMin: 380, replyMin: 240 });
@@ -286,7 +296,7 @@ export function buildDemo(now = Date.now()) {
   // The admin's chat log, as the app writes it: a set's 5 lines when it is sent and its 5 replies once all 5
   // are in, plus the rows below — [from, minutesAgo, kind, level, line, hit?, flagId?]; a hit = stopped by the app.
   const EXTRA = {
-    'P-1': [['U-10418', 3, 'answer', 2, { km: 'បន្ថែមខ្ញុំនៅ Telegram @visal88', en: 'Add me on Telegram @visal88' }, 'Telegram @visal88', 'f1']],
+    'P-1': [['U-10418', 3, 'question', 2, { km: 'បន្ថែមខ្ញុំនៅ Telegram @visal88', en: 'Add me on Telegram @visal88' }, 'Telegram @visal88', 'f1']],
     'P-2': [['U-10507', 14, 'question', 1, 'Can I call you? 012 88 77 66', '012 88 77 66', 'f2']],
     'P-3': [
       ['U-10735', 40, 'chat', 3, T.linaCoffee],

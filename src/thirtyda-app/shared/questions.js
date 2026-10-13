@@ -4,6 +4,51 @@
 
 const q = (key, en, km, zh, ko, ja) => ({ key, text: { en, km, zh, ko, ja } });
 
+// Level 2 (Gamini 2026-10-13): three lists of 5 short statements, one topic each — "Intentions", "Time of
+// Comfort", "Venue Vibe" (SYSTEM_TOPICS) — that the other person answers with one tap (Yes / No / Not really
+// / Maybe). Keys are the ones the owner's admin lists use. The open questions before them: RETIRED_QUESTIONS.
+const L2_LISTS = [
+  // Intentions
+  [
+    q('inten_1', 'Meeting in person is better.',
+      'ជួបផ្ទាល់គឺល្អជាង។', '当面见面更好。', '직접 만나는 게 더 좋아요.', '直接会うほうがいいです。'),
+    q('inten_2', 'Prefer chatting a bit first.',
+      'ចង់ជជែកគ្នាបន្តិចសិន។', '我更想先聊一聊。', '먼저 조금 대화하고 싶어요.', 'まずは少し話したいです。'),
+    q('inten_3', 'Just meeting naturally first.',
+      'ជួបគ្នាតាមធម្មជាតិសិន។', '先自然地见个面就好。', '먼저 자연스럽게 만나요.', 'まずは自然に会いましょう。'),
+    q('inten_4', 'Taking things step by step.',
+      'ធ្វើអ្វីៗម្ដងមួយជំហាន។', '一步一步慢慢来。', '한 걸음씩 천천히 가요.', '一歩ずつ進みたいです。'),
+    q('inten_5', 'Going with the flow today.',
+      'ថ្ងៃនេះទុកឲ្យវាទៅតាមធម្មជាតិ។', '今天就顺其自然吧。', '오늘은 흐름에 맡겨요.', '今日は流れに任せます。'),
+  ],
+  // Time of Comfort
+  [
+    q('time_1', 'After work fits best.',
+      'ក្រោយម៉ោងធ្វើការស្រួលជាងគេ។', '下班后最合适。', '퇴근 후가 제일 좋아요.', '仕事の後がいちばんいいです。'),
+    q('time_2', 'Weekends take planning.',
+      'ចុងសប្តាហ៍ត្រូវរៀបចំទុកមុន។', '周末需要提前安排。', '주말은 미리 계획해야 해요.', '週末は予定を立てる必要があります。'),
+    q('time_3', 'Schedule updates are good.',
+      'ប្រាប់កាលវិភាគជាមុនគឺល្អ។', '提前说一下时间安排很好。', '일정을 알려 주면 좋아요.', '予定を知らせてくれると助かります。'),
+    q('time_4', 'Let me know your availability.',
+      'ប្រាប់ខ្ញុំពីពេលដែលអ្នកទំនេរ។', '告诉我你什么时候有空。', '언제 시간이 되는지 알려 주세요.', '空いている時間を教えてください。'),
+    q('time_5', 'Busy schedule these days.',
+      'ថ្ងៃនេះៗរវល់ច្រើន។', '最近比较忙。', '요즘 일정이 바빠요.', '最近は予定が詰まっています。'),
+  ],
+  // Venue Vibe
+  [
+    q('venue_1', 'A coffee shop works well.',
+      'ហាងកាហ្វេគឺល្អ។', '咖啡店就很好。', '카페가 좋아요.', 'カフェがいいです。'),
+    q('venue_2', 'Lunch or dinner is fine.',
+      'អាហារថ្ងៃត្រង់ ឬល្ងាចក៏បាន។', '午饭或晚饭都可以。', '점심이나 저녁 다 괜찮아요.', 'ランチでもディナーでもいいです。'),
+    q('venue_3', 'Shopping malls are easy.',
+      'ផ្សារទំនើបងាយស្រួល។', '商场比较方便。', '쇼핑몰이 편해요.', 'ショッピングモールが便利です。'),
+    q('venue_4', 'Let me know your spot first.',
+      'ប្រាប់ខ្ញុំពីកន្លែងរបស់អ្នកសិន។', '先告诉我你想去哪里。', '먼저 원하는 장소를 알려 주세요.', 'まず行きたい場所を教えてください。'),
+    q('venue_5', 'Somewhere nearby is best.',
+      'កន្លែងជិតៗគឺល្អបំផុត។', '附近的地方最好。', '가까운 곳이 제일 좋아요.', '近くの場所がいちばんです。'),
+  ],
+];
+
 export const SYSTEM_QUESTIONS = {
   // Level 1: yes/no questions about what is going on AROUND the other person right now.
   1: [
@@ -48,7 +93,30 @@ export const SYSTEM_QUESTIONS = {
     q('l1_window', 'Is there a window near you?',
       'តើនៅជិតអ្នកមានបង្អួចទេ?', '你附近有窗户吗？', '가까이에 창문이 있나요?', '近くに窓がありますか？'),
   ],
-  // Level 2: open lines (older sets were answered in words; since 2026-10-13 every reply is one tap).
+  // Level 2: the three lists above, dealt in order (list 1 Intentions, 2 Time of Comfort, 3 Venue Vibe).
+  2: dealOrder(L2_LISTS),
+};
+
+// defaultSlots deals a flat bank as "choice j of list i = item j × lists + i": interleave so list i stays list i.
+function dealOrder(lists) {
+  return lists[0].flatMap((_, j) => lists.map((list) => list[j]));
+}
+
+const topic = (en, km, zh, ko, ja) => ({ en, km, zh, ko, ja });
+
+// The topic of each built-in list ("Line 6 · Intentions"); Level 1's built-in lists have none.
+export const SYSTEM_TOPICS = {
+  1: [],
+  2: [
+    topic('Intentions', 'គោលបំណង', '意向', '의향', '気持ち'),
+    topic('Time of Comfort', 'ពេលវេលាដែលស្រួល', '方便的时间', '편한 시간', '都合のいい時間'),
+    topic('Venue Vibe', 'កន្លែងជួប', '见面地点', '만남 장소', '会う場所'),
+  ],
+};
+
+// The built-in Level 2 lines before 2026-10-13: open questions ("What can you see from your window?"), no
+// longer offered. Sets already sent with them keep their own text; these only read back an old key.
+export const RETIRED_QUESTIONS = {
   2: [
     q('l2_window', 'What can you see from your window?',
       'តើអ្នកឃើញអ្វីខ្លះពីបង្អួចរបស់អ្នក?', '从你的窗户能看到什么？', '창밖으로 무엇이 보이나요?', '窓から何が見えますか？'),
@@ -142,9 +210,10 @@ export const ROLES = [
 
 const pickLang = (text, lang) => text[lang] || text.en;
 
-// Localized text of a system question, or null for an unknown level/key (unknown lang → English).
+// Localized text of a system question (a retired one too, for sets sent with it), or null for an unknown
+// level/key (unknown lang → English).
 export function questionText(level, key, lang) {
-  const found = (SYSTEM_QUESTIONS[level] || []).find((item) => item.key === key);
+  const found = [...(SYSTEM_QUESTIONS[level] || []), ...(RETIRED_QUESTIONS[level] || [])].find((item) => item.key === key);
   return found ? pickLang(found.text, lang) : null;
 }
 

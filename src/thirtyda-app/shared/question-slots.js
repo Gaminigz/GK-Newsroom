@@ -5,7 +5,7 @@
 // choices are dealt from the bank in shared/questions.js, keeping the bank keys.
 // Imported by the server, the app (level-ask) and the admin Questions page: plain ES module, no DOM.
 import { LANGS, LANG_ENGLISH, findContactDetails, charCount } from './rules.js';
-import { SYSTEM_QUESTIONS, LEVEL_RULES } from './questions.js';
+import { SYSTEM_QUESTIONS, SYSTEM_TOPICS, LEVEL_RULES } from './questions.js';
 
 export const QUESTION_CHOICES = 5; // choices per picked question
 export const CHOICE_LIMITS = Object.freeze([4, 100]); // characters per choice, in every language
@@ -14,7 +14,7 @@ export const TITLE_LIMITS = Object.freeze([2, 40]); // characters per (optional)
 /**
  * Deal `list` into `slots` lists of `size`, in order: choice j of slot i is list[j * slots + i].
  * With the bank this puts the design's examples first in each slot (L1: rain, busy, outside,
- * quiet day; L2: window, weather). Extra items are left out; a short list gives short slots.
+ * quiet day; L2: each list's first line). Extra items are left out; a short list gives short slots.
  */
 export function dealSlots(list, slots, size = QUESTION_CHOICES) {
   const items = Array.isArray(list) ? list : [];
@@ -37,6 +37,14 @@ export function defaultSlots(level) {
   if (!rules) return [];
   return dealSlots(SYSTEM_QUESTIONS[level], rules.pick)
     .map((slot) => slot.map((q) => ({ key: q.key, text: { ...q.text } })));
+}
+
+/** Built-in topic of each list: [ {en,km,zh,ko,ja} | null ] × pick, fresh copies (Level 1: none; Level 2: Intentions, …). */
+export function defaultTitles(level) {
+  const rules = LEVEL_RULES[level];
+  if (!rules) return [];
+  const topics = SYSTEM_TOPICS[level] || [];
+  return Array.from({ length: rules.pick }, (_, i) => (topics[i] ? { ...topics[i] } : null));
 }
 
 /**

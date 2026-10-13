@@ -86,7 +86,7 @@
     8: {
       title: 'Level 2 · Send your 5', who: 'Dara · English',
       notes: [
-        'Level 2 works the same way, both ways: 3 lines picked from the admin’s lists + 2 of his own (numbered 6–10).',
+        'Level 2 works the same way, both ways: 3 lines picked from the admin’s lists — Intentions, Time of Comfort, Venue Vibe — + 2 of his own (numbered 6–10).',
         'Sophea already sent her Level 2: her lines wait on the left for Dara’s replies.',
         'Replies are one tap again: Yes / No / Not really / Maybe, his own written lines Yes / No. Phone numbers and chat handles are never allowed.',
       ],

@@ -7,7 +7,9 @@
  * (Level 2 docs saved with 2 lists, from before Level 2 picked 3, load with a third list filled in.)
  * Slot i holds the 5 choices of "Question i+1"; titles[i] is its optional topic ("Communication").
  * A missing (or malformed) doc means the built-in choices dealt from shared/questions.js
- * (defaultSlots), which keep the bank keys, and no topics.
+ * (defaultSlots), which keep the bank keys, with the built-in topics (defaultTitles: Level 2's
+ * "Intentions", "Time of Comfort", "Venue Vibe"; Level 1 none). A doc saved by "Reset" (reset:true) reads as
+ * the built-in choices of the code that runs, so a change to the built-in lists reaches it too.
  *
  * A key names one question: it stays only while the choice's English is unchanged (translation
  * fixes keep it). Re-wording a choice gives it a new key, so an ask screen still showing the old
@@ -23,7 +25,7 @@ import crypto from "node:crypto";
 import { LANGS } from "../thirtyda-app/shared/rules.js";
 import { LEVEL_RULES } from "../thirtyda-app/shared/questions.js";
 import {
-  QUESTION_CHOICES, defaultSlots, fillSlots, checkQuestionSlots, checkQuestionTitles, hasTitle, flattenSlots,
+  QUESTION_CHOICES, defaultSlots, defaultTitles, fillSlots, checkQuestionSlots, checkQuestionTitles, hasTitle, flattenSlots,
 } from "../thirtyda-app/shared/question-slots.js";
 
 export const QUESTIONS_COLLECTION = "thirtyda_questions";
@@ -69,31 +71,37 @@ function nextStamp(prev) {
 const sameSlots = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
- * A doc saved while the level picked fewer questions (Level 2 had 2 lists before it became 3): a reset
- * doc is simply the built-in choices; otherwise the admin's lists stay and the new ones are filled from
- * built-in choices not used yet (fillSlots). The version stamp stays, so the next save replaces it.
+ * A reset doc is simply the built-in choices and topics of the code that runs (the built-in Level 2 lists
+ * changed on 2026-10-13). A doc saved while the level picked fewer questions (Level 2 had 2 lists before
+ * it became 3) keeps the admin's lists, and the new ones are filled from built-in choices not used yet
+ * (fillSlots). The version stamp stays, so the next save replaces it.
  */
 function upgraded(doc, level) {
+  if (!doc) return doc;
+  if (doc.reset) return { ...doc, slots: defaultSlots(level), titles: defaultTitles(level) };
   const pick = LEVEL_RULES[level]?.pick ?? 0;
-  if (!Array.isArray(doc?.slots) || !doc.slots.length || doc.slots.length >= pick) return doc;
-  return { ...doc, slots: doc.reset ? defaultSlots(level) : fillSlots(doc.slots, level) };
+  if (!Array.isArray(doc.slots) || !doc.slots.length || doc.slots.length >= pick) return doc;
+  return { ...doc, slots: fillSlots(doc.slots, level) };
 }
+
+const sameTitles = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 async function readConfig(d, level) {
   const doc = upgraded(await d.collection(QUESTIONS_COLLECTION).findOne({ _id: levelDocId(level) }), level);
   const builtIn = defaultSlots(level);
+  const builtInTitles = readTitles(defaultTitles(level), level);
   if (doc && wellFormed(doc, level)) {
     const slots = copySlots(doc.slots);
     const titles = readTitles(doc.titles, level);
     return {
       level, slots, titles, updatedAt: doc.updatedAt ?? null, updatedBy: doc.updatedBy ?? null, reset: Boolean(doc.reset),
-      isDefault: false, matchesDefault: sameSlots(slots, builtIn) && titles.every((t) => !t),
+      isDefault: false, matchesDefault: sameSlots(slots, builtIn) && sameTitles(titles, builtInTitles),
     };
   }
   if (doc) console.warn(`[30da questions] stored ${levelDocId(level)} is malformed; using the built-in choices`);
   // A malformed doc still carries its version, so the next save (conditional on it) can replace it.
   return {
-    level, slots: builtIn, titles: readTitles(null, level), updatedAt: doc?.updatedAt ?? null, updatedBy: null, reset: false,
+    level, slots: builtIn, titles: builtInTitles, updatedAt: doc?.updatedAt ?? null, updatedBy: null, reset: false,
     isDefault: true, matchesDefault: true,
   };
 }
@@ -221,11 +229,11 @@ export async function saveQuestions(d, level, input, { by = "superadmin", baseUp
   return { ok: true, config: await questionConfig(d, level), diff };
 }
 
-/** Put a level back to the built-in choices and no topics (saved, so the page shows when it happened). */
+/** Put a level back to the built-in choices and topics (saved, so the page shows when it happened). */
 export async function resetQuestions(d, level, { by = "superadmin" } = {}) {
   const current = await readConfig(d, level);
   const slots = defaultSlots(level);
-  const titles = readTitles(null, level);
+  const titles = readTitles(defaultTitles(level), level);
   const diff = diffSlots(current.slots, slots, { titlesBefore: current.titles, titlesAfter: titles });
   await d.collection(QUESTIONS_COLLECTION).updateOne(
     { _id: levelDocId(level) },

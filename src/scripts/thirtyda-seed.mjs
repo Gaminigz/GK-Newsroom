@@ -25,6 +25,7 @@ const APP_COLLECTIONS = [
   "thirtyda_sets", "thirtyda_chats", "thirtyda_flags", "thirtyda_counters",
   "thirtyda_photos.files", "thirtyda_photos.chunks", // GridFS photo store
   "thirtyda_questions", // admin-set question choices: the demo starts on the built-in ones
+  "thirtyda_settings", // admin Connections (sealed tokens): the demo starts with none, so codes are test codes
 ];
 
 const dbName = process.env.MONGO_DB || "";

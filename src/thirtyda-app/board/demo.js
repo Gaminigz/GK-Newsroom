@@ -799,9 +799,15 @@
     };
   }
 
+  // The server's channels (src/lib/thirtyda-code-send.mjs). The demo never delivers: every channel is
+  // "not live", so it answers like the server's test mode (devCode for the "Test code" note).
+  const CODE_CHANNELS = ['telegram', 'whatsapp'];
+
   function sendCode({ body }) {
     const phone = normalizePhone(body.phone);
     if (!phone) throw invalid('That phone number does not look right.', { field: 'phone' });
+    const channel = body.channel == null || body.channel === '' ? 'telegram' : body.channel;
+    if (!CODE_CHANNELS.includes(channel)) throw invalid('Choose Telegram or WhatsApp.', { field: 'channel' });
     const now = Date.now();
     const prev = W.otps.get(phone);
     if (prev && now - prev.sentAt < 30e3) {
@@ -814,7 +820,7 @@
     }
     const code = String(Math.floor(Math.random() * 1e6)).padStart(6, '0');
     W.otps.set(phone, { code, sentAt: now, expires: now + 15 * 60e3, attempts: 0, sends: [...sends, now] });
-    return { ok: true, phone, resendIn: 30, devCode: code };
+    return { ok: true, phone, channel, live: false, resendIn: 30, devCode: code };
   }
 
   function verifyCode({ body }) {
@@ -1050,10 +1056,14 @@
     return { pair: pairView(pairFor(u, params[0]).pair, u) };
   }
 
-  /** [{ n, title, options:[{ key, text }] }] in `lang`: the lists people pick from (built-in, no topics). */
-  const slotsView = (level, lang) => slotsFor(level).map((list, i) => ({
-    n: i + 1, title: null, options: list.map((c) => ({ key: c.key, text: c.text[lang] || c.text.en })),
-  }));
+  /** [{ n, title, options:[{ key, text }] }] in `lang`: the lists people pick from (built-in, with their topics). */
+  const slotsView = (level, lang) => {
+    const titles = R.defaultTitles(level);
+    return slotsFor(level).map((list, i) => ({
+      n: i + 1, title: titles[i] ? titles[i][lang] || titles[i].en : null,
+      options: list.map((c) => ({ key: c.key, text: c.text[lang] || c.text.en })),
+    }));
+  };
 
   function questions({ url }) {
     const level = levelParam(url.searchParams.get('level'));

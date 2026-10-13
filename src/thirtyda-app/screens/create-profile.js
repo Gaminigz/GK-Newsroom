@@ -114,7 +114,15 @@ function lockedSlots() {
 
 export const blankPhone = () => ({
   cc: '+855', phone: '', codeSent: false, code: '', devCode: null, resendAt: 0, sentTo: null, verified: false, verifiedPhone: null,
+  // Where the code goes: the person picks (Telegram first). sentBy/live describe the last code sent.
+  channel: 'telegram', sentBy: null, live: false, failed: [],
 });
+
+// The channels a code can come by, in the order shown. Brand names stay in Latin letters in every language.
+const CODE_CHANNELS = [['telegram', 'send', 'Telegram'], ['whatsapp', 'chat', 'WhatsApp']];
+const channelName = (key) => CODE_CHANNELS.find((c) => c[0] === key)?.[2] ?? key;
+const otherChannel = (key) => CODE_CHANNELS.find((c) => c[0] !== key)[0];
+let verifierSeq = 0;
 
 // What the user typed → E.164-ish ("+855" + digits, leading zeros dropped), or null when too short.
 function fullPhone(model) {
@@ -125,7 +133,10 @@ function fullPhone(model) {
   return local.length >= 6 && local.length <= 12 ? `${model.cc}${local}` : null;
 }
 
-function sendErrorText(err) {
+function sendErrorText(err, channel) {
+  const names = { channel: channelName(channel), other: channelName(otherChannel(channel)) };
+  if (err.code === 'channel_failed') return t(err.data?.reason === 'not_on_telegram' ? 'cp_ch_not_on' : 'cp_ch_failed', names);
+  if (err.code === 'channel_unavailable') return t('cp_ch_off', names);
   if (err.code === 'sms_unavailable') return t('cp_sms_off');
   if (err.code === 'too_soon') return t('cp_resend_in', { s: err.data?.resendIn ?? 30 });
   if (err.status === 429) return t('cp_too_many');
@@ -141,10 +152,15 @@ function verifyErrorText(err) {
 }
 
 /**
- * [+855 ⌄][12 345 678][Send code] → 6-digit code with a resend countdown → green "Phone verified".
+ * Get the code by: [Telegram | WhatsApp] (Telegram first), then [+855 ⌄][12 345 678][Send code] → 6-digit code
+ * with a resend countdown → green "Phone verified". A live channel really sends ("We sent a code to your
+ * Telegram"); test mode shows the code on screen. If the channel cannot deliver, the message offers the other one.
  * `model` (see blankPhone) keeps the state across re-renders. onVerified(response) after a good code.
  */
 export function phoneVerifier(model, { onVerified, onChange } = {}) {
+  model.channel ||= 'telegram';
+  model.failed ||= [];
+  const uid = `pv${++verifierSeq}`;
   const node = el('div', { class: 'stack phone-box', style: { '--gap': '10px' } });
   const error = el('p', { class: 'field-error', role: 'alert', hidden: true });
   let resendTimer = null;
@@ -152,29 +168,46 @@ export function phoneVerifier(model, { onVerified, onChange } = {}) {
   let checking = false;
   let codeEl = null;
 
-  const showError = (text) => {
-    error.replaceChildren(...(text ? [icon('flag', 14), text] : []));
+  // An optional action (e.g. "Send by WhatsApp") sits right after the message.
+  const showError = (text, action = null) => {
+    const body = text ? el('span', {}, text, action ? ' ' : null, action
+      ? el('button', { type: 'button', class: 'link err-action', on: { click: action.run } }, action.label) : null) : null;
+    error.replaceChildren(...(text ? [icon('flag', 14), body] : []));
     error.hidden = !text;
   };
+
+  /** After a channel could not send: offer the other one, unless it failed too. */
+  function offerOther(channel) {
+    const other = otherChannel(channel);
+    if (model.failed.includes(other)) return null;
+    return {
+      label: t('cp_ch_try', { channel: channelName(other) }),
+      run: () => { model.channel = other; render(); send(); },
+    };
+  }
 
   async function send() {
     if (sending) return;
     const phone = fullPhone(model);
     if (!phone) return showError(t('cp_phone_invalid'));
+    const channel = model.channel;
     sending = true;
     render();
     let sent = false;
     try {
-      const r = await api.post('/auth/send-code', { phone });
+      const r = await api.post('/auth/send-code', { phone, channel });
       Object.assign(model, {
-        codeSent: true, code: '', devCode: r.devCode || null, sentTo: r.phone || phone,
-        resendAt: Date.now() + (Number(r.resendIn) || 30) * 1000,
+        codeSent: true, code: '', devCode: r.live ? null : r.devCode || null, sentTo: r.phone || phone,
+        sentBy: r.channel || channel, live: Boolean(r.live), resendAt: Date.now() + (Number(r.resendIn) || 30) * 1000,
       });
+      model.failed = model.failed.filter((c) => c !== channel);
       showError(null);
       sent = true;
     } catch (err) {
       if (err.code === 'too_soon' && model.codeSent) model.resendAt = Date.now() + (Number(err.data?.resendIn) || 30) * 1000;
-      showError(sendErrorText(err));
+      const channelProblem = err.code === 'channel_failed' || err.code === 'channel_unavailable';
+      if (channelProblem && !model.failed.includes(channel)) model.failed.push(channel);
+      showError(sendErrorText(err, channel), channelProblem ? offerOther(channel) : null);
     } finally {
       sending = false;
       render();
@@ -188,7 +221,7 @@ export function phoneVerifier(model, { onVerified, onChange } = {}) {
     input.readOnly = true;
     try {
       const r = await api.post('/auth/verify-code', { phone: model.sentTo, code: model.code });
-      Object.assign(model, { verified: true, verifiedPhone: model.sentTo, codeSent: false, code: '', devCode: null });
+      Object.assign(model, { verified: true, verifiedPhone: model.sentTo, codeSent: false, code: '', devCode: null, failed: [] });
       showError(null);
       render();
       onChange?.();
@@ -238,6 +271,20 @@ export function phoneVerifier(model, { onVerified, onChange } = {}) {
         error);
       return;
     }
+    // Get the code by: Telegram | WhatsApp. Switching keeps a code already sent; the next send uses the new one.
+    const channelBy = el('div', { class: 'code-by', role: 'group', 'aria-labelledby': `${uid}-by` },
+      el('span', { class: 'code-by-label', id: `${uid}-by` }, t('cp_code_by')),
+      el('div', { class: 'seg code-by-seg' }, CODE_CHANNELS.map(([key, iconName, name]) => el('button', {
+        type: 'button', 'aria-pressed': String(model.channel === key), disabled: sending,
+        on: {
+          click: () => {
+            if (model.channel === key) return;
+            model.channel = key;
+            showError(null);
+            render();
+          },
+        },
+      }, icon(iconName, 15), el('span', {}, name)))));
     const ccSel = el('select', { class: 'select', 'aria-label': t('cp_country_code'), on: { change: () => { model.cc = ccSel.value; } } },
       COUNTRY_CODES.map((c) => el('option', { value: c, selected: c === model.cc }, c)));
     // While a code is out, "Resend code" under it takes over until the 30 s are up.
@@ -251,7 +298,7 @@ export function phoneVerifier(model, { onVerified, onChange } = {}) {
       on: {
         input: () => {
           model.phone = phoneInput.value;
-          if (model.codeSent && fullPhone(model) !== model.sentTo) Object.assign(model, { codeSent: false, devCode: null, code: '' });
+          if (model.codeSent && fullPhone(model) !== model.sentTo) Object.assign(model, { codeSent: false, devCode: null, code: '', live: false, sentBy: null });
           sendBtn.disabled = sending || waiting() || !fullPhone(model);
           codeBox.hidden = !model.codeSent;
         },
@@ -275,10 +322,12 @@ export function phoneVerifier(model, { onVerified, onChange } = {}) {
       codeEl = codeInput;
       codeBox.append(
         el('div', { class: 'code-row' }, codeInput, resendLine()),
-        el('p', { class: 'help' }, t('cp_code_sent', { phone: model.sentTo })));
+        el('p', { class: 'help' }, model.live && model.sentBy
+          ? t('cp_code_sent_ch', { channel: channelName(model.sentBy), phone: model.sentTo })
+          : t('cp_code_sent', { phone: model.sentTo })));
       if (model.devCode) codeBox.append(el('p', { class: 'dev-note' }, t('cp_test_code', { code: model.devCode })));
     }
-    node.replaceChildren(el('div', { class: 'phone-row' }, ccSel, phoneInput, sendBtn), codeBox, error);
+    node.replaceChildren(channelBy, el('div', { class: 'phone-row' }, ccSel, phoneInput, sendBtn), codeBox, error);
   }
 
   render();
@@ -606,6 +655,12 @@ registerStrings({
     cp_code_expired: 'That code has expired. Ask for a new one.',
     cp_too_many: 'Too many tries. Please wait a few minutes.',
     cp_sms_off: 'Text messages are not available yet. Verify with Google or Facebook for now.',
+    cp_code_by: 'Get the code by',
+    cp_code_sent_ch: 'We sent a code to your {channel} ({phone}).',
+    cp_ch_not_on: 'We could not send a {channel} code to this number. Check the number, or get the code by {other}.',
+    cp_ch_failed: '{channel} codes are not working right now. Try {other}.',
+    cp_ch_off: 'Codes by {channel} are not available yet. Try {other}.',
+    cp_ch_try: 'Send by {channel}',
     cp_phone_in_use: 'This phone number already has a profile.',
     cp_or_verify: 'Or verify with',
     cp_verified: 'Verified',
@@ -665,6 +720,12 @@ registerStrings({
     cp_code_expired: 'លេខកូដនោះផុតកំណត់ហើយ។ សូមស្នើលេខកូដថ្មី។',
     cp_too_many: 'ព្យាយាមច្រើនដងពេក។ សូមរង់ចាំប៉ុន្មាននាទីសិន។',
     cp_sms_off: 'សារ SMS មិនទាន់អាចប្រើបាននៅឡើយទេ។ សូមផ្ទៀងផ្ទាត់ជាមួយ Google ឬ Facebook សិន។',
+    cp_code_by: 'ទទួលលេខកូដតាម',
+    cp_code_sent_ch: 'យើងបានផ្ញើលេខកូដទៅ {channel} របស់អ្នក ({phone})។',
+    cp_ch_not_on: 'យើងមិនអាចផ្ញើលេខកូដតាម {channel} ទៅលេខនេះបានទេ។ សូមពិនិត្យលេខ ឬទទួលលេខកូដតាម {other}។',
+    cp_ch_failed: 'ការផ្ញើលេខកូដតាម {channel} មិនដំណើរការនៅពេលនេះទេ។ សូមសាកល្បង {other}។',
+    cp_ch_off: 'លេខកូដតាម {channel} មិនទាន់អាចប្រើបាននៅឡើយទេ។ សូមសាកល្បង {other}។',
+    cp_ch_try: 'ផ្ញើតាម {channel}',
     cp_phone_in_use: 'លេខទូរស័ព្ទនេះមានប្រវត្តិរូបរួចហើយ។',
     cp_or_verify: 'ឬផ្ទៀងផ្ទាត់ជាមួយ',
     cp_verified: 'បានផ្ទៀងផ្ទាត់',
@@ -724,6 +785,12 @@ registerStrings({
     cp_code_expired: '验证码已过期，请重新获取。',
     cp_too_many: '尝试次数过多，请稍等几分钟。',
     cp_sms_off: '短信验证暂未开通，请先用 Google 或 Facebook 验证。',
+    cp_code_by: '验证码接收方式',
+    cp_code_sent_ch: '验证码已发送到你的 {channel}（{phone}）。',
+    cp_ch_not_on: '无法通过 {channel} 向这个号码发送验证码。请检查号码，或改用 {other} 接收。',
+    cp_ch_failed: '{channel} 验证码暂时无法发送，请改用 {other}。',
+    cp_ch_off: '{channel} 验证码暂未开通，请改用 {other}。',
+    cp_ch_try: '改用 {channel} 发送',
     cp_phone_in_use: '这个手机号已经有资料了。',
     cp_or_verify: '或通过以下方式验证',
     cp_verified: '已验证',
@@ -783,6 +850,12 @@ registerStrings({
     cp_code_expired: '코드가 만료됐어요. 새 코드를 받아 주세요.',
     cp_too_many: '시도 횟수가 너무 많아요. 몇 분 뒤에 다시 해 주세요.',
     cp_sms_off: '아직 문자 인증을 쓸 수 없어요. 지금은 Google 또는 Facebook으로 인증해 주세요.',
+    cp_code_by: '코드 받을 곳',
+    cp_code_sent_ch: '{channel}({phone})(으)로 코드를 보냈어요.',
+    cp_ch_not_on: '이 번호로는 {channel} 코드를 보낼 수 없어요. 번호를 확인하거나 {other}(으)로 받아 보세요.',
+    cp_ch_failed: '지금은 {channel} 코드를 보낼 수 없어요. {other}(으)로 받아 보세요.',
+    cp_ch_off: '{channel} 코드는 아직 쓸 수 없어요. {other}(으)로 받아 보세요.',
+    cp_ch_try: '{channel}(으)로 받기',
     cp_phone_in_use: '이 전화번호로 이미 만든 프로필이 있어요.',
     cp_or_verify: '또는 다음으로 인증',
     cp_verified: '인증됨',
@@ -842,6 +915,12 @@ registerStrings({
     cp_code_expired: 'コードの有効期限が切れました。新しいコードを送信してください。',
     cp_too_many: '試行回数が多すぎます。数分お待ちください。',
     cp_sms_off: 'SMSはまだ利用できません。今はGoogleまたはFacebookで確認してください。',
+    cp_code_by: 'コードの受け取り方法',
+    cp_code_sent_ch: 'あなたの{channel}（{phone}）にコードを送りました。',
+    cp_ch_not_on: 'この番号には{channel}でコードを送れませんでした。番号を確認するか、{other}で受け取ってください。',
+    cp_ch_failed: '現在{channel}でコードを送れません。{other}をお試しください。',
+    cp_ch_off: '{channel}でのコード送信はまだ利用できません。{other}をお試しください。',
+    cp_ch_try: '{channel}で送る',
     cp_phone_in_use: 'この電話番号のプロフィールはすでにあります。',
     cp_or_verify: 'または次で確認',
     cp_verified: '確認済み',

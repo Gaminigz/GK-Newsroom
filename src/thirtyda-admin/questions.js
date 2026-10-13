@@ -545,7 +545,7 @@ async function resetLevel() {
   const level = state.level;
   const L = cur();
   const n = L.saved.pick * L.saved.choices;
-  if (!confirm(`Reset Level ${level} to the built-in choices?\n\nAll ${n} choices of Level ${level} are replaced and the topics are cleared, including unsaved edits. Questions people already sent keep their text.`)) return;
+  if (!confirm(`Reset Level ${level} to the built-in choices?\n\nAll ${n} choices of Level ${level} are replaced and the topics go back to the built-in ones (${level === 2 ? 'Intentions, Time of Comfort, Venue Vibe' : 'none'}), including unsaved edits. Questions people already sent keep their text.`)) return;
   state.busy = true;
   refresh();
   const r = await call('POST', `${API}/L${level}/reset`, {}).catch(() => ({ ok: false, data: { error: 'Could not reach the server. Try again.' } }));
