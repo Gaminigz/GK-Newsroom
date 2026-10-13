@@ -471,7 +471,7 @@ textarea.input.q-in {
 .btn-primary.q-save { width: auto; min-width: 150px; height: 38px; margin-top: 0; padding: 0 18px; }
 .btn-primary.q-save[disabled] { opacity: 0.4; cursor: default; }
 
-/* ---------- Code (how people get their code / sign in: Telegram, WhatsApp, Facebook, Google) ---------- */
+/* ---------- Code: the sign-in and messaging hub — ten towers left to right (owner 2026-10-14) ---------- */
 .cx-banner {
   margin: 0 0 16px;
   max-width: 78ch;
@@ -483,8 +483,184 @@ textarea.input.q-in {
   font-weight: 600;
   line-height: 1.45;
 }
-.cx-grid { display: flex; flex-direction: column; gap: 16px; max-width: 1080px; }
+/* The towers make this page taller than one screen: let the body grow with it (here only), so the sticky top bar stays
+   pinned all the way down and the hub bar below it (top: 56px) never hangs under an empty strip. */
+body:has(.cx-page) { height: auto; min-height: 100%; }
+.cx-page .head #state { text-align: right; line-height: 1.5; }
+/* The bar over the towers (stays in view): ‹ the numbered strip › and the slider under them. */
+.cx-bar {
+  position: sticky;
+  top: 56px;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 0 -6px 2px;
+  padding: 10px 6px;
+  background: var(--page);
+}
+.cx-arrow {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid #d3d9e4;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--ink);
+}
+.cx-arrow:hover { border-color: var(--navy); }
+.cx-arrow[disabled], .cx-arrow[aria-disabled="true"] { opacity: 0.35; cursor: default; border-color: #d3d9e4; }
+.cx-strip-wrap { min-width: 0; }
+.cx-strip { position: relative; display: flex; gap: 4px; margin: 0; padding: 2px; list-style: none; overflow-x: auto; scrollbar-width: none; }
+.cx-strip::-webkit-scrollbar { display: none; }
+.cx-strip li { flex: none; }
+.cx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px 0 5px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cx-chip:hover { background: #e7ebf3; color: var(--ink); }
+.cx-chip .cx-n {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #e1e6ef;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.cx-chip.in-view { background: #fff; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.cx-chip.current { background: var(--navy); color: #fff; box-shadow: none; }
+.cx-chip.current .cx-n { background: #fff; color: var(--navy); }
+/* The tower's status as a small dot on its number: green live, blue saved, red needs a look, grey not set, ring later. */
+.cx-dot {
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--page);
+  background: #b3bac7;
+}
+.cx-chip:hover .cx-dot { border-color: #e7ebf3; }
+.cx-chip.in-view .cx-dot { border-color: #fff; }
+.cx-chip.current .cx-dot { border-color: var(--navy); }
+.cx-dot.live { background: var(--green); }
+.cx-dot.saved { background: #3b78e7; }
+.cx-dot.warn { background: var(--red); }
+.cx-dot.later { background: #fff; box-shadow: inset 0 0 0 1.5px #b59a66; }
+/* The slider: its thumb is as wide as the part of the row in view (connections.js sets --thumb). */
+.cx-slider {
+  --thumb: 120px;
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 14px;
+  margin: 0;
+  background: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.cx-slider::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: #dde3ec; }
+.cx-slider::-webkit-slider-thumb {
+  width: var(--thumb);
+  height: 12px;
+  margin-top: -3px;
+  border: 0;
+  border-radius: 999px;
+  background: #8593ae;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.cx-slider::-moz-range-track { height: 6px; border-radius: 999px; background: #dde3ec; }
+.cx-slider::-moz-range-thumb { width: var(--thumb); height: 12px; border: 0; border-radius: 999px; background: #8593ae; }
+.cx-slider:hover::-webkit-slider-thumb, .cx-slider:active::-webkit-slider-thumb { background: var(--navy); }
+.cx-slider:hover::-moz-range-thumb, .cx-slider:active::-moz-range-thumb { background: var(--navy); }
+.cx-slider:disabled { opacity: 0.4; cursor: default; }
+.cx-slider:focus-visible { outline: 2px solid #3b6fe0; outline-offset: 3px; border-radius: 999px; }
+/* The row of towers: slides sideways, snaps to a tower; each tower as tall as its own content. */
+.cx-hub {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin: 0 -6px;
+  padding: 6px 6px 16px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 6px;
+}
+.cx-hub.is-sliding { scroll-snap-type: none; }
+.cx-hub::-webkit-scrollbar { height: 10px; }
+.cx-hub::-webkit-scrollbar-track { margin: 0 6px; border-radius: 999px; background: #e3e8f0; }
+.cx-hub::-webkit-scrollbar-thumb { border: 2px solid #e3e8f0; border-radius: 999px; background: #a9b4c8; }
+@supports not selector(::-webkit-scrollbar) {
+  .cx-hub { scrollbar-width: thin; scrollbar-color: #a9b4c8 #e3e8f0; }
+}
 .cx-card { padding: 18px; }
+.cx-tower {
+  --bar: linear-gradient(var(--line) 0 0);
+  flex: 0 0 min(340px, calc(100% - 28px));
+  scroll-snap-align: start;
+  padding: 16px 18px 20px;
+  background: var(--bar) top / 100% 4px no-repeat, var(--card);
+  box-shadow: 0 1px 2px rgb(11 28 63 / 0.05);
+}
+.cx-tower.is-current { box-shadow: 0 0 0 1.5px #b6c1d6, 0 8px 22px rgb(11 28 63 / 0.08); }
+.cx-tower:focus { outline: none; }
+.cx-tower:focus-visible { outline: 2px solid #3b6fe0; outline-offset: 2px; }
+.cx-tower[data-tower="tiktok"] { --bar: linear-gradient(90deg, #25f4ee, #111 35% 65%, #fe2c55); }
+.cx-tower[data-tower^="telegram"] { --bar: linear-gradient(#229ed9 0 0); }
+.cx-tower[data-tower="facebook"] { --bar: linear-gradient(#1877f2 0 0); }
+.cx-tower[data-tower="google"] { --bar: linear-gradient(90deg, #4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0); }
+.cx-tower[data-tower="whatsapp"] { --bar: linear-gradient(#25d366 0 0); }
+.cx-tower[data-tower="wechat"] { --bar: linear-gradient(#07c160 0 0); }
+.cx-tower[data-tower="alipay"] { --bar: linear-gradient(#1677ff 0 0); }
+.cx-tower[data-tower="youtube"] { --bar: linear-gradient(#ff0000 0 0); }
+.cx-tower[data-tower="apple"] { --bar: linear-gradient(#111 0 0); }
+/* The tower's top line: its number, what kind it is, its status pill. */
+.cx-plate { display: flex; align-items: center; gap: 8px; min-height: 24px; margin: 0 0 14px; }
+.cx-num {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--ink);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+.cx-tower.is-current .cx-num { background: var(--navy); border-color: var(--navy); color: #fff; }
+.cx-plate .cx-pill { margin-left: auto; }
+.cx-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+/* Towers 7–10, not built yet: a calm "Later". */
+.cx-tower.cx-later { background: var(--bar) top / 100% 4px no-repeat, #fbfcfd; box-shadow: inset 0 0 0 1px #dfe4ec; }
+.cx-tower.cx-later.is-current { box-shadow: inset 0 0 0 1px #dfe4ec, 0 0 0 1.5px #b6c1d6, 0 8px 22px rgb(11 28 63 / 0.08); }
+.cx-later-line { margin: 16px 0 0; padding-top: 14px; border-top: 1px dashed #d7dde7; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.cx-pill.later { background: #f5efe2; color: #8a6d3b; }
+.cx-pill.later::before { background: none; box-shadow: inset 0 0 0 1.5px currentColor; }
+.cx-help.cx-intro { margin: 12px 0 0; }
 .cx-head { display: flex; align-items: center; gap: 12px; }
 .cx-title { min-width: 0; flex: 1 1 auto; }
 .cx-head h2 { font-size: 17px; font-weight: 800; margin: 0; }
@@ -503,6 +679,12 @@ textarea.input.q-in {
 .cx-logo.whatsapp { background: #e3f7ea; color: #15964a; }
 .cx-logo.facebook { background: #e7f0fe; color: #1877f2; }
 .cx-logo.google { background: #fdecea; color: #d93025; }
+.cx-logo.tiktok { background: #eff0f3; color: #111; }
+.cx-logo.tiktok svg { filter: drop-shadow(-1px -1px 0 #25f4ee) drop-shadow(1px 1px 0 #fe2c55); }
+.cx-logo.wechat { background: #e2f7eb; color: #07a352; }
+.cx-logo.alipay { background: #e6f0ff; color: #1677ff; }
+.cx-logo.youtube { background: #ffe9e9; color: #e00000; }
+.cx-logo.apple { background: #eff0f2; color: #111; }
 .cx-pill {
   flex: none;
   display: inline-flex;
@@ -524,14 +706,16 @@ textarea.input.q-in {
 .cx-pill.warn { background: var(--red-soft); color: var(--red); }
 .cx-pill.saved { background: #e7f0fe; color: #1a5fc8; }
 .cx-status { margin: 16px 0 0; padding: 12px 0 0; border-top: 1px solid var(--line); display: grid; gap: 8px; }
-.cx-row { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; align-items: baseline; }
+/* A tower is narrow: each status line's label sits over its value. */
+.cx-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; }
 .cx-row dt { margin: 0; }
 .cx-row dd { margin: 0; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
 .cx-mono, code.cx-mono { font-family: var(--mono); font-size: 12px; }
 .input.cx-mono { font-size: 13px; letter-spacing: 0.02em; }
 .cx-ok { color: var(--green); font-weight: 700; }
 .cx-bad { color: var(--red); font-weight: 700; }
-.cx-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.cx-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.cx-split > .cx-test { padding-top: 14px; border-top: 1px dashed #d7dde7; }
 .cx-form .field { margin-bottom: 6px; }
 .cx-form .field .label, .cx-test h3 { color: var(--ink); }
 .cx-test h3 { margin: 0 0 6px; font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -559,13 +743,11 @@ textarea.input.q-in {
 .cx-result.bad .cx-fine { color: #8f2a24; }
 .cx-fine { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
 .cx-code { font-family: var(--mono); font-size: 13px; font-weight: 600; letter-spacing: 0.12em; padding: 1px 6px; border-radius: 4px; background: #fff; }
-/* Several boxes saved together (WhatsApp 2×2, Google / Facebook 1×2) */
-.cx-boxes { display: grid; gap: 12px 16px; }
-.cx-boxes.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Several boxes saved together (WhatsApp 4, the sign-in towers 2), one under the other in the narrow tower */
+.cx-boxes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px 16px; }
 .cx-boxes .field { margin-bottom: 6px; }
 .cx-box { min-width: 0; }
 .cx-box .cx-help { margin-top: 6px; }
-.cx-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .cx-signin-body { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); display: grid; gap: 14px; }
 .cx-where { margin: 0; }
 .cx-redirect .cx-help { margin: 0 0 6px; }
@@ -581,32 +763,24 @@ textarea.input.q-in {
 .cx-try .cx-help { margin: 0 0 10px; }
 a.btn.cx-try-btn { display: inline-flex; align-items: center; height: 40px; color: var(--ink); text-decoration: none; }
 .btn.cx-try-btn[disabled] { opacity: 0.45; cursor: default; }
-/* Telegram card: the free bot, then the paid Gateway — two parts, each with its own status pill */
-.cx-part { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
-.cx-part-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.cx-part-head h3 { margin: 0; font-size: 15px; font-weight: 800; color: var(--ink); }
-.cx-part > .cx-help { margin: 4px 0 0; }
-.cx-part .cx-status { margin-top: 12px; }
-.cx-part .cx-split { margin-top: 14px; }
-.cx-part .cx-test > .btn.cx-test-btn { min-width: 150px; }
-.cx-part .cx-row dd a { color: var(--ink); font-weight: 700; text-underline-offset: 2px; }
+/* Telegram Bot (tower 2, free) and Telegram Gateway (tower 3, paid) */
+.cx-test > .btn.cx-test-btn { min-width: 150px; }
+.cx-row dd a { color: var(--ink); font-weight: 700; text-underline-offset: 2px; }
 .cx-free {
   display: inline-block; margin-left: 4px; padding: 1px 7px; border-radius: 999px; vertical-align: 2px;
   background: #e3f5ea; color: var(--green); font-family: var(--mono); font-size: 10px; font-weight: 600;
   letter-spacing: 0.06em; text-transform: uppercase;
 }
-@media (max-width: 1000px) {
-  .cx-split, .cx-pair { grid-template-columns: 1fr; }
-}
-@media (max-width: 640px) {
-  .cx-boxes.four { grid-template-columns: 1fr; }
+.cx-free.cx-paid { background: #fff3e0; color: #9a5b0b; }
+@media (max-width: 760px) {
+  /* A phone: the bar and the row reach the screen's edges; one tower at a time, the next one peeking in. */
+  .cx-bar { margin: 0 -16px 2px; padding: 8px 16px; gap: 8px 6px; }
+  .cx-hub { margin: 0 -16px; padding: 6px 16px 16px; gap: 16px; scroll-padding-inline: 16px; }
+  .cx-hub::-webkit-scrollbar-track { margin: 0 16px; }
+  .cx-page .head #state { text-align: left; }
 }
 @media (max-width: 560px) {
-  .cx-card { padding: 14px; }
-  .cx-head { flex-wrap: wrap; }
-  .cx-title { flex: 1 1 calc(100% - 52px); }
-  .cx-head .cx-pill { margin-left: 50px; }
-  .cx-row { grid-template-columns: 1fr; gap: 2px; }
+  .cx-tower { padding: 14px 14px 18px; }
   .cx-test-row { flex-wrap: wrap; }
   .cx-test-row .input { flex: 1 0 100%; }
   .btn.cx-test-btn { flex: 1 0 auto; }

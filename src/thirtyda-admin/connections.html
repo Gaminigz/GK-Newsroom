@@ -52,14 +52,24 @@
         <h1>Code</h1>
         <span class="label" id="state">Loading…</span>
       </div>
-      <p class="q-lede">
-        The four ways people sign in: a code by Telegram or WhatsApp, or their Google or Facebook account.
-        Copy each value from the place shown on its card, paste it here and press Save. Everything is saved locked;
-        secret keys show only their last 4 characters.
-      </p>
+      <p class="q-lede">Sign-in and messaging hub — every key is saved locked; secret keys show only their last 4 characters.</p>
       <p class="cx-banner" id="key-banner" role="alert" hidden></p>
       <p class="cx-banner" id="dev-banner" role="alert" hidden></p>
-      <div class="cx-grid" id="cards" aria-live="polite"></div>
+      <!-- The hub: ten towers left to right. The strip jumps to a tower; ‹ › and the arrow keys step; the slider slides. -->
+      <div class="cx-bar" id="hub-bar">
+        <button class="cx-arrow" id="hub-prev" type="button" aria-label="Previous tower" aria-controls="cards" disabled>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <nav class="cx-strip-wrap" aria-label="Towers">
+          <ol class="cx-strip" id="hub-strip"></ol>
+        </nav>
+        <button class="cx-arrow" id="hub-next" type="button" aria-label="Next tower" aria-controls="cards" disabled>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <input class="cx-slider" id="hub-slider" type="range" min="0" max="1000" step="1" value="0"
+          aria-label="Slide the towers left and right" aria-controls="cards" disabled>
+      </div>
+      <div class="cx-hub" id="cards" aria-live="polite"></div>
     </main>
   </div>
 
