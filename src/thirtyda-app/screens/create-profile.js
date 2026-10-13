@@ -493,6 +493,8 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     if (signingIn || signin?.verified?.()[key]) return;
     showError(null);
     if (!signinOn(provider)) return showNote(signinSoonText(name));
+    // One way at a time (owner): picking Google / Facebook / TikTok replaces a Telegram wait still on screen.
+    if (model.tg) endTelegram();
     signingIn = provider;
     render();
     if (methods?.signinTest?.[provider] !== true) {
