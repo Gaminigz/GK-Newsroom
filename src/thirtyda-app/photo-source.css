@@ -1,0 +1,17 @@
+/* 30+DA photo source sheet (photo-source.js): tapping a photo circle / tile asks "Take a selfie" (the front
+   camera) or "Choose from photos" (the library), or Cancel. Loaded after app.css; uses its tokens. Fits 390 px. */
+.photo-source { gap: 16px; padding-bottom: 14px; }
+.photo-source .sheet-title { font-size: 20px; }
+.photo-source-choices { display: flex; flex-direction: column; gap: 10px; }
+.photo-source .btn.photo-source-choice {
+  min-height: 60px;
+  justify-content: flex-start;
+  gap: 14px;
+  padding: 10px 20px;
+  border-radius: var(--radius-lg);
+  font-size: 17px;
+  text-align: left;
+}
+.photo-source-choice .btn-text { flex: 1; min-width: 0; }
+.photo-source .btn.photo-source-cancel { min-height: 46px; background: transparent; color: var(--muted); }
+.photo-source .btn.photo-source-cancel:hover { color: var(--ink); }

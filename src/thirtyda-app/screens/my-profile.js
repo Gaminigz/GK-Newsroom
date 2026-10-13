@@ -9,6 +9,8 @@ import {
   phoneVerifier, blankPhone, verifiedPhoneModel, appNameProblem, watchNameInput, clipNameInput, birthYearSelect, truthNote,
 } from './create-profile.js';
 import { changePinSheet, leaveWithoutLock } from '../lock.js';
+// A tap on a slot asks "Take a selfie" (front camera) or "Choose from photos" (owner 2026-10-14).
+import { photoSource } from '../photo-source.js';
 
 let phoneModel = blankPhone(); // keeps a half-finished phone check across re-renders
 
@@ -69,12 +71,13 @@ screen('/me', async ({ root, query }) => {
   // --- photos
   // MeView.photos is slot-aligned: photos[i] is slot i+1 (null = empty). A photo never changes slots,
   // so the level it is seen at never changes either.
-  const file = el('input', { type: 'file', accept: 'image/*', class: 'visually-hidden', tabindex: '-1', 'aria-hidden': 'true' });
+  // A tap on a slot asks first: "Take a selfie" (the front camera) or "Choose from photos" (photo-source.js).
+  const file = photoSource((f) => putPhoto(f));
   const slots = el('ul', { class: 'photo-slots' });
   const slotCount = el('span', { class: 'label' });
   const keptNote = el('p', { class: 'help kept-note', hidden: true }, icon('lock', 13), el('span', {}, t('me_kept_note')));
   let busy = false;
-  let target = 0; // the slot the file picker fills
+  let target = 0; // the slot the camera / photo picker fills
   // Filled (photo; Main = replace, others = remove ×) · open and empty (+ Add photo) · locked (dashed,
   // lock, "Unlocks at Level n"). A filled slot past what the level allows is "kept": lock in its tag.
   function paintPhotos() {
@@ -126,7 +129,7 @@ screen('/me', async ({ root, query }) => {
   function pick(i) {
     if (busy) return;
     target = i;
-    file.click();
+    file.open(t(i === 0 && state.me.photos?.[0] ? 'me_replace_main' : 'me_add_photo'));
   }
   async function refreshMe() {
     try {
@@ -134,10 +137,8 @@ screen('/me', async ({ root, query }) => {
       if (r.user) setMe(r.user);
     } catch { /* keep what we have */ }
   }
-  file.addEventListener('change', async () => {
-    const f = file.files?.[0];
-    file.value = '';
-    if (!f || busy) return;
+  async function putPhoto(f) {
+    if (busy) return;
     busy = true;
     paintPhotos();
     try {
@@ -170,7 +171,7 @@ screen('/me', async ({ root, query }) => {
       busy = false;
       paintPhotos();
     }
-  });
+  }
   /** A kept photo (past what the level allows) cannot be put back until that level: ask first. */
   function confirmKept(n, level) {
     return new Promise((resolve) => {
@@ -450,7 +451,7 @@ screen('/me', async ({ root, query }) => {
     section(t('me_language'), el('div', { class: 'lang-grid' }, langBtns), el('p', { class: 'help' }, t('me_language_note'))),
     el('section', { class: 'section' },
       el('div', { class: 'section-head' }, el('span', { class: 'label ink' }, t('me_photos')), slotCount),
-      slots, keptNote, el('p', { class: 'help' }, t('me_photos_note')), file),
+      slots, keptNote, el('p', { class: 'help' }, t('me_photos_note')), file.inputs),
     el('section', { class: 'section' },
       el('div', { class: 'me-id-row' },
         el('div', { class: 'me-id-cell' },

@@ -11,6 +11,8 @@ import { waitingPin, clearPinFlags, pinResetPending, leaveWithoutLock, backFromS
 import { takeAfterCreate } from '../guest.js';
 // In the 30+DA app a sign-in runs in the app's own sheet (Google refuses web views): shell.js.
 import { shellAuth, shellSignIn, onAppReturn } from '../shell.js';
+// A tap on a photo circle / tile asks "Take a selfie" (front camera) or "Choose from photos" (owner 2026-10-14).
+import { photoSource } from '../photo-source.js';
 
 // ---------------------------------------------------------------- app name + birth year (also used on #/me)
 
@@ -1145,9 +1147,11 @@ screen('/create', ({ root, query }) => {
     pinAgain ? el('p', { class: 'way-msg pin-again-note', role: 'status' }, icon('lock', 14), el('span', {}, t('pin_signin_again'))) : '');
 
   // --- photo
-  // No `capture`: the phone offers camera OR its photo library (owner 2026-10-13: pick from the phone too).
-  const file = el('input', { type: 'file', accept: 'image/*', class: 'visually-hidden', tabindex: '-1', 'aria-hidden': 'true' });
-  const pick = el('button', { type: 'button', class: 'photo-pick', on: { click: () => file.click() } });
+  // A tap asks first: "Take a selfie" (the front camera) or "Choose from photos" (owner 2026-10-14; photo-source.js).
+  const faceSource = photoSource((f) => readFace(f));
+  const pick = el('button', {
+    type: 'button', class: 'photo-pick', on: { click: () => faceSource.open(t(draft.photo ? 'cp_photo_change' : 'cp_photo_add')) },
+  });
   const photoErr = el('p', { class: 'field-error', role: 'alert', hidden: true });
   const paintPhoto = () => {
     pick.classList.toggle('has-photo', Boolean(draft.photo));
@@ -1156,10 +1160,7 @@ screen('/create', ({ root, query }) => {
       draft.photo ? el('img', { src: draft.photo, alt: '' }) : icon('camera', 30),
       el('span', { class: 'badge', 'aria-hidden': 'true' }, icon('plus', 16)));
   };
-  file.addEventListener('change', async () => {
-    const f = file.files?.[0];
-    file.value = '';
-    if (!f) return;
+  async function readFace(f) {
     photoErr.hidden = true;
     pick.classList.add('busy');
     try {
@@ -1172,13 +1173,16 @@ screen('/create', ({ root, query }) => {
       pick.classList.remove('busy');
       update();
     }
-  });
+  }
   paintPhoto();
 
   // --- photos 2–4 (optional): filled here right away, sent right after the profile is made
   if (!Array.isArray(draft.extraPhotos)) draft.extraPhotos = [null, null, null];
-  // From the library as well as the camera (no capture), unlike the face photo.
-  const moreFile = el('input', { type: 'file', accept: 'image/*', class: 'visually-hidden', tabindex: '-1', 'aria-hidden': 'true' });
+  // The same choice as the face photo: "Take a selfie" or "Choose from photos" (photo-source.js).
+  const moreSource = photoSource((f) => {
+    if (moreBusy >= 0) return;
+    moreRead = readMore(f, moreTarget).finally(() => { moreRead = null; });
+  });
   const minis = el('div', { class: 'slot-minis-wrap' });
   let moreTarget = 1;
   let moreBusy = -1;
@@ -1188,7 +1192,7 @@ screen('/create', ({ root, query }) => {
       onPick: (slot) => {
         if (moreBusy >= 0) return;
         moreTarget = slot;
-        moreFile.click();
+        moreSource.open(t(draft.extraPhotos[slot - 1] ? 'cp_slot_change' : 'cp_slot_add', { slot: slot + 1, n: PHOTO_SLOT_LEVELS[slot] }));
       },
       onRemove: (slot) => {
         if (moreBusy >= 0) return;
@@ -1200,12 +1204,6 @@ screen('/create', ({ root, query }) => {
     if (focusSlot) minis.querySelector(`.slot-mini-dot[data-slot="${focusSlot}"]`)?.focus();
   };
   let moreRead = null; // the tile photo still being read, so Next can wait for it
-  moreFile.addEventListener('change', () => {
-    const f = moreFile.files?.[0];
-    moreFile.value = '';
-    if (!f || moreBusy >= 0) return;
-    moreRead = readMore(f, moreTarget).finally(() => { moreRead = null; });
-  });
   async function readMore(f, slot) {
     photoErr.hidden = true;
     moreBusy = slot;
@@ -1428,7 +1426,7 @@ screen('/create', ({ root, query }) => {
           el('div', { class: 'photo-side' },
             el('p', { class: 'photo-hint' }, t('cp_photo_hint')),
             minis)),
-        examples, photoErr, file, moreFile),
+        examples, photoErr, faceSource.inputs, moreSource.inputs),
       // App name (short) and birth year side by side, the warning under both.
       el('div', { class: 'name-year-group' },
         el('div', { class: 'name-year' },
