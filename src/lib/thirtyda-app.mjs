@@ -2532,7 +2532,9 @@ async function applyLock(ctx, req, sub) {
   if (!session || !me) return;
   const now = Date.now();
   await upgradeSession(d, session, me, now);
-  if (lockState(session, now).locked) {
+  // A profile with no PIN yet never counts as locked: there is nothing to unlock with, and the app asks for a PIN
+  // before anything else (owner 2026-10-13: old test profiles were stuck on "sign in again" with no way back in).
+  if (me.pinHash && lockState(session, now).locked) {
     ctx.locked = true;
     const may = whileLocked(req.method, sub);
     if (!may) throw lockedError(me);
