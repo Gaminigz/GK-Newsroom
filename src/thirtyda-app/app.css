@@ -834,6 +834,12 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .kept-note .icon { flex: none; margin-top: 2px; }
 /* Japanese: wrap only at the marked point (レベル2で / 解除), never inside a word. */
 :lang(ja) .photo-slot .slot-text { word-break: keep-all; }
+/* Me: app name · birth year · Save on one row. */
+.me-id-row { display: grid; grid-template-columns: minmax(0, 1fr) 112px auto; column-gap: 8px; align-items: end; }
+.me-id-cell { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.me-id-row .name-input, .me-id-row .year-select { width: 100%; }
+.me-id-row > .btn { width: auto; }
+.year-fixed { display: flex; align-items: center; gap: 6px; min-height: 48px; padding: 0 12px; border-radius: 8px; background: var(--field); font-weight: 700; font-variant-numeric: tabular-nums; }
 .inline-row { display: flex; gap: 8px; }
 .inline-row .input { flex: 1; min-width: 0; }
 .inline-row .btn { width: auto; flex: none; }

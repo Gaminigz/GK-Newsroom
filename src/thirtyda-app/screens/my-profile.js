@@ -197,34 +197,78 @@ screen('/me', async ({ root }) => {
     class: 'input name-input', id: 'me-name', type: 'text', maxlength: String(NAME_RAW_MAX), autocomplete: 'nickname', value: me.name || '',
     placeholder: t('me_name_ph'), 'data-max-chars': String(NAME_MAX),
   }));
-  const saveName = el('button', { type: 'button', class: 'btn btn-secondary', disabled: true }, t('me_save'));
+  // One row: app name · birth year · one Save (the year only while it has never been set).
+  const saveId = el('button', { type: 'button', class: 'btn btn-secondary', disabled: true }, t('me_save'));
+  const yearErr = el('p', { class: 'field-error', role: 'alert', hidden: true });
+  const yearCell = el('div', { class: 'me-id-cell' });
+  let picked = '';
+  const yearSet = () => Number.isInteger(state.me?.birthYear);
+  const nameChanged = () => nameInput.value.trim().replace(/\s+/g, ' ') !== me.name;
+  const paintSave = () => {
+    const nameOk = nameChanged() && !(nameInput.value.trim() ? nameProblem(nameInput.value) : true);
+    const yearOk = !yearSet() && Boolean(picked);
+    const nameBad = nameChanged() && !nameOk;
+    saveId.disabled = nameBad || !(nameOk || yearOk);
+  };
   const paintName = () => {
     const value = nameInput.value;
     const problem = value.trim() ? nameProblem(value) : t('me_name_length');
-    const changed = value.trim().replace(/\s+/g, ' ') !== me.name;
+    const changed = nameChanged();
     nameErr.textContent = changed && problem ? problem : '';
     nameErr.hidden = !(changed && problem);
     nameInput.classList.toggle('is-error', Boolean(changed && problem));
-    saveName.disabled = !changed || Boolean(problem);
+    paintSave();
   };
+  function paintYear() {
+    if (yearSet()) {
+      yearCell.replaceChildren(el('span', { class: 'label ink' }, t('me_birth_year')),
+        el('p', { class: 'year-fixed' }, icon('lock', 14), el('span', {}, String(state.me.birthYear))));
+      return;
+    }
+    const sel = birthYearSelect({
+      id: 'me-year',
+      onChange: (v) => { picked = v; yearErr.hidden = true; sel.classList.remove('is-error'); paintSave(); },
+    });
+    yearCell.replaceChildren(el('label', { class: 'label ink', for: 'me-year' }, t('me_birth_year')), sel);
+  }
+  paintYear();
   const onName = (e) => {
     clipNameInput(nameInput, e);
     paintName();
   };
   nameInput.addEventListener('input', onName);
   nameInput.addEventListener('compositionend', onName);
-  nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !saveName.disabled) saveName.click(); });
-  saveName.addEventListener('click', async () => {
-    saveName.disabled = true;
+  nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !saveId.disabled) saveId.click(); });
+  saveId.addEventListener('click', async () => {
+    const body = {};
+    if (nameChanged()) body.name = nameInput.value.trim().replace(/\s+/g, ' ');
+    if (!yearSet() && picked) body.birthYear = Number(picked);
+    if (!Object.keys(body).length) return;
+    saveId.disabled = true;
     try {
-      const r = await api.patch('/me', { name: nameInput.value.trim().replace(/\s+/g, ' ') });
+      const r = await api.patch('/me', body);
       setMe(r.user);
       me.name = r.user.name;
       nameInput.value = r.user.name;
+      picked = '';
+      paintYear();
       paintName();
       toast(t('me_saved'));
     } catch (err) {
-      saveName.disabled = false;
+      if (err.code === 'birth_year_set') {
+        toast(t('me_birth_set'));
+        await refreshMe();
+        paintYear();
+        paintName();
+        return;
+      }
+      paintSave();
+      if (err.code === 'too_young' || err.data?.field === 'birthYear') {
+        yearErr.replaceChildren(icon('flag', 14), err.code === 'too_young' ? t('cp_too_young') : t('cp_year_needed'));
+        yearErr.hidden = false;
+        yearCell.querySelector('select')?.classList.add('is-error');
+        return;
+      }
       const text = err.code === 'contact_detail' ? t('me_name_contact') : err.code === 'invalid' ? t('me_name_length') : '';
       if (!text) return toast(errText(err));
       nameErr.textContent = text;
@@ -232,57 +276,6 @@ screen('/me', async ({ root }) => {
       nameInput.classList.add('is-error');
     }
   });
-
-  // --- birth year: set once (at sign-up, or here once for a profile made before it was asked).
-  // Only its owner sees it; Nearby and profiles show no age.
-  const birthBox = el('section', { class: 'section' });
-  function paintBirth() {
-    const year = state.me?.birthYear;
-    if (Number.isInteger(year)) {
-      birthBox.replaceChildren(
-        el('span', { class: 'label ink' }, t('me_birth_year')),
-        el('p', { class: 'kv birth-year-line' }, icon('lock', 16),
-          el('span', {}, t('me_birth_year_is', { year }))),
-        el('p', { class: 'help' }, t('me_birth_once')),
-        truthNote());
-      return;
-    }
-    let picked = '';
-    const err = el('p', { class: 'field-error', role: 'alert', hidden: true });
-    const save = el('button', { type: 'button', class: 'btn btn-secondary', disabled: true }, t('me_save'));
-    const sel = birthYearSelect({
-      id: 'me-year',
-      onChange: (v) => { picked = v; save.disabled = !v; err.hidden = true; sel.classList.remove('is-error'); },
-    });
-    save.addEventListener('click', async () => {
-      if (!picked) return;
-      save.disabled = true;
-      try {
-        const r = await api.patch('/me', { birthYear: Number(picked) });
-        setMe(r.user);
-        toast(t('me_saved'));
-        paintBirth();
-      } catch (e) {
-        if (e.code === 'birth_year_set') {
-          toast(t('me_birth_set'));
-          await refreshMe();
-          paintBirth();
-          return;
-        }
-        save.disabled = false;
-        const text = e.code === 'too_young' ? t('cp_too_young') : e.data?.field === 'birthYear' ? t('cp_year_needed') : '';
-        if (!text) return toast(errText(e));
-        err.replaceChildren(icon('flag', 14), text);
-        err.hidden = false;
-        sel.classList.add('is-error');
-      }
-    });
-    birthBox.replaceChildren(
-      el('label', { class: 'label ink', for: 'me-year' }, t('me_birth_year')),
-      el('p', { class: 'help' }, t('me_birth_missing')),
-      el('div', { class: 'inline-row' }, sel, save), err, truthNote());
-  }
-  paintBirth();
 
   // --- language (also the language others' messages are translated into)
   const langBtns = LANGS.map((code) => el('button', {
@@ -366,10 +359,14 @@ screen('/me', async ({ root }) => {
       el('div', { class: 'section-head' }, el('span', { class: 'label ink' }, t('me_photos')), slotCount),
       slots, keptNote, el('p', { class: 'help' }, t('me_photos_note')), file),
     el('section', { class: 'section' },
-      el('div', { class: 'field-head' }, el('label', { class: 'label ink', for: 'me-name' }, t('me_app_name')),
-        el('span', { class: 'tag tag-filled' }, icon('eye', 11), t('me_tag_shown'))),
-      el('div', { class: 'inline-row' }, nameInput, saveName), nameErr),
-    birthBox,
+      el('div', { class: 'me-id-row' },
+        el('div', { class: 'me-id-cell' },
+          el('div', { class: 'field-head' }, el('label', { class: 'label ink', for: 'me-name' }, t('me_app_name')),
+            el('span', { class: 'tag tag-filled' }, icon('eye', 11), t('me_tag_shown'))),
+          nameInput),
+        yearCell,
+        saveId),
+      nameErr, yearErr, truthNote()),
     section(t('me_language'), el('div', { class: 'lang-grid' }, langBtns), el('p', { class: 'help' }, t('me_language_note'))),
     el('section', { class: 'section' }, el('label', { class: 'label ink', for: 'me-role' }, t('me_role')), roleSel),
     section(t('me_verified_with'), chips, phoneBlock),
