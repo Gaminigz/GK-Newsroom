@@ -762,7 +762,7 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 }
 .way.is-done .way-name { color: var(--green); font-weight: 700; }
 /* The two sign-in buttons sit after a thin rule (they do not send a code). */
-.ways.with-signin .way:nth-child(3)::before { content: ''; position: absolute; left: -2px; top: 12px; height: 36px; border-left: 1px solid var(--line-soft); }
+/* No divider any more: the owner's order mixes the code apps and the sign-ins (TikTok, Telegram, Google, Facebook, WhatsApp). */
 .way-hint { font-size: 13px; color: var(--muted); }
 .way-msg { display: flex; align-items: flex-start; gap: 6px; padding: 8px 10px; border-radius: var(--radius); background: var(--bubble); font-size: 12.5px; font-weight: 600; line-height: 1.4; color: var(--ink); }
 .way-msg .icon { flex: none; margin-top: 1px; color: var(--muted); }

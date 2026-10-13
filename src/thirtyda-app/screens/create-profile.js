@@ -210,7 +210,7 @@ export const blankPhone = () => ({
   channel: 'telegram', sentBy: null, live: false, failed: [],
 });
 
-// The ways in, in the order shown: two bring the code (Telegram, WhatsApp), three sign in (Facebook, Google, TikTok).
+// The ways in: two bring the code (Telegram, WhatsApp), three sign in (Facebook, Google, TikTok); waysRow sets the order.
 // Brand names stay in Latin letters in every language.
 const CODE_CHANNELS = [['telegram', 'Telegram'], ['whatsapp', 'WhatsApp']];
 const SIGN_INS = [['facebook', 'facebook', 'Facebook'], ['google', 'gmail', 'Google'], ['tiktok', 'tiktok', 'TikTok']]; // [provider, verified key, name]
@@ -691,15 +691,21 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
 
   function waysRow() {
     const proved = signin?.verified?.() || {};
-    return el('div', { class: ['ways', signin && 'with-signin'], role: 'group', 'aria-label': t('cp_ways') },
-      CODE_CHANNELS.map(([key, name]) => wayButton({
-        key, name, on: codeOn(key), pressed: model.channel === key && codeOn(key),
-        click: () => { if (!sending) pickChannel(key); },
-      })),
-      signin ? SIGN_INS.map(([provider, key, name]) => wayButton({
-        key: provider, name, on: signinOn(provider), done: Boolean(proved[key]), busy: signingIn === provider,
-        click: () => signIn(provider, key, name),
-      })) : null);
+    const codeBtn = ([key, name]) => wayButton({
+      key, name, on: codeOn(key), pressed: model.channel === key && codeOn(key),
+      click: () => { if (!sending) pickChannel(key); },
+    });
+    const signinBtn = ([provider, key, name]) => wayButton({
+      key: provider, name, on: signinOn(provider), done: Boolean(proved[key]), busy: signingIn === provider,
+      click: () => signIn(provider, key, name),
+    });
+    const code = Object.fromEntries(CODE_CHANNELS.map((c) => [c[0], c]));
+    const sign = Object.fromEntries(SIGN_INS.map((s) => [s[0], s]));
+    // Owner's order (2026-10-13): TikTok, Telegram, Google, Facebook, WhatsApp. #/me (phone only): the two code apps.
+    const row = signin
+      ? [signinBtn(sign.tiktok), codeBtn(code.telegram), signinBtn(sign.google), signinBtn(sign.facebook), codeBtn(code.whatsapp)]
+      : CODE_CHANNELS.map(codeBtn);
+    return el('div', { class: ['ways', signin && 'with-signin'], role: 'group', 'aria-label': t('cp_ways') }, row);
   }
 
   function render() {
