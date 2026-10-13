@@ -20,7 +20,12 @@
  *   PUT  /30da/admin/api/connections/google          { clientId, clientSecret? }   (empty secret = keep the saved one)
  *   PUT  /30da/admin/api/connections/facebook        { appId, appSecret? }
  *   DELETE /30da/admin/api/connections/:id           remove what is saved for telegram | whatsapp | google | facebook
- *   POST /30da/admin/api/connections/telegram|whatsapp/test   { phone } → a real code to that phone, or why not
+ *   POST /30da/admin/api/connections/telegram|whatsapp/test   { phone } → a real code to that phone, or why not.
+ *        A test that goes through turns the channel on in the app (src/lib/thirtyda-code-send.mjs channelOffer);
+ *        the answer carries the page's fresh data (`view`) so the card can say so at once.
+ *   GET  /30da/admin/api/connections/google|facebook/try    (a new tab) the real sign-in with a test state bound to
+ *        this admin session → Google / Facebook → the app's callback, which ends on a small "Works ✓ / Did not work"
+ *        page and makes no user or session (src/lib/thirtyda-app.mjs signinTry)
  *
  * Secrets (src/lib/thirtyda-settings.mjs) are sealed with THIRTYDA_SECRET_KEY and never sent back:
  * only { set, last4, updatedAt, updatedBy }. The audit log never carries them either.
@@ -45,9 +50,13 @@ import {
   keyReady, saveSecret, removeSecret, secretStatus, saveFields, readFields, fieldsStatus, SettingsError,
 } from "./thirtyda-settings.mjs";
 import {
-  checkTelegramToken, checkWhatsAppFields, channelLive, deliverCode, testCodesAllowed, CODE_TTL_S,
+  checkTelegramToken, checkWhatsAppFields, channelLive, channelOffer, deliverCode, testCodesAllowed, CODE_TTL_S,
 } from "./thirtyda-code-send.mjs";
-import { checkSigninFields, signinRedirect, SIGNIN_WIRED } from "./thirtyda-signin.mjs";
+import {
+  checkSigninFields, signinRedirect, signinKeys, publicOrigin, createSigninState, authorizeUrl, stateCookie, stateHash, SIGNIN_WIRED,
+} from "./thirtyda-signin.mjs";
+import { outboundFetch } from "./thirtyda-test-fetch.mjs";
+import { tryResultPage } from "./thirtyda-pages.mjs";
 import { normalizePhone } from "./thirtyda-app.mjs";
 import { QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS } from "../thirtyda-app/shared/question-slots.js";
 
@@ -309,8 +318,20 @@ async function connectionsView(d, req) {
   const { readable, lastSend, ...view } = tg;
   const devAuth = process.env.THIRTYDA_DEV_AUTH === "1";
   const [wa, google, facebook] = await Promise.all(["whatsapp", "google", "facebook"].map((n) => fieldsStatus(d, n)));
+  const [tgOffer, waOffer] = await Promise.all(["telegram", "whatsapp"].map((c) => channelOffer(d, c)));
+  // Whether the app offers the channel: only once a test code went through (and no lasting failure since).
+  const offer = ({ offered, state, reason, detail, at }) => ({ offered, offer: { state, reason, detail, at } });
+  const origin = publicOrigin(req);
+  const keysOk = { google: Boolean(await signinKeys(d, "google")), facebook: Boolean(await signinKeys(d, "facebook")) };
   const signin = (id, name, st) => ({
-    id, name, kind: "signin", ...st, live: false, wired: SIGNIN_WIRED[id], redirect: signinRedirect(req, id),
+    id, name, kind: "signin", ...st,
+    // Live = the app's button really signs people in (the same rule as GET /auth/methods).
+    live: Boolean(SIGNIN_WIRED[id]) && keysOk[id],
+    wired: SIGNIN_WIRED[id],
+    redirect: signinRedirect(req, id),
+    privacyUrl: `${origin}/30da/privacy`,
+    deleteUrl: `${origin}/30da/delete-data`,
+    tryUrl: `${BASE}/api/connections/${id}/try`,
   });
   return {
     keyReady: keyReady(),
@@ -330,9 +351,10 @@ async function connectionsView(d, req) {
         // THIRTYDA_TG_TOKEN is used only while nothing readable is saved here.
         envFallback: envToken ? { last4: envToken.slice(-4) } : null,
         live: (view.set && readable) || Boolean(envToken),
+        ...offer(tgOffer),
       },
-      // Live once all four fields are saved and readable (the same rule the app uses: channelLive).
-      { id: "whatsapp", name: "WhatsApp", kind: "code", ...wa, live: await channelLive(d, "whatsapp") },
+      // Live once all four fields are saved and readable (channelLive); offered once a test code went through.
+      { id: "whatsapp", name: "WhatsApp", kind: "code", ...wa, live: await channelLive(d, "whatsapp"), ...offer(waOffer) },
       signin("google", "Google sign-in", google),
       signin("facebook", "Facebook sign-in", facebook),
     ],
@@ -433,6 +455,28 @@ export async function handleThirtyDaAdmin(req, res, url) {
     return serveFile(res, "connections.html");
   }
 
+  // "Try sign-in" (Google / Facebook card): opened in a new tab, so it answers with pages and redirects, not JSON.
+  const tryM = req.method === "GET" && sub.match(/^\/api\/connections\/(google|facebook)\/try$/);
+  if (tryM) {
+    if (!me) return send(res, 302, "", { Location: BASE });
+    const provider = tryM[1];
+    const page = (reason) => send(res, 200, tryResultPage({ provider, ok: false, reason }), {
+      "Content-Type": TYPES.html, "Cache-Control": "no-store", "X-Robots-Tag": "noindex",
+    });
+    if (testLimited(req)) return page("too_many");
+    const d = await db();
+    const keys = await signinKeys(d, provider);
+    if (!keys) return page("no_keys");
+    // The test state is bound to this admin session (its token's hash): the callback checks it is still signed in.
+    const state = await createSigninState(d, provider, { test: true, adminHash: stateHash(tokenOf(req)) });
+    await audit(req, "signin_try_start", { connection: provider });
+    return send(res, 302, "", {
+      Location: authorizeUrl(provider, { clientId: keys.id, redirectUri: signinRedirect(req, provider), state }),
+      "Set-Cookie": stateCookie(req, provider, state),
+      "Cache-Control": "no-store",
+    });
+  }
+
   if (sub.startsWith("/api/") && !me) return json(res, 401, { error: "signed_out" });
 
   if (req.method === "POST" && sub === "/api/signout") {
@@ -502,7 +546,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
     }
     if (m[2] && !TESTABLE.includes(id)) {
       req.resume();
-      return json(res, 404, { error: `${CONNECTION_NAMES[id]} sign-in cannot be tested yet: it comes next.` });
+      return json(res, 404, { error: `${CONNECTION_NAMES[id]} has no test code: use Try sign-in on its card.` });
     }
     if (writeLimited(req)) {
       req.resume();
@@ -524,13 +568,15 @@ export async function handleThirtyDaAdmin(req, res, url) {
       }
       if (testLimited(req)) return json(res, 429, { error: `That is ${MAX_TESTS} test codes in 15 minutes. Try again later.` });
       const code = String(crypto.randomInt(0, 1e6)).padStart(6, "0");
-      const r = await deliverCode(id, phone, code, { d, record: false });
+      // test: a code that goes through turns the channel on in the app; a lasting failure stops it (channelOffer).
+      const r = await deliverCode(id, phone, code, { d, record: false, test: true, fetchImpl: outboundFetch() });
       await audit(req, "connection_test", {
         connection: id, phone: maskPhone(phone), ok: r.ok, ...(r.ok ? { requestId: r.requestId } : { reason: r.reason, detail: r.detail }),
       });
-      if (!r.ok) return json(res, 422, { ok: false, error: r.message, reason: r.reason, detail: r.detail, phone });
+      const fresh = await connectionsView(d, req);
+      if (!r.ok) return json(res, 422, { ok: false, error: r.message, reason: r.reason, detail: r.detail, phone, view: fresh });
       // The test code is not a sign-in code (nothing stores it): showing it lets the admin match what arrives.
-      return json(res, 200, { ok: true, phone, code, ttl: CODE_TTL_S, requestId: r.requestId, cost: r.cost, balance: r.balance });
+      return json(res, 200, { ok: true, phone, code, ttl: CODE_TTL_S, requestId: r.requestId, cost: r.cost, balance: r.balance, view: fresh });
     }
 
     if (req.method === "DELETE") {

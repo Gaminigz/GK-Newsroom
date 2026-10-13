@@ -28,9 +28,18 @@
  *                                                    | { ok:false, error:'ACCESS_TOKEN_INVALID' | … }
  * Failures come back in plain words: number not on Telegram / bad token / no balance / other (timeout,
  * network, anything else). The token is never logged or returned.
+ *
+ * HONEST CHANNELS (owner 2026-10-13): a live channel is OFFERED in the app (GET /auth/methods, POST /auth/send-code)
+ * only after the admin's "Send test code" has gone through at least once since its keys were last saved. A later
+ * real or test send that fails for a LASTING reason (LASTING_REASONS: bad token, no balance / payment problem,
+ * template not approved or missing) stops it again until the next successful test. A wrong number, a number not
+ * on the test number's list, a timeout or anything else does not. The state lives on the setting itself
+ * (thirtyda_settings.<channel>.offer { on, mark, reason, detail, at, by }); `mark` names the keys it is about (the
+ * sealed box's IV, new on every save — or a short hash of THIRTYDA_TG_TOKEN), so saving new keys starts over.
  */
 
-import { readSecret, readFields, secretSaved, noteSecretUse } from "./thirtyda-settings.mjs";
+import crypto from "node:crypto";
+import { readSecret, readFields, secretSaved, noteSecretUse, SETTINGS_COLLECTION } from "./thirtyda-settings.mjs";
 
 export const CODE_CHANNELS = ["telegram", "whatsapp"];
 export const DEFAULT_CHANNEL = "telegram";
@@ -246,12 +255,99 @@ const isTimeout = (err) => err?.name === "TimeoutError" || err?.name === "AbortE
  * → { ok:true, channel, requestId, cost, balance } | { ok:false, channel, reason, detail, message }.
  * Never throws for a delivery problem. opts: d (Mongo Db, to read the saved settings), token (Telegram: use
  * this one), whatsapp (WhatsApp: use these fields), fetchImpl + timeoutMs (tests), record (default true: keep
- * ok/reason on the saved setting for the admin's card; the admin's own test sends pass false).
+ * ok/reason on the saved setting for the admin's card; the admin's own test sends pass false), test (the admin's
+ * "Send test code": a success turns the channel on in the app), offer (default true: with `d` and the saved keys,
+ * the outcome updates whether the app offers the channel — see noteChannelOutcome).
  */
 export async function deliverCode(channel, phone, code, opts = {}) {
-  if (channel === "telegram") return deliverTelegram(phone, code, opts);
-  if (channel === "whatsapp") return deliverWhatsApp(phone, code, opts);
-  return failure(channel, "not_set");
+  if (!CODE_CHANNELS.includes(channel)) return failure(channel, "not_set");
+  // The keys this send uses, named before it goes out (a save during the send cannot take its outcome).
+  const track = Boolean(opts.d) && opts.offer !== false && !opts.token && !opts.whatsapp;
+  const mark = track ? await channelKeyMark(opts.d, channel).catch(() => null) : null;
+  const out = channel === "telegram" ? await deliverTelegram(phone, code, opts) : await deliverWhatsApp(phone, code, opts);
+  if (mark) {
+    try {
+      await noteChannelOutcome(opts.d, channel, out, { test: Boolean(opts.test), mark });
+    } catch (err) {
+      console.error(`[30da code] could not note the ${channel} outcome:`, err instanceof Error ? err.message : err);
+    }
+  }
+  return out;
+}
+
+// ---------- honest channels: offered in the app only once a test code went through ----------
+
+/** Reasons that stay until someone fixes the setup in Telegram / Meta. Anything else (a number, a timeout) does not stop a channel. */
+export const LASTING_REASONS = ["bad_token", "no_balance", "template"];
+export const isLastingFailure = (reason) => LASTING_REASONS.includes(reason);
+
+const settingDoc = (d, channel) => d.collection(SETTINGS_COLLECTION).findOne({ _id: channel });
+
+/**
+ * Which keys `channel` uses right now → "box:<iv of the sealed box>" (new on every save) or, for Telegram with
+ * nothing readable saved, "env:<12 hex of SHA-256 of THIRTYDA_TG_TOKEN>". null = not live. `doc` = the setting
+ * when already read.
+ */
+export async function channelKeyMark(d, channel, { doc, env = process.env } = {}) {
+  if (!d || !CODE_CHANNELS.includes(channel)) return null;
+  const saved = channel === "telegram" ? Boolean(await readSecret(d, "telegram")) : Boolean(await whatsappConfig(d));
+  if (saved) {
+    const s = doc === undefined ? await settingDoc(d, channel) : doc;
+    return s?.box?.iv ? `box:${s.box.iv}` : null;
+  }
+  const envToken = channel === "telegram" ? String(env.THIRTYDA_TG_TOKEN ?? "").trim() : "";
+  return envToken ? `env:${crypto.createHash("sha256").update(envToken).digest("hex").slice(0, 12)}` : null;
+}
+
+/**
+ * Where `channel` stands for the app:
+ *   { live, offered, state: 'off' | 'untested' | 'on' | 'stopped', reason, detail, at }
+ * off: no keys in use · untested: keys saved, no test code has gone through since · on: offered in the app ·
+ * stopped: a send failed for a lasting reason (reason/detail say which) — a new successful test turns it on.
+ */
+export async function channelOffer(d, channel) {
+  const none = { reason: null, detail: null, at: null };
+  if (!d || !CODE_CHANNELS.includes(channel)) return { live: false, offered: false, state: "off", ...none };
+  const doc = await settingDoc(d, channel);
+  const mark = await channelKeyMark(d, channel, { doc });
+  if (!mark) return { live: false, offered: false, state: "off", ...none };
+  const o = doc?.offer;
+  if (!o || o.mark !== mark) return { live: true, offered: false, state: "untested", ...none };
+  const at = o.at ? new Date(o.at).toISOString() : null;
+  if (o.on) return { live: true, offered: true, state: "on", reason: null, detail: null, at };
+  return { live: true, offered: false, state: "stopped", reason: o.reason ?? null, detail: o.detail ?? null, at };
+}
+
+/** true when the app offers `channel`: live AND a test code went through since its keys were saved AND not stopped since. */
+export async function channelOffered(d, channel) {
+  return (await channelOffer(d, channel)).offered;
+}
+
+/**
+ * One send's outcome → the offer state of the keys `mark` names: a successful TEST turns the channel on; a send
+ * (real or test) that failed for a lasting reason stops it. Anything else changes nothing. Never stores a phone
+ * number or the code. Written only while the same keys are still saved (box IV), so a save in between wins.
+ */
+export async function noteChannelOutcome(d, channel, out, { test = false, mark } = {}) {
+  if (!d || !mark || !CODE_CHANNELS.includes(channel)) return false;
+  let offer = null;
+  if (out?.ok && test) offer = { on: true, mark, reason: null, detail: null, at: new Date(), by: "test" };
+  else if (out && !out.ok && isLastingFailure(out.reason)) {
+    offer = { on: false, mark, reason: out.reason, detail: out.detail ? String(out.detail).slice(0, 200) : null, at: new Date(), by: test ? "test" : "send" };
+  }
+  if (!offer) return false;
+  const col = d.collection(SETTINGS_COLLECTION);
+  if (mark.startsWith("box:")) {
+    await col.updateOne({ _id: channel, "box.iv": mark.slice(4) }, { $set: { offer } });
+    return true;
+  }
+  // The server's own Telegram token (nothing saved here): a small doc that holds only this state.
+  try {
+    await col.updateOne({ _id: channel, box: { $exists: false } }, { $set: { offer } }, { upsert: true });
+  } catch (err) {
+    if (err?.code !== 11000) throw err; // a token was saved meanwhile: its own state starts fresh
+  }
+  return true;
 }
 
 async function deliverWhatsApp(phone, code, { d = null, whatsapp, fetchImpl = fetch, timeoutMs = TIMEOUT_MS, record = true } = {}) {

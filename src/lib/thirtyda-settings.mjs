@@ -172,6 +172,7 @@ export async function secretStatus(d, name, { rawKey } = {}) {
   }
   const last = doc?.box && doc.lastSend ? {
     ok: Boolean(doc.lastSend.ok), reason: doc.lastSend.reason ?? null, detail: doc.lastSend.detail ?? null, at: iso(doc.lastSend.at),
+    kind: doc.lastSend.kind ?? null,
   } : null;
   return { ...secretView(doc), readable, lastSend: last };
 }
@@ -206,12 +207,15 @@ export async function removeSecret(d, name) {
   return { ...secretView(null), removed: r.deletedCount > 0 };
 }
 
-/** Keep the outcome of the last live use (never a phone number or the value) for the admin's card. */
-export async function noteSecretUse(d, name, { ok, reason = null, detail = null } = {}) {
+/**
+ * Keep the outcome of the last live use (never a phone number, a name, an email or the value) for the admin's
+ * card. kind (optional): what it was — 'try' (the admin's "Try sign-in") or 'signin' (a real Google / Facebook sign-in).
+ */
+export async function noteSecretUse(d, name, { ok, reason = null, detail = null, kind = null } = {}) {
   checkName(name);
   await d.collection(SETTINGS_COLLECTION).updateOne(
     { _id: name, box: { $exists: true } },
-    { $set: { lastSend: { ok: Boolean(ok), reason, detail, at: new Date() } } },
+    { $set: { lastSend: { ok: Boolean(ok), reason, detail, at: new Date(), ...(kind ? { kind: String(kind) } : {}) } } },
   );
 }
 
@@ -274,6 +278,7 @@ export async function fieldsStatus(d, name, { rawKey } = {}) {
   }
   const last = doc?.box && doc.lastSend ? {
     ok: Boolean(doc.lastSend.ok), reason: doc.lastSend.reason ?? null, detail: doc.lastSend.detail ?? null, at: iso(doc.lastSend.at),
+    kind: doc.lastSend.kind ?? null,
   } : null;
   return { ...fieldsView(name, doc, values), readable: Boolean(values), lastSend: last };
 }

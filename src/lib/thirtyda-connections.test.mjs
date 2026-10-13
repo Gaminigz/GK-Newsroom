@@ -316,7 +316,7 @@ test('sign-in keys: Google client ID + secret, Facebook app ID + secret; an empt
     assert.ok(!/THIRTYDA_|OAuth|Railway/.test(r.error), 'plain words');
   }
   assert.equal(checkSigninFields('twitter', {}).ok, false);
-  assert.deepEqual(SIGNIN_WIRED, { google: false, facebook: false }, 'stored now, wired next');
+  assert.deepEqual(SIGNIN_WIRED, { google: true, facebook: true }, 'the sign-in is built: saved keys make the buttons work');
 });
 
 test('sign-in keys save sealed and masked; signinKeysSaved', async () => {

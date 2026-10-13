@@ -26,8 +26,15 @@
  * thirtyda_pairs, thirtyda_sets, thirtyda_chats, thirtyda_flags, thirtyda_counters; reads the
  * admin's question choices from thirtyda_questions (src/lib/thirtyda-questions.mjs) and the code
  * channels' settings from thirtyda_settings (src/lib/thirtyda-code-send.mjs: Telegram / WhatsApp codes are
- * real once the admin saves their keys on the admin Code page). GET /auth/methods tells the phone step which
- * of its 4 buttons work (Telegram, WhatsApp, Facebook, Google).
+ * real once the admin saves their keys on the admin Code page — and offered only once a test code went through,
+ * see channelOffer). GET /auth/methods tells the phone step which of its 4 buttons work (Telegram, WhatsApp,
+ * Facebook, Google).
+ *
+ * Google / Facebook sign-in (src/lib/thirtyda-signin.mjs): GET /30da/api/auth/<provider>/start → the provider →
+ * GET /30da/api/auth/<provider>/callback → 302 to /30da/#/create (new person) or /30da/#/nearby (returning person),
+ * or back to the phone step with ?signin=<provider>&error=<cancelled|expired|unavailable|failed|too_many>.
+ * The admin's "Try sign-in" ends on a small result page instead and makes no user or session.
+ * Public pages Google / Facebook ask for: GET /30da/privacy, GET /30da/delete-data (src/lib/thirtyda-pages.mjs).
  */
 
 import crypto from "node:crypto";
@@ -37,8 +44,15 @@ import { savePhoto, readPhoto, deletePhoto, isPhotoId, PhotoError } from "./thir
 import { translate, translateAll, translateEnabled } from "./thirtyda-translate.mjs";
 import { areaFor, haversineKm } from "./thirtyda-geo.mjs";
 import { clientIp } from "./thirtyda-net.mjs";
-import { CODE_CHANNELS, DEFAULT_CHANNEL, CHANNEL_NAMES, channelLive, testCodesAllowed, deliverCode } from "./thirtyda-code-send.mjs";
-import { SIGNIN_PROVIDERS, SIGNIN_WIRED } from "./thirtyda-signin.mjs";
+import { CODE_CHANNELS, DEFAULT_CHANNEL, CHANNEL_NAMES, channelOffered, testCodesAllowed, deliverCode } from "./thirtyda-code-send.mjs";
+import {
+  SIGNIN_PROVIDERS, SIGNIN_WIRED, VERIFIED_KEY, SIGNIN_STATES, signinKeys, signinKeysSaved, signinRedirect, authorizeUrl,
+  createSigninState, takeSigninState, stateCookie, readStateCookie, adminSessionAlive, signinPerson, callbackError,
+  signinUserFilter, planSignin,
+} from "./thirtyda-signin.mjs";
+import { noteSecretUse } from "./thirtyda-settings.mjs";
+import { outboundFetch } from "./thirtyda-test-fetch.mjs";
+import { privacyPage, deleteDataPage, tryResultPage } from "./thirtyda-pages.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
   PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
@@ -120,6 +134,10 @@ export async function ensureThirtyDaIndexes(d) {
     d.collection(C.users).createIndex({ location: "2dsphere" }),
     d.collection(C.users).createIndex({ phone: 1 }, { unique: true, sparse: true }),
     d.collection(C.users).createIndex({ photos: 1 }),
+    // One profile per Google / Facebook account (only profiles that signed in with one carry it).
+    ...SIGNIN_PROVIDERS.map((p) => d.collection(C.users).createIndex(
+      { [`signin.${p}.id`]: 1 }, { unique: true, partialFilterExpression: { [`signin.${p}.id`]: { $exists: true } } })),
+    d.collection(SIGNIN_STATES).createIndex({ expires: 1 }, { expireAfterSeconds: 0 }),
     d.collection(C.sessions).createIndex({ expires: 1 }, { expireAfterSeconds: 0 }),
     d.collection(C.otps).createIndex({ expires: 1 }, { expireAfterSeconds: 0 }),
     d.collection(C.pairs).createIndex({ key: 1 }, { unique: true, sparse: true }),
@@ -293,6 +311,8 @@ async function startSession(ctx, fields) {
     phone: session?.phone ?? null,
     phoneVerified: Boolean(session?.phoneVerified),
     verified: { gmail: Boolean(session?.verified?.gmail), facebook: Boolean(session?.verified?.facebook) },
+    // The Google / Facebook account(s) this browser proved, kept until Create profile puts them on the profile.
+    ...(session?.signin ? { signin: session.signin } : {}),
     ...fields,
     created: new Date(),
     expires: new Date(Date.now() + SESSION_DAYS * 864e5),
@@ -731,6 +751,8 @@ const ERROR_TEXT = {
 const ipSends = new Map(); // ip -> [timestamps]
 const ipGuesses = new Map(); // ip -> [timestamps] of code checks (verify-code)
 const giveBacks = new Map(); // phone -> [timestamps] of failed live sends that were given back
+const ipSigninStarts = new Map(); // ip -> [timestamps] of Google / Facebook sign-ins started
+const ipSigninReturns = new Map(); // ip -> [timestamps] of returns from Google / Facebook
 
 /** Timestamps of `key` still inside the window (the list is stored back, pruned). */
 function inWindowFor(map, key, now) {
@@ -741,7 +763,7 @@ function inWindowFor(map, key, now) {
 /** Drop keys with nothing left in the window, so the limiter maps cannot grow without end. */
 setInterval(() => {
   const now = Date.now();
-  for (const map of [ipSends, ipGuesses, giveBacks]) {
+  for (const map of [ipSends, ipGuesses, giveBacks, ipSigninStarts, ipSigninReturns]) {
     for (const [key, list] of map) if (!list.some((t) => now - t < OTP_WINDOW_MS)) map.delete(key);
   }
 }, OTP_WINDOW_MS).unref();
@@ -763,27 +785,40 @@ const CHANNEL_FAILED_TEXT = {
   unavailable: (name, other) => `${name} codes are not working right now. ${other ? `Try ${other}.` : "Please try again in a little while."}`,
 };
 
+/** Google / Facebook really sign people in: the sign-in is built and its keys are saved (and readable). */
+async function signinReady(d, provider) {
+  return Boolean(SIGNIN_WIRED[provider]) && (await signinKeysSaved(d, provider).catch(() => false));
+}
+
 /**
  * GET /auth/methods → which of the phone step's buttons work right now:
- *   { code: { telegram, whatsapp }, signin: { google, facebook } } (booleans).
- * A code channel works when it is live, or (test mode only) while no channel is set up at all — the same
- * rule send-code applies. Google / Facebook work only in test mode until their sign-in is built; then the
- * app shows "Coming soon" for them. Nothing here is secret: no key, no count, no setting.
+ *   { code: { telegram, whatsapp }, signin: { google, facebook }, signinTest: { google, facebook } } (booleans).
+ * A code channel works when it is OFFERED (live and a test code went through since its keys were saved, and no
+ * lasting failure since — channelOffer), or (test mode only) while no channel is set up at all — the same rule
+ * send-code applies. Google / Facebook work once their keys are saved (the real sign-in: the app goes to
+ * /auth/<provider>/start); in test mode without keys they keep the instant test sign-in (signinTest: the app
+ * calls POST /auth/verify-social). Otherwise the app shows "Coming soon". Nothing here is secret.
  */
 async function authMethods(ctx) {
   const { d } = ctx;
   const testCodes = await testCodesAllowed(d, DEV_AUTH);
   const code = {};
-  for (const channel of CODE_CHANNELS) code[channel] = testCodes || (await channelLive(d, channel));
+  for (const channel of CODE_CHANNELS) code[channel] = testCodes || (await channelOffered(d, channel));
   const signin = {};
-  for (const provider of SIGNIN_PROVIDERS) signin[provider] = DEV_AUTH || SIGNIN_WIRED[provider];
-  return { code, signin };
+  const signinTest = {};
+  for (const provider of SIGNIN_PROVIDERS) {
+    const real = await signinReady(d, provider);
+    signin[provider] = real || DEV_AUTH;
+    signinTest[provider] = !real && DEV_AUTH;
+  }
+  return { code, signin, signinTest };
 }
 
 /**
  * POST /auth/send-code { phone, channel:'telegram'|'whatsapp' } (channel defaults to telegram).
- * Live channel (configured on the admin Code page) → the code really goes out and is never
- * returned, test mode or not. The new code is claimed PENDING: verify-code checks nothing against it (nor
+ * Offered channel (keys saved on the admin Code page AND a test code went through since, with no lasting failure
+ * since — channelOffer in src/lib/thirtyda-code-send.mjs) → the code really goes out and is never
+ * returned, test mode or not. Saved but not offered → 503 channel_unavailable, never an on-screen code. The new code is claimed PENDING: verify-code checks nothing against it (nor
  * against the number's older code) until Telegram / WhatsApp has accepted it, so a send that fails was never
  * guessable. If delivery fails → 422 channel_failed { channel, reason: 'not_on_telegram' | 'not_on_whatsapp' |
  * 'unavailable' (everything else, incl. WhatsApp's not_allowed: a setup problem, not the person's number),
@@ -802,7 +837,8 @@ async function sendCode(ctx) {
   if (!CODE_CHANNELS.includes(channel)) throw invalid("Choose Telegram or WhatsApp.", { field: "channel" });
   const name = CHANNEL_NAMES[channel];
   const otherKey = CODE_CHANNELS.find((c) => c !== channel);
-  const live = await channelLive(d, channel);
+  // Live AND offered (a test code went through since the keys were saved, no lasting failure since): see channelOffer.
+  const live = await channelOffered(d, channel);
   if (!live && !(await testCodesAllowed(d, DEV_AUTH))) {
     throw fail(503, "channel_unavailable", `Codes by ${name} are not available yet.`, { channel });
   }
@@ -829,7 +865,7 @@ async function sendCode(ctx) {
   if (live) {
     let sent;
     try {
-      sent = await deliverCode(channel, phone, code, { d });
+      sent = await deliverCode(channel, phone, code, { d, fetchImpl: outboundFetch() });
     } catch (err) {
       sent = { ok: false, reason: "other", detail: err instanceof Error ? err.message.slice(0, 80) : "error" };
     }
@@ -848,7 +884,7 @@ async function sendCode(ctx) {
     const notOn = sent.reason === "not_on_telegram" || sent.reason === "not_on_whatsapp";
     const reason = notOn ? sent.reason : "unavailable";
     // This channel is live, so test codes are off: the other one works only if it is live too.
-    const other = (await channelLive(d, otherKey).catch(() => false)) ? CHANNEL_NAMES[otherKey] : null;
+    const other = (await channelOffered(d, otherKey).catch(() => false)) ? CHANNEL_NAMES[otherKey] : null;
     throw fail(422, "channel_failed", CHANNEL_FAILED_TEXT[notOn ? "not_on" : "unavailable"](name, other), { channel, reason });
   }
   // Not live (test mode with no channel set up, checked above): the code comes back for the "Test code" note.
@@ -988,6 +1024,180 @@ async function signout(ctx) {
   return { ok: true };
 }
 
+// ---------------------------------------------------------------- Google / Facebook sign-in (real)
+
+const SIGNIN_STARTS = 30; // sign-ins started per address per 15 minutes (loose, like send-code: NAT)
+const SIGNIN_RETURNS = 30; // returns from Google / Facebook per address per 15 minutes
+
+/** What a session proved with Google / Facebook, as kept on a new profile: { google?: { id, email? }, facebook?: … } | null. */
+function signinOf(session) {
+  const out = {};
+  for (const p of SIGNIN_PROVIDERS) {
+    const s = session?.signin?.[p];
+    if (s?.id && session?.verified?.[VERIFIED_KEY[p]]) out[p] = { id: String(s.id), ...(s.email ? { email: String(s.email) } : {}) };
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/** A provider's reason → what the phone step says (in the person's language, in the client). */
+const APP_SIGNIN_REASON = { cancelled: "cancelled", expired: "expired", bad_keys: "unavailable", redirect: "unavailable", not_live: "unavailable" };
+const appSigninReason = (reason) => APP_SIGNIN_REASON[reason] ?? "failed";
+/** Reasons a real sign-in notes on the admin's card (a setup problem); a cancel or a slow network does not. */
+const SIGNIN_SETUP_REASONS = new Set(["bad_keys", "redirect", "not_live"]);
+
+function redirectTo(res, location, headers = {}) {
+  res.writeHead(302, { ...BASE_HEADERS, "Cache-Control": "no-store", Location: location, ...headers }).end();
+}
+
+function sendPage(req, res, status, html, headers = {}) {
+  res.writeHead(status, {
+    ...BASE_HEADERS, "Content-Type": MIME.html, "Cache-Control": "no-store", "Content-Security-Policy": CSP, "X-Frame-Options": "DENY", ...headers,
+  });
+  res.end(req.method === "HEAD" ? undefined : html);
+}
+
+/** true when `ip` is over `max` in the window; otherwise counts this one. */
+function overLimit(map, ip, max, now = Date.now()) {
+  const list = inWindowFor(map, ip, now);
+  if (list.length >= max) return true;
+  list.push(now);
+  return false;
+}
+
+const backToPhoneStep = (provider, reason) => `${BASE}/#/create?signin=${provider}&error=${reason}`;
+/** A provider's ?error_description=… cut down to something safe to keep and show. */
+const safeNote = (v) => String(v ?? "").replace(/[^\w .,:;()'/+-]/g, " ").replace(/\s+/g, " ").trim().slice(0, 160) || null;
+
+/**
+ * GET /auth/<provider>/start → 302 to Google / Facebook with a fresh single-use state and its cookie. Keys not
+ * saved → back to the phone step (unavailable). SIGNIN_STARTS per address per 15 minutes (too_many).
+ */
+async function signinStart(req, res, d, provider) {
+  if (overLimit(ipSigninStarts, clientIp(req), SIGNIN_STARTS)) return redirectTo(res, backToPhoneStep(provider, "too_many"));
+  const keys = SIGNIN_WIRED[provider] ? await signinKeys(d, provider) : null;
+  if (!keys) return redirectTo(res, backToPhoneStep(provider, "unavailable"));
+  const state = await createSigninState(d, provider);
+  redirectTo(res, authorizeUrl(provider, { clientId: keys.id, redirectUri: signinRedirect(req, provider), state }), {
+    "Set-Cookie": stateCookie(req, provider, state),
+  });
+}
+
+/**
+ * GET /auth/<provider>/callback?code&state (or ?error=…). The state is used up first (single use, 10 minutes, same
+ * browser). A test state (the admin's "Try sign-in") ends on the result page (signinTry). Otherwise:
+ * the person → completeSignin → 302 /30da/#/nearby (returning) or /30da/#/create?signin=<provider>&ok=1 (new);
+ * any failure → 302 back to the phone step with ?signin=<provider>&error=<reason> (the app words it calmly).
+ */
+async function signinCallback(req, res, url, d, provider) {
+  const clear = stateCookie(req, provider, "", 0);
+  const back = (reason) => redirectTo(res, backToPhoneStep(provider, reason), { "Set-Cookie": clear });
+  if (overLimit(ipSigninReturns, clientIp(req), SIGNIN_RETURNS)) return back("too_many");
+  const params = url.searchParams;
+  const { ok: stateOk, rec } = await takeSigninState(d, provider, params.get("state"), readStateCookie(req));
+  if (rec?.test) return signinTry(req, res, d, provider, { rec, stateOk, params, clear });
+  if (!stateOk) return back("expired");
+  const refused = callbackError(provider, params);
+  if (refused) return back(appSigninReason(refused));
+  const code = params.get("code");
+  if (!code || code.length > 2048) return back("failed");
+  const keys = await signinKeys(d, provider);
+  if (!keys) return back("unavailable");
+
+  const r = await signinPerson(provider, keys, code, signinRedirect(req, provider), { fetchImpl: outboundFetch() });
+  if (r.ok || SIGNIN_SETUP_REASONS.has(r.reason)) {
+    await noteSecretUse(d, provider, { ok: r.ok, reason: r.ok ? null : r.reason, detail: r.ok ? null : r.detail, kind: "signin" }).catch(() => {});
+  }
+  if (!r.ok) {
+    console.warn(`[30da signin] ${provider} sign-in did not work: ${r.reason}${r.detail ? ` (${r.detail})` : ""}`);
+    return back(appSigninReason(r.reason));
+  }
+  const ctx = { d, req, headers: {}, session: await loadSession(d, req) };
+  ctx.me = ctx.session?.userId ? await d.collection(C.users).findOne({ _id: ctx.session.userId }) : null;
+  const { existing } = await completeSignin(ctx, provider, r.person);
+  redirectTo(res, existing ? `${BASE}/#/nearby` : `${BASE}/#/create?signin=${provider}&ok=1`, {
+    "Set-Cookie": [clear, ctx.headers["Set-Cookie"]].filter(Boolean),
+  });
+}
+
+/**
+ * What a good sign-in does — the same shape as verify-code (phone) and the test-mode verify-social:
+ *   a person whose profile carries this provider id (signin.<provider>.id) → a session for that profile;
+ *   a signed-in profile with no account of this provider yet (and nobody else has this one) → the profile adds it;
+ *   a signed-in profile already linked to ANOTHER account of this provider → this browser switches to the new
+ *   account (a clean session, onto Create profile); the profile's own link is never replaced;
+ *   anyone else → a fresh session marked verified for the provider, which lands on Create profile; the profile
+ *   made there keeps the provider id (+ email when given). Never the provider's tokens.
+ * → { existing } (true: a profile is signed in).
+ */
+async function completeSignin(ctx, provider, person) {
+  const users = ctx.d.collection(C.users);
+  const user = await users.findOne(signinUserFilter(provider, person.id));
+  let plan = planSignin({ provider, person, user, me: ctx.me, session: ctx.session });
+  if (plan.kind === "attach") {
+    // Only while the profile still has no account of this provider: two returns at once cannot overwrite each other.
+    const r = await users.updateOne({ _id: plan.userId, [`signin.${provider}.id`]: { $exists: false } }, { $set: plan.userSet });
+    if (!r.matchedCount) {
+      // Raced: look again (the profile may have been linked meanwhile) and plan from what is there now.
+      const [again, me] = await Promise.all([users.findOne(signinUserFilter(provider, person.id)), users.findOne({ _id: plan.userId })]);
+      plan = planSignin({ provider, person, user: again, me, session: ctx.session });
+      if (plan.kind === "attach") throw new Error("the profile changed during the sign-in");
+      if (plan.userSet) await users.updateOne({ _id: plan.userId }, { $set: plan.userSet });
+    }
+  } else if (plan.userSet) {
+    await users.updateOne({ _id: plan.userId }, { $set: plan.userSet });
+  }
+  await startSession(ctx, plan.session);
+  return { existing: plan.kind !== "new" };
+}
+
+/**
+ * The admin's "Try sign-in" coming back: the real exchange with Google / Facebook, then a small page that says
+ * whether it works ("Works ✓ — Google said: <name> (<email>)") or why not, in plain words. It makes NO user and
+ * NO session, and it counts only while the admin session that started it is still signed in. The outcome
+ * (ok / reason + time, never a name, email or token) goes on the card and in the audit.
+ */
+async function signinTry(req, res, d, provider, { rec, stateOk, params, clear }) {
+  const page = (o) => sendPage(req, res, 200, tryResultPage({ provider, ...o }), { "Set-Cookie": clear, "X-Robots-Tag": "noindex" });
+  const record = async (r) => {
+    await noteSecretUse(d, provider, { ok: r.ok, reason: r.ok ? null : r.reason, detail: r.ok ? null : r.detail ?? null, kind: "try" }).catch(() => {});
+    await d.collection("thirtyda_audit").insertOne({
+      at: new Date(), action: "signin_try", connection: provider, ok: r.ok, ...(r.ok ? {} : { reason: r.reason }), ip: clientIp(req),
+    }).catch(() => {});
+  };
+  if (!(await adminSessionAlive(d, rec.adminHash))) return page({ ok: false, reason: "admin_gone" });
+  if (!stateOk) return page({ ok: false, reason: "expired" });
+  const refused = callbackError(provider, params);
+  if (refused) {
+    const r = { ok: false, reason: refused, detail: safeNote(params.get("error_description") || params.get("error_message") || params.get("error")) };
+    await record(r);
+    return page(r);
+  }
+  const code = params.get("code");
+  const keys = await signinKeys(d, provider);
+  if (!keys) return page({ ok: false, reason: "no_keys" });
+  if (!code || code.length > 2048) {
+    // Nothing came back from Google / Facebook (no code, no error): there is nothing they "said" to show.
+    const r = { ok: false, reason: "other", detail: null };
+    await record(r);
+    return page(r);
+  }
+  const r = await signinPerson(provider, keys, code, signinRedirect(req, provider), { fetchImpl: outboundFetch() });
+  await record(r);
+  return page(r.ok ? { ok: true, person: r.person } : { ok: false, reason: r.reason, detail: r.detail });
+}
+
+/** GET /30da/api/auth/<provider>/start | callback. Never JSON: every answer is a redirect or a page. */
+async function handleSignin(req, res, url, provider, step) {
+  try {
+    const d = await db();
+    if (step === "start") return await signinStart(req, res, d, provider);
+    return await signinCallback(req, res, url, d, provider);
+  } catch (err) {
+    console.error("[30da signin]", provider, step, err instanceof Error ? err.message : err);
+    if (!res.headersSent) redirectTo(res, backToPhoneStep(provider, "failed"));
+  }
+}
+
 // ---------------------------------------------------------------- profile handlers
 
 async function createProfile(ctx) {
@@ -1022,6 +1232,8 @@ async function createProfile(ctx) {
     language: LANG_ENGLISH[lang],
     ...(phone ? { phone } : {}),
     verified: { phone: Boolean(phone), gmail: Boolean(session.verified?.gmail), facebook: Boolean(session.verified?.facebook) },
+    // The Google / Facebook account this browser signed in with: its id (+ email when given), never a token.
+    ...(signinOf(session) ? { signin: signinOf(session) } : {}),
     photos: [photoId],
     location: null,
     area: "",
@@ -1039,6 +1251,9 @@ async function createProfile(ctx) {
     await users.insertOne(user);
   } catch (err) {
     await deletePhoto(photoId);
+    if (err?.code === 11000 && /signin\./.test(JSON.stringify(err.keyPattern ?? err.message ?? ""))) {
+      throw fail(409, "signin_in_use", "This Google or Facebook account already has a profile. Sign in with it again.");
+    }
     if (err?.code === 11000) throw fail(409, "phone_in_use", "This phone number already has a profile.");
     throw err;
   }
@@ -2105,8 +2320,14 @@ export async function handleThirtyDaApp(req, res, url) {
     res.writeHead(200, { ...BASE_HEADERS, "Content-Type": "application/json", "Cache-Control": "no-store" }).end(JSON.stringify({ build: BUILD }));
     return;
   }
+  // Google / Facebook sign-in: browser navigations (redirects and pages), not JSON.
+  const sm = req.method === "GET" && path.match(/^\/30da\/api\/auth\/(google|facebook)\/(start|callback)$/);
+  if (sm) return handleSignin(req, res, url, sm[1], sm[2]);
   if (path === API || path.startsWith(`${API}/`)) return handleApi(req, res, url, path.slice(API.length) || "/");
   if (req.method === "GET" || req.method === "HEAD") {
+    // The pages Google and Facebook ask for (their addresses are on the admin Code page).
+    if (path === `${BASE}/privacy`) return sendPage(req, res, 200, privacyPage(), { "Cache-Control": "no-cache" });
+    if (path === `${BASE}/delete-data`) return sendPage(req, res, 200, deleteDataPage(), { "Cache-Control": "no-cache" });
     // The client loads its modules relative to /30da/, so the bare path gets a slash.
     if (path === BASE) {
       res.writeHead(302, { ...BASE_HEADERS, Location: `${BASE}/${url.search}` }).end();

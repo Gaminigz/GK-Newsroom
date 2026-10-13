@@ -1,8 +1,10 @@
 // 30+DA super admin · Code — the four ways people sign in, and the keys each one needs:
-// Telegram and WhatsApp send the sign-in code (live once their keys are saved); the Google and Facebook sign-in
-// keys are saved now and used once that sign-in is built. The server never sends a secret back: only its last
-// 4 characters (last4 / masks); the plain boxes (WhatsApp phone number ID + template, Google client ID,
-// Facebook app ID) come back as saved.
+// Telegram and WhatsApp send the sign-in code: offered in the app only once a test code went through since the
+// keys were saved, and stopped again by a lasting failure (no balance, bad token, template). Google and Facebook
+// sign people in once their keys are saved; "Try sign-in" runs the real sign-in in a new tab and ends on a small
+// "Works ✓" page (no profile made). The server never sends a secret back: only its last 4 characters
+// (last4 / masks); the plain boxes (WhatsApp phone number ID + template, Google client ID, Facebook app ID) come
+// back as saved.
 const API = '/30da/admin/api/connections';
 const $ = (id) => document.getElementById(id);
 
@@ -125,9 +127,26 @@ function lastSendLine(s, channel) {
 
 function codeStatus(c) {
   if (c.set && !c.readable) return { pill: 'warn', text: 'Needs attention' };
-  if (c.live) return { pill: 'live', text: 'Live' };
+  if (c.live && c.offered) return { pill: 'live', text: 'Live' };
+  if (c.live && c.offer?.state === 'stopped') return { pill: 'warn', text: 'Stopped' };
+  if (c.live) return { pill: 'saved', text: 'Saved · not tested' };
   return { pill: 'off', text: 'Not set' };
 }
+
+/** Why a channel was stopped, in plain words, and where to fix it. */
+const STOP_WORDS = {
+  telegram: {
+    bad_token: 'Telegram did not accept the token',
+    no_balance: 'the Telegram Gateway account has no balance left',
+  },
+  whatsapp: {
+    bad_token: 'WhatsApp did not accept the access token',
+    template: 'Meta has not approved the message template, or it is missing',
+    no_balance: 'there is a payment problem on the Meta business account',
+  },
+};
+const FIX_IN = { telegram: 'Telegram (gateway.telegram.org)', whatsapp: 'Meta' };
+const stopWords = (c) => STOP_WORDS[c.id]?.[c.offer?.reason] || `${NAMES[c.id]} refused the codes`;
 
 function unreadableLine(c, what) {
   return [h('b', { text: `Saved ${when(c.updatedAt)}, but this server cannot read it.` }),
@@ -171,6 +190,7 @@ function testResult(c) {
       ? [r.cost != null ? ` · cost US$${r.cost}` : '', r.balance != null ? ` · balance left US$${r.balance}` : ''] : [];
     return h('div', { class: 'cx-result ok' },
       h('p', {}, h('b', { text: 'Sent. ' }), `A code is on its way to ${prettyPhone(r.phone)} ${TEST_FROM[c.id]}. Type it here:`),
+      c.offered ? h('p', { class: 'cx-fine' }, `${name} codes are now offered in the app.`) : null,
       check, verdict,
       h('p', { class: 'cx-fine' }, `${name} message id ${r.requestId || '–'}`, ...money, ' · this test code does not sign anyone in.'));
   }
@@ -199,15 +219,18 @@ function testBlock(c, { help }) {
         state.test[c.id] = { sending: true, phone: value };
         render(state.data);
         const r = await call('POST', `${API}/${c.id}/test`, { phone: value });
-        state.test[c.id] = { ...r.data, ok: r.ok, phone: r.data.phone || value, error: r.ok ? null : r.data.error };
-        render(state.data);
+        const { view, ...result } = r.data;
+        state.test[c.id] = { ...result, ok: r.ok, phone: result.phone || value, error: r.ok ? null : result.error };
+        // The answer carries the page's fresh data: a test that went through turns the channel on in the app.
+        render(view?.connections ? view : state.data);
         $(phoneId)?.focus();
       },
     },
   }, phone, testBtn);
   return h('div', { class: 'cx-test' },
     h('h3', { text: 'Send test code' }),
-    h('p', { class: 'cx-help' }, c.live ? help : 'Save first. Then send a real code to your own phone to check it works.'),
+    h('p', { class: 'cx-help' }, c.live ? `${help} The app offers ${NAMES[c.id]} only after a test code goes through.`
+      : 'Save first. Then send a real code to your own phone to check it works.'),
     testForm,
     testResult(c));
 }
@@ -228,7 +251,11 @@ function tokenLine(c) {
 }
 
 function codeAppLine(c, { testCodes }, name, what) {
-  if (c.live) return `Working: people who pick ${name} get their code in ${name}.`;
+  if (c.live && c.offered) return `Working: people who pick ${name} get their code in ${name}.`;
+  if (c.live && c.offer?.state === 'stopped') {
+    return [h('b', { class: 'cx-bad', text: `Stopped: ${stopWords(c)}.` }), ` Fix it in ${FIX_IN[c.id]}, then send a test code. Until then the app shows ${name} dimmed.`];
+  }
+  if (c.live) return [h('b', { text: 'Not offered in the app yet — send a test code first.' }), ` Once a test code reaches your phone, people can pick ${name}.`];
   if (c.set) return `No ${name} codes go out until the ${what} ${what.endsWith('s') ? 'are' : 'is'} saved again.`;
   if (testCodes) return `Test mode: the code shows on the screen until a code channel is saved.`;
   return `People cannot get a code by ${name} until the ${what} ${what.endsWith('s') ? 'are' : 'is'} saved. The app shows ${name} dimmed, “Coming soon”.`;
@@ -336,8 +363,16 @@ const FIELD_CARDS = {
     title: 'Google sign-in',
     sub: 'Sign in with a Google account',
     what: 'keys',
-    where: [link('https://console.cloud.google.com/apis/credentials', 'Google Cloud'), ' → APIs & Services → Credentials → Create credentials → Client ID → Web application.'],
-    redirectHelp: 'In the same Google page, under “Authorised redirect URIs”, press Add URI and paste this address:',
+    // The console's own menu names, in quotes, so they can be found (Google sometimes calls this part “Google Auth Platform”).
+    steps: [
+      ['Open ', link('https://console.cloud.google.com/apis/credentials', 'console.cloud.google.com'), ' → APIs & Services.'],
+      ['“OAuth consent screen”: choose External, give the app name 30+DA and your email, and paste the Privacy policy address below.'],
+      ['Credentials → “Create credentials” → “OAuth client ID” → Web application.'],
+      ['Under “Authorised redirect URIs” press Add URI and paste the redirect address below. Press Create.'],
+      ['Copy the Client ID and Client secret it shows into the boxes here and press Save.'],
+      ['Back on the consent screen (Audience), press “Publish app” so everyone can sign in, not only test users.'],
+    ],
+    redirectHelp: 'paste it in Google under “Authorised redirect URIs”',
     fields: [
       { key: 'clientId', label: 'Client ID', placeholder: '…apps.googleusercontent.com', help: ['Shown when the client is made (ends with .apps.googleusercontent.com).'] },
       { key: 'clientSecret', label: 'Client secret', secret: true, placeholder: 'Paste the Client secret', help: ['Shown next to the Client ID.'] },
@@ -347,8 +382,13 @@ const FIELD_CARDS = {
     title: 'Facebook sign-in',
     sub: 'Sign in with a Facebook account',
     what: 'keys',
-    where: [link('https://developers.facebook.com/apps', 'Meta for Developers'), ' → your app → App settings → Basic.'],
-    redirectHelp: 'In Meta for Developers → your app → Facebook Login → Settings, paste this address in the “Redirect URIs” box:',
+    steps: [
+      ['In ', link('https://developers.facebook.com/apps', 'Meta for Developers'), ' make a separate app with the use case “Authenticate and request data from users with Facebook Login” (Meta will not put it in the WhatsApp app). In that use case, add the email permission.'],
+      ['Facebook Login → Settings: paste the redirect address below in “Valid OAuth Redirect URIs” and save.'],
+      ['App settings → Basic: copy the App ID and App secret (press Show) into the boxes here and press Save. On the same Meta page paste the Privacy policy and Data deletion addresses below.'],
+      ['Switch the app to Live (at the top of the Meta page), so everyone can sign in, not only you.'],
+    ],
+    redirectHelp: 'paste it in Meta under Facebook Login → Settings → “Valid OAuth Redirect URIs”',
     fields: [
       { key: 'appId', label: 'App ID', placeholder: 'Only digits', inputmode: 'numeric', help: ['At the top of App settings → Basic.'] },
       { key: 'appSecret', label: 'App secret', secret: true, placeholder: 'Paste the App secret', help: ['Same page: App secret → press Show, then copy it.'] },
@@ -432,7 +472,7 @@ function fieldsForm(c, data) {
         const now = r.data.connections.find((x) => x.id === c.id);
         toast(c.id === 'whatsapp'
           ? `WhatsApp keys saved · token ends …${now.masks?.token}. Send a test code to check them.`
-          : `${NAMES[c.id]} keys saved · secret ends …${now.last4}. Sign-in with ${NAMES[c.id]} comes next.`);
+          : `${NAMES[c.id]} keys saved · secret ends …${now.last4}. Press Try sign-in to check them.`);
         if (c.id === 'whatsapp') $('wa-phone')?.focus();
       },
     },
@@ -469,15 +509,79 @@ function whatsappCard(c, data) {
 
 function signinStatus(c) {
   if (c.set && !c.readable) return { pill: 'warn', text: 'Needs attention' };
-  if (c.set) return { pill: 'saved', text: 'Saved' };
-  return { pill: 'off', text: 'Not set' };
+  if (!c.set) return { pill: 'off', text: 'Not set' };
+  if (c.lastSend?.ok) return { pill: 'live', text: 'Working' };
+  if (c.lastSend) return { pill: 'warn', text: c.lastSend.kind === 'try' ? 'Last try failed' : 'Needs attention' };
+  return { pill: 'saved', text: 'Saved · not tried' };
 }
+
+/**
+ * A good try proves only that the keys and the redirect address work: the owner got in. While the Google app is
+ * in Testing (Facebook: Development mode) nobody else can, and that is decided on Google's / Facebook's own page,
+ * so it never shows up here. Say so plainly.
+ */
+const ONLY_YOU = {
+  google: 'If the Google app is still in Testing, only you and its test users can sign in. On Google’s consent screen press “Publish app” so everyone can.',
+  facebook: 'If the Facebook app is still in Development mode, only you and people with a role on the app can sign in. Switch the app to Live in Meta so everyone can.',
+};
+/** A failure every sign-in will hit until it is fixed (not a cancel or a slow answer) — and what fixes it. */
+const SETUP_FIX = {
+  bad_keys: () => 'Copy the keys again and save them',
+  redirect: (name) => `Add the redirect address in ${name}`,
+  not_live: (name, id) => (id === 'google' ? 'Press “Publish app” on Google’s consent screen' : 'Switch the app to Live in Meta'),
+};
 
 function signinAppLine(c, data) {
   const name = NAMES[c.id];
-  if (data.devAuth) return `Test mode: the ${name} button lets people in without checking.`;
-  if (c.set) return `Saved — sign-in comes next. Until then the app shows the ${name} button dimmed, “Coming soon”.`;
-  return `The app shows the ${name} button dimmed, “Coming soon”. Save the keys now; sign-in comes next.`;
+  const s = c.lastSend;
+  if (c.live) {
+    if (s?.ok) return [h('b', { text: 'Keys work. ' }), ONLY_YOU[c.id]];
+    if (s && SETUP_FIX[s.reason]) {
+      return [h('b', { class: 'cx-bad', text: `The ${name} button is on in the app, but the last ${s.kind === 'try' ? 'try' : 'sign-in'} failed (${SIGNIN_REASON_WORDS[s.reason]}): people who tap it are sent back.` }),
+        ` ${SETUP_FIX[s.reason](name, c.id)}, then press Try sign-in — or remove the keys to show “Coming soon”.`];
+    }
+    if (s) return `The ${name} button is on in the app. The last try did not finish (${SIGNIN_REASON_WORDS[s.reason] || s.reason}): press Try sign-in again to check it works.`;
+    return `The ${name} button is on in the app. Press Try sign-in to check it works.`;
+  }
+  if (data.devAuth) return `Test mode: until the keys are saved, the ${name} button lets people in without checking.`;
+  if (c.set) return `The keys cannot be read, so the app shows the ${name} button dimmed, “Coming soon”.`;
+  return `The app shows the ${name} button dimmed, “Coming soon”, until the keys are saved.`;
+}
+
+const SIGNIN_REASON_WORDS = {
+  cancelled: 'cancelled, or the account was not let in',
+  bad_keys: 'wrong ID or secret',
+  redirect: 'redirect address not added',
+  not_live: 'app not live yet',
+  expired: 'took too long',
+  provider_error: 'a problem on their side',
+  timeout: 'no answer in time',
+  network: 'could not connect',
+  other: 'refused',
+};
+
+/** "Last try: worked 13 Oct, 14:02" or why not (a real sign-in that hit a setup problem shows here too). */
+function lastTryLine(c) {
+  const s = c.lastSend;
+  if (!s) return null;
+  const label = s.kind === 'try' ? 'Last try' : 'Last sign-in';
+  if (s.ok) return row(label, h('span', { class: 'cx-ok', text: `Worked ${when(s.at)}` }));
+  return row(label, h('span', { class: 'cx-bad', text: `Did not work ${when(s.at)}` }),
+    ` · ${SIGNIN_REASON_WORDS[s.reason] || s.reason}`, s.detail ? h('span', { class: 'cx-fine', text: ` · ${NAMES[c.id]} said: ${s.detail}` }) : null);
+}
+
+/** "Try sign-in": the real sign-in in a new tab, ending on a small result page. Nothing is made. */
+function tryBlock(c) {
+  const name = NAMES[c.id];
+  const ready = c.live;
+  return h('div', { class: 'cx-try' },
+    h('h3', { text: 'Try sign-in' }),
+    h('p', { class: 'cx-help' }, ready
+      ? `Opens ${name} in a new tab. Sign in with your own account: the last page says “Works ✓” with the name ${name} gave, or what to fix. No profile is made.`
+      : 'Save the keys first, then try them here.'),
+    ready
+      ? h('a', { class: 'btn cx-test-btn cx-try-btn', href: c.tryUrl, target: '_blank', rel: 'noopener' }, `Try ${name} sign-in`)
+      : h('button', { type: 'button', class: 'btn cx-test-btn cx-try-btn', disabled: true }, `Try ${name} sign-in`));
 }
 
 function copyButton(text) {
@@ -496,11 +600,19 @@ function copyButton(text) {
   }, 'Copy');
 }
 
+/** One address to paste into Google / Facebook, with its Copy button. */
+function addressRow(label, help, value) {
+  return h('div', { class: 'cx-redirect' },
+    h('p', { class: 'cx-help' }, h('b', { text: `${label}` }), help ? ` — ${help}` : ''),
+    h('div', { class: 'cx-copy-row' }, h('code', { class: 'cx-mono cx-address', text: value }), copyButton(value)));
+}
+
 function signinCard(c, data) {
   const card = FIELD_CARDS[c.id];
   const st = signinStatus(c);
   const f = c.fields || {};
   const idKey = card.fields[0].key;
+  const where = c.id === 'google' ? 'in Google on the consent screen (“Application privacy policy link”)' : 'in Meta under App settings → Basic';
   return h('section', { class: 'panel cx-card cx-signin', 'aria-labelledby': `cx-${c.id}` },
     h('div', { class: 'cx-head' }, logo(c.id),
       h('div', { class: 'cx-title' }, h('h2', { id: `cx-${c.id}`, text: card.title }), h('p', { class: 'cx-sub', text: card.sub })),
@@ -508,21 +620,26 @@ function signinCard(c, data) {
     h('dl', { class: 'cx-status' },
       row('Keys', ...keysLine(c)),
       c.set && c.readable ? row(card.fields[0].label, h('code', { class: 'cx-mono', text: f[idKey] })) : null,
-      row('In the app', signinAppLine(c, data))),
+      row('In the app', signinAppLine(c, data)),
+      lastTryLine(c)),
     h('div', { class: 'cx-signin-body' },
-      h('p', { class: 'cx-help cx-where' }, h('b', { text: 'Where to get the keys: ' }), ...card.where),
-      h('div', { class: 'cx-redirect' },
-        h('p', { class: 'cx-help' }, card.redirectHelp),
-        h('div', { class: 'cx-copy-row' }, h('code', { class: 'cx-mono cx-address', text: c.redirect }), copyButton(c.redirect))),
-      fieldsForm(c, data)));
+      h('div', { class: 'cx-where' },
+        h('p', { class: 'cx-help' }, h('b', { text: 'How to get the keys:' })),
+        h('ol', { class: 'cx-steps' }, card.steps.map((step) => h('li', {}, ...step)))),
+      addressRow('Redirect address', card.redirectHelp, c.redirect),
+      addressRow('Privacy policy address', `paste it ${where}`, c.privacyUrl),
+      c.id === 'facebook' ? addressRow('Data deletion address', 'paste it in Meta under App settings → Basic (“Data deletion instructions URL”)', c.deleteUrl)
+        : addressRow('Data deletion address', 'how people have their data deleted (Google may ask for it too)', c.deleteUrl),
+      fieldsForm(c, data),
+      tryBlock(c)));
 }
 
 // ---------- remove ----------
 const REMOVE_TEXT = {
   telegram: (devAuth) => `Remove the Telegram token?\n\nTelegram codes stop until a new token is saved.${devAuth ? ' In test mode codes then show on the screen instead.' : ''}`,
   whatsapp: () => 'Remove the WhatsApp keys?\n\nWhatsApp codes stop until all four boxes are saved again.',
-  google: () => 'Remove the Google keys?\n\nNothing changes in the app yet: Google sign-in comes next.',
-  facebook: () => 'Remove the Facebook keys?\n\nNothing changes in the app yet: Facebook sign-in comes next.',
+  google: () => 'Remove the Google keys?\n\nThe Google button in the app goes back to “Coming soon”, and nobody can sign in with Google until keys are saved again.',
+  facebook: () => 'Remove the Facebook keys?\n\nThe Facebook button in the app goes back to “Coming soon”, and nobody can sign in with Facebook until keys are saved again.',
 };
 async function removeConnection(id) {
   if (!confirm(REMOVE_TEXT[id](state.data?.devAuth))) return;
@@ -535,10 +652,17 @@ async function removeConnection(id) {
 
 // ---------- render ----------
 function headline(data) {
-  const live = data.connections.filter((c) => c.kind === 'code' && c.live).map((c) => c.name);
+  const codes = data.connections.filter((c) => c.kind === 'code');
+  const offered = codes.filter((c) => c.live && c.offered).map((c) => c.name);
+  const stopped = codes.filter((c) => c.live && c.offer?.state === 'stopped').map((c) => c.name);
+  const untested = codes.filter((c) => c.live && c.offer?.state === 'untested').map((c) => c.name);
   const attention = data.connections.filter((c) => c.set && c.readable === false).map((c) => NAMES[c.id]);
   if (attention.length) return `${attention.join(' + ')} needs attention`;
-  if (live.length) return `Codes live: ${live.join(' + ')}`;
+  const parts = [];
+  if (offered.length) parts.push(`Codes live: ${offered.join(' + ')}`);
+  if (stopped.length) parts.push(`${stopped.join(' + ')} stopped`);
+  if (untested.length) parts.push(`${untested.join(' + ')}: send a test code`);
+  if (parts.length) return parts.join(' · ');
   return data.testCodes ? 'Test codes · nothing live yet' : 'No code channel live';
 }
 
@@ -570,6 +694,19 @@ function render(data, { fresh = null } = {}) {
 $('signout').addEventListener('click', async () => {
   await fetch('/30da/admin/api/signout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
   location.href = '/30da/admin';
+});
+
+// Back from the "Try sign-in" tab (or another tab): show the latest status. Typed boxes stay (render keeps drafts).
+let refreshing = false;
+window.addEventListener('focus', async () => {
+  if (refreshing || state.busy || !state.data) return;
+  refreshing = true;
+  try {
+    const r = await call('GET', API);
+    if (r.ok) render(r.data);
+  } catch { /* signed out: call() already moved on */ } finally {
+    refreshing = false;
+  }
 });
 
 (async () => {

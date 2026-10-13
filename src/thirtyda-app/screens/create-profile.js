@@ -150,7 +150,9 @@ function brandMark(key) {
   return svg;
 }
 
-// Which of the buttons work right now (GET /auth/methods: { code:{ telegram, whatsapp }, signin:{ google, facebook } }).
+// Which of the buttons work right now (GET /auth/methods: { code:{ telegram, whatsapp }, signin:{ google, facebook },
+// signinTest:{ google, facebook } }). signinTest = test mode's instant test sign-in; otherwise a working Google /
+// Facebook button goes to the real sign-in (/30da/api/auth/<provider>/start) and comes back to this step.
 // Kept a minute; unknown (the call failed) → every button stays on and the server answers for itself.
 let methodsCache = null;
 async function loadMethods() {
@@ -206,13 +208,17 @@ function verifyErrorText(err) {
  * resend countdown → green "Phone verified". A live channel really sends ("We sent a code to your Telegram");
  * test mode shows the code on screen. If the channel cannot deliver, the message offers the other one.
  * A button that does not work yet (GET /auth/methods) is dimmed with "Coming soon"; tapping it says why.
- * Facebook / Google say "Coming soon" until their sign-in is built (test mode keeps its test sign-in).
+ * Facebook / Google say "Coming soon" until their keys are saved on the admin Code page; then a tap leaves for
+ * Google / Facebook and comes back here (test mode without keys keeps its instant test sign-in).
  * `model` (see blankPhone) keeps the state across re-renders. onVerified(response) after a good code.
- * signin: { verified: () => ({ gmail, facebook }), onVerified(verified) } — what the session has proved.
+ * signin: { verified: () => ({ gmail, facebook }), onVerified(verified), beforeLeave() } — what the session has
+ * proved; beforeLeave runs just before the page goes to Google / Facebook (to keep what was typed).
+ * notice: { text, ok, icon } shown once at the start, as a calm note (the way back from Google / Facebook:
+ * "Verified with Google." or why not).
  * onMethods(methods) once GET /auth/methods has answered (not called when it failed), so the screen can word
  * its own notes from the same answer (see signinWorks).
  */
-export function phoneVerifier(model, { onVerified, onChange, onMethods, signin = null } = {}) {
+export function phoneVerifier(model, { onVerified, onChange, onMethods, signin = null, notice = null } = {}) {
   model.channel ||= 'telegram';
   model.failed ||= [];
   const uid = `pv${++verifierSeq}`;
@@ -243,6 +249,17 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
 
   const codeOn = (key) => methods?.code?.[key] !== false;
   const signinOn = (provider) => methods?.signin?.[provider] !== false;
+  /** Some code channel works (or it is not known yet). None → no phone box, one calm line instead. */
+  const anyCodeOn = () => CODE_CHANNELS.some(([key]) => codeOn(key));
+  /** "Sign-in with Google is coming soon." — pointing at the phone only while a code channel works. */
+  const signinSoonText = (name) => t(anyCodeOn() ? 'cp_signin_soon' : 'cp_signin_soon_only', { name });
+  /** No code channel works: "Codes by phone are coming soon. For now, sign in with Facebook or Google." (the working ones). */
+  function phoneSoonText() {
+    const proved = signin?.verified?.() || {};
+    const names = signin && !SIGN_INS.some(([, key]) => proved[key])
+      ? SIGN_INS.filter(([provider]) => methods?.signin?.[provider] === true).map(([, , name]) => name) : [];
+    return names.length ? t('cp_phone_soon_with', { names: names.join(t('cp_or')) }) : t('cp_phone_soon');
+  }
 
   /** The other code channel can still be offered: it works and has not failed here already. */
   const otherWorks = (channel) => {
@@ -276,15 +293,21 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
   async function signIn(provider, key, name) {
     if (signingIn || signin?.verified?.()[key]) return;
     showError(null);
-    if (!signinOn(provider)) return showNote(t('cp_signin_soon', { name }));
+    if (!signinOn(provider)) return showNote(signinSoonText(name));
     signingIn = provider;
     render();
+    if (methods?.signinTest?.[provider] !== true) {
+      // The real sign-in: the whole page goes to Google / Facebook and comes back to this step.
+      try { signin?.beforeLeave?.(); } catch { /* keeping the draft is a nicety */ }
+      location.assign(`/30da/api/auth/${provider}/start`);
+      return;
+    }
     try {
       const r = await api.post('/auth/verify-social', { provider });
       signin.onVerified?.({ ...(r.verified || {}), [key]: true });
       showNote(t('cp_verified_with', { name }), 'check');
     } catch (err) {
-      if (err.code === 'oauth_unavailable') showNote(t('cp_signin_soon', { name }));
+      if (err.code === 'oauth_unavailable') showNote(signinSoonText(name));
       else showError(err.status === 0 ? t('err_network') : t('err_generic'));
     } finally {
       signingIn = null;
@@ -424,13 +447,16 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
           if (model.codeSent && fullPhone(model) !== model.sentTo) Object.assign(model, { codeSent: false, devCode: null, code: '', live: false, sentBy: null });
           sendBtn.disabled = sending || waiting() || !fullPhone(model);
           codeBox.hidden = !model.codeSent;
-          hint.hidden = model.codeSent;
+          hint.hidden = model.codeSent || !codeOn(model.channel);
         },
         keydown: (e) => { if (e.key === 'Enter') send(); },
       },
     });
-    // "Your code comes by Telegram." — which of the two the Send button uses.
-    const hint = el('p', { class: 'way-hint', id: `${uid}-by`, hidden: model.codeSent }, t('cp_code_comes_by', { channel: channelName(model.channel) }));
+    // "Your code comes by Telegram." — which of the two the Send button uses; only when that one is offered.
+    const hint = el('p', { class: 'way-hint', id: `${uid}-by`, hidden: model.codeSent || !codeOn(model.channel) },
+      t('cp_code_comes_by', { channel: channelName(model.channel) }));
+    // No code channel offered at all (and no code out): no phone box and Send button that can only fail, one calm line.
+    const phoneSoon = !anyCodeOn() && !model.codeSent;
 
     const codeBox = el('div', { class: 'stack', style: { '--gap': '8px' }, hidden: !model.codeSent });
     if (model.codeSent) {
@@ -455,11 +481,18 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     }
     // "Google or Facebook is enough to start…" only once one of them is known to work.
     const signinNote = signin && signinWorks(methods) ? el('p', { class: 'help' }, t('cp_social_note')) : null;
-    node.replaceChildren(...[waysRow(), note, hint, el('div', { class: 'phone-row' }, ccSel, phoneInput, sendBtn), codeBox, error, signinNote]
-      .filter(Boolean));
+    const phoneRow = phoneSoon
+      ? el('p', { class: 'way-hint way-soon', role: 'note' }, phoneSoonText())
+      : [hint, el('div', { class: 'phone-row' }, ccSel, phoneInput, sendBtn)];
+    node.replaceChildren(...[waysRow(), note, phoneRow, codeBox, error, signinNote].flat().filter(Boolean));
   }
 
   render();
+  // A calm note either way (never the red error): the way back from Google / Facebook.
+  if (notice?.text) showNote(notice.text, notice.icon || (notice.ok ? 'check' : 'clock'));
+  // Back from Google / Facebook with the browser's back button (page restored from memory): the button is free again.
+  const onShow = (e) => { if (e.persisted && signingIn) { signingIn = null; render(); } };
+  window.addEventListener('pageshow', onShow);
   loadMethods().then((m) => {
     if (!alive || !m) return;
     methods = m;
@@ -478,7 +511,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
   return {
     node,
     focusCode: () => codeEl?.focus(),
-    destroy: () => { alive = false; clearInterval(resendTimer); },
+    destroy: () => { alive = false; clearInterval(resendTimer); window.removeEventListener('pageshow', onShow); },
   };
 }
 
@@ -487,8 +520,48 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
 const blankDraft = () => ({
   photo: null, name: '', birthYear: '', realName: '', gender: '', role: '', phone: blankPhone(), verified: { gmail: false, facebook: false },
 });
-// Survives a language switch (which re-renders this screen) but not a reload.
+// Survives a language switch (which re-renders this screen) but not a reload — except the trip to Google /
+// Facebook and back: stashDraft keeps what was typed in this tab (sessionStorage) and the screen takes it back once.
 let draft = blankDraft();
+const DRAFT_KEY = '30da_cp_draft';
+
+function stashDraft() {
+  try {
+    const { photo, name, birthYear, realName, gender, role } = draft;
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ photo, name, birthYear, realName, gender, role, cc: draft.phone.cc, phone: draft.phone.phone }));
+  } catch { /* storage full or off: they type it again */ }
+}
+
+function takeStashedDraft() {
+  let saved = null;
+  try {
+    saved = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null');
+    sessionStorage.removeItem(DRAFT_KEY);
+  } catch { /* nothing kept */ }
+  if (!saved || typeof saved !== 'object') return;
+  const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
+  if (typeof saved.photo === 'string' && saved.photo.startsWith('data:image/')) draft.photo = saved.photo;
+  draft.name = str(saved.name, NAME_RAW_MAX) || draft.name;
+  draft.birthYear = str(String(saved.birthYear ?? ''), 4) || draft.birthYear;
+  draft.realName = str(saved.realName, 60) || draft.realName;
+  draft.gender = str(saved.gender, 10) || draft.gender;
+  draft.role = str(saved.role, 40) || draft.role;
+  if (str(saved.cc, 6)) draft.phone.cc = str(saved.cc, 6);
+  if (str(saved.phone, 20) && !draft.phone.verified) draft.phone.phone = str(saved.phone, 20);
+}
+
+const SIGNIN_NAMES = { google: 'Google', facebook: 'Facebook' };
+const SIGNIN_ERRORS = ['cancelled', 'expired', 'unavailable', 'failed', 'too_many'];
+const SIGNIN_ERROR_ICON = { cancelled: 'question', expired: 'clock', too_many: 'clock', unavailable: 'refresh', failed: 'refresh' };
+
+/** The way back from Google / Facebook (#/create?signin=google&ok=1 | &error=cancelled) → the phone step's notice. */
+function signinNotice(query) {
+  const name = SIGNIN_NAMES[query?.signin];
+  if (!name) return null;
+  if (query.ok === '1') return { ok: true, icon: 'check', text: t('cp_verified_with', { name }) };
+  const reason = SIGNIN_ERRORS.includes(query.error) ? query.error : 'failed';
+  return { ok: false, icon: SIGNIN_ERROR_ICON[reason], text: reason === 'too_many' ? t('cp_too_many') : t(`cp_signin_${reason}`, { name }) };
+}
 
 function nameProblem(value) {
   const problem = appNameProblem(value);
@@ -519,8 +592,14 @@ function languageSheet() {
   { sheet: true, label: t('cp_choose_language') });
 }
 
-screen('/create', ({ root }) => {
+screen('/create', ({ root, query }) => {
   root.classList.add('create');
+  // Back from Google / Facebook: what was typed before leaving, and a word on how it went (said once).
+  takeStashedDraft();
+  const notice = signinNotice(query);
+  if (query?.signin) {
+    try { history.replaceState(history.state, '', '#/create'); } catch { /* the address keeps its query */ }
+  }
   // A session that already proved something (e.g. phone verified, then the tab was closed).
   const pending = state.pending;
   if (pending?.phoneVerified && !draft.phone.verified) Object.assign(draft.phone, { verified: true, verifiedPhone: pending.phone || '' });
@@ -637,7 +716,9 @@ screen('/create', ({ root }) => {
     signin: {
       verified: () => draft.verified,
       onVerified: (verified) => { draft.verified = { ...draft.verified, ...verified }; },
+      beforeLeave: stashDraft,
     },
+    notice,
   });
 
   // --- continue
@@ -789,6 +870,14 @@ registerStrings({
     cp_code_comes_by: 'Your code comes by {channel}.',
     cp_soon: 'Coming soon',
     cp_signin_soon: 'Sign-in with {name} is coming soon. For now, get a code on your phone.',
+    cp_signin_soon_only: 'Sign-in with {name} is coming soon.',
+    cp_phone_soon: 'Codes by phone are coming soon.',
+    cp_phone_soon_with: 'Codes by phone are coming soon. For now, sign in with {names}.',
+    cp_or: ' or ',
+    cp_signin_cancelled: 'You stopped the {name} sign-in. Nothing was saved — pick a way to verify.',
+    cp_signin_expired: 'The {name} sign-in took too long. Please try again.',
+    cp_signin_unavailable: 'Sign-in with {name} is not working right now. Please try again later.',
+    cp_signin_failed: '{name} sign-in did not work this time. Please try again.',
     cp_verified_with: 'Verified with {name}.',
     cp_code_sent_ch: 'We sent a code to your {channel} ({phone}).',
     cp_ch_not_on: 'We could not send a {channel} code to this number. Check the number, or get the code by {other}.',
@@ -862,6 +951,14 @@ registerStrings({
     cp_code_comes_by: 'លេខកូដរបស់អ្នកនឹងផ្ញើមកតាម {channel}។',
     cp_soon: 'ឆាប់ៗនេះ',
     cp_signin_soon: 'ការចូលតាម {name} នឹងមានឆាប់ៗនេះ។ សម្រាប់ពេលនេះ សូមទទួលលេខកូដតាមទូរស័ព្ទរបស់អ្នក។',
+    cp_signin_soon_only: 'ការចូលតាម {name} នឹងមានឆាប់ៗនេះ។',
+    cp_phone_soon: 'លេខកូដតាមទូរស័ព្ទនឹងមានឆាប់ៗនេះ។',
+    cp_phone_soon_with: 'លេខកូដតាមទូរស័ព្ទនឹងមានឆាប់ៗនេះ។ សម្រាប់ពេលនេះ សូមចូលតាម {names}។',
+    cp_or: ' ឬ ',
+    cp_signin_cancelled: 'អ្នកបានបញ្ឈប់ការចូលតាម {name}។ គ្មានអ្វីត្រូវបានរក្សាទុកទេ — សូមជ្រើសរើសវិធីផ្ទៀងផ្ទាត់មួយ។',
+    cp_signin_expired: 'ការចូលតាម {name} ចំណាយពេលយូរពេក។ សូមព្យាយាមម្ដងទៀត។',
+    cp_signin_unavailable: 'ការចូលតាម {name} មិនដំណើរការនៅពេលនេះទេ។ សូមព្យាយាមម្ដងទៀតនៅពេលក្រោយ។',
+    cp_signin_failed: 'ការចូលតាម {name} មិនបានសម្រេចលើកនេះទេ។ សូមព្យាយាមម្ដងទៀត។',
     cp_verified_with: 'បានផ្ទៀងផ្ទាត់ជាមួយ {name}។',
     cp_code_sent_ch: 'យើងបានផ្ញើលេខកូដទៅ {channel} របស់អ្នក ({phone})។',
     cp_ch_not_on: 'យើងមិនអាចផ្ញើលេខកូដតាម {channel} ទៅលេខនេះបានទេ។ សូមពិនិត្យលេខ ឬទទួលលេខកូដតាម {other}។',
@@ -935,6 +1032,14 @@ registerStrings({
     cp_code_comes_by: '验证码将通过 {channel} 发送。',
     cp_soon: '即将推出',
     cp_signin_soon: '{name} 登录即将推出。现在请先用手机接收验证码。',
+    cp_signin_soon_only: '{name} 登录即将推出。',
+    cp_phone_soon: '手机验证码即将推出。',
+    cp_phone_soon_with: '手机验证码即将推出。现在请先用 {names} 登录。',
+    cp_or: ' 或 ',
+    cp_signin_cancelled: '你已取消 {name} 登录，没有保存任何内容。请选择一种验证方式。',
+    cp_signin_expired: '{name} 登录用时太久，请再试一次。',
+    cp_signin_unavailable: '{name} 登录暂时无法使用，请稍后再试。',
+    cp_signin_failed: '这次 {name} 登录没有成功，请再试一次。',
     cp_verified_with: '已通过 {name} 验证。',
     cp_code_sent_ch: '验证码已发送到你的 {channel}（{phone}）。',
     cp_ch_not_on: '无法通过 {channel} 向这个号码发送验证码。请检查号码，或改用 {other} 接收。',
@@ -1008,6 +1113,14 @@ registerStrings({
     cp_code_comes_by: '코드는 {channel}(으)로 보내 드려요.',
     cp_soon: '곧 제공',
     cp_signin_soon: '{name} 로그인은 곧 제공돼요. 지금은 휴대폰으로 코드를 받아 주세요.',
+    cp_signin_soon_only: '{name} 로그인은 곧 제공돼요.',
+    cp_phone_soon: '휴대폰 코드 인증은 곧 제공돼요.',
+    cp_phone_soon_with: '휴대폰 코드 인증은 곧 제공돼요. 지금은 {names}(으)로 로그인해 주세요.',
+    cp_or: ' 또는 ',
+    cp_signin_cancelled: '{name} 로그인을 취소했어요. 저장된 것은 없어요. 인증 방법을 골라 주세요.',
+    cp_signin_expired: '{name} 로그인 시간이 너무 오래 걸렸어요. 다시 시도해 주세요.',
+    cp_signin_unavailable: '지금은 {name} 로그인을 사용할 수 없어요. 잠시 후 다시 시도해 주세요.',
+    cp_signin_failed: '이번에는 {name} 로그인이 되지 않았어요. 다시 시도해 주세요.',
     cp_verified_with: '{name}(으)로 인증했어요.',
     cp_code_sent_ch: '{channel}({phone})(으)로 코드를 보냈어요.',
     cp_ch_not_on: '이 번호로는 {channel} 코드를 보낼 수 없어요. 번호를 확인하거나 {other}(으)로 받아 보세요.',
@@ -1081,6 +1194,14 @@ registerStrings({
     cp_code_comes_by: 'コードは{channel}に届きます。',
     cp_soon: '近日公開',
     cp_signin_soon: '{name}でのログインは近日公開です。今は電話でコードを受け取ってください。',
+    cp_signin_soon_only: '{name}でのログインは近日公開です。',
+    cp_phone_soon: '電話でのコード確認は近日公開です。',
+    cp_phone_soon_with: '電話でのコード確認は近日公開です。今は{names}でログインしてください。',
+    cp_or: 'または',
+    cp_signin_cancelled: '{name}でのログインを中止しました。何も保存されていません。確認方法を選んでください。',
+    cp_signin_expired: '{name}でのログインに時間がかかりすぎました。もう一度お試しください。',
+    cp_signin_unavailable: '今は{name}でログインできません。しばらくしてからもう一度お試しください。',
+    cp_signin_failed: '今回は{name}でログインできませんでした。もう一度お試しください。',
     cp_verified_with: '{name}で確認しました。',
     cp_code_sent_ch: 'あなたの{channel}（{phone}）にコードを送りました。',
     cp_ch_not_on: 'この番号には{channel}でコードを送れませんでした。番号を確認するか、{other}で受け取ってください。',
