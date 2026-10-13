@@ -100,7 +100,6 @@ export const LEVEL_RULES = { 1: { pick: 4, write: 1 }, 2: { pick: 2, write: 3 } 
 export const L1_ANSWERS = [
   q('yes', 'Yes', 'បាទ/ចាស', '是的', '네', 'はい'),
   q('no', 'No', 'ទេ', '不是', '아니요', 'いいえ'),
-  q('ok', 'OK', 'ធម្មតា', '还好', '괜찮아요', 'まあまあ'),
   q('not_really', 'Not really', 'មិនសូវទេ', '不太是', '별로요', 'そうでもない'),
   q('maybe', 'Maybe', 'ប្រហែលជា', '可能吧', '아마도요', 'たぶん'),
 ];
@@ -143,7 +142,10 @@ export function questionText(level, key, lang) {
 }
 
 // Localized text of a Level 1 answer option, or null for an unknown key.
+// No longer offered (Gamini 2026-10-13), but answers already given with it still read back.
+const RETIRED_L1_ANSWERS = [q('ok', 'OK', 'ធម្មតា', '还好', '괜찮아요', 'まあまあ')];
+
 export function answerText(key, lang) {
-  const found = L1_ANSWERS.find((item) => item.key === key);
+  const found = [...L1_ANSWERS, ...RETIRED_L1_ANSWERS].find((item) => item.key === key);
   return found ? pickLang(found.text, lang) : null;
 }

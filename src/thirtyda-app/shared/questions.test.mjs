@@ -88,7 +88,7 @@ test('level rules: always 5 questions', () => {
 
 test('Level 1 answers and roles match the contract', () => {
   assert.deepEqual(L1_ANSWERS.map((x) => [x.key, x.text.en]), [
-    ['yes', 'Yes'], ['no', 'No'], ['ok', 'OK'], ['not_really', 'Not really'], ['maybe', 'Maybe'],
+    ['yes', 'Yes'], ['no', 'No'], ['not_really', 'Not really'], ['maybe', 'Maybe'],
   ]);
   assert.deepEqual(ROLES.map((x) => [x.key, x.text.en]), [
     ['sales', 'Sales'], ['accountant', 'Accountant'], ['hr', 'HR'], ['administration', 'Administration'],

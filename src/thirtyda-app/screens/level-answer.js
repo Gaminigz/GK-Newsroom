@@ -17,13 +17,13 @@ const drafts = new Map(); // `${pairId}:${level}` → { [n]: answer key (L1) | t
 const canAnswer = (pair, level) => stageLevel(pair) === level
   && (pair.next === 'answer' || (pair.next === 'ask_answer' && pair.myIncoming?.received && !pair.myIncoming?.answered));
 
-/** "1 · SYSTEM" / "5 · BY DARA", the question in my language, and the writer's original when it differs. */
+/** The list's topic ("COMMUNICATION") or "BY DARA" — no numbers — then the line in my language. */
 function questionHead(q, name) {
   const written = q.source === 'written';
   const theirLang = q.originalLang || null;
   const untranslated = written && !q.translated && theirLang && theirLang !== myLang();
   return [
-    el('span', { class: 'label ink' }, written ? t('lan_by', { n: q.n, name }) : t('lan_system', { n: q.n })),
+    written ? el('span', { class: 'label ink' }, t('lan_by', { name })) : q.topic ? el('span', { class: 'label ink' }, q.topic) : null,
     el('p', { class: 'qtext', id: `lan-q-${q.n}`, lang: untranslated ? theirLang : null }, q.text),
     written && q.translated && q.original && q.original !== q.text
       ? el('p', { class: 'qorig', lang: theirLang }, q.original)
@@ -260,7 +260,7 @@ registerStrings({
     lan_title: '{name} started a conversation',
     lan_sub: 'Level {n}/3 · {done}/{total} replied',
     lan_system: '{n} · System',
-    lan_by: '{n} · By {name}',
+    lan_by: 'By {name}',
     lan_no_translation: 'Translation not available yet.',
     lan_hint_1: 'One tap for each line. Your replies send by themselves after the 5th.',
     lan_ph: 'Reply in your own words',
@@ -276,7 +276,7 @@ registerStrings({
     lan_title: '{name} បានចាប់ផ្ដើមការសន្ទនា',
     lan_sub: 'កម្រិត {n}/3 · បានឆ្លើយតប {done}/{total}',
     lan_system: '{n} · ប្រព័ន្ធ',
-    lan_by: '{n} · ដោយ {name}',
+    lan_by: 'ដោយ {name}',
     lan_no_translation: 'មិនទាន់មានការបកប្រែនៅឡើយទេ។',
     lan_hint_1: 'ចុចម្ដងសម្រាប់ឃ្លានីមួយៗ។ ការឆ្លើយតបរបស់អ្នកនឹងផ្ញើដោយស្វ័យប្រវត្តិ បន្ទាប់ពីឃ្លាទី 5។',
     lan_ph: 'ឆ្លើយតបតាមពាក្យរបស់អ្នកផ្ទាល់',
@@ -292,7 +292,7 @@ registerStrings({
     lan_title: '{name} 开始了对话',
     lan_sub: '等级 {n}/3 · 已回复 {done}/{total}',
     lan_system: '{n} · 系统',
-    lan_by: '{n} · 来自 {name}',
+    lan_by: '来自 {name}',
     lan_no_translation: '暂时还没有翻译。',
     lan_hint_1: '每句点一下即可。回复完第 5 句后会自动发送。',
     lan_ph: '用你自己的话回复',
@@ -308,7 +308,7 @@ registerStrings({
     lan_title: '{name}님이 대화를 시작했어요',
     lan_sub: '레벨 {n}/3 · {done}/{total} 답장함',
     lan_system: '{n} · 기본',
-    lan_by: '{n} · {name}님이 쓴 말',
+    lan_by: '{name}님이 쓴 말',
     lan_no_translation: '아직 번역이 없어요.',
     lan_hint_1: '한마디마다 한 번만 누르세요. 5번째까지 누르면 답장이 자동으로 보내져요.',
     lan_ph: '내 말로 답장해 주세요',
@@ -324,7 +324,7 @@ registerStrings({
     lan_title: '{name}さんが会話を始めました',
     lan_sub: 'レベル {n}/3 · {done}/{total} 返信済み',
     lan_system: '{n} · システム',
-    lan_by: '{n} · {name}さんより',
+    lan_by: '{name}さんより',
     lan_no_translation: '翻訳はまだありません。',
     lan_hint_1: 'ひとことごとに1回タップ。5つ目をタップすると返信が自動で送信されます。',
     lan_ph: '自分の言葉で返信する',

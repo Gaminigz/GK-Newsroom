@@ -249,7 +249,7 @@
   const DARA_L2_KEYS = ['l2_window', 'l2_weather'];
   const SOPHEA_L2_KEYS = ['l2_fav_food', 'l2_weekend'];
   const L1_KEYS = ['l1_rain', 'l1_busy', 'l1_outside', 'l1_quiet_day'];
-  const L1_REPLIES = ['yes', 'not_really', 'no', 'ok', 'maybe'];
+  const L1_REPLIES = ['yes', 'not_really', 'no', 'maybe', 'yes']; // 5th = the written line: Yes / No only
 
   // Level 2 answers in words: by system key, or by which written question they answer.
   const ANSWERS = {

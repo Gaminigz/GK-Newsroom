@@ -1292,7 +1292,7 @@ async function sendSet(ctx) {
   const { pick, write } = LEVEL_RULES[level];
   if (list.length !== pick + write) throw invalid(`Send exactly ${pick + write} lines.`, { index: Math.min(list.length, pick + write - 1) });
   // The k-th picked question must be one of the 5 choices the admin set for Question k (slot k).
-  const { slots } = await questionConfig(d, level);
+  const { slots, titles = [] } = await questionConfig(d, level);
   const chosen = new Map(); // index in the list → { slot (1-based), choice }
   let picked = 0;
   list.forEach((q, i) => {
@@ -1319,6 +1319,7 @@ async function sendSet(ctx) {
       return {
         n: i + 1, source: "system", key: q.key, slot, text: choice.text[lang] || choice.text.en, lang,
         translations: Object.fromEntries(LANGS.map((l) => [l, choice.text[l] || choice.text.en])),
+        topic: titles[slot - 1] || null, // the list's topic ("Communication") as it was when sent
       };
     }
     const text = String(q.text).trim();
@@ -1364,13 +1365,15 @@ async function sendSet(ctx) {
   return { pair: await viewOf(d, me, await pairs.findOne({ _id: pair._id })) };
 }
 
-function questionView(q, level, lang) {
+function questionView(q, level, lang, titles = []) {
   if (q.source === "system") {
     // The text stored with the set when it was sent (admin edits since then never show here);
     // a set without stored translations falls back to the built-in bank by key.
     const text = (q.lang === lang ? q.text : null) || q.translations?.[lang] || questionText(level, q.key, lang) || q.text;
+    // Topic stored with the set; older sets read the list's current topic.
+    const topicText = q.topic || titles[(q.slot ?? q.n) - 1] || null;
     return {
-      n: q.n, source: "system", key: q.key, text,
+      n: q.n, source: "system", key: q.key, text, topic: topicText ? topicText[lang] || topicText.en : null,
       original: q.text, originalLang: q.lang, translated: q.lang !== lang,
     };
   }
@@ -1395,6 +1398,7 @@ async function setFor(ctx, direction) {
   if (!set) throw fail(404, "no_set", direction === "in" ? "Nothing for you to reply to yet." : "You have not started this conversation yet.");
   const lang = me.lang ?? "en";
   await backfillSet(d, set, lang);
+  const { titles = [] } = await questionConfig(d, level);
   const who = (u) => (u ? { id: u._id, name: u.name, gender: u.gender ?? null } : null);
   const [from, to] = direction === "in" ? [other, me] : [me, other];
   const answered = Boolean(set.completedAt);
@@ -1404,7 +1408,7 @@ async function setFor(ctx, direction) {
       level,
       from: who(from),
       to: who(to),
-      questions: set.questions.map((q) => questionView(q, level, lang)),
+      questions: set.questions.map((q) => questionView(q, level, lang, titles)),
       answered,
       sentAt: set.sentAt,
       completedAt: set.completedAt,
