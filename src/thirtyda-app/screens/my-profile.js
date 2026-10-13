@@ -355,6 +355,8 @@ screen('/me', async ({ root }) => {
   const section = (labelText, ...kids) => el('section', { class: 'section' }, labelText ? el('span', { class: 'label ink' }, labelText) : null, kids);
 
   body.replaceChildren(
+    // Language first: it decides what everything below (and every chat) is shown in.
+    section(t('me_language'), el('div', { class: 'lang-grid' }, langBtns), el('p', { class: 'help' }, t('me_language_note'))),
     el('section', { class: 'section' },
       el('div', { class: 'section-head' }, el('span', { class: 'label ink' }, t('me_photos')), slotCount),
       slots, keptNote, el('p', { class: 'help' }, t('me_photos_note')), file),
@@ -367,7 +369,6 @@ screen('/me', async ({ root }) => {
         yearCell,
         saveId),
       nameErr, yearErr, truthNote()),
-    section(t('me_language'), el('div', { class: 'lang-grid' }, langBtns), el('p', { class: 'help' }, t('me_language_note'))),
     el('section', { class: 'section' }, el('label', { class: 'label ink', for: 'me-role' }, t('me_role')), roleSel),
     section(t('me_verified_with'), chips, phoneBlock),
     section(t('me_hearts'), el('div', { class: 'row', style: { '--gap': '12px' } }, heartPills(me.hearts, 'lg')),

@@ -845,7 +845,9 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .inline-row .btn { width: auto; flex: none; }
 .inline-row .name-input, .inline-row .year-select { flex: 0 1 auto; }
 .birth-year-line { font-weight: 700; font-variant-numeric: tabular-nums; }
-.me .lang-grid .btn { min-height: 42px; font-size: 15px; }
+/* Me: five small language buttons on one row, thin borders. */
+.me .lang-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.me .lang-grid .btn { flex: 1 1 0; min-width: 0; min-height: 34px; padding: 0 6px; border-width: 1px; border-color: #cfd6e2; border-radius: 999px; font-size: 13.5px; }
 .me .lang-grid .btn[aria-pressed="true"] { background: var(--navy); color: #fff; border-color: var(--navy); }
 .kv { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .kv .icon { flex: none; color: var(--muted); }
