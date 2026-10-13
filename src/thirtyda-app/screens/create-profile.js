@@ -1060,7 +1060,8 @@ screen('/create', ({ root, query }) => {
     pinAgain ? el('p', { class: 'way-msg pin-again-note', role: 'status' }, icon('lock', 14), el('span', {}, t('pin_signin_again'))) : '');
 
   // --- photo
-  const file = el('input', { type: 'file', accept: 'image/*', capture: 'user', class: 'visually-hidden', tabindex: '-1', 'aria-hidden': 'true' });
+  // No `capture`: the phone offers camera OR its photo library (owner 2026-10-13: pick from the phone too).
+  const file = el('input', { type: 'file', accept: 'image/*', class: 'visually-hidden', tabindex: '-1', 'aria-hidden': 'true' });
   const pick = el('button', { type: 'button', class: 'photo-pick', on: { click: () => file.click() } });
   const photoErr = el('p', { class: 'field-error', role: 'alert', hidden: true });
   const paintPhoto = () => {
