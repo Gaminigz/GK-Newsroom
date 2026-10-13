@@ -316,49 +316,44 @@ function sendErrorText(err, channel, otherOn = true) {
   return err.status === 0 ? t('err_network') : t('err_generic');
 }
 
-// The free Telegram bot (owner 2026-10-13): the phone step while it waits for "Share my number" in Telegram.
-// "Share my number" is the bot's own button text in that language (src/lib/thirtyda-telegram-bot.mjs BOT_TEXT).
+// The free Telegram bot (owner 2026-10-13): the phone step while it waits for "Share my number" in Telegram (the
+// bot itself asks for it; this screen only says "Check Telegram for the next step.").
 registerStrings({
   en: {
-    cp_tg_wait: 'Open Telegram and tap “Share my number”.',
-    cp_tg_opened: 'Now tap “Share my number” in Telegram.',
-    cp_tg_open: 'Open Telegram',
+    cp_tg_not_open: 'Telegram did not open?',
+    cp_tg_open_it: 'Open it',
     cp_tg_cancel: 'Cancel',
     cp_tg_mismatch: 'The number in Telegram is not the one you typed. Check the number and try again.',
     cp_tg_expired: 'That took too long. Tap Telegram to try again.',
     cp_tg_match: 'Telegram shows the same sign:',
   },
   km: {
-    cp_tg_wait: 'បើក Telegram ហើយចុច “ចែករំលែកលេខរបស់ខ្ញុំ”។',
-    cp_tg_opened: 'ឥឡូវនេះ សូមចុច “ចែករំលែកលេខរបស់ខ្ញុំ” ក្នុង Telegram។',
-    cp_tg_open: 'បើក Telegram',
+    cp_tg_not_open: 'Telegram មិនបានបើកទេ?',
+    cp_tg_open_it: 'បើកវា',
     cp_tg_cancel: 'បោះបង់',
     cp_tg_mismatch: 'លេខក្នុង Telegram មិនមែនជាលេខដែលអ្នកបានវាយទេ។ សូមពិនិត្យលេខ ហើយសាកម្ដងទៀត។',
     cp_tg_expired: 'ចំណាយពេលយូរពេក។ សូមចុច Telegram ដើម្បីសាកម្ដងទៀត។',
     cp_tg_match: 'Telegram បង្ហាញសញ្ញាដូចគ្នា៖',
   },
   zh: {
-    cp_tg_wait: '打开 Telegram，点“分享我的号码”。',
-    cp_tg_opened: '现在请在 Telegram 里点“分享我的号码”。',
-    cp_tg_open: '打开 Telegram',
+    cp_tg_not_open: 'Telegram 没打开？',
+    cp_tg_open_it: '点此打开',
     cp_tg_cancel: '取消',
     cp_tg_mismatch: 'Telegram 里的号码和你输入的不一样。请检查号码后再试。',
     cp_tg_expired: '时间太久了。请再点一次 Telegram。',
     cp_tg_match: 'Telegram 会显示同样的标记：',
   },
   ko: {
-    cp_tg_wait: 'Telegram을 열고 ‘내 번호 공유’를 누르세요.',
-    cp_tg_opened: '이제 Telegram에서 ‘내 번호 공유’를 누르세요.',
-    cp_tg_open: 'Telegram 열기',
+    cp_tg_not_open: 'Telegram이 열리지 않았나요?',
+    cp_tg_open_it: '열기',
     cp_tg_cancel: '취소',
     cp_tg_mismatch: 'Telegram의 번호가 입력한 번호와 달라요. 번호를 확인하고 다시 해 보세요.',
     cp_tg_expired: '시간이 너무 지났어요. Telegram을 다시 눌러 주세요.',
     cp_tg_match: 'Telegram에도 같은 표시가 나와요:',
   },
   ja: {
-    cp_tg_wait: 'Telegram を開いて「自分の番号を共有」を押してください。',
-    cp_tg_opened: 'では、Telegram で「自分の番号を共有」を押してください。',
-    cp_tg_open: 'Telegram を開く',
+    cp_tg_not_open: 'Telegram が開きませんか？',
+    cp_tg_open_it: '開く',
     cp_tg_cancel: 'キャンセル',
     cp_tg_mismatch: 'Telegram の番号が入力した番号と違います。番号を確認して、もう一度お試しください。',
     cp_tg_expired: '時間がかかりすぎました。もう一度 Telegram を押してください。',
@@ -466,9 +461,10 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
    * the free Telegram bot's check, or a code by that app. It needs the number typed first.
    */
   async function startChannel(key) {
-    if (sending || tgBusy || model.verified) return;
+    // `sending` covers a code on its way and Telegram's start; the bot's status check (tgPolling) never blocks a tap.
+    if (sending || model.verified) return;
     if (!methodsAsked) await methodsReady; // which Telegram it is (the bot or codes): known in a moment
-    if (!alive || sending || tgBusy) return;
+    if (!alive || sending) return;
     if (!codeOn(key)) {
       showError(null);
       showNote(t(otherWorks(key) ? 'cp_ch_off' : 'cp_ch_off_only', { channel: channelName(key), other: channelName(otherChannel(key)) }));
@@ -584,7 +580,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
   function botMode() { return methods?.telegram === 'bot'; }
   model.tg ||= null;
   let tgTimer = null;
-  let tgBusy = false;
+  let tgPolling = false; // a GET /auth/telegram/status is on its way (it never blocks a tap: see startChannel)
   let tgEl = null;
   const onTgVisible = () => { if (document.visibilityState === 'visible' && model.tg) pollTelegram(); };
   function stopTelegram() {
@@ -603,17 +599,16 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     tgTimer = setTimeout(pollTelegram, ms);
   }
   const openTelegram = (link) => {
-    try { window.open(link, '_blank', 'noopener'); } catch { /* blocked: the waiting box's "Open Telegram" is right there */ }
+    try { window.open(link, '_blank', 'noopener'); } catch { /* blocked: the waiting box's "Telegram did not open? Open it" */ }
   };
 
   async function startTelegram() {
-    if (tgBusy || sending) return;
+    if (sending) return;
     const phone = fullPhone(model);
     if (!phone) return askNumber();
     // The same number is already waiting: just open Telegram again.
     if (model.tg?.phone === phone && model.tg.until > Date.now()) return openTelegram(model.tg.link);
     endTelegram();
-    tgBusy = true;
     sending = true;
     showError(null);
     showNote(null);
@@ -622,6 +617,9 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
       const pin = waitingPin(); // a returning person's waiting PIN goes with the check (the server keeps it hashed)
       const r = await api.post('/auth/telegram/start', { phone, lang: state.lang, ...(pin ? { pin } : {}) });
       model.tg = { phone: r.phone || phone, link: r.link, until: Date.now() + (Number(r.expiresIn) || 600) * 1000, opened: false, pin: Boolean(pin), match: typeof r.match === 'string' ? r.match : null };
+      // One way at a time: a WhatsApp code that was out is over (its box and countdown go). Only once Telegram's
+      // check really started — if it could not, that code is still there to type.
+      Object.assign(model, { codeSent: false, devCode: null, code: '', live: false, sentBy: null });
       openTelegram(r.link);
       waitForTelegram(Number(r.pollMs) || 2000);
     } catch (err) {
@@ -629,20 +627,20 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
       if (off && !model.failed.includes('telegram')) model.failed.push('telegram');
       showError(sendErrorText(err, 'telegram', otherWorks('telegram')), off ? offerOther('telegram') : null);
     } finally {
-      tgBusy = false;
       sending = false;
       render();
     }
   }
 
   async function pollTelegram() {
-    if (!alive || !model.tg || tgBusy) return;
+    if (!alive || !model.tg || tgPolling) return;
     clearTimeout(tgTimer);
-    tgBusy = true;
+    tgPolling = true;
+    const tg = model.tg; // the wait this answer is about (a tap may end it, or start a new one, meanwhile)
     let next = 2000;
     try {
       const r = await api.get('/auth/telegram/status', { redirect: false });
-      if (!model.tg) return; // cancelled meanwhile
+      if (model.tg !== tg) return; // cancelled (or another app tapped) meanwhile
       if (r.state === 'verified') {
         const { phone, pin } = model.tg;
         endTelegram();
@@ -670,9 +668,9 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     } catch (err) {
       next = err.status === 429 ? 10000 : 4000; // a hiccup: keep asking, a little slower
     } finally {
-      tgBusy = false;
+      tgPolling = false;
     }
-    if (!model.tg) return;
+    if (model.tg !== tg) return;
     // Past the server's verified grace (2 minutes after the 10) plus a little: only then give up on our own.
     if (Date.now() > model.tg.until + 150e3) {
       endTelegram();
@@ -683,7 +681,12 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     waitForTelegram(next);
   }
 
-  /** While it waits: "Open Telegram and tap “Share my number”." · the number · the sign (🍊 47) · [Open Telegram] · Cancel. */
+  /**
+   * While it waits: the number · the sign (🍊 47) · "Telegram did not open? Open it" · Cancel. No instruction of its
+   * own and no big button (owner 2026-10-13): "Check Telegram for the next step." above says what to do, Telegram
+   * itself says the rest. The small link is for a browser that blocked the automatic tab; it goes once Telegram
+   * has opened (a tap on Telegram above opens it again too).
+   */
   function tgWaitBox() {
     tgEl = null;
     if (!model.tg) return null;
@@ -691,11 +694,11 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
       el('div', { class: 'tg-wait-head' },
         el('span', { class: 'tg-wait-mark', 'aria-hidden': 'true' }, brandMark('telegram')),
         el('div', { class: 'tg-wait-text' },
-          el('strong', {}, t(model.tg.opened ? 'cp_tg_opened' : 'cp_tg_wait')),
           el('span', { class: 'tg-wait-num' }, model.tg.phone),
           model.tg.match ? el('span', { class: 'tg-wait-match' }, t('cp_tg_match'), ' ', el('b', {}, model.tg.match)) : null)),
       el('div', { class: 'tg-wait-actions' },
-        el('a', { class: 'btn btn-sm tg-open', href: model.tg.link, target: '_blank', rel: 'noopener noreferrer' }, t('cp_tg_open')),
+        model.tg.opened ? null : el('span', { class: 'tg-reopen' }, t('cp_tg_not_open'), ' ',
+          el('a', { class: 'link tg-open', href: model.tg.link, target: '_blank', rel: 'noopener noreferrer' }, t('cp_tg_open_it'))),
         el('button', { type: 'button', class: 'link tg-cancel', on: { click: () => { endTelegram(); render(); } } }, t('cp_tg_cancel'))));
     return tgEl;
   }
@@ -740,7 +743,8 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
       }
       clearInterval(resendTimer);
       resendTimer = null;
-      line.replaceChildren(el('button', { type: 'button', class: 'link', on: { click: send } }, t('cp_resend')));
+      // Resend by the app that sent this code (a tap on another app that could not start leaves model.channel there).
+      line.replaceChildren(el('button', { type: 'button', class: 'link', on: { click: () => { if (model.sentBy) model.channel = model.sentBy; send(); } } }, t('cp_resend')));
     };
     paint();
     if (model.resendAt > Date.now()) resendTimer = setInterval(paint, 1000);
@@ -757,7 +761,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
   /**
    * The one line under the buttons (owner 2026-10-13): "Tap the app you want to verify with." until a tap starts
    * one; then the app to look in — "Check Telegram for the next step." (the bot; Google / Facebook / TikTok while
-   * they open) or "Check WhatsApp for your code.". Brand names stay in Latin letters.
+   * they open) or "Check WhatsApp for your code.". Brand names stay in Latin letters. '' = no line (hidden).
    */
   function stepText() {
     const signinName = SIGN_INS.find(([provider]) => provider === signingIn)?.[2];
@@ -765,6 +769,9 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     if (model.tg) return t('cp_check_next', { app: channelName('telegram') });
     if (sending) return t(model.channel === 'telegram' && botMode() ? 'cp_check_next' : 'cp_check_code', { app: channelName(model.channel) });
     if (model.codeSent) return t('cp_check_code', { app: channelName(model.sentBy || model.channel) });
+    // Create profile: Google / Facebook / TikTok already proved this person (enough to chat) — nothing left to ask
+    // for, so no line (the green ✓ on that app and "Verified with Google." say it). Telegram / WhatsApp still work.
+    if (cpLayout && Object.values(signin?.verified?.() || {}).some(Boolean)) return '';
     return t('cp_tap_app');
   }
 
@@ -834,6 +841,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
           // Nothing under way for this number any more: "Tap the app you want to verify with." again, no ring.
           if (step && stepText() !== said) {
             step.textContent = stepText();
+            step.hidden = !step.textContent;
             node.querySelectorAll('.way[aria-pressed="true"]').forEach((b) => b.setAttribute('aria-pressed', 'false'));
           }
           if (numberFlagged) showError(null); // "Enter a valid phone number." from Next goes as they fix it
@@ -844,7 +852,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     // The one line under the buttons (stepText): "Tap the app you want to verify with." → "Check Telegram for the
     // next step." / "Check WhatsApp for your code.". Create profile and the sheet: "🔒 Only for verification — kept
     // safe and private." under it. Verified: "Number verified ✓" takes the line's place (#/me: with "Change number").
-    const step = proved ? null : el('span', { class: 'way-step' }, stepText());
+    const step = proved ? null : el('span', { class: 'way-step', hidden: !stepText() }, stepText());
     const hint = proved
       ? el('p', { class: 'way-hint way-watch way-verified', id: `${uid}-by`, role: 'status' },
         el('span', { class: 'verified-line' }, t('cp_phone_verified')),

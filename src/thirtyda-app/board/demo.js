@@ -554,6 +554,7 @@
       l3OpensAt: pair.l3OpensAt ?? null,
       decision: stage === 'l3_decide' || stage === 'l3_open' || stage === 'ended' ? decided : null,
       endedAt: stage === 'ended' ? pair.endedAt ?? null : null,
+      endedReason: stage === 'ended' && pair.endedReason === 'left' ? 'left' : null, // the other person deleted their account
       remind: Boolean(pair.remind?.[u.id]),
       next,
       turn: !frozen && R.isMyTurn(next, lastFrom),
@@ -901,6 +902,41 @@
   function forgotPin() {
     W.session = null;
     return { ok: true, signedOut: true };
+  }
+
+  // "Delete my account" (server: src/lib/thirtyda-delete.mjs): the PIN checked like the lock screen's, then everything of
+  // this person goes at once. Every pair with them ends for the other person as 'left' ("This person left 30+DA"; a
+  // draft the other never opened goes), their sets and replies and chat lines go, flags keep no names. Signed out.
+  function deleteMe({ body }) {
+    const u = me();
+    if (u.blocked) throw fail(403, 'blocked', 'This account is blocked.');
+    if (u.pin) {
+      const pin = R.pinDigits(body.pin);
+      if (pin.length !== R.PIN_LENGTH) throw invalid('Enter your 4-digit PIN.', { field: 'pin' });
+      checkPinTry(u, pin);
+    }
+    const at = nowIso();
+    for (const p of W.pairs.filter((x) => x.members.includes(u.id))) {
+      if (isDraft(p) && !p.opened?.[otherIdOf(p, u)]) {
+        W.pairs.splice(W.pairs.indexOf(p), 1);
+        W.chats.delete(p.id);
+        continue;
+      }
+      Object.assign(p, { endedReason: 'left', endedAt: p.endedAt ?? at, ...(p.stage === 'ended' ? {} : { updatedAt: at }), stage: 'ended' });
+      if (p.lastChat?.from === u.id) p.lastChat = null;
+      for (const k of ['decisions', 'remind', 'opened']) if (p[k]) delete p[k][u.id];
+      W.chats.set(p.id, chatLog(p).filter((m) => m.from !== u.id));
+    }
+    W.sets = W.sets.filter((s) => s.from !== u.id);
+    for (const s of W.sets) if (s.to === u.id) Object.assign(s, { answers: [], completedAt: null });
+    for (const f of W.flags) {
+      if (f.from !== u.id && f.to !== u.id) continue;
+      if (f.kind === 'reported') f.reason = `Reported · ${String(f.reason).split(' · ').at(-1)}`;
+      if (f.from === u.id && f.status === 'open') f.status = 'left';
+    }
+    W.users.delete(u.id);
+    W.session = null;
+    return { ok: true, deleted: true };
   }
 
   // The server's channels (src/lib/thirtyda-code-send.mjs). The demo never delivers: no channel is set up,
@@ -1622,6 +1658,7 @@
     ['POST', /^\/me\/unlock$/, unlockMe],
     ['POST', /^\/me\/pin$/, setPin],
     ['POST', /^\/me\/pin\/forgot$/, forgotPin, { auth: 'none' }],
+    ['POST', /^\/me\/delete$/, deleteMe],
     ['POST', /^\/notices\/([\w-]{1,64})\/seen$/, () => ({ ok: true })],
     ['GET', /^\/nearby$/, nearby],
     ['POST', /^\/guest\/nearby$/, guestNearby, { auth: 'none' }],

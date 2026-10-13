@@ -36,7 +36,7 @@ const SAMPLES = [
   ['POST', '/me/photos', false], ['PUT', '/me/photos/1', false], ['DELETE', '/me/photos/2', false],
   ['POST', '/me/location', false], ['POST', '/me/heartbeat', false], ['GET', '/me/pending', false],
   ['POST', '/me/lock', false], ['POST', '/me/unlock', false],
-  ['POST', '/me/pin', false], ['POST', '/me/pin/forgot', false], ['POST', '/notices/n-1/seen', false],
+  ['POST', '/me/pin', false], ['POST', '/me/pin/forgot', false], ['POST', '/me/delete', false], ['POST', '/notices/n-1/seen', false],
   ['GET', '/photos/0123456789abcdef0123456789abcdef', false],
   // Looking around: Nearby, a profile, my conversations, the questions — never gated.
   ['GET', '/nearby', false], ['POST', '/guest/nearby', false], ['GET', '/people/U-10231', false], ['GET', '/pairs', false], ['GET', '/pairs/P-1', false],

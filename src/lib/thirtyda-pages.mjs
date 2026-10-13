@@ -84,12 +84,18 @@ export const PAGE_STRINGS = {
     priv_long_k: "How long:",
     priv_long: "until you delete your account.",
     priv_how_delete: "How to delete",
+    kept_k: "What stays:",
+    kept: "a bare note of any report and of the delete (no names or words), for safety, and your chat with our Telegram support bot.",
     del_title: "Delete your data",
-    del_lede: "Ask any time — we delete everything.",
+    del_lede: "Two ways. Both delete your account and everything in it.",
+    del_app_k: "In the app:",
+    del_app: "My profile → Delete my account. It is instant.",
+    del_mail_k: "Or by email:",
     del_step1: "Email {mail} with the subject {subject}.",
     del_step2: "Tell us your app name and how you sign in (phone, Google, Facebook or TikTok).",
     del_step3: "We delete it all and email you back — within 30 days.",
     del_signout: "Signing out does not delete anything.",
+    back_app: "Back to 30+DA",
     try_title_ok: "{name} sign-in works",
     try_title_bad: "{name} sign-in did not work",
     try_works: "Works",
@@ -156,12 +162,18 @@ export const PAGE_STRINGS = {
     priv_long_k: "រយៈពេល៖",
     priv_long: "រហូតដល់អ្នកលុបគណនី។",
     priv_how_delete: "របៀបលុប",
+    kept_k: "អ្វីដែលនៅសល់៖",
+    kept: "មានតែកំណត់ត្រាខ្លីនៃការរាយការណ៍ និងនៃការលុប (គ្មានឈ្មោះ ឬពាក្យ) ដើម្បីសុវត្ថិភាព និងការជជែករបស់អ្នកជាមួយបូតជំនួយ Telegram របស់យើង។",
     del_title: "លុបទិន្នន័យរបស់អ្នក",
-    del_lede: "ស្នើបានគ្រប់ពេល — យើងលុបទាំងអស់។",
+    del_lede: "មានពីរវិធី។ វិធីទាំងពីរលុបគណនីរបស់អ្នក និងអ្វីៗទាំងអស់នៅក្នុងនោះ។",
+    del_app_k: "ក្នុងកម្មវិធី៖",
+    del_app: "ប្រវត្តិរូបរបស់ខ្ញុំ → លុបគណនីរបស់ខ្ញុំ។ លុបភ្លាមៗ។",
+    del_mail_k: "ឬតាមអ៊ីមែល៖",
     del_step1: "ផ្ញើអ៊ីមែលទៅ {mail} ដោយដាក់ចំណងជើង {subject}។",
     del_step2: "ប្រាប់ឈ្មោះក្នុងកម្មវិធី និងរបៀបដែលអ្នកចូល (ទូរស័ព្ទ Google, Facebook ឬ TikTok)។",
     del_step3: "យើងលុបទាំងអស់ ហើយផ្ញើអ៊ីមែលប្រាប់អ្នក ក្នុងរយៈពេល 30 ថ្ងៃ។",
     del_signout: "ការចាកចេញពីកម្មវិធី មិនលុបអ្វីទាំងអស់ទេ។",
+    back_app: "ត្រឡប់ទៅ 30+DA",
     try_title_ok: "ការចូលតាម {name} ដំណើរការ",
     try_title_bad: "ការចូលតាម {name} មិនដំណើរការ",
     try_works: "ដំណើរការ",
@@ -228,12 +240,18 @@ export const PAGE_STRINGS = {
     priv_long_k: "保存多久：",
     priv_long: "直到你删除账号。",
     priv_how_delete: "如何删除",
+    kept_k: "保留的内容：",
+    kept: "为了安全，只保留举报和删除的简短记录（不含姓名或文字），以及你和我们 Telegram 客服机器人的对话。",
     del_title: "删除你的数据",
-    del_lede: "随时都可以申请，我们会全部删除。",
+    del_lede: "两种方式，都会删除你的账号及其中的一切。",
+    del_app_k: "在应用里：",
+    del_app: "我的资料 → 删除我的账号。立即删除。",
+    del_mail_k: "或发邮件：",
     del_step1: "发邮件到 {mail}，标题写 {subject}。",
     del_step2: "告诉我们你的昵称和登录方式（手机、Google、Facebook 或 TikTok）。",
     del_step3: "我们会全部删除并回邮件告诉你，30 天内完成。",
     del_signout: "退出登录不会删除任何数据。",
+    back_app: "返回 30+DA",
     try_title_ok: "{name} 登录成功",
     try_title_bad: "{name} 登录未成功",
     try_works: "成功",
@@ -300,12 +318,18 @@ export const PAGE_STRINGS = {
     priv_long_k: "보관 기간:",
     priv_long: "계정을 삭제할 때까지.",
     priv_how_delete: "삭제 방법",
+    kept_k: "남는 것:",
+    kept: "안전을 위해 신고와 삭제에 대한 짧은 기록(이름이나 글 없음)과 Telegram 고객지원 봇과의 대화만 남아요.",
     del_title: "내 데이터 삭제",
-    del_lede: "언제든 요청하면 모두 삭제해 드려요.",
+    del_lede: "두 가지 방법이 있어요. 둘 다 계정과 그 안의 모든 것을 삭제해요.",
+    del_app_k: "앱에서:",
+    del_app: "내 프로필 → 내 계정 삭제. 바로 삭제돼요.",
+    del_mail_k: "또는 메일로:",
     del_step1: "{mail}로 메일을 보내 주세요. 제목: {subject}",
     del_step2: "앱 이름과 로그인 방법(전화번호, Google, Facebook, TikTok)을 알려 주세요.",
     del_step3: "30일 안에 모두 삭제하고 메일로 알려 드려요.",
     del_signout: "로그아웃만으로는 아무것도 삭제되지 않아요.",
+    back_app: "30+DA로 돌아가기",
     try_title_ok: "{name} 로그인 성공",
     try_title_bad: "{name} 로그인 실패",
     try_works: "성공",
@@ -372,12 +396,18 @@ export const PAGE_STRINGS = {
     priv_long_k: "保存期間：",
     priv_long: "アカウントを削除するまで。",
     priv_how_delete: "削除のしかた",
+    kept_k: "残るもの：",
+    kept: "安全のため、通報と削除の簡単な記録（名前や文章は含みません）と、Telegramサポートボットとのやりとりだけです。",
     del_title: "データの削除",
-    del_lede: "いつでも依頼できます。すべて削除します。",
+    del_lede: "方法は2つ。どちらもアカウントとその中のすべてを削除します。",
+    del_app_k: "アプリで：",
+    del_app: "マイプロフィール → アカウントを削除。すぐに削除されます。",
+    del_mail_k: "またはメールで：",
     del_step1: "{mail} に、件名 {subject} でメールしてください。",
     del_step2: "アプリ名とログイン方法（電話番号・Google・Facebook・TikTok）を書いてください。",
     del_step3: "30日以内にすべて削除し、メールでお知らせします。",
     del_signout: "ログアウトしても、何も削除されません。",
+    back_app: "30+DA に戻る",
     try_title_ok: "{name} ログイン成功",
     try_title_bad: "{name} ログイン失敗",
     try_works: "成功",
@@ -483,6 +513,12 @@ ${inner}
 `;
 }
 
+/**
+ * "Back to 30+DA": the app opens these pages in its own tab (#/me and the opening screen link here), and an app's web
+ * view has no back button — this goes back to #/me (the opening screen for someone not signed in).
+ */
+const backToApp = (t) => `      <p class="doc-actions"><a class="doc-btn" href="/30da/#/me">${t.back_app}</a></p>`;
+
 /** GET /30da/privacy[?lang=] — what Google and Facebook ask for, one plain line each. */
 export function privacyPage({ lang: want } = {}) {
   const lang = ok(want);
@@ -496,7 +532,9 @@ ${["priv_keep", "priv_social", "priv_why", "priv_who", "priv_team", "priv_codes"
         <li>${t.priv_never}</li>
         <li><b>${t.priv_long_k}</b> ${t.priv_long} <a href="/30da/delete-data?lang=${lang}">${t.priv_how_delete}</a></li>
       </ul>
-      <p class="doc-contact">${t.questions} ${mailLink}</p>`;
+      <p class="doc-fine"><b>${t.kept_k}</b> ${t.kept}</p>
+      <p class="doc-contact">${t.questions} ${mailLink}</p>
+${backToApp(t)}`;
   return page({
     title: `${t.priv_title} · 30+DA`,
     lang,
@@ -504,19 +542,25 @@ ${["priv_keep", "priv_social", "priv_why", "priv_who", "priv_team", "priv_codes"
   });
 }
 
-/** GET /30da/delete-data[?lang=] — email us, we delete it all within 30 days. */
+/**
+ * GET /30da/delete-data[?lang=] — two ways, both delete the account and everything in it: in the app (My profile →
+ * Delete my account, at once: src/lib/thirtyda-delete.mjs), or email us and we delete it all within 30 days. Says what
+ * stays (Google Play asks): a bare note of reports / of the delete, for safety, and the Telegram support chat.
+ */
 export function deleteDataPage({ lang: want } = {}) {
   const lang = ok(want);
   const t = PAGE_STRINGS[lang];
+  const mail = [fill(t.del_step1, { mail: deleteMailLink, subject: `<b>${DELETE_SUBJECT}</b>` }), t.del_step2, t.del_step3].join(" ");
   const body = `      <h1>${t.del_title}</h1>
       <p class="doc-lede">${t.del_lede}</p>
-      <ol class="steps">
-        <li>${fill(t.del_step1, { mail: deleteMailLink, subject: `<b>${DELETE_SUBJECT}</b>` })}</li>
-        <li>${t.del_step2}</li>
-        <li>${t.del_step3}</li>
-      </ol>
+      <ul class="facts">
+        <li><b>${t.del_app_k}</b> ${t.del_app}</li>
+        <li><b>${t.del_mail_k}</b> ${mail}</li>
+      </ul>
+      <p class="doc-fine"><b>${t.kept_k}</b> ${t.kept}</p>
       <p class="doc-fine">${t.del_signout}</p>
-      <p class="doc-contact">${t.questions} ${mailLink} · <a href="/30da/privacy?lang=${lang}">${t.priv_title}</a></p>`;
+      <p class="doc-contact">${t.questions} ${mailLink} · <a href="/30da/privacy?lang=${lang}">${t.priv_title}</a></p>
+${backToApp(t)}`;
   return page({
     title: `${t.del_title} · 30+DA`,
     lang,
@@ -539,7 +583,8 @@ export function termsPage({ lang: want } = {}) {
 ${["terms_age", "terms_honest", "terms_contact", "terms_respect", "terms_team"].map(point).join("\n")}
         <li><b>${t.terms_data_k}</b> <a href="/30da/privacy?lang=${lang}">${t.priv_title}</a></li>
       </ul>
-      <p class="doc-contact">${t.questions} ${mailLink}</p>`;
+      <p class="doc-contact">${t.questions} ${mailLink}</p>
+${backToApp(t)}`;
   return page({
     title: `${t.terms_title} · 30+DA`,
     lang,

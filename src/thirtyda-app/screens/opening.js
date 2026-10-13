@@ -2,9 +2,14 @@
 // filling left → right, and the five language buttons. Picking a language goes to Set your PIN (#/pin),
 // then the home screen as a guest (Create profile when they want to do something).
 import { screen, el, icon, t, go, state, setLang, registerStrings, LANGS, LANG_NATIVE, LANG_FLAG } from '../core.js';
+import { legalLinks, takeDeletedNote } from './delete-account.js';
 
 screen('/opening', ({ root }) => {
   root.classList.add('dark', 'opening');
+  // Just after "Delete my account": said once, at the top.
+  const deleted = takeDeletedNote()
+    ? el('p', { class: 'deleted-note', role: 'status' }, icon('check', 18), el('span', {}, t('da_done')))
+    : null;
 
   const letters = [...'30+DA'].map((ch, i) => el('span', { class: 'rise', 'aria-hidden': 'true', style: { '--i': i } }, ch));
   const pick = (code) => {
@@ -14,6 +19,7 @@ screen('/opening', ({ root }) => {
 
   root.append(
     el('div', { class: 'opening-top' },
+      deleted,
       el('h1', { class: 'opening-headline' }, t('op_headline')),
       el('div', { class: 'opening-mark wordmark', role: 'img', 'aria-label': '30+DA' }, letters),
       el('div', { class: 'opening-rule', 'aria-hidden': 'true' }, el('span')),
@@ -31,7 +37,9 @@ screen('/opening', ({ root }) => {
       // "Pick your language, get started — it translates by itself.": two halves, each kept whole (Khmer never breaks mid-word).
       el('p', { class: 'opening-foot' },
         el('span', { class: 'op-part' }, icon('translate', 19), t('op_pick')), state.lang === 'zh' || state.lang === 'ja' ? '\u200b' : ' ',
-        el('span', { class: 'op-part' }, t('op_translate')))),
+        el('span', { class: 'op-part' }, t('op_translate'))),
+      // Privacy policy · Terms, before anyone signs in (Google Play / Apple).
+      legalLinks()),
   );
 });
 

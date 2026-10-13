@@ -611,6 +611,8 @@ export function pairRoute(pair) {
 
 /** One short line for a pair that needs me ("Dara started a conversation", "Level 2 is open — your turn", "Chat with Sophea"). */
 export function actionLabel(pair) {
+  // The other person deleted their account (PairView.endedReason 'left'): no name any more.
+  if (pair?.endedReason === 'left') return t('act_left');
   const name = pair?.other?.name || '';
   const lvl = stageLevel(pair);
   switch (nextKind(pair?.next)) {
@@ -749,6 +751,7 @@ registerStrings({
     act_chat: 'Chat with {name}',
     act_decide: 'Level 2 is done: open the chat with {name}?',
     act_ended: 'Your conversation with {name} has ended',
+    act_left: 'This person left 30+DA',
     act_waiting: 'Waiting for {name}',
     core_more_photo: 'You can now add 1 more photo',
     core_more_photos: 'You can now add {n} more photos',
@@ -775,6 +778,7 @@ registerStrings({
     act_chat: 'ជជែកជាមួយ {name}',
     act_decide: 'កម្រិត 2 បានចប់ហើយ៖ បើកការជជែកជាមួយ {name} ទេ?',
     act_ended: 'ការសន្ទនារបស់អ្នកជាមួយ {name} បានបញ្ចប់ហើយ',
+    act_left: 'មនុស្សនេះបានចាកចេញពី 30+DA',
     act_waiting: 'កំពុងរង់ចាំ {name}',
     core_more_photo: 'ឥឡូវនេះ អ្នកអាចបន្ថែមរូបថត 1 សន្លឹកទៀត',
     core_more_photos: 'ឥឡូវនេះ អ្នកអាចបន្ថែមរូបថត {n} សន្លឹកទៀត',
@@ -801,6 +805,7 @@ registerStrings({
     act_chat: '和 {name} 聊天',
     act_decide: '等级 2 已完成：要和 {name} 开始聊天吗？',
     act_ended: '你和 {name} 的对话已经结束',
+    act_left: '此人已离开 30+DA',
     act_waiting: '等待 {name} 回应',
     core_more_photo: '现在你可以再添加 1 张照片',
     core_more_photos: '现在你可以再添加 {n} 张照片',
@@ -827,6 +832,7 @@ registerStrings({
     act_chat: '{name}님과 채팅',
     act_decide: '레벨 2 완료: {name}님과 채팅을 열까요?',
     act_ended: '{name}님과의 대화가 끝났어요',
+    act_left: '이 사람은 30+DA를 떠났어요',
     act_waiting: '{name}님을 기다리는 중',
     core_more_photo: '이제 사진을 1장 더 올릴 수 있어요',
     core_more_photos: '이제 사진을 {n}장 더 올릴 수 있어요',
@@ -853,6 +859,7 @@ registerStrings({
     act_chat: '{name}さんとチャット',
     act_decide: 'レベル2が終わりました：{name}さんとのチャットを開きますか？',
     act_ended: '{name}さんとの会話は終了しました',
+    act_left: 'この人は30+DAを退会しました',
     act_waiting: '{name}さんを待っています',
     core_more_photo: '写真をあと1枚追加できるようになりました',
     core_more_photos: '写真をあと{n}枚追加できるようになりました',

@@ -60,6 +60,10 @@
  * /30da/#/verified?signin=<provider>&error=in_use). Its other sign-ins come back to /30da/#/verified?…&ok=1 | &error=….
  * Public pages Google / Facebook / TikTok ask for: GET /30da/privacy, GET /30da/delete-data, GET /30da/terms
  * (src/lib/thirtyda-pages.mjs).
+ *
+ * "Delete my account" (owner 2026-10-13, src/lib/thirtyda-delete.mjs): POST /me/delete { pin? } (unlocked only, the PIN
+ * checked by checkPinTry) deletes everything of the person at once and clears the cookie; every conversation with them
+ * ends for the other person with PairView.endedReason 'left' ("This person left 30+DA").
  */
 
 import crypto from "node:crypto";
@@ -93,6 +97,7 @@ import { privacyPage, deleteDataPage, termsPage, tryResultPage, appReturnPage, r
 import {
   canTalk, talksToSomeone, SIGNUP_LIMITS, claimSignup, releaseSignup, verifyBackPath, ATTACH_FROM, phoneViaOf, withPhoneVia, signinsOf,
 } from "./thirtyda-verify.mjs";
+import { deleteMe, finishDeletesInBackground } from "./thirtyda-delete.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
   PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
@@ -215,6 +220,7 @@ async function db() {
   const d = await getDb();
   if (!ready) ready = ensureThirtyDaIndexes(d).catch((e) => { ready = null; throw e; });
   await ready;
+  finishDeletesInBackground(d); // half-way account deletes finish now and every minute (src/lib/thirtyda-delete.mjs)
   return d;
 }
 
@@ -511,6 +517,8 @@ function pairView(pair, me, other, sets) {
     l3OpensAt: pair.l3OpensAt ?? null,
     decision: stage === "l3_decide" || stage === "l3_open" || stage === "ended" ? decided : null,
     endedAt: stage === "ended" ? pair.endedAt ?? null : null,
+    // 'left': the other person deleted their account (src/lib/thirtyda-delete.mjs) — "This person left 30+DA".
+    endedReason: stage === "ended" && pair.endedReason === "left" ? "left" : null,
     remind: Boolean(pair.remind?.[me._id]),
     next,
     turn: !frozen && isMyTurn(next, lastFrom),
@@ -2876,6 +2884,9 @@ const ROUTES = [
   ["POST", /^\/me\/unlock$/, unlockMe, { blockedOk: true }],
   ["POST", /^\/me\/pin$/, setPin],
   ["POST", /^\/me\/pin\/forgot$/, forgotPin, { auth: "none", blockedOk: true }],
+  // "Delete my account" (src/lib/thirtyda-delete.mjs): unlocked only (not a whileLocked route), the PIN checked like the
+  // lock screen's; blockedOk only so a delete that stopped half way can finish (a blocked profile is refused there).
+  ["POST", /^\/me\/delete$/, (ctx) => deleteMe(ctx, { fail, checkPinTry, signedOutCookie: (req) => cookieFor(req, "", 0) }), { blockedOk: true }],
   ["POST", /^\/notices\/([\w-]{1,64})\/seen$/, noticeSeen],
   // auth "none": a guest (no profile yet) sees photo 1 only, as on the cards of POST /guest/nearby.
   ["GET", /^\/photos\/([a-f0-9]{32})$/, getPhoto, { auth: "none" }],

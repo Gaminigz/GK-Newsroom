@@ -466,6 +466,8 @@ screen('/me', async ({ root, query }) => {
     section(t('me_verified_with'), phoneBlock),
     me.pinSet ? changePin : null,
     signOut,
+    // Privacy policy · Terms, and a red "Delete my account" (Google Play / Apple: in the app).
+    accountFoot(),
     el('p', { class: 'label me-foot' }, `30+DA · ${me.id}`));
 
   return () => phone?.destroy();
@@ -728,3 +730,6 @@ registerStrings({
     me_signout: 'ログアウト',
   },
 });
+
+// The bottom of the page: Privacy policy · Terms · Delete my account (its sheet and words live there).
+import { accountFoot } from './delete-account.js'; // eslint-disable-line import/first

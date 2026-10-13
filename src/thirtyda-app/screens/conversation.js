@@ -114,6 +114,8 @@ function mountConversation(root, base, initial, chat) {
   const ended = () => stage() === 'ended' || nextKind(conv.next) === 'ended' || Boolean(conv.decision?.ended);
   const choosing = () => !ended() && stage() === 'l3_decide';
   const frozen = () => !ended() && (nextKind(conv.next) === 'frozen' || conv.pair?.next === 'frozen');
+  // The other person deleted their account: "This person left 30+DA" (no name any more; nothing more to send).
+  const left = () => ended() && conv.pair?.endedReason === 'left';
   const setLevels = () => (conv.levels || []).filter((L) => L && (L.level === 1 || L.level === 2)).sort((a, b) => a.level - b.level);
   const levelOf = (n) => setLevels().find((L) => L.level === n) || null;
   const openLevel = () => setLevels().find((L) => L.state === 'open') || null;
@@ -145,7 +147,7 @@ function mountConversation(root, base, initial, chat) {
       el('span', {}, t(ended() ? 'cv_ended_bar' : 'cv_level_bar', { n: level })), levelBar(level));
     // The real name only once the chat is open (the server sends it only then).
     const realName = conv.chat?.open ? conv.other?.realName || '' : '';
-    return partnerHeader({ name: name(), photos, myLang: myLang(), theirLang: theirLang(), sub, realName });
+    return partnerHeader({ name: left() ? t('cv_left_name') : name(), photos, myLang: myLang(), theirLang: theirLang(), sub, realName });
   }
   const headerSig = (c) => JSON.stringify([
     c.other?.name, c.other?.lang, c.other?.photos, c.other?.realName, c.pair?.level, c.pair?.stage, c.chat?.open,
@@ -204,7 +206,8 @@ function mountConversation(root, base, initial, chat) {
       el('div', { class: 'bubble mine' }, lineParts(line, true)),
       line.reply
         ? theirReply(line.reply)
-        : el('span', { class: 'conv-pending' }, icon('clock', 12), el('span', {}, t('cv_waiting'))));
+        // Nothing is "waiting" in an ended conversation (when the other person left, their replies went with them).
+        : ended() ? null : el('span', { class: 'conv-pending' }, icon('clock', 12), el('span', {}, t('cv_waiting'))));
   }
 
   function theirLine(s, line) {
@@ -326,7 +329,7 @@ function mountConversation(root, base, initial, chat) {
       out.push(divider(t('cv_level', { n: L.level })));
       for (const s of sets) out.push(...setNodes(s));
     }
-    if (ended()) out.push(divider(t('cv_ended_divider')));
+    if (ended()) out.push(divider(t(left() ? 'cv_left' : 'cv_ended_divider')));
     return out;
   }
   const timelineSig = (c) => JSON.stringify([c.levels, c.pair?.stage, c.pair?.l2OpensAt, c.pair?.next, c.next, c.chat, c.decision?.ended]);
@@ -621,7 +624,7 @@ function mountConversation(root, base, initial, chat) {
     } else if (kind === 'ended') {
       // Calm, the same for both, never who chose it.
       foot.replaceChildren(el('div', { class: 'conv-ended', role: 'status' },
-        el('strong', {}, t('cv_ended')), el('span', {}, t('cv_ended_note'))));
+        el('strong', {}, t(left() ? 'cv_left' : 'cv_ended')), el('span', {}, t(left() ? 'cv_left_note' : 'cv_ended_note'))));
     } else if (kind === 'decide') {
       foot.replaceChildren(decideNode());
     } else if (kind === 'decided') {
@@ -672,7 +675,7 @@ function mountConversation(root, base, initial, chat) {
       if (P.mine && !P.mine.completedAt && L.mine?.completedAt) toast(t('cv_they_all', { name: name() }));
       if (P.state !== 'open' && L.state === 'open' && L.level === 2) toast(t('cv_level_open', { n: 2 }));
     }
-    if (prev.pair?.stage !== 'ended' && next.pair?.stage === 'ended') toast(t('cv_ended'));
+    if (prev.pair?.stage !== 'ended' && next.pair?.stage === 'ended') toast(t(next.pair?.endedReason === 'left' ? 'cv_left' : 'cv_ended'));
   }
 
   function apply(next) {
@@ -831,6 +834,9 @@ registerStrings({
     cv_decided_wait: 'You chose to open the chat — waiting for {name}',
     cv_ended: 'This conversation has ended',
     cv_ended_note: 'You can still read it above.',
+    cv_left: 'This person left 30+DA',
+    cv_left_note: 'This conversation is closed. Nothing more can be sent.',
+    cv_left_name: 'Left 30+DA',
   },
   km: {
     cv_level: 'កម្រិត {n}',
@@ -878,6 +884,9 @@ registerStrings({
     cv_decided_wait: 'អ្នកបានជ្រើសបើកការជជែក — កំពុងរង់ចាំ {name}',
     cv_ended: 'ការសន្ទនានេះបានបញ្ចប់ហើយ',
     cv_ended_note: 'អ្នកនៅតែអាចអានវានៅខាងលើបាន។',
+    cv_left: 'មនុស្សនេះបានចាកចេញពី 30+DA',
+    cv_left_note: 'ការសន្ទនានេះត្រូវបានបិទ។ មិនអាចផ្ញើអ្វីទៀតបានទេ។',
+    cv_left_name: 'បានចាកចេញហើយ',
   },
   zh: {
     cv_level: '等级 {n}',
@@ -925,6 +934,9 @@ registerStrings({
     cv_decided_wait: '你已选择开始聊天 — 等待 {name}',
     cv_ended: '这段对话已经结束',
     cv_ended_note: '你仍然可以在上方阅读。',
+    cv_left: '此人已离开 30+DA',
+    cv_left_note: '此对话已关闭，无法再发送任何内容。',
+    cv_left_name: '已离开 30+DA',
   },
   ko: {
     cv_level: '레벨 {n}',
@@ -972,6 +984,9 @@ registerStrings({
     cv_decided_wait: '채팅 열기를 골랐어요 — {name}님을 기다리는 중',
     cv_ended: '이 대화는 끝났어요',
     cv_ended_note: '위에서 계속 읽을 수 있어요.',
+    cv_left: '이 사람은 30+DA를 떠났어요',
+    cv_left_note: '이 대화는 닫혔어요. 더 이상 보낼 수 없어요.',
+    cv_left_name: '30+DA를 떠난 사람',
   },
   ja: {
     cv_level: 'レベル{n}',
@@ -1019,5 +1034,8 @@ registerStrings({
     cv_decided_wait: 'チャットを開くを選びました — {name}さんを待っています',
     cv_ended: 'この会話は終了しました',
     cv_ended_note: '上でいつでも読めます。',
+    cv_left: 'この人は30+DAを退会しました',
+    cv_left_note: 'この会話は終了しました。これ以上送信できません。',
+    cv_left_name: '退会したユーザー',
   },
 });

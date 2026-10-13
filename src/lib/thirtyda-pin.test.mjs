@@ -222,6 +222,7 @@ const SAMPLES = [
   ['POST', '/me/unlock', 'open'],
   ['POST', '/me/pin', 'open'],
   ['POST', '/me/pin/forgot', 'open'],
+  ['POST', '/me/delete', null], // "Delete my account": only while unlocked (src/lib/thirtyda-delete.mjs)
   ['POST', '/notices/n-1/seen', null],
   ['GET', `/photos/${'a'.repeat(32)}`, null],
   ['GET', '/nearby', null],
