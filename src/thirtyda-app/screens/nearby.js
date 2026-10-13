@@ -51,7 +51,22 @@ screen('/nearby', ({ root }) => {
     el('span', { class: 'wordmark brand' }, '30+DA'),
     gpsCard,
     el('button', { type: 'button', class: 'me-btn', 'aria-label': t('nb_my_profile'), on: { click: () => go(guest ? '/create' : '/me') } },
-      avatar(state.me?.photos?.[0] || null, 34))));
+      avatar(state.me?.photos?.[0] || null, 34)),
+    // Owner (2026-10-13): a sign-out right on the home screen, next to my photo.
+    guest ? null : el('button', {
+      type: 'button', class: 'icon-btn nb-signout', 'aria-label': t('nb_signout'), title: t('nb_signout'),
+      on: { click: signOutNow },
+    }, icon('logout', 18))));
+  async function signOutNow(e) {
+    if (!window.confirm(t(Object.values(state.me?.verified || {}).some(Boolean) ? 'nb_signout_ask' : 'nb_signout_ask_unverified'))) return;
+    e.currentTarget.disabled = true;
+    try { await api.post('/auth/signout', {}, { redirect: false }); } catch { /* signed out locally either way */ }
+    state.me = null;
+    state.actions = [];
+    state.notices = [];
+    state.pending = null;
+    go('/opening', { replace: true });
+  }
   function paintGps() {
     const on = Boolean(last?.gps);
     let place = '…';
@@ -234,6 +249,9 @@ registerStrings({
   en: {
     nb_title: 'Nearby',
     nb_my_profile: 'My profile',
+    nb_signout: 'Sign out',
+    nb_signout_ask: 'Sign out of 30+DA?',
+    nb_signout_ask_unverified: 'Sign out? You have not verified yet, so you cannot sign back in to this profile.',
     nb_near_you: 'Near you',
     nb_gps_on: 'Near you · GPS on',
     nb_gps_off: 'GPS off',
@@ -260,6 +278,9 @@ registerStrings({
   km: {
     nb_title: 'នៅជិត',
     nb_my_profile: 'ប្រវត្តិរូបរបស់ខ្ញុំ',
+    nb_signout: 'ចាកចេញ',
+    nb_signout_ask: 'ចាកចេញពី 30+DA មែនទេ?',
+    nb_signout_ask_unverified: 'ចាកចេញមែនទេ? អ្នកមិនទាន់ផ្ទៀងផ្ទាត់ទេ ដូច្នេះអ្នកមិនអាចចូលប្រវត្តិរូបនេះវិញបានទេ។',
     nb_near_you: 'នៅជិតអ្នក',
     nb_gps_on: 'នៅជិតអ្នក · GPS បើក',
     nb_gps_off: 'GPS បិទ',
@@ -286,6 +307,9 @@ registerStrings({
   zh: {
     nb_title: '附近',
     nb_my_profile: '我的资料',
+    nb_signout: '退出登录',
+    nb_signout_ask: '要退出 30+DA 吗？',
+    nb_signout_ask_unverified: '要退出吗？你还没有验证，退出后无法再登录这个资料。',
     nb_near_you: '你附近',
     nb_gps_on: '你附近 · GPS 已开启',
     nb_gps_off: 'GPS 已关闭',
@@ -312,6 +336,9 @@ registerStrings({
   ko: {
     nb_title: '근처',
     nb_my_profile: '내 프로필',
+    nb_signout: '로그아웃',
+    nb_signout_ask: '30+DA에서 로그아웃할까요?',
+    nb_signout_ask_unverified: '로그아웃할까요? 아직 인증하지 않아서 이 프로필로 다시 들어올 수 없어요.',
     nb_near_you: '내 주변',
     nb_gps_on: '내 주변 · GPS 켜짐',
     nb_gps_off: 'GPS 꺼짐',
@@ -338,6 +365,9 @@ registerStrings({
   ja: {
     nb_title: '近く',
     nb_my_profile: 'マイプロフィール',
+    nb_signout: 'ログアウト',
+    nb_signout_ask: '30+DA からログアウトしますか？',
+    nb_signout_ask_unverified: 'ログアウトしますか？まだ確認していないので、このプロフィールには戻れません。',
     nb_near_you: '近く',
     nb_gps_on: '近く · GPS オン',
     nb_gps_off: 'GPS オフ',

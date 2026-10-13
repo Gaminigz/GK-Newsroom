@@ -1083,3 +1083,7 @@ dialog.verify-sheet { overflow-y: auto; }
 .verify-chat .sheet-title { font-size: 20px; }
 .vc-text { font-size: 14px; line-height: 1.45; color: var(--muted, #5b6478); }
 .vc-later { align-self: center; min-height: 40px; padding: 0 12px; font-size: 14px; color: var(--muted, #5b6478); }
+
+/* Home header: sign out next to my photo (owner 2026-10-13). */
+.brandbar .nb-signout { flex: none; margin-left: -6px; }
+.brandbar .gps-inline { min-width: 0; }
