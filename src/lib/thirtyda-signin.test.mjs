@@ -18,7 +18,7 @@ import {
   deliverCode, channelOffer, channelOffered, channelKeyMark, noteChannelOutcome, isLastingFailure, LASTING_REASONS,
 } from './thirtyda-code-send.mjs';
 import { testFetchAllowed, redactCall, makeTestFetch, TEST_FETCH_COLLECTION } from './thirtyda-test-fetch.mjs';
-import { tryResultPage, privacyPage, deleteDataPage, esc } from './thirtyda-pages.mjs';
+import { tryResultPage, privacyPage, deleteDataPage, esc, pickLang, requestLang, PAGE_STRINGS } from './thirtyda-pages.mjs';
 
 const KEY_HEX = crypto.randomBytes(32).toString('hex');
 const G_KEYS = { id: '1234567890-abcdefghij.apps.googleusercontent.com', secret: 'GOCSPX-FAKEsecret0123456789_Ab12' };
@@ -420,38 +420,120 @@ test('signinKeys: the saved Client ID / App ID + secret, or null; the redirect a
   });
 });
 
-// ---------- the admin's try page ----------
+// ---------- the small pages: privacy, delete-data, the admin's try page (5 languages) ----------
 
-test('try page: "Works ✓ — Google said: name (email)", escaped; failures in plain words; nothing technical', () => {
-  const ok = tryResultPage({ provider: 'google', ok: true, person: { name: '<b>Nary</b>', email: 'nary@gmail.com' } });
-  assert.match(ok, /Works/);
-  assert.ok(ok.includes('Google said: &lt;b&gt;Nary&lt;/b&gt; (nary@gmail.com)'), 'escaped');
-  assert.ok(!ok.includes('<b>Nary'));
-  for (const reason of ['cancelled', 'bad_keys', 'redirect', 'not_live', 'expired', 'provider_error', 'timeout', 'network', 'no_keys', 'admin_gone', 'too_many', 'other']) {
-    const html = tryResultPage({ provider: 'facebook', ok: false, reason, detail: '<script>x</script>' });
-    assert.match(html, /Did not work/);
-    assert.ok(!html.includes('<script>x'), `${reason}: detail escaped`);
-    assert.ok(!/THIRTYDA_|Railway/.test(html), `${reason}: plain words`);
+const PAGE_LANGS = ['en', 'km', 'zh', 'ko', 'ja'];
+const shown = (html) => html.replace(/<(head|nav)[\s\S]*?<\/\1>/g, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+
+test('page language: ?lang, else the browser Accept-Language (by weight), else English', () => {
+  assert.equal(pickLang('km', 'ja'), 'km');
+  assert.equal(pickLang('KO', ''), 'ko');
+  assert.equal(pickLang('fr', 'zh-CN,zh;q=0.9,en;q=0.8'), 'zh', 'unknown ?lang → the browser');
+  assert.equal(pickLang(null, 'km-KH'), 'km');
+  assert.equal(pickLang(null, 'fr-FR, de;q=0.9, ja;q=0.5, en;q=0.4'), 'ja');
+  assert.equal(pickLang(null, 'en;q=0.3, ko;q=0.8'), 'ko', 'by weight, not order');
+  assert.equal(pickLang(null, 'zh-TW'), 'zh');
+  assert.equal(pickLang(null, 'ko;q=0, fr'), 'en', 'q=0 means not wanted');
+  assert.equal(pickLang(null, 'fr, de'), 'en');
+  assert.equal(pickLang(undefined, undefined), 'en');
+  assert.equal(pickLang('', '*'), 'en');
+  assert.equal(requestLang({ headers: { 'accept-language': 'ja-JP' } }, new URL('https://x.test/30da/privacy?lang=km')), 'km');
+  assert.equal(requestLang({ headers: { 'accept-language': 'ja-JP' } }, new URL('https://x.test/30da/privacy')), 'ja');
+  assert.equal(requestLang({ headers: {} }), 'en');
+});
+
+test('every page string is there in all 5 languages, with the same {placeholders}', () => {
+  assert.deepEqual(Object.keys(PAGE_STRINGS), PAGE_LANGS);
+  const keys = Object.keys(PAGE_STRINGS.en);
+  const holes = (s) => (s.match(/\{\w+\}/g) || []).sort().join(',');
+  for (const lang of PAGE_LANGS) {
+    assert.deepEqual(Object.keys(PAGE_STRINGS[lang]).sort(), [...keys].sort(), `${lang}: same keys as English`);
+    for (const k of keys) {
+      const s = PAGE_STRINGS[lang][k];
+      assert.ok(typeof s === 'string' && s.trim().length > 0, `${lang}.${k} is filled`);
+      assert.equal(holes(s), holes(PAGE_STRINGS.en[k]), `${lang}.${k}: same placeholders`);
+      assert.ok(!/[<>]/.test(s), `${lang}.${k}: plain text, no markup`);
+      if (lang !== 'en') assert.ok(s !== PAGE_STRINGS.en[k] || /^[\w .:+-]*$/.test(s), `${lang}.${k} is translated`);
+    }
   }
-  assert.match(tryResultPage({ provider: 'google', ok: false, reason: 'redirect' }), /redirect address is not added in Google/);
-  assert.match(tryResultPage({ provider: 'facebook', ok: false, reason: 'bad_keys' }), /did not accept the App ID or App secret/);
+});
+
+test('privacy + delete-data: short, plain, in each language, flags on top, what Google / Facebook ask for', () => {
+  for (const lang of PAGE_LANGS) {
+    const t = PAGE_STRINGS[lang];
+    const p = privacyPage({ lang });
+    const d = deleteDataPage({ lang });
+    for (const [name, html] of [['privacy', p], ['delete-data', d]]) {
+      assert.ok(html.includes(`<html lang="${lang}">`), `${name} ${lang}: html lang`);
+      assert.ok(!/<script|style=|undefined|\{\w+\}/.test(html), `${name} ${lang}: no script, no inline style, nothing unfilled`);
+      // The flag row: 5 plain links to the same page, this language marked.
+      const flags = html.match(/<nav class="langs"[\s\S]*?<\/nav>/)?.[0] || '';
+      for (const code of PAGE_LANGS) assert.ok(flags.includes(`href="/30da/${name}?lang=${code}"`), `${name} ${lang}: flag ${code}`);
+      assert.equal((flags.match(/aria-current="true"/g) || []).length, 1);
+      assert.ok(flags.includes(`hreflang="${lang}" lang="${lang}" aria-current="true"`), `${name} ${lang}: current flag`);
+      assert.ok(html.includes('mailto:gk.smart@ggmt.sg'), `${name} ${lang}: contact`);
+      assert.ok(!/OAuth|token|redirect|cookie/i.test(shown(html)), `${name} ${lang}: no technical words`);
+    }
+    // Privacy: what we keep, from Google / Facebook, why, who sees it, how long + how to delete, contact.
+    for (const k of ['priv_keep', 'priv_social', 'priv_why', 'priv_who', 'priv_team', 'priv_codes', 'priv_never', 'priv_long']) {
+      assert.ok(p.includes(t[k]), `privacy ${lang}: ${k}`);
+    }
+    assert.ok(p.includes(`<h1>${t.priv_title}</h1>`) && p.includes(`href="/30da/delete-data?lang=${lang}"`));
+    assert.ok((p.match(/<li>/g) || []).length <= 8, 'a few lines, not a wall');
+    // Delete-data: email us (subject filled in), within 30 days, links back to the policy in the same language.
+    assert.ok(d.includes(`<h1>${t.del_title}</h1>`) && d.includes('Delete my 30+DA account') && d.includes('30'));
+    assert.ok(d.includes('href="mailto:gk.smart@ggmt.sg?subject=Delete%20my%2030%2BDA%20account"'));
+    assert.ok(d.includes(`href="/30da/privacy?lang=${lang}"`));
+  }
+  assert.ok(privacyPage().includes('<html lang="en">') && privacyPage().includes('<h1>Privacy policy</h1>'), 'no language → English');
+  assert.ok(privacyPage({ lang: 'xx' }).includes('<html lang="en">'));
+  assert.ok(shown(privacyPage()).length < 900, `privacy (en) stays short: ${shown(privacyPage()).length} characters`);
+  assert.ok(shown(deleteDataPage()).length < 500, `delete-data (en) stays short: ${shown(deleteDataPage()).length} characters`);
+});
+
+test('try page: big "Works ✓", "Google: name (email)" escaped, one short line; failures one line what to fix; 5 languages', () => {
+  const ok = tryResultPage({ provider: 'google', ok: true, person: { name: '<b>Nary</b>', email: 'nary@gmail.com' } });
+  assert.match(ok, /Works <span class="try-mark" aria-hidden="true">✓<\/span>/);
+  assert.ok(ok.includes('Google: &lt;b&gt;Nary&lt;/b&gt; (nary@gmail.com)'), 'escaped');
+  assert.ok(!ok.includes('<b>Nary'));
+  assert.ok(ok.includes('Others can sign in once the app is published.'));
+  assert.ok(!/Testing|test users|People can (now )?sign in/.test(ok), 'no long Testing paragraph; never claims everyone can sign in');
+  const fbOk = tryResultPage({ provider: 'facebook', ok: true, person: { name: 'Dara', email: null } });
+  assert.ok(fbOk.includes('Facebook: Dara (no email shared)') && fbOk.includes('once the app is Live.'));
+  assert.ok(tryResultPage({ provider: 'google', ok: true, person: { name: '', email: 'a@b.c' } }).includes('Google: no name (a@b.c)'));
+
+  for (const reason of ['cancelled', 'bad_keys', 'redirect', 'not_live', 'expired', 'provider_error', 'timeout', 'network', 'no_keys', 'admin_gone', 'too_many', 'other', 'something_new']) {
+    for (const provider of ['google', 'facebook']) {
+      const html = tryResultPage({ provider, ok: false, reason, detail: '<script>x</script>' });
+      assert.match(html, /Did not work/);
+      assert.ok(!html.includes('<script>x') && !html.includes('&lt;script'), `${reason}: their words stay on the Code page card`);
+      assert.ok(!/THIRTYDA_|Railway|undefined|\{\w+\}/.test(html), `${reason}: plain words, all filled`);
+      const en = html.match(/<div class="tr on" id="en" lang="en">[\s\S]*?<\/section>/)?.[0] || '';
+      assert.equal((en.match(/<p class="try-line">/g) || []).length, 1, `${reason}: one line`);
+    }
+  }
+  assert.ok(tryResultPage({ provider: 'google', ok: false, reason: 'redirect' }).includes('Add the Redirect address from the Code page in Google.'));
+  assert.ok(tryResultPage({ provider: 'facebook', ok: false, reason: 'bad_keys' }).includes('Facebook did not accept the App ID or App secret.'));
+  assert.ok(tryResultPage({ provider: 'google', ok: false, reason: 'not_live' }).includes('“Publish app”'));
+  assert.ok(tryResultPage({ provider: 'facebook', ok: false, reason: 'not_live' }).includes('Live in Meta'));
+  const down = tryResultPage({ provider: 'google', ok: false, reason: 'provider_error', detail: null });
+  assert.ok(down.includes('A problem on Google’s side, not your keys.') && !down.includes('said:'));
+  assert.ok(tryResultPage({ provider: 'facebook', ok: false, reason: 'network' }).includes('could not reach Facebook'));
   assert.equal(esc(`<a href="x">'`), '&lt;a href=&quot;x&quot;&gt;&#39;');
 
-  // A good try proves the keys + redirect address only: the owner gets in even while the app is in Testing / Development.
-  assert.ok(ok.includes('Your Client ID, Client secret and the redirect address work.'));
-  assert.ok(ok.includes('still in Testing') && ok.includes('Publish app'), 'Google: say who can sign in until it is published');
-  assert.ok(!/People can (now )?sign in/.test(ok), 'never claims everyone can sign in');
-  const fbOk = tryResultPage({ provider: 'facebook', ok: true, person: { name: 'Dara', email: null } });
-  assert.ok(fbOk.includes('App ID, App secret and the redirect address work') && fbOk.includes('Development mode') && fbOk.includes('Live'));
-  assert.ok(fbOk.includes('Facebook said: Dara (no email shared)'));
-  // Their side / our side, worded as such; nothing after "said:" unless they said it.
-  const down = tryResultPage({ provider: 'google', ok: false, reason: 'provider_error', detail: null });
-  assert.match(down, /Google did not answer properly/);
-  assert.match(down, /not with your keys/);
-  assert.ok(!down.includes('said:'), 'no detail → no "Google said:" line');
-  assert.match(tryResultPage({ provider: 'facebook', ok: false, reason: 'network' }), /could not reach Facebook/);
-  assert.match(privacyPage(), /gk\.smart@ggmt\.sg/);
-  assert.match(deleteDataPage(), /Delete my 30\+DA account/);
+  // All 5 languages in the page (its address works once); the browser's one shows first; flags are #links.
+  const km = tryResultPage({ provider: 'google', ok: true, person: { name: 'Nary', email: 'n@x.kh' }, lang: 'km' });
+  assert.ok(km.includes('<html lang="km">') && km.includes('<div class="tr on" id="km" lang="km">'));
+  assert.ok(km.lastIndexOf('<div class="tr') === km.indexOf('<div class="tr on"'), 'the first shown is last in the page (pages.css)');
+  for (const code of PAGE_LANGS) {
+    assert.ok(km.includes(`id="${code}" lang="${code}"`), `try page carries ${code}`);
+    assert.ok(km.includes(PAGE_STRINGS[code].try_works) && km.includes(PAGE_STRINGS[code].try_back));
+    assert.ok(km.includes(`href="#${code}"`), `flag #${code}`);
+  }
+  assert.equal((km.match(/class="tr on"/g) || []).length, 1);
+  assert.ok(!/<script|style=/.test(km) && !/<main/.test(km), 'no script / inline style; no hidden <main>s');
+  assert.ok(km.includes('<title>ការចូលតាម Google ដំណើរការ · 30+DA</title>'));
+  assert.ok(tryResultPage({ provider: 'facebook', ok: false, reason: 'too_many', lang: 'xx' }).includes('<div class="tr on" id="en"'));
 });
 
 // ---------- honest code channels ----------

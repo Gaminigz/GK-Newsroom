@@ -1,24 +1,344 @@
 /**
- * 30+DA small public pages, served by src/lib/thirtyda-app.mjs in the app's look (src/thirtyda-app/pages.css):
+ * 30+DA small pages, served by src/lib/thirtyda-app.mjs in the app's look (src/thirtyda-app/pages.css):
  *
  *   GET /30da/privacy        the privacy policy (Google and Facebook ask for its address)
  *   GET /30da/delete-data    how to have your data deleted (Facebook asks for its address)
  *   the admin's "Try sign-in" result (the end of GET /30da/api/auth/<provider>/callback for a test)
  *
- * Plain English, short, true to what the code does. Static text apart from the try page, where every value
- * from Google / Facebook is escaped. Pure: no database, no request.
+ * Short and sweet (owner 2026-10-13): a few plain one-line points, in the app's 5 languages, with the same small
+ * flag row as the app's Me page at the top. The language: ?lang=en|km|zh|ko|ja, else the browser's
+ * Accept-Language, else English (pickLang). The flags are plain links (no script: the page CSP allows none):
+ * ?lang=… on the two public pages. The try page's address is single use (opening it again would start the
+ * sign-in over), so it carries all 5 languages and its flags are #links that show one (pages.css, .tr).
+ *
+ * True to what the code does. Static text apart from the try page, where every value from Google / Facebook is
+ * escaped. Pure: no database, no request.
  */
+import { LANGS, LANG_NATIVE, LANG_FLAG } from "../thirtyda-app/shared/rules.js";
 
 export const CONTACT_EMAIL = "gk.smart@ggmt.sg";
 export const POLICY_DATE = "13 October 2026";
+/** The subject a deletion email asks for (English in every language: the team reads it; the mail link fills it in). */
+export const DELETE_SUBJECT = "Delete my 30+DA account";
 const NAMES = { google: "Google", facebook: "Facebook" };
+/** The two boxes of each sign-in card, by their labels on the (English) Code page and in Google / Meta. */
+const KEY_LABELS = { google: ["Client ID", "Client secret"], facebook: ["App ID", "App secret"] };
 
 /** HTML-escape any text that did not come from this file. */
 export function esc(v) {
   return String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
 
-function page({ title, body, robots = "index", lang = "en", kind = "doc" }) {
+/** "{name} did …" + { name } → the text. Values are HTML already (escaped by the caller when they are not ours). */
+const fill = (s, vars) => s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
+
+/**
+ * The page language: ?lang= when it is one of the 5; else the first of the browser's Accept-Language (by its
+ * q weights, then order) that is one of them, by base language (km-KH → km, zh-TW → zh); else English.
+ */
+export function pickLang(query, acceptLanguage) {
+  const q = String(query ?? "").trim().toLowerCase();
+  if (LANGS.includes(q)) return q;
+  const prefs = String(acceptLanguage ?? "").slice(0, 512).split(",").map((part, i) => {
+    const [tag, ...params] = part.trim().split(";");
+    const qp = params.map((p) => p.trim().toLowerCase()).find((p) => p.startsWith("q="));
+    const w = qp ? Number(qp.slice(2)) : 1;
+    return { base: tag.trim().toLowerCase().split("-")[0], w: Number.isFinite(w) ? w : 0, i };
+  }).filter((p) => p.base && p.w > 0).sort((a, b) => b.w - a.w || a.i - b.i);
+  return prefs.find((p) => LANGS.includes(p.base))?.base ?? "en";
+}
+
+/** pickLang for a request: its ?lang= (when there is a URL) and its Accept-Language header. */
+export function requestLang(req, url = null) {
+  return pickLang(url?.searchParams?.get("lang"), req?.headers?.["accept-language"]);
+}
+
+/**
+ * Every word on the three pages, in the app's 5 languages (same keys and {placeholders} in each — tested).
+ * Names on the admin's Code page and in Google / Meta (Client ID, Redirect address, Publish app, Live) stay in
+ * English inside the other languages, so the owner finds them where he has to press.
+ */
+export const PAGE_STRINGS = {
+  en: {
+    language: "Language",
+    questions: "Questions:",
+    priv_title: "Privacy policy",
+    priv_date: "Updated 13 Oct 2026",
+    priv_lede: "30+DA is a dating app for people aged 30 and over.",
+    priv_keep_k: "We keep:",
+    priv_keep: "your profile, photos, phone number, rough area and messages.",
+    priv_social_k: "From Google or Facebook:",
+    priv_social: "only your account number and email.",
+    priv_why_k: "Why:",
+    priv_why: "to sign you in, show you people nearby and keep everyone safe.",
+    priv_who_k: "Who sees it:",
+    priv_who: "other members see your app name, photos and area. Your real name only once you both open the chat.",
+    priv_team_k: "Our team:",
+    priv_team: "only to check reports and keep the app safe.",
+    priv_codes_k: "Telegram or WhatsApp:",
+    priv_codes: "your number, only to send your code.",
+    priv_never: "We never sell your data. No ads, no tracking.",
+    priv_long_k: "How long:",
+    priv_long: "until you delete your account.",
+    priv_how_delete: "How to delete",
+    del_title: "Delete your data",
+    del_lede: "Ask any time — we delete everything.",
+    del_step1: "Email {mail} with the subject {subject}.",
+    del_step2: "Tell us your app name and how you sign in (phone, Google or Facebook).",
+    del_step3: "We delete it all and email you back — within 30 days.",
+    del_signout: "Signing out does not delete anything.",
+    try_title_ok: "{name} sign-in works",
+    try_title_bad: "{name} sign-in did not work",
+    try_works: "Works",
+    try_failed: "Did not work",
+    try_no_name: "no name",
+    try_no_email: "no email shared",
+    try_others_google: "Others can sign in once the app is published.",
+    try_others_facebook: "Others can sign in once the app is Live.",
+    try_back: "Back to the Code page",
+    fix_cancelled: "Cancelled. Try again and pick your account.",
+    fix_bad_keys: "{name} did not accept the {id} or {secret}. Copy them again.",
+    fix_redirect: "Add the Redirect address from the Code page in {name}.",
+    fix_not_live_google: "Press “Publish app” on Google’s consent screen, then try again.",
+    fix_not_live_facebook: "Switch the app to Live in Meta, then try again.",
+    fix_expired: "Took too long. Try again within 10 minutes, in this browser.",
+    fix_timeout: "{name} did not answer. Wait a minute and try again.",
+    fix_network: "We could not reach {name}. Wait a minute and try again.",
+    fix_provider_error: "A problem on {name}’s side, not your keys. Wait a minute and try again.",
+    fix_no_keys: "Save the {id} and {secret} on the Code page first.",
+    fix_admin_gone: "Your admin sign-in ended. Sign in again, then try.",
+    fix_too_many: "Too many tries. Wait 15 minutes.",
+    fix_other: "{name} said no. Check the {id}, {secret} and Redirect address.",
+  },
+  km: {
+    language: "ភាសា",
+    questions: "សំណួរ៖",
+    priv_title: "គោលការណ៍ឯកជនភាព",
+    priv_date: "កែថ្មី 13 តុលា 2026",
+    priv_lede: "30+DA ជាកម្មវិធីណាត់ជួប សម្រាប់អ្នកដែលមានអាយុពី 30 ឆ្នាំឡើងទៅ។",
+    priv_keep_k: "យើងរក្សាទុក៖",
+    priv_keep: "ប្រវត្តិរូប រូបថត លេខទូរស័ព្ទ តំបន់ប្រហាក់ប្រហែល និងសាររបស់អ្នក។",
+    priv_social_k: "ពី Google ឬ Facebook៖",
+    priv_social: "តែលេខគណនី និងអ៊ីមែលរបស់អ្នកប៉ុណ្ណោះ។",
+    priv_why_k: "ហេតុអ្វី៖",
+    priv_why: "ដើម្បីឲ្យអ្នកចូលបាន បង្ហាញមនុស្សនៅជិតអ្នក និងរក្សាសុវត្ថិភាពគ្រប់គ្នា។",
+    priv_who_k: "អ្នកណាឃើញ៖",
+    priv_who: "សមាជិកផ្សេងទៀតឃើញឈ្មោះក្នុងកម្មវិធី រូបថត និងតំបន់របស់អ្នក។ ឈ្មោះពិត លុះត្រាតែអ្នកទាំងពីរបើកការជជែក។",
+    priv_team_k: "ក្រុមការងាររបស់យើង៖",
+    priv_team: "មើលតែដើម្បីពិនិត្យការរាយការណ៍ និងរក្សាសុវត្ថិភាព។",
+    priv_codes_k: "Telegram ឬ WhatsApp៖",
+    priv_codes: "ប្រើលេខរបស់អ្នក តែដើម្បីផ្ញើលេខកូដប៉ុណ្ណោះ។",
+    priv_never: "យើងមិនលក់ទិន្នន័យរបស់អ្នកទេ។ គ្មានពាណិជ្ជកម្ម គ្មានការតាមដាន។",
+    priv_long_k: "រយៈពេល៖",
+    priv_long: "រហូតដល់អ្នកលុបគណនី។",
+    priv_how_delete: "របៀបលុប",
+    del_title: "លុបទិន្នន័យរបស់អ្នក",
+    del_lede: "ស្នើបានគ្រប់ពេល — យើងលុបទាំងអស់។",
+    del_step1: "ផ្ញើអ៊ីមែលទៅ {mail} ដោយដាក់ចំណងជើង {subject}។",
+    del_step2: "ប្រាប់ឈ្មោះក្នុងកម្មវិធី និងរបៀបដែលអ្នកចូល (ទូរស័ព្ទ Google ឬ Facebook)។",
+    del_step3: "យើងលុបទាំងអស់ ហើយផ្ញើអ៊ីមែលប្រាប់អ្នក ក្នុងរយៈពេល 30 ថ្ងៃ។",
+    del_signout: "ការចាកចេញពីកម្មវិធី មិនលុបអ្វីទាំងអស់ទេ។",
+    try_title_ok: "ការចូលតាម {name} ដំណើរការ",
+    try_title_bad: "ការចូលតាម {name} មិនដំណើរការ",
+    try_works: "ដំណើរការ",
+    try_failed: "មិនដំណើរការ",
+    try_no_name: "គ្មានឈ្មោះ",
+    try_no_email: "គ្មានអ៊ីមែល",
+    try_others_google: "អ្នកដទៃអាចចូលបាន ពេលកម្មវិធីត្រូវបាន Publish។",
+    try_others_facebook: "អ្នកដទៃអាចចូលបាន ពេលកម្មវិធីប្ដូរទៅ Live។",
+    try_back: "ត្រឡប់ទៅទំព័រ Code",
+    fix_cancelled: "បានបោះបង់។ សូមសាកម្ដងទៀត ហើយជ្រើសរើសគណនីរបស់អ្នក។",
+    fix_bad_keys: "{name} មិនទទួលយក {id} ឬ {secret} ទេ។ សូមចម្លងម្ដងទៀត។",
+    fix_redirect: "សូមបន្ថែម Redirect address ពីទំព័រ Code ទៅក្នុង {name}។",
+    fix_not_live_google: "សូមចុច “Publish app” ក្នុង Google រួចសាកម្ដងទៀត។",
+    fix_not_live_facebook: "សូមប្ដូរកម្មវិធីទៅ Live ក្នុង Meta រួចសាកម្ដងទៀត។",
+    fix_expired: "យូរពេក។ សូមសាកម្ដងទៀត ហើយបញ្ចប់ក្នុង 10 នាទី លើ browser ដដែល។",
+    fix_timeout: "{name} មិនឆ្លើយតប។ សូមរង់ចាំ 1 នាទី រួចសាកម្ដងទៀត។",
+    fix_network: "មិនអាចភ្ជាប់ទៅ {name} បានទេ។ សូមរង់ចាំ 1 នាទី រួចសាកម្ដងទៀត។",
+    fix_provider_error: "បញ្ហានៅខាង {name} មិនមែនខាងអ្នកទេ។ សូមរង់ចាំ 1 នាទី រួចសាកម្ដងទៀត។",
+    fix_no_keys: "សូមរក្សាទុក {id} និង {secret} នៅទំព័រ Code ជាមុនសិន។",
+    fix_admin_gone: "ការចូល admin របស់អ្នកបានផុតកំណត់។ សូមចូលម្ដងទៀត រួចសាកម្ដងទៀត។",
+    fix_too_many: "សាកច្រើនដងពេក។ សូមរង់ចាំ 15 នាទី។",
+    fix_other: "{name} មិនអនុញ្ញាតទេ។ សូមពិនិត្យ {id} {secret} និង Redirect address។",
+  },
+  zh: {
+    language: "语言",
+    questions: "联系我们：",
+    priv_title: "隐私政策",
+    priv_date: "更新于 2026 年 10 月 13 日",
+    priv_lede: "30+DA 是为 30 岁及以上人士打造的交友应用。",
+    priv_keep_k: "我们保存：",
+    priv_keep: "你的资料、照片、手机号、大致位置和消息。",
+    priv_social_k: "来自 Google 或 Facebook：",
+    priv_social: "只有你的账号编号和邮箱。",
+    priv_why_k: "用途：",
+    priv_why: "让你登录、为你显示附近的人，并保障大家的安全。",
+    priv_who_k: "谁能看到：",
+    priv_who: "其他会员能看到你的昵称、照片和所在区域。真实姓名要等你们都打开聊天后才显示。",
+    priv_team_k: "我们的团队：",
+    priv_team: "只为处理举报、保障安全而查看。",
+    priv_codes_k: "Telegram 或 WhatsApp：",
+    priv_codes: "只用你的号码发送验证码。",
+    priv_never: "我们绝不出售你的数据。没有广告，没有追踪。",
+    priv_long_k: "保存多久：",
+    priv_long: "直到你删除账号。",
+    priv_how_delete: "如何删除",
+    del_title: "删除你的数据",
+    del_lede: "随时都可以申请，我们会全部删除。",
+    del_step1: "发邮件到 {mail}，标题写 {subject}。",
+    del_step2: "告诉我们你的昵称和登录方式（手机、Google 或 Facebook）。",
+    del_step3: "我们会全部删除并回邮件告诉你，30 天内完成。",
+    del_signout: "退出登录不会删除任何数据。",
+    try_title_ok: "{name} 登录成功",
+    try_title_bad: "{name} 登录未成功",
+    try_works: "成功",
+    try_failed: "未成功",
+    try_no_name: "无名字",
+    try_no_email: "未提供邮箱",
+    try_others_google: "应用发布（Publish）后，其他人也能登录。",
+    try_others_facebook: "应用切换到 Live 后，其他人也能登录。",
+    try_back: "返回 Code 页面",
+    fix_cancelled: "已取消。请再试一次，并选择你的账号。",
+    fix_bad_keys: "{name} 不接受这个 {id} 或 {secret}。请重新复制。",
+    fix_redirect: "请把 Code 页面上的 Redirect address 添加到 {name}。",
+    fix_not_live_google: "请在 Google 同意屏幕上点击 “Publish app”，然后再试。",
+    fix_not_live_facebook: "请在 Meta 把应用切换到 Live，然后再试。",
+    fix_expired: "时间太长了。请用同一个浏览器，在 10 分钟内再试一次。",
+    fix_timeout: "{name} 没有回应。请过一分钟再试。",
+    fix_network: "连不上 {name}。请过一分钟再试。",
+    fix_provider_error: "是 {name} 那边的问题，不是你的设置。请过一分钟再试。",
+    fix_no_keys: "请先在 Code 页面保存 {id} 和 {secret}。",
+    fix_admin_gone: "你的管理员登录已过期。请重新登录后再试。",
+    fix_too_many: "尝试次数太多。请等 15 分钟。",
+    fix_other: "{name} 拒绝了登录。请检查 {id}、{secret} 和 Redirect address。",
+  },
+  ko: {
+    language: "언어",
+    questions: "문의:",
+    priv_title: "개인정보 처리방침",
+    priv_date: "2026년 10월 13일 업데이트",
+    priv_lede: "30+DA는 30세 이상을 위한 만남 앱이에요.",
+    priv_keep_k: "보관하는 정보:",
+    priv_keep: "프로필, 사진, 전화번호, 대략적인 지역, 메시지.",
+    priv_social_k: "Google·Facebook에서:",
+    priv_social: "계정 번호와 이메일만 받아요.",
+    priv_why_k: "이유:",
+    priv_why: "로그인, 근처 사람 보여 주기, 모두의 안전을 위해서예요.",
+    priv_who_k: "누가 보나요:",
+    priv_who: "다른 회원은 앱 이름, 사진, 지역을 봐요. 실명은 두 분 모두 채팅을 열었을 때만 보여요.",
+    priv_team_k: "운영팀:",
+    priv_team: "신고 확인과 안전을 위해서만 봐요.",
+    priv_codes_k: "Telegram·WhatsApp:",
+    priv_codes: "인증 코드를 보낼 때만 번호를 써요.",
+    priv_never: "데이터를 절대 팔지 않아요. 광고도, 추적도 없어요.",
+    priv_long_k: "보관 기간:",
+    priv_long: "계정을 삭제할 때까지.",
+    priv_how_delete: "삭제 방법",
+    del_title: "내 데이터 삭제",
+    del_lede: "언제든 요청하면 모두 삭제해 드려요.",
+    del_step1: "{mail}로 메일을 보내 주세요. 제목: {subject}",
+    del_step2: "앱 이름과 로그인 방법(전화번호, Google, Facebook)을 알려 주세요.",
+    del_step3: "30일 안에 모두 삭제하고 메일로 알려 드려요.",
+    del_signout: "로그아웃만으로는 아무것도 삭제되지 않아요.",
+    try_title_ok: "{name} 로그인 성공",
+    try_title_bad: "{name} 로그인 실패",
+    try_works: "성공",
+    try_failed: "실패",
+    try_no_name: "이름 없음",
+    try_no_email: "이메일 없음",
+    try_others_google: "앱을 게시(Publish)하면 다른 사람도 로그인할 수 있어요.",
+    try_others_facebook: "앱을 Live로 바꾸면 다른 사람도 로그인할 수 있어요.",
+    try_back: "Code 페이지로 돌아가기",
+    fix_cancelled: "취소됐어요. 다시 시도해서 계정을 선택하세요.",
+    fix_bad_keys: "{name}에서 {id} 또는 {secret}을 받지 않았어요. 다시 복사하세요.",
+    fix_redirect: "Code 페이지의 Redirect address를 {name}에 추가하세요.",
+    fix_not_live_google: "Google 동의 화면에서 “Publish app”을 누른 뒤 다시 시도하세요.",
+    fix_not_live_facebook: "Meta에서 앱을 Live로 바꾼 뒤 다시 시도하세요.",
+    fix_expired: "시간이 너무 걸렸어요. 같은 브라우저에서 10분 안에 다시 시도하세요.",
+    fix_timeout: "{name}에서 응답이 없어요. 1분 뒤 다시 시도하세요.",
+    fix_network: "{name}에 연결할 수 없어요. 1분 뒤 다시 시도하세요.",
+    fix_provider_error: "{name} 쪽 문제예요. 설정은 괜찮아요. 1분 뒤 다시 시도하세요.",
+    fix_no_keys: "먼저 Code 페이지에 {id}와 {secret}을 저장하세요.",
+    fix_admin_gone: "관리자 로그인이 끝났어요. 다시 로그인한 뒤 시도하세요.",
+    fix_too_many: "시도가 너무 많아요. 15분 기다려 주세요.",
+    fix_other: "{name}에서 로그인을 거부했어요. {id}, {secret}, Redirect address를 확인하세요.",
+  },
+  ja: {
+    language: "言語",
+    questions: "お問い合わせ：",
+    priv_title: "プライバシーポリシー",
+    priv_date: "2026年10月13日 更新",
+    priv_lede: "30+DA は、30歳以上の方のための出会いアプリです。",
+    priv_keep_k: "保存するもの：",
+    priv_keep: "プロフィール、写真、電話番号、おおよその地域、メッセージ。",
+    priv_social_k: "Google・Facebook から：",
+    priv_social: "アカウント番号とメールアドレスだけ。",
+    priv_why_k: "目的：",
+    priv_why: "ログイン、近くの人の表示、みんなの安全のため。",
+    priv_who_k: "見える人：",
+    priv_who: "他の会員には、アプリ名・写真・地域が見えます。本名は、お互いにチャットを開いたときだけ。",
+    priv_team_k: "運営チーム：",
+    priv_team: "報告の確認と安全のためだけに見ます。",
+    priv_codes_k: "Telegram・WhatsApp：",
+    priv_codes: "コードを送るためだけに番号を使います。",
+    priv_never: "データは売りません。広告も追跡もありません。",
+    priv_long_k: "保存期間：",
+    priv_long: "アカウントを削除するまで。",
+    priv_how_delete: "削除のしかた",
+    del_title: "データの削除",
+    del_lede: "いつでも依頼できます。すべて削除します。",
+    del_step1: "{mail} に、件名 {subject} でメールしてください。",
+    del_step2: "アプリ名とログイン方法（電話番号・Google・Facebook）を書いてください。",
+    del_step3: "30日以内にすべて削除し、メールでお知らせします。",
+    del_signout: "ログアウトしても、何も削除されません。",
+    try_title_ok: "{name} ログイン成功",
+    try_title_bad: "{name} ログイン失敗",
+    try_works: "成功",
+    try_failed: "失敗",
+    try_no_name: "名前なし",
+    try_no_email: "メールなし",
+    try_others_google: "アプリを公開（Publish）すると、他の人もログインできます。",
+    try_others_facebook: "アプリを Live にすると、他の人もログインできます。",
+    try_back: "Code ページに戻る",
+    fix_cancelled: "キャンセルされました。もう一度試して、アカウントを選んでください。",
+    fix_bad_keys: "{name} が {id} または {secret} を受け付けませんでした。もう一度コピーしてください。",
+    fix_redirect: "Code ページの Redirect address を {name} に追加してください。",
+    fix_not_live_google: "Google の同意画面で「Publish app」を押してから、もう一度試してください。",
+    fix_not_live_facebook: "Meta でアプリを Live にしてから、もう一度試してください。",
+    fix_expired: "時間がかかりすぎました。同じブラウザで、10分以内にもう一度試してください。",
+    fix_timeout: "{name} から応答がありません。1分待ってから、もう一度試してください。",
+    fix_network: "{name} につながりません。1分待ってから、もう一度試してください。",
+    fix_provider_error: "{name} 側の問題で、設定のせいではありません。1分待ってから、もう一度試してください。",
+    fix_no_keys: "先に Code ページで {id} と {secret} を保存してください。",
+    fix_admin_gone: "管理者ログインが切れました。もう一度ログインしてから試してください。",
+    fix_too_many: "試行回数が多すぎます。15分待ってください。",
+    fix_other: "{name} がログインを拒否しました。{id}・{secret}・Redirect address を確認してください。",
+  },
+};
+
+const ok = (lang) => (LANGS.includes(lang) ? lang : "en");
+const mailLink = `<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>`;
+const deleteMailLink = `<a href="mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(DELETE_SUBJECT)}">${CONTACT_EMAIL}</a>`;
+
+/** The small flag row (the app's Me page look): flag + short native name, the current one filled navy. */
+function flagRow(lang, hrefFor) {
+  const links = LANGS.map((code) => `<a href="${hrefFor(code)}" hreflang="${code}" lang="${code}"${code === lang ? ' aria-current="true"' : ""}>`
+    + `<span class="flag" aria-hidden="true">${LANG_FLAG[code]}</span>${LANG_NATIVE[code]}</a>`).join("");
+  return `<nav class="langs" aria-label="${PAGE_STRINGS[lang].language}">${links}</nav>`;
+}
+
+/** One language's column: the navy wordmark band, the flags, the text. */
+function docColumn({ lang, flags, body, tag = "main", attrs = "" }) {
+  return `  <div class="doc"${attrs}>
+    <header class="doc-bar"><a class="doc-mark" href="/30da/">30+DA</a></header>
+    ${flags}
+    <${tag} class="doc-body">
+${body}
+    </${tag}>
+  </div>`;
+}
+
+function page({ title, lang, inner, robots = "index", kind = "doc" }) {
   return `<!doctype html>
 <html lang="${lang}">
 <head>
@@ -34,195 +354,93 @@ function page({ title, body, robots = "index", lang = "en", kind = "doc" }) {
   <link rel="stylesheet" href="/30da/pages.css">
 </head>
 <body class="page-${kind}">
-  <div class="doc">
-    <header class="doc-bar"><a class="doc-mark" href="/30da/">30+DA</a></header>
-    <main class="doc-body">
-${body}
-    </main>
-  </div>
+${inner}
 </body>
 </html>
 `;
 }
 
-const mail = `<a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>`;
-
-/** GET /30da/privacy */
-export function privacyPage() {
+/** GET /30da/privacy[?lang=] — what Google and Facebook ask for, one plain line each. */
+export function privacyPage({ lang: want } = {}) {
+  const lang = ok(want);
+  const t = PAGE_STRINGS[lang];
+  const point = (k) => `        <li><b>${t[`${k}_k`]}</b> ${t[k]}</li>`;
+  const body = `      <h1>${t.priv_title}</h1>
+      <p class="doc-date">${t.priv_date}</p>
+      <p class="doc-lede">${t.priv_lede}</p>
+      <ul class="facts">
+${["priv_keep", "priv_social", "priv_why", "priv_who", "priv_team", "priv_codes"].map(point).join("\n")}
+        <li>${t.priv_never}</li>
+        <li><b>${t.priv_long_k}</b> ${t.priv_long} <a href="/30da/delete-data?lang=${lang}">${t.priv_how_delete}</a></li>
+      </ul>
+      <p class="doc-contact">${t.questions} ${mailLink}</p>`;
   return page({
-    title: "Privacy policy · 30+DA",
-    body: `      <h1>Privacy policy</h1>
-      <p class="doc-date">Updated ${POLICY_DATE}</p>
-      <p class="doc-lede">30+DA is a calm dating app for people aged 30 and over. This page says what we keep about you, why,
-        who else sees it, and how to have it deleted. Questions: ${mail}.</p>
-
-      <h2>What we keep</h2>
-      <ul>
-        <li><b>Your profile:</b> app name, real name, birth year, gender, what you are looking for and your language.
-          Your real name is shown to another person only after you both choose to open the chat.</li>
-        <li><b>Your photos.</b> We remove the hidden camera and location details from them. Other people see more of your
-          photos as your conversation with them goes up a level.</li>
-        <li><b>How you signed in:</b> your phone number when you verify it with a code. If you use Google or Facebook,
-          your account number there and your email address if they give it to us. We never keep your Google or
-          Facebook password or their sign-in keys.</li>
-        <li><b>Your area:</b> we store a point a few hundred metres away from where you really are, and show other people
-          only your area and how far away you are.</li>
-        <li><b>What you write in the app:</b> questions, answers and chat messages, and any message we stopped because it
-          broke the rules (for example a phone number or a chat handle).</li>
-        <li><b>Safety records:</b> reports you or others make, warnings, and when you were last online.</li>
-      </ul>
-
-      <h2>Why</h2>
-      <p>To run the app: to sign you in, show you people near you, carry your conversations, translate them, and keep
-        everyone safe (we stop contact details in messages and look at reports).</p>
-
-      <h2>Who else sees it</h2>
-      <ul>
-        <li><b>Other members</b> see what the app shows them: your app name, the photos for your level, your area and
-          distance, and what you write to them.</li>
-        <li><b>The 30+DA team</b> sees profiles, stopped messages and reports, to keep the app safe.</li>
-        <li><b>Telegram or WhatsApp (Meta)</b> get your phone number when you ask for a sign-in code by them, so they can
-          deliver it.</li>
-        <li><b>Google or Facebook</b> tell us who you are when you sign in with them.</li>
-        <li>Messages are translated on <b>our own server</b>; they are not sent to an outside translation service.</li>
-      </ul>
-      <p>We do not sell your data and we do not show ads.</p>
-
-      <h2>Cookies</h2>
-      <p>One cookie keeps you signed in (for 30 days). A short one (10 minutes) protects a Google or Facebook sign-in.
-        No tracking or advertising cookies.</p>
-
-      <h2>How long we keep it</h2>
-      <p>For as long as you have an account. Sign-in codes are gone within 15 minutes.
-        To have your data deleted, see <a href="/30da/delete-data">Delete your data</a>.</p>
-
-      <h2>Age</h2>
-      <p>30+DA is only for people aged 30 and over.</p>
-
-      <h2>Changes</h2>
-      <p>If this policy changes, we update this page and the date at the top.</p>
-
-      <p class="doc-contact">Contact: ${mail}</p>`,
+    title: `${t.priv_title} · 30+DA`,
+    lang,
+    inner: docColumn({ lang, flags: flagRow(lang, (c) => `/30da/privacy?lang=${c}`), body }),
   });
 }
 
-/** GET /30da/delete-data */
-export function deleteDataPage() {
-  return page({
-    title: "Delete your data · 30+DA",
-    body: `      <h1>Delete your data</h1>
-      <p class="doc-lede">You can ask us to delete your 30+DA account and everything that belongs to it at any time.</p>
-
-      <h2>How</h2>
-      <ol class="doc-steps">
-        <li>Email ${mail} with the subject <b>Delete my 30+DA account</b>.</li>
-        <li>Tell us your app name and how you signed in: your phone number, or your Google or Facebook account.</li>
-        <li>We delete your profile, photos, phone number, Google or Facebook link and location, sign you out everywhere,
-          and email you when it is done — within 30 days.</li>
+/** GET /30da/delete-data[?lang=] — email us, we delete it all within 30 days. */
+export function deleteDataPage({ lang: want } = {}) {
+  const lang = ok(want);
+  const t = PAGE_STRINGS[lang];
+  const body = `      <h1>${t.del_title}</h1>
+      <p class="doc-lede">${t.del_lede}</p>
+      <ol class="steps">
+        <li>${fill(t.del_step1, { mail: deleteMailLink, subject: `<b>${DELETE_SUBJECT}</b>` })}</li>
+        <li>${t.del_step2}</li>
+        <li>${t.del_step3}</li>
       </ol>
-      <p>Signing out in the app (Me → Sign out) does not delete anything.</p>
-
-      <h2>Signed in with Facebook or Google?</h2>
-      <p>You can also take 30+DA's access away there: in Facebook, Settings &amp; privacy → Settings → Apps and websites →
-        30+DA → Remove; in Google, myaccount.google.com → Security → Your connections to third-party apps → 30+DA →
-        Delete all connections. That stops new sign-ins; email us as well so we delete what we already hold.</p>
-
-      <p class="doc-contact">Questions: ${mail} · <a href="/30da/privacy">Privacy policy</a></p>`,
+      <p class="doc-fine">${t.del_signout}</p>
+      <p class="doc-contact">${t.questions} ${mailLink} · <a href="/30da/privacy?lang=${lang}">${t.priv_title}</a></p>`;
+  return page({
+    title: `${t.del_title} · 30+DA`,
+    lang,
+    inner: docColumn({ lang, flags: flagRow(lang, (c) => `/30da/delete-data?lang=${c}`), body }),
   });
 }
 
 // ---------- the admin's "Try sign-in" result ----------
 
-const KEY_WORDS = { google: "Client ID or Client secret", facebook: "App ID or App secret" };
-const WHERE_KEYS = {
-  google: "Google Cloud → APIs &amp; Services → Credentials → your OAuth client",
-  facebook: "Meta for Developers → your app → App settings → Basic",
-};
-const WHERE_REDIRECT = {
-  google: "Google Cloud → APIs &amp; Services → Credentials → your OAuth client → Authorised redirect URIs",
-  facebook: "Meta for Developers → your app → Facebook Login → Settings → Valid OAuth Redirect URIs",
-};
-const GO_LIVE = {
-  google: "Google Cloud → APIs &amp; Services → OAuth consent screen: press Publish app (or, while it is in Testing, add your Google account under Test users).",
-  facebook: "Meta for Developers → your app: switch App mode to Live (it needs the Privacy policy and Data deletion addresses from the Code page).",
-};
-/** What a good try proves (the owner got in) and what it cannot: an app still in Testing / Development lets only the owner in. */
-const WORKS_KEYS = { google: "Client ID, Client secret", facebook: "App ID, App secret" };
-const ONLY_YOU = {
-  google: "If the Google app is still in Testing, only you and its test users can sign in — other people are stopped on Google’s own page.",
-  facebook: "If the Facebook app is still in Development mode, only you and people with a role on the app can sign in — other people are stopped on Facebook’s own page.",
-};
-const OPEN_TO_ALL = {
-  google: "To let everyone in: Google Cloud → APIs &amp; Services → OAuth consent screen → press Publish app.",
-  facebook: "To let everyone in: Meta for Developers → your app → switch App mode to Live (it needs the Privacy policy and Data deletion addresses from the Code page).",
-};
-
-/** What went wrong, in plain words, and what to do about it. reason: see SIGNIN_REASONS + no_keys / admin_gone. */
-function tryFailure(provider, reason) {
-  const name = NAMES[provider];
-  switch (reason) {
-    case "cancelled":
-      return [`You pressed Cancel, or ${name} did not let this account in.`,
-        `Press Try sign-in again and pick your account. If ${name} said the app is not available to you: ${GO_LIVE[provider]}`];
-    case "bad_keys":
-      return [`${name} did not accept the ${KEY_WORDS[provider]}.`, `Copy both again from ${WHERE_KEYS[provider]}, save them on the Code page, then try again.`];
-    case "redirect":
-      return [`The redirect address is not added in ${name}.`, `Copy the redirect address from the ${name} card and add it in ${WHERE_REDIRECT[provider]}. Then try again.`];
-    case "not_live":
-      return [`The ${name} app is not open to everyone yet.`, GO_LIVE[provider]];
-    case "expired":
-      return ["This try took too long, or it came back to another browser.", "Press Try sign-in again and finish within 10 minutes, in this same browser."];
-    case "timeout":
-      return [`${name} did not answer in time.`, "Wait a minute and try again."];
-    case "network":
-      return [`This server could not reach ${name}.`, "Wait a minute and try again."];
-    case "provider_error":
-      return [`${name} did not answer properly.`, `This is a problem on ${name}’s side, not with your keys. Wait a minute and try again.`];
-    case "no_keys":
-      return [`No ${name} keys are saved.`, `Save the ${KEY_WORDS[provider].replace(" or ", " and ")} on the Code page first.`];
-    case "admin_gone":
-      return ["Your admin session ended before the try came back.", "Sign in to the admin again, then press Try sign-in."];
-    case "too_many":
-      return ["That is a lot of tries in a short time.", "Wait 15 minutes, then press Try sign-in again."];
-    default:
-      return [`${name} refused the sign-in.`, `Check the ${KEY_WORDS[provider]} and the redirect address on the Code page, then try again.`];
-  }
+/** The one line that says what to fix. reason: see SIGNIN_REASONS + no_keys / admin_gone / too_many. */
+function fixLine(t, provider, reason) {
+  return t[`fix_${reason}_${provider}`] ?? t[`fix_${reason}`] ?? t.fix_other;
 }
 
 /**
  * The page a "Try sign-in" ends on. Nothing was saved: no profile, no session.
- * ok → "Works ✓ — Google said: <name> (<email>)" + only what that proves: the keys and the redirect address work
- * (the owner got in). Whether everyone can get in depends on the app being published / Live, which the try cannot
- * see, so the page says so. Else the plain-words failure (+ what Google / Facebook said, only in their own words).
+ * ok → big "Works ✓", "Google: <name> (<email>)" and one line: others get in once the app is published / Live
+ * (the try proves the keys work for the owner; who else may sign in is up to Google / Meta, which it cannot see).
+ * Else big "Did not work ✗" and one line what to fix. What Google / Facebook said in their own words is not shown
+ * here: the Code page card keeps it (detail is accepted and ignored).
+ * All 5 languages are in the page (it cannot be opened twice); `lang` picks the one shown first.
  */
-export function tryResultPage({ provider, ok, person = null, reason = null, detail = null }) {
-  const name = NAMES[provider] ?? "Sign-in";
-  const back = `<p class="doc-actions"><a class="doc-btn" href="/30da/admin/connections">Back to the Code page</a></p>`;
-  if (ok) {
-    const who = person?.name || "a person with no name";
-    const mailPart = person?.email ? ` (${esc(person.email)})` : " (no email shared)";
-    return page({
-      title: `${name} keys work · 30+DA`,
-      robots: "noindex",
-      kind: "try",
-      body: `      <p class="try-verdict ok"><span class="try-mark" aria-hidden="true">✓</span> Works</p>
-      <h1>${esc(name)} said: ${esc(who)}${mailPart}</h1>
-      <p>Your ${WORKS_KEYS[provider] ?? "keys"} and the redirect address work.</p>
-      <p class="try-note"><b>${ONLY_YOU[provider] ?? ""}</b> ${OPEN_TO_ALL[provider] ?? ""}</p>
-      <p class="doc-fine">This was only a test: no profile was made and nobody was signed in. You can close this tab.</p>
-${back}`,
-    });
-  }
-  const [what, todo] = tryFailure(provider, reason);
+export function tryResultPage({ provider, ok: worked, person = null, reason = null, lang: want = "en" }) {
+  const first = ok(want);
+  const name = esc(NAMES[provider] ?? "Sign-in");
+  const [id, secret] = KEY_LABELS[provider] ?? ["ID", "secret"];
+  const column = (code) => {
+    const t = PAGE_STRINGS[code];
+    const lines = worked
+      ? `      <h1 class="try-big ok">${t.try_works} <span class="try-mark" aria-hidden="true">✓</span></h1>
+      <p class="try-who">${name}: ${person?.name ? esc(person.name) : t.try_no_name} (${person?.email ? esc(person.email) : t.try_no_email})</p>
+      <p class="try-line">${t[`try_others_${provider}`] ?? ""}</p>`
+      : `      <h1 class="try-big bad">${t.try_failed} <span class="try-mark" aria-hidden="true">✗</span></h1>
+      <p class="try-line">${fill(fixLine(t, provider, reason), { name, id, secret })}</p>`;
+    const body = `${lines}
+      <p class="doc-actions"><a class="doc-btn" href="/30da/admin/connections">${t.try_back}</a></p>`;
+    return docColumn({ lang: code, flags: flagRow(code, (c) => `#${c}`), body, tag: "section" });
+  };
+  // The first-shown language goes last: a chosen #link (:target) earlier in the page hides it (pages.css).
+  const order = [...LANGS.filter((c) => c !== first), first];
+  const inner = order.map((code) => `<div class="tr${code === first ? " on" : ""}" id="${code}" lang="${code}">\n${column(code)}\n</div>`).join("\n");
+  const t = PAGE_STRINGS[first];
   return page({
-    title: `${name} sign-in did not work · 30+DA`,
+    title: `${fill(worked ? t.try_title_ok : t.try_title_bad, { name })} · 30+DA`,
+    lang: first,
+    inner,
     robots: "noindex",
     kind: "try",
-    body: `      <p class="try-verdict bad"><span class="try-mark" aria-hidden="true">✗</span> Did not work</p>
-      <h1>${what}</h1>
-      <p>${todo}</p>
-      ${detail ? `<p class="doc-fine">${esc(name)} said: ${esc(detail)}</p>` : ""}
-      <p class="doc-fine">Nothing was saved: no profile was made and nobody was signed in.</p>
-${back}`,
   });
 }

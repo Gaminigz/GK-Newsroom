@@ -1,6 +1,7 @@
 /* 30+DA small pages (privacy policy, delete your data, the admin's "Try sign-in" result) — served from
    src/lib/thirtyda-pages.mjs. Same tokens and type as the app (app.css): navy wordmark band, Archivo, a centred
-   column on a soft desk. No script, no inline style (the page CSP allows only this file and Google Fonts). */
+   column on a soft desk, the Me page's little flag row. Short and big enough for tired eyes.
+   No script, no inline style (the page CSP allows only this file and Google Fonts). */
 :root {
   --navy: #0b1c3f;
   --ink: #0b1c3f;
@@ -13,8 +14,6 @@
   --red-soft: #fdecea;
   --green: #1e9e57;
   --green-soft: #e3f4ea;
-  --amber: #8a5300;
-  --amber-soft: #fff4dc;
   --body: 'Archivo', system-ui, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
   color-scheme: light;
@@ -25,8 +24,8 @@ body {
   margin: 0;
   min-height: 100dvh;
   font-family: var(--body);
-  font-size: 15px;
-  line-height: 1.55;
+  font-size: 16px;
+  line-height: 1.5;
   color: var(--ink);
   background: var(--desk);
   -webkit-font-smoothing: antialiased;
@@ -34,40 +33,69 @@ body {
 a { color: var(--ink); font-weight: 600; text-underline-offset: 2px; overflow-wrap: anywhere; }
 :focus-visible { outline: 2px solid #3b6fe0; outline-offset: 2px; }
 
-.doc { max-width: 640px; min-height: 100dvh; margin: 0 auto; background: var(--page); }
-@media (min-width: 680px) {
+.doc { max-width: 560px; min-height: 100dvh; margin: 0 auto; background: var(--page); }
+@media (min-width: 600px) {
   .doc { min-height: 0; margin: 32px auto; border-radius: 14px; overflow: hidden; box-shadow: 0 0 0 1px var(--line-soft), 0 24px 64px rgb(11 28 63 / 0.08); }
 }
 .doc-bar { display: flex; align-items: center; height: 56px; padding: 0 20px; background: var(--navy); }
 .doc-mark { color: #fff; font-weight: 900; font-size: 22px; letter-spacing: 0.02em; text-decoration: none; font-stretch: 112%; }
-.doc-body { padding: 24px 20px 40px; }
-@media (min-width: 680px) { .doc-body { padding: 32px 36px 44px; } }
+.doc-body { padding: 22px 20px 36px; }
+@media (min-width: 600px) { .doc-body { padding: 28px 32px 40px; } }
 
-h1 { margin: 0; font-size: 26px; line-height: 1.2; font-weight: 800; font-stretch: 108%; letter-spacing: -0.005em; overflow-wrap: anywhere; }
-h2 { margin: 26px 0 8px; font-size: 16px; font-weight: 800; }
+/* The language row (as on the app's Me page): flag + short name, no boxes, one line; the current one navy. */
+.langs { display: flex; justify-content: space-between; gap: 2px; padding: 8px 12px; border-bottom: 1px solid var(--line-soft); }
+@media (min-width: 600px) { .langs { padding: 8px 24px; } }
+.langs a {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 7px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap; overflow-wrap: normal; color: var(--ink);
+}
+.langs a[aria-current="true"] { background: var(--navy); color: #fff; }
+.flag { display: inline-block; font-size: 1.1em; line-height: 1; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
+
+h1 { margin: 0; font-size: 28px; line-height: 1.2; font-weight: 800; font-stretch: 108%; letter-spacing: -0.005em; overflow-wrap: anywhere; }
 p { margin: 0 0 10px; }
-ul, ol { margin: 0 0 10px; padding-left: 20px; }
-li { margin: 0 0 8px; }
-li::marker { color: var(--muted); }
 .doc-date { margin-top: 6px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
-.doc-lede { margin-top: 14px; font-size: 16px; }
-.doc-steps li { padding-left: 4px; }
-.doc-contact { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line-soft); color: var(--muted); }
-.doc-fine { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
-.doc-actions { margin-top: 22px; }
+.doc-lede { margin-top: 12px; font-size: 17px; }
+.doc-fine { font-size: 14px; color: var(--muted); }
+.doc-contact { margin-top: 22px; color: var(--muted); }
+.doc-actions { margin-top: 26px; }
 .doc-btn {
-  display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px;
+  display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 20px;
   border-radius: 8px; background: var(--navy); color: #fff; text-decoration: none; font-weight: 700;
 }
 
-/* the "Try sign-in" result */
-.try-verdict { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 14px; padding: 6px 12px 6px 8px; border-radius: 999px; font-weight: 800; font-size: 14px; }
-.try-verdict.ok { background: var(--green-soft); color: var(--green); }
-.try-verdict.bad { background: var(--red-soft); color: var(--red); }
-.try-mark { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: #fff; font-size: 14px; }
-.try-verdict.ok .try-mark { background: var(--green); }
-.try-verdict.bad .try-mark { background: var(--red); }
-.page-try h1 { font-size: 22px; margin-bottom: 12px; }
-/* What a good try cannot prove: everyone gets in only once the app is published / Live. */
-.try-note { margin: 14px 0; padding: 12px 14px; border-radius: 10px; background: var(--amber-soft); color: var(--amber); font-size: 14px; }
-.try-note b { color: var(--ink); font-weight: 700; }
+/* Privacy: one plain line per point. */
+.facts { list-style: none; margin: 16px 0 0; padding: 0; }
+.facts li { margin: 0; padding: 10px 0; border-top: 1px solid var(--line-soft); }
+.facts li:last-child { border-bottom: 1px solid var(--line-soft); }
+.facts b { font-weight: 800; }
+
+/* Delete your data: three numbered steps. */
+.steps { list-style: none; margin: 18px 0 14px; padding: 0; counter-reset: step; }
+.steps li { counter-increment: step; position: relative; min-height: 28px; margin: 0 0 14px; padding-left: 40px; }
+.steps li::before {
+  content: counter(step); position: absolute; left: 0; top: -1px; display: grid; place-items: center;
+  width: 28px; height: 28px; border-radius: 50%; background: var(--navy); color: #fff; font-size: 14px; font-weight: 800;
+}
+
+/* The "Try sign-in" result: just the verdict, big. */
+.try-big { display: flex; align-items: center; gap: 12px; margin: 6px 0 14px; font-size: 40px; line-height: 1.1; font-weight: 900; }
+.try-big.ok { color: var(--green); }
+.try-big.bad { color: var(--red); }
+.try-mark { display: inline-grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 50%; color: #fff; font-size: 22px; }
+.try-big.ok .try-mark { background: var(--green); }
+.try-big.bad .try-mark { background: var(--red); }
+.try-who { font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+.try-line { font-size: 17px; }
+/* The try page carries all 5 languages (its address works once): only one shows. The first shown (the browser's
+   language) is the last in the page, so a flag's #link (:target), always earlier, hides it. */
+.tr { display: none; }
+.tr.on, .tr:target { display: flow-root; }
+.tr:target ~ .tr.on { display: none; }
+
+/* Khmer / CJK: no tracking or capitals in the small date line, a touch more line height for Khmer. */
+:lang(km) .doc-date, :lang(zh) .doc-date, :lang(ko) .doc-date, :lang(ja) .doc-date { font-family: var(--body); letter-spacing: 0; text-transform: none; font-size: 13px; }
+:lang(km) body, .doc:lang(km), .tr:lang(km) { line-height: 1.7; }
+:lang(km) h1 { line-height: 1.45; }
+:lang(km) .try-big { line-height: 1.4; }
+:lang(ko) .doc-body { word-break: keep-all; overflow-wrap: break-word; }

@@ -52,7 +52,7 @@ import {
 } from "./thirtyda-signin.mjs";
 import { noteSecretUse } from "./thirtyda-settings.mjs";
 import { outboundFetch } from "./thirtyda-test-fetch.mjs";
-import { privacyPage, deleteDataPage, tryResultPage } from "./thirtyda-pages.mjs";
+import { privacyPage, deleteDataPage, tryResultPage, requestLang } from "./thirtyda-pages.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
   PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
@@ -1157,7 +1157,10 @@ async function completeSignin(ctx, provider, person) {
  * (ok / reason + time, never a name, email or token) goes on the card and in the audit.
  */
 async function signinTry(req, res, d, provider, { rec, stateOk, params, clear }) {
-  const page = (o) => sendPage(req, res, 200, tryResultPage({ provider, ...o }), { "Set-Cookie": clear, "X-Robots-Tag": "noindex" });
+  // In the browser's language first (Google / Facebook send no ?lang back); the page's flags switch it.
+  const page = (o) => sendPage(req, res, 200, tryResultPage({ provider, lang: requestLang(req), ...o }), {
+    "Set-Cookie": clear, "X-Robots-Tag": "noindex", Vary: "Accept-Language",
+  });
   const record = async (r) => {
     await noteSecretUse(d, provider, { ok: r.ok, reason: r.ok ? null : r.reason, detail: r.ok ? null : r.detail ?? null, kind: "try" }).catch(() => {});
     await d.collection("thirtyda_audit").insertOne({
@@ -2326,8 +2329,10 @@ export async function handleThirtyDaApp(req, res, url) {
   if (path === API || path.startsWith(`${API}/`)) return handleApi(req, res, url, path.slice(API.length) || "/");
   if (req.method === "GET" || req.method === "HEAD") {
     // The pages Google and Facebook ask for (their addresses are on the admin Code page).
-    if (path === `${BASE}/privacy`) return sendPage(req, res, 200, privacyPage(), { "Cache-Control": "no-cache" });
-    if (path === `${BASE}/delete-data`) return sendPage(req, res, 200, deleteDataPage(), { "Cache-Control": "no-cache" });
+    // In 5 languages: ?lang=en|km|zh|ko|ja, else the browser's language, else English.
+    const docHeaders = { "Cache-Control": "no-cache", Vary: "Accept-Language" };
+    if (path === `${BASE}/privacy`) return sendPage(req, res, 200, privacyPage({ lang: requestLang(req, url) }), docHeaders);
+    if (path === `${BASE}/delete-data`) return sendPage(req, res, 200, deleteDataPage({ lang: requestLang(req, url) }), docHeaders);
     // The client loads its modules relative to /30da/, so the bare path gets a slash.
     if (path === BASE) {
       res.writeHead(302, { ...BASE_HEADERS, Location: `${BASE}/${url.search}` }).end();

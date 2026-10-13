@@ -56,7 +56,7 @@ import {
   checkSigninFields, signinRedirect, signinKeys, publicOrigin, createSigninState, authorizeUrl, stateCookie, stateHash, SIGNIN_WIRED,
 } from "./thirtyda-signin.mjs";
 import { outboundFetch } from "./thirtyda-test-fetch.mjs";
-import { tryResultPage } from "./thirtyda-pages.mjs";
+import { tryResultPage, requestLang } from "./thirtyda-pages.mjs";
 import { normalizePhone } from "./thirtyda-app.mjs";
 import { QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS } from "../thirtyda-app/shared/question-slots.js";
 
@@ -460,8 +460,8 @@ export async function handleThirtyDaAdmin(req, res, url) {
   if (tryM) {
     if (!me) return send(res, 302, "", { Location: BASE });
     const provider = tryM[1];
-    const page = (reason) => send(res, 200, tryResultPage({ provider, ok: false, reason }), {
-      "Content-Type": TYPES.html, "Cache-Control": "no-store", "X-Robots-Tag": "noindex",
+    const page = (reason) => send(res, 200, tryResultPage({ provider, ok: false, reason, lang: requestLang(req, url) }), {
+      "Content-Type": TYPES.html, "Cache-Control": "no-store", "X-Robots-Tag": "noindex", Vary: "Accept-Language",
     });
     if (testLimited(req)) return page("too_many");
     const d = await db();
