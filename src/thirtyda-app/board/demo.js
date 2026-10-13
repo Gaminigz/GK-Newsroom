@@ -493,6 +493,9 @@
       phoneUnverified: u.phone ? null : u.phoneUnverified ?? null,
       birthYear: Number.isInteger(u.birthYear) ? u.birthYear : null,
       verified: { phone: Boolean(u.verified?.phone), gmail: Boolean(u.verified?.gmail), facebook: Boolean(u.verified?.facebook), tiktok: Boolean(u.verified?.tiktok) },
+      // Server: which way last proved the phone (null = not known), and the sign-ins on the profile (booleans only).
+      phoneVia: u.verified?.phone && u.phone && ['telegram', 'whatsapp', 'sms'].includes(u.phoneVia) ? u.phoneVia : null,
+      signins: { google: Boolean(u.signin?.google), facebook: Boolean(u.signin?.facebook), tiktok: Boolean(u.signin?.tiktok) },
       photos: slotUrls(u),
       photoSlots: { max: R.PHOTO_MAX, allowed: R.PHOTO_MAX, levels: [...R.PHOTO_SLOT_LEVELS], filled: filledCount(u) },
       area: u.area ?? '',
@@ -820,7 +823,7 @@
     }
     if (!u) {
       const s = W.session;
-      return { user: null, notices: [], session: { phone: s.phone ?? null, phoneVerified: Boolean(s.phoneVerified), verified: s.verified ?? { gmail: false, facebook: false } }, lock: lockInfo() };
+      return { user: null, notices: [], session: { phone: s.phone ?? null, phoneVerified: Boolean(s.phoneVerified), phoneVia: s.phoneVerified ? s.phoneVia ?? null : null, verified: s.verified ?? { gmail: false, facebook: false } }, lock: lockInfo() };
     }
     syncLevel(u);
     return { user: meView(u), notices: [], lock: lockInfo() };
@@ -833,6 +836,7 @@
       userId: s?.userId ?? null,
       phone: s?.phone ?? null,
       phoneVerified: Boolean(s?.phoneVerified),
+      phoneVia: s?.phoneVia ?? null,
       verified: { gmail: Boolean(s?.verified?.gmail), facebook: Boolean(s?.verified?.facebook) },
       ...fields,
       pinOk: true, pinTries: 0, pinResetUntil: Date.now() + 15 * 60e3,
@@ -945,7 +949,8 @@
     } else if (user && !user.verified?.phone) {
       user.verified.phone = true;
     }
-    startSession({ userId: user?.id ?? null, phone: c.phone, phoneVerified: true }, { carry: !locked });
+    if (user) user.phoneVia = 'telegram'; // a new verify replaces the last way
+    startSession({ userId: user?.id ?? null, phone: c.phone, phoneVerified: true, phoneVia: 'telegram' }, { carry: !locked });
     if (byPhone && c.newPin) {
       user.pin = c.newPin;
       W.session.pinResetUntil = 0;
@@ -969,7 +974,7 @@
       throw fail(429, 'rate_limited', 'Too many codes for this number. Try again later.', { retryIn: Math.ceil((sends[0] + 15 * 60e3 - now) / 1000) });
     }
     const code = String(Math.floor(Math.random() * 1e6)).padStart(6, '0');
-    W.otps.set(phone, { code, sentAt: now, expires: now + 15 * 60e3, attempts: 0, sends: [...sends, now] });
+    W.otps.set(phone, { code, channel, sentAt: now, expires: now + 15 * 60e3, attempts: 0, sends: [...sends, now] });
     return { ok: true, phone, channel, live: false, resendIn: 30, devCode: code };
   }
 
@@ -996,7 +1001,9 @@
     } else if (user && !user.verified?.phone) {
       user.verified.phone = true;
     }
-    startSession({ userId: user?.id ?? null, phone, phoneVerified: true }, { carry: !locked });
+    const via = CODE_CHANNELS.includes(otp.channel) ? otp.channel : null;
+    if (user) user.phoneVia = via; // a new verify replaces the last way
+    startSession({ userId: user?.id ?? null, phone, phoneVerified: true, phoneVia: via }, { carry: !locked });
     if (byPhone && newPin) {
       user.pin = newPin;
       W.session.pinResetUntil = 0;
@@ -1061,7 +1068,7 @@
     const photo = checkPhoto(body.photo);
     const id = nextId('user', 'U-');
     const user = {
-      id, name, realName, birthYear, role, gender: body.gender, lang, phone, phoneUnverified: typed,
+      id, name, realName, birthYear, role, gender: body.gender, lang, phone, phoneUnverified: typed, phoneVia: phone ? s.phoneVia ?? null : null,
       verified: { phone: Boolean(phone), gmail: Boolean(s?.verified?.gmail), facebook: Boolean(s?.verified?.facebook), tiktok: Boolean(s?.verified?.tiktok) },
       photos: [photo], seeded: false, location: null, km: 0, area: '', city: '', hearts: { red: 0, orange: 0 },
       level: 1, blocked: false, notices: [], pin: newPin, pinTries: 0,

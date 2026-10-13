@@ -6,9 +6,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   VERIFIED_WAYS, canTalk, TALK_ROUTES, OPEN_WRITES, talksToSomeone, UNVERIFIED_PER_DAY, ppDay, signupKey, claimSignup,
-  releaseSignup, verifyBackPath, VERIFY_BACK_REASONS,
+  releaseSignup, verifyBackPath, VERIFY_BACK_REASONS, ATTACH_FROM, PHONE_VIAS, phoneViaOf, withPhoneVia, signinsOf,
 } from './thirtyda-verify.mjs';
-import { API_ROUTES } from './thirtyda-app.mjs';
+import { API_ROUTES, meView } from './thirtyda-app.mjs';
 
 // ---------------------------------------------------------------- who may talk
 
@@ -182,4 +182,76 @@ test('verifyBackPath: #/verified with ok=1 or a reason the app knows', () => {
   for (const reason of VERIFY_BACK_REASONS) assert.equal(verifyBackPath('facebook', { reason }), `/30da/#/verified?signin=facebook&error=${reason}`);
   assert.equal(verifyBackPath('google', { reason: 'bad_keys' }), '/30da/#/verified?signin=google&error=failed', 'anything else is "failed"');
   assert.equal(verifyBackPath('google'), '/30da/#/verified?signin=google&error=failed');
+});
+
+// ---------------------------------------------------------------- #/me: the 5 ways (owner 2026-10-13)
+
+test('verifyBackPath to: me — a sign-in started on #/me comes back to #/me; anything else still #/verified', () => {
+  assert.deepEqual(ATTACH_FROM, ['me']);
+  assert.equal(verifyBackPath('google', { ok: true, to: 'me' }), '/30da/#/me?signin=google&ok=1');
+  assert.equal(verifyBackPath('tiktok', { reason: 'in_use', to: 'me' }), '/30da/#/me?signin=tiktok&error=in_use');
+  assert.equal(verifyBackPath('facebook', { reason: 'nope', to: 'me' }), '/30da/#/me?signin=facebook&error=failed');
+  assert.equal(verifyBackPath('google', { ok: true, to: 'nearby' }), '/30da/#/verified?signin=google&ok=1', 'only screens on the list');
+  assert.equal(verifyBackPath('google', { ok: true, to: null }), '/30da/#/verified?signin=google&ok=1');
+});
+
+/** Apply a Mongo-style { $set, $unset } to a plain object (enough for withPhoneVia). */
+function applyUpdate(doc, update) {
+  const out = { ...doc };
+  for (const [k, v] of Object.entries(update.$set || {})) out[k] = v;
+  for (const k of Object.keys(update.$unset || {})) delete out[k];
+  return out;
+}
+
+test('phoneVia: only telegram / whatsapp / sms are kept', () => {
+  assert.deepEqual(PHONE_VIAS, ['telegram', 'whatsapp', 'sms']);
+  for (const v of PHONE_VIAS) assert.equal(phoneViaOf(v), v);
+  for (const v of [null, undefined, '', 'Telegram', 'email', 1, {}]) assert.equal(phoneViaOf(v), null, String(v));
+});
+
+test('phoneVia is set by a verify, REPLACED by the next one, cleared when the way is not known', () => {
+  let u = { _id: 'U-1', phone: '+85512345678', verified: { phone: false } };
+  // The Telegram bot proved it.
+  u = applyUpdate(u, withPhoneVia({ $set: { 'verified.phone': true } }, 'telegram'));
+  assert.equal(u.phoneVia, 'telegram');
+  assert.equal(u['verified.phone'], true, 'the rest of the update is kept');
+  // A code by WhatsApp later: replaces it.
+  u = applyUpdate(u, withPhoneVia({ $set: { 'verified.phone': true } }, 'whatsapp'));
+  assert.equal(u.phoneVia, 'whatsapp');
+  // A code whose channel is not known (an old code): the last way goes — never a stale ✓.
+  u = applyUpdate(u, withPhoneVia({ $set: { 'verified.phone': true } }, null));
+  assert.equal('phoneVia' in u, false);
+  // Merges with an update that already unsets something (a number change drops phoneUnverified).
+  const up = withPhoneVia({ $set: { phone: '+85599999999' }, $unset: { phoneUnverified: '' } }, 'sms');
+  assert.deepEqual(up, { $set: { phone: '+85599999999', phoneVia: 'sms' }, $unset: { phoneUnverified: '' } });
+  assert.deepEqual(withPhoneVia({ $unset: { phoneUnverified: '' } }, 'bad'), { $unset: { phoneUnverified: '', phoneVia: '' } });
+  assert.deepEqual(withPhoneVia(), { $unset: { phoneVia: '' } });
+});
+
+test('signinsOf: which sign-ins are on the profile, booleans only (never the ids)', () => {
+  assert.deepEqual(signinsOf(null), { google: false, facebook: false, tiktok: false });
+  assert.deepEqual(signinsOf({ signin: { google: { id: 'g-123', email: 'a@b.c' }, tiktok: { id: 't-9' } } }), { google: true, facebook: false, tiktok: true });
+  assert.deepEqual(signinsOf({ signin: { facebook: {} } }), { google: false, facebook: false, tiktok: false }, 'no id: not on the profile');
+});
+
+test('meView: phoneVia (owner only, only for a verified number) and the sign-ins as booleans — no ids, no emails', () => {
+  const base = {
+    _id: 'U-7', name: 'Dara', phone: '+85512345678', photos: [], hearts: { red: 0, orange: 0 },
+    verified: { phone: true, gmail: true, facebook: false, tiktok: true },
+    signin: { google: { id: 'google-sub-123', email: 'dara@example.com' }, tiktok: { id: 'tt-open-456' } },
+  };
+  const v = meView({ ...base, phoneVia: 'whatsapp' });
+  assert.equal(v.phoneVia, 'whatsapp');
+  assert.deepEqual(v.signins, { google: true, facebook: false, tiktok: true });
+  assert.deepEqual(v.verified, { phone: true, gmail: true, facebook: false, tiktok: true });
+  const json = JSON.stringify(v);
+  for (const secret of ['google-sub-123', 'tt-open-456', 'dara@example.com']) assert.equal(json.includes(secret), false, secret);
+  assert.equal('signin' in v, false);
+  // Verified before phoneVia was kept: not known (no app ✓; "Number verified ✓" still shows from verified.phone).
+  assert.equal(meView(base).phoneVia, null);
+  assert.equal(meView({ ...base, phoneVia: 'carrier-pigeon' }).phoneVia, null);
+  // A number that is not verified (or none) never carries a way.
+  assert.equal(meView({ ...base, phoneVia: 'telegram', verified: { phone: false } }).phoneVia, null);
+  assert.equal(meView({ ...base, phone: null, phoneVia: 'telegram' }).phoneVia, null);
+  assert.deepEqual(meView({ _id: 'U-8', name: 'X', photos: [] }).signins, { google: false, facebook: false, tiktok: false });
 });

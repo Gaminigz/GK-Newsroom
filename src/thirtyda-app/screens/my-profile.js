@@ -8,7 +8,7 @@ import {
 import {
   phoneVerifier, blankPhone, verifiedPhoneModel, appNameProblem, watchNameInput, clipNameInput, birthYearSelect, truthNote,
 } from './create-profile.js';
-import { changePinSheet } from '../lock.js';
+import { changePinSheet, leaveWithoutLock } from '../lock.js';
 
 let phoneModel = blankPhone(); // keeps a half-finished phone check across re-renders
 
@@ -30,8 +30,28 @@ function slotsOf(me) {
   };
 }
 
-screen('/me', async ({ root }) => {
+const SIGNIN_NAMES = { google: 'Google', facebook: 'Facebook', tiktok: 'TikTok' };
+const BACK_ERRORS = ['cancelled', 'expired', 'unavailable', 'failed', 'too_many', 'in_use'];
+const BACK_ICON = { cancelled: 'question', expired: 'clock', too_many: 'clock', unavailable: 'refresh', failed: 'refresh', in_use: 'flag' };
+
+/** The way back from Google / Facebook / TikTok started here: #/me?signin=google&ok=1 | &error=in_use → a calm note. */
+function backNotice(query) {
+  const name = SIGNIN_NAMES[query?.signin];
+  if (!name) return null;
+  if (query.ok === '1') return { ok: true, icon: 'check', text: t('cp_verified_with', { name }) };
+  const reason = BACK_ERRORS.includes(query.error) ? query.error : 'failed';
+  if (reason === 'in_use') return { ok: false, icon: BACK_ICON.in_use, text: t('vc_in_use', { name }) };
+  if (reason === 'too_many') return { ok: false, icon: BACK_ICON.too_many, text: t('cp_too_many') };
+  return { ok: false, icon: BACK_ICON[reason], text: t(`cp_signin_${reason}`, { name }) };
+}
+
+screen('/me', async ({ root, query }) => {
   root.classList.add('me');
+  // Back from Google / Facebook / TikTok (a sign-in started on this page): said once, the address made plain again.
+  const notice = backNotice(query);
+  if (query?.signin) {
+    try { history.replaceState(history.state, '', '#/me'); } catch { /* the address keeps its query */ }
+  }
   root.append(topBar({ left: 'back', title: t('me_title'), me: false }));
   const body = el('div', { class: 'me-stack' }, el('p', { class: 'loading' }, t('core_loading')));
   root.append(body);
@@ -330,16 +350,37 @@ screen('/me', async ({ root }) => {
     },
   }, ROLES.map((r) => el('option', { value: r.key, selected: r.key === me.role }, roleLabel(r.key))));
 
-  // --- verification + phone
+  // --- verification + phone (owner 2026-10-13): the same 5 round buttons as Create profile, in the owner's order
+  // TikTok · Telegram · Google · Facebook · WhatsApp — a green ✓ and "Verified" on each way this profile is verified
+  // (Telegram / WhatsApp: the one the server says proved the number, MeView.phoneVia), "Coming soon" when off.
+  // Tapping Google / Facebook / TikTok ADDS that account to this profile (never a switch) and comes back here.
   const v = me.verified || {};
-  const chips = el('div', { class: 'vchips' }, [['phone', t('me_v_phone')], ['gmail', 'Gmail'], ['facebook', 'Facebook']].map(([key, label]) =>
-    el('span', { class: ['vchip', v[key] ? 'on' : 'off'] }, v[key] ? icon('check', 13) : null, label)));
+  const ins = me.signins || {};
   let phoneBlock;
   // A verified number (owner 2026-10-13): shown in its box, editable, a ✓ on the app that proved it; "Change number"
   // = type a new one and verify it (the server puts the new number in place of the old one).
-  if (v.phone && me.phone && phoneModel.verifiedPhone !== me.phone) phoneModel = verifiedPhoneModel(me.phone);
+  const viaApp = ['telegram', 'whatsapp'].includes(me.phoneVia) ? me.phoneVia : null; // sms / not known: no app ✓
+  if (v.phone && me.phone && (phoneModel.verifiedPhone !== me.phone || phoneModel.verifiedBy !== viaApp)) {
+    phoneModel = verifiedPhoneModel(me.phone, blankPhone(), me.phoneVia);
+  }
   {
     phone = phoneVerifier(phoneModel, {
+      notice,
+      signin: {
+        to: 'me',
+        verified: () => ({
+          gmail: Boolean(v.gmail || ins.google), facebook: Boolean(v.facebook || ins.facebook), tiktok: Boolean(v.tiktok || ins.tiktok),
+        }),
+        // Test mode's instant sign-in: already on this profile — a fresh copy, drawn again.
+        onVerified: async () => {
+          try {
+            const r = await api.get('/me', { redirect: false });
+            if (r.user) setMe(r.user);
+          } catch { /* the next visit shows it */ }
+          go('/me', { replace: true });
+        },
+        beforeLeave: () => leaveWithoutLock(), // the trip to Google / Facebook / TikTok is not "closing the app"
+      },
       onVerified: (r) => {
         phoneModel = blankPhone();
         if (!r.user) return;
@@ -418,7 +459,7 @@ screen('/me', async ({ root }) => {
       el('div', { class: 'field-head' }, el('label', { class: 'label ink', for: 'me-real' }, t('me_real_name')),
         el('span', { class: 'tag' }, icon('lock', 11), t('me_real_tag'))),
       realInput, truthNote()), // gender, job, real name (shown at Level 3), then the warning
-    section(t('me_verified_with'), chips, phoneBlock),
+    section(t('me_verified_with'), phoneBlock),
     section(t('me_hearts'), el('div', { class: 'row', style: { '--gap': '12px' } }, heartPills(me.hearts, 'lg')),
       place ? el('p', { class: 'kv' }, icon('pin', 16), el('span', {}, place)) : null),
     me.pinSet ? changePin : null,
@@ -474,7 +515,6 @@ registerStrings({
     me_language_note: 'The app and other people’s messages are shown in this language.',
     me_role: 'You are',
     me_verified_with: 'Verified with',
-    me_v_phone: 'Phone',
     me_phone_needed: 'Your phone number is needed to chat at Level 3.',
     me_phone_done: 'Number verified ✓',
     me_switched: 'Signed in as {name}',
@@ -526,7 +566,6 @@ registerStrings({
     me_language_note: 'កម្មវិធី និងសាររបស់អ្នកដទៃ នឹងបង្ហាញជាភាសានេះ។',
     me_role: 'អ្នកជា',
     me_verified_with: 'បានផ្ទៀងផ្ទាត់ជាមួយ',
-    me_v_phone: 'ទូរស័ព្ទ',
     me_phone_needed: 'ត្រូវការលេខទូរស័ព្ទរបស់អ្នក ដើម្បីជជែកនៅកម្រិត 3។',
     me_phone_done: 'បានផ្ទៀងផ្ទាត់លេខ ✓',
     me_switched: 'បានចូលជា {name}',
@@ -578,7 +617,6 @@ registerStrings({
     me_language_note: '应用界面和别人发来的消息都会用这种语言显示。',
     me_role: '你的身份',
     me_verified_with: '已验证方式',
-    me_v_phone: '手机',
     me_phone_needed: '在等级 3 聊天需要验证手机号。',
     me_phone_done: '号码已验证 ✓',
     me_switched: '已登录为 {name}',
@@ -630,7 +668,6 @@ registerStrings({
     me_language_note: '앱 화면과 다른 사람의 메시지가 이 언어로 보여요.',
     me_role: '하는 일',
     me_verified_with: '인증 수단',
-    me_v_phone: '전화',
     me_phone_needed: '레벨 3에서 채팅하려면 전화번호가 필요해요.',
     me_phone_done: '번호 인증 완료 ✓',
     me_switched: '{name}님으로 로그인했어요',
@@ -682,7 +719,6 @@ registerStrings({
     me_language_note: 'アプリの表示と相手からのメッセージがこの言語になります。',
     me_role: 'お仕事・状況',
     me_verified_with: '確認済み',
-    me_v_phone: '電話',
     me_phone_needed: 'レベル3でチャットするには電話番号が必要です。',
     me_phone_done: '番号を確認しました ✓',
     me_switched: '{name}さんとしてログインしました',

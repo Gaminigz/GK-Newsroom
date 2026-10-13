@@ -91,8 +91,39 @@ export async function releaseSignup(coll, key) {
 /** Reasons the app words for a sign-in started from the "Verify to chat" sheet (in_use: that account has another profile). */
 export const VERIFY_BACK_REASONS = ["cancelled", "expired", "unavailable", "failed", "too_many", "in_use"];
 
-/** Where such a sign-in comes back to: the app's #/verified, which returns the person to what they were doing. */
-export function verifyBackPath(provider, { ok = false, reason = "failed" } = {}) {
+/** Screens a sign-in may be started from to ATTACH an account (never switch): #/me (owner 2026-10-13). */
+export const ATTACH_FROM = ["me"];
+
+/**
+ * Where such a sign-in comes back to: the app's #/verified, which returns the person to what they were doing — or,
+ * for one started on #/me (to: 'me'), straight back to #/me, which words it there.
+ */
+export function verifyBackPath(provider, { ok = false, reason = "failed", to = null } = {}) {
   const why = VERIFY_BACK_REASONS.includes(reason) ? reason : "failed";
-  return `/30da/#/verified?signin=${encodeURIComponent(provider)}&${ok ? "ok=1" : `error=${why}`}`;
+  const screen = ATTACH_FROM.includes(to) ? to : "verified";
+  return `/30da/#/${screen}?signin=${encodeURIComponent(provider)}&${ok ? "ok=1" : `error=${why}`}`;
 }
+
+// ---------------------------------------------------------------- which way proved the phone (owner 2026-10-13)
+
+/**
+ * users.phoneVia: the way the profile's phone was LAST proved — the Telegram bot or a code by Telegram / WhatsApp
+ * (or 'sms'). Set by verify-code (the code's own channel, kept with the code) and by the bot; a new verify replaces
+ * it. Profiles verified before it was kept have none: unknown (no app ✓, "Number verified ✓" still shows).
+ */
+export const PHONE_VIAS = ["telegram", "whatsapp", "sms"];
+export const phoneViaOf = (v) => (PHONE_VIAS.includes(v) ? v : null);
+
+/** The Mongo update that records (or, unknown, clears) phoneVia, merged into `update`. */
+export function withPhoneVia(update = {}, via = null) {
+  const v = phoneViaOf(via);
+  const out = { ...update };
+  if (v) out.$set = { ...(update.$set || {}), phoneVia: v };
+  else out.$unset = { ...(update.$unset || {}), phoneVia: "" };
+  return out;
+}
+
+/** The sign-ins ON a profile (an account id is kept for it), as booleans — never the ids. */
+export const signinsOf = (u) => ({
+  google: Boolean(u?.signin?.google?.id), facebook: Boolean(u?.signin?.facebook?.id), tiktok: Boolean(u?.signin?.tiktok?.id),
+});

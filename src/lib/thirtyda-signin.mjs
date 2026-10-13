@@ -207,12 +207,14 @@ export const stateHash = sha256;
  * purpose (test: the admin's "Try sign-in", bound to that admin session by `adminHash`) and a 10-minute expiry.
  * `verifier`: the PKCE verifier of this sign-in (pkcePair), kept with it until the code comes back.
  */
-export async function createSigninState(d, provider, { test = false, adminHash = null, verifier = null, now = Date.now() } = {}) {
+export async function createSigninState(d, provider, { test = false, adminHash = null, verifier = null, to = null, now = Date.now() } = {}) {
   if (!SIGNIN_PROVIDERS.includes(provider)) throw new Error("No such sign-in.");
   const state = crypto.randomBytes(32).toString("hex");
   await d.collection(SIGNIN_STATES).insertOne({
     _id: sha256(state), provider, test: Boolean(test), ...(test && adminHash ? { adminHash } : {}),
     ...(verifier ? { verifier: String(verifier) } : {}),
+    // 'me': started on #/me to add this account to the signed-in profile (never a switch); back to #/me after.
+    ...(to === "me" ? { to: "me" } : {}),
     created: new Date(now), expires: new Date(now + STATE_TTL_MS),
   });
   return state;

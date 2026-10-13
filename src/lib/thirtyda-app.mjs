@@ -84,7 +84,9 @@ import {
   pinHashStale,
 } from "./thirtyda-pin.mjs";
 import { privacyPage, deleteDataPage, termsPage, tryResultPage, requestLang } from "./thirtyda-pages.mjs";
-import { canTalk, talksToSomeone, SIGNUP_LIMITS, claimSignup, releaseSignup, verifyBackPath } from "./thirtyda-verify.mjs";
+import {
+  canTalk, talksToSomeone, SIGNUP_LIMITS, claimSignup, releaseSignup, verifyBackPath, ATTACH_FROM, phoneViaOf, withPhoneVia, signinsOf,
+} from "./thirtyda-verify.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
   PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
@@ -355,6 +357,8 @@ async function startSession(ctx, fields) {
     userId: session?.userId ?? null,
     phone: session?.phone ?? null,
     phoneVerified: Boolean(session?.phoneVerified),
+    // How this browser proved its phone (kept until Create profile puts it on the profile as phoneVia).
+    ...(phoneViaOf(session?.phoneVia) ? { phoneVia: session.phoneVia } : {}),
     verified: { gmail: Boolean(session?.verified?.gmail), facebook: Boolean(session?.verified?.facebook), tiktok: Boolean(session?.verified?.tiktok) },
     // The Google / Facebook account(s) this browser proved, kept until Create profile puts them on the profile.
     ...(session?.signin ? { signin: session.signin } : {}),
@@ -393,7 +397,7 @@ function slotUrls(u) {
   return urls;
 }
 
-function meView(u) {
+export function meView(u) {
   return {
     id: u._id,
     name: u.name,
@@ -407,6 +411,10 @@ function meView(u) {
     // Set once (sign-up, or once on #/me for profiles made before the rule); only ever shown to its owner.
     birthYear: Number.isInteger(u.birthYear) ? u.birthYear : null,
     verified: { phone: Boolean(u.verified?.phone), gmail: Boolean(u.verified?.gmail), facebook: Boolean(u.verified?.facebook), tiktok: Boolean(u.verified?.tiktok) },
+    // Which way last proved the phone ('telegram' | 'whatsapp' | 'sms'; null = not known: verified before it was kept).
+    phoneVia: u.verified?.phone && u.phone ? phoneViaOf(u.phoneVia) : null,
+    // The Google / Facebook / TikTok accounts on this profile — booleans only, never the ids.
+    signins: signinsOf(u),
     // Slot-aligned: photos[i] is slot i+1's url, or null for an empty slot (trailing empty slots left out).
     photos: slotUrls(u),
     // Slots unlock by level (1 → 1, 2 → 2, 3 → 4). Photos kept from before the rule stay even past `allowed`.
@@ -912,7 +920,7 @@ async function sendCode(ctx) {
   const codeHash = hashCode(phone, code);
   let claim;
   try {
-    claim = await claimCodeSend(d, phone, codeHash, now, { pending: live });
+    claim = await claimCodeSend(d, phone, codeHash, now, { pending: live, channel });
   } catch (err) {
     const list = ipSends.get(ip) || [];
     const k = list.indexOf(now);
@@ -980,12 +988,13 @@ async function failCodeSend(d, phone, codeHash, prev, { givenBack }) {
  * (null when there was none), so a failed delivery can put it back (failCodeSend).
  * pending:true (a live channel) → the code cannot be checked until the send succeeds and clears the flag.
  */
-async function claimCodeSend(d, phone, codeHash, now, { pending = false } = {}) {
+async function claimCodeSend(d, phone, codeHash, now, { pending = false, channel = null } = {}) {
   const otps = d.collection(C.otps);
   const inWindow = {
     $filter: { input: { $ifNull: ["$sends", []] }, as: "t", cond: { $gt: ["$$t", new Date(now - OTP_WINDOW_MS)] } },
   };
-  const fields = { codeHash, expires: new Date(now + OTP_WINDOW_MS), attempts: 0, sentAt: new Date(now) };
+  // channel: where this code goes — a good verify-code records it on the profile (phoneVia).
+  const fields = { codeHash, expires: new Date(now + OTP_WINDOW_MS), attempts: 0, sentAt: new Date(now), channel: phoneViaOf(channel) };
   const claimed = await otps.findOneAndUpdate(
     {
       _id: phone,
@@ -1051,7 +1060,7 @@ async function verifyCode(ctx) {
   const k = list.indexOf(now);
   if (k >= 0) list.splice(k, 1); // a right code does not count against the address
   await otps.deleteOne({ _id: phone, codeHash: otp.codeHash });
-  return signInWithPhone(ctx, phone, { newPin });
+  return signInWithPhone(ctx, phone, { newPin, via: otp.channel });
 }
 
 /**
@@ -1060,7 +1069,7 @@ async function verifyCode(ctx) {
  * carries the verified number (Create profile comes next). A returning person's waiting PIN (newPin, or already
  * hashed: newPinHash) becomes their PIN. → { ok, existing, user }.
  */
-async function signInWithPhone(ctx, phone, { newPin = null, newPinHash = null } = {}) {
+async function signInWithPhone(ctx, phone, { newPin = null, newPinHash = null, via = null } = {}) {
   const { d, me } = ctx;
   const users = d.collection(C.users);
   let user = await users.findOne({ phone });
@@ -1072,17 +1081,19 @@ async function signInWithPhone(ctx, phone, { newPin = null, newPinHash = null } 
     // A signed-in profile (made with Google/Facebook) adds or changes its phone; the verified number replaces
     // the one typed on Create profile without a code (phoneUnverified).
     try {
-      await users.updateOne({ _id: me._id }, { $set: { phone, "verified.phone": true }, $unset: { phoneUnverified: "" } });
+      await users.updateOne({ _id: me._id }, withPhoneVia({ $set: { phone, "verified.phone": true }, $unset: { phoneUnverified: "" } }, via));
     } catch (err) {
       if (err?.code === 11000) throw phoneInUse(); // another profile took this number a moment ago
       throw err;
     }
     user = await users.findOne({ _id: me._id });
-  } else if (user && !user.verified?.phone) {
-    await users.updateOne({ _id: user._id }, { $set: { "verified.phone": true } });
+  } else if (user) {
+    // Proved again (a sign-in by phone): the way it was proved this time replaces the last one.
+    await users.updateOne({ _id: user._id }, withPhoneVia({ $set: { "verified.phone": true } }, via));
     user.verified = { ...user.verified, phone: true };
+    user.phoneVia = phoneViaOf(via) ?? undefined;
   }
-  await startSession(ctx, { userId: user?._id ?? null, phone, phoneVerified: true });
+  await startSession(ctx, { userId: user?._id ?? null, phone, phoneVerified: true, phoneVia: phoneViaOf(via) });
   // A sign-in by phone plus a waiting PIN sets (or replaces) that profile's PIN: the person just proved who they are.
   if (signedInByPhone && (newPin || newPinHash)) user = await savePin(ctx, user, newPin, newPinHash);
   return { ok: true, existing: Boolean(user), user: user ? meView(user) : null };
@@ -1141,7 +1152,7 @@ async function telegramStatus(ctx) {
   let inUse = false;
   let out = await pollCheck(d, browser, {
     now,
-    onVerified: (check) => signInWithPhone(ctx, check.phone, { newPinHash: check.pinHash ?? null }).catch((err) => {
+    onVerified: (check) => signInWithPhone(ctx, check.phone, { newPinHash: check.pinHash ?? null, via: "telegram" }).catch((err) => {
       if (err?.code !== "phone_in_use") throw err;
       inUse = true;
       return {};
@@ -1219,13 +1230,15 @@ const safeNote = (v) => String(v ?? "").replace(/[^\w .,:;()'/+-]/g, " ").replac
  * GET /auth/<provider>/start → 302 to Google / Facebook with a fresh single-use state and its cookie. Keys not
  * saved → back to the phone step (unavailable). SIGNIN_STARTS per address per 15 minutes (too_many).
  */
-async function signinStart(req, res, d, provider) {
-  if (overLimit(ipSigninStarts, clientIp(req), SIGNIN_STARTS)) return redirectTo(res, await signinBack(d, req, provider, "too_many"));
+async function signinStart(req, res, url, d, provider) {
+  // ?to=me: started on #/me to ADD this account to the signed-in profile (never a switch); it comes back to #/me.
+  const to = ATTACH_FROM.includes(url?.searchParams?.get("to")) ? url.searchParams.get("to") : null;
+  if (overLimit(ipSigninStarts, clientIp(req), SIGNIN_STARTS)) return redirectTo(res, await signinBack(d, req, provider, "too_many", to));
   const keys = SIGNIN_WIRED[provider] ? await signinKeys(d, provider) : null;
-  if (!keys) return redirectTo(res, await signinBack(d, req, provider, "unavailable"));
+  if (!keys) return redirectTo(res, await signinBack(d, req, provider, "unavailable", to));
   // PKCE where the provider uses it (pkcePair): the verifier stays with the state, only its challenge goes out.
   const pkce = pkcePair(provider);
-  const state = await createSigninState(d, provider, { verifier: pkce?.verifier });
+  const state = await createSigninState(d, provider, { verifier: pkce?.verifier, to });
   redirectTo(res, authorizeUrl(provider, { clientId: keys.id, redirectUri: signinRedirect(req, provider), state, codeChallenge: pkce?.challenge }), {
     "Set-Cookie": stateCookie(req, provider, state),
   });
@@ -1239,10 +1252,12 @@ async function signinStart(req, res, d, provider) {
  */
 async function signinCallback(req, res, url, d, provider) {
   const clear = stateCookie(req, provider, "", 0);
-  const back = async (reason) => redirectTo(res, await signinBack(d, req, provider, reason), { "Set-Cookie": clear });
+  let to = null; // 'me': started on #/me (the state says so), it goes back there
+  const back = async (reason) => redirectTo(res, await signinBack(d, req, provider, reason, to), { "Set-Cookie": clear });
   if (overLimit(ipSigninReturns, clientIp(req), SIGNIN_RETURNS)) return back("too_many");
   const params = url.searchParams;
   const { ok: stateOk, rec } = await takeSigninState(d, provider, params.get("state"), readStateCookie(req));
+  to = stateOk && ATTACH_FROM.includes(rec?.to) ? rec.to : null;
   if (rec?.test) return signinTry(req, res, d, provider, { rec, stateOk, params, clear });
   if (!stateOk) return back("expired");
   const refused = callbackError(provider, params);
@@ -1268,16 +1283,21 @@ async function signinCallback(req, res, url, d, provider) {
     if (lockState(ctx.session).locked) {
       // "Verify to chat": a profile with nothing verified has no other way back in than this session — starting from
       // nothing would end it for good. It stays as it is: the PIN, then try again ("took too long").
-      if (!ctx.me.blocked && !canTalk(ctx.me)) return back("expired");
+      // Started on #/me to add an account: never a new start either — the PIN, then try again.
+      if (to || (!ctx.me.blocked && !canTalk(ctx.me))) return back("expired");
       Object.assign(ctx, { lockedSession: ctx.session, session: null, me: null });
     }
   }
+  // Signed out meanwhile: a sign-in started on #/me is just a sign-in now (back to the normal ways).
+  if (!ctx.me) to = null;
   // "Verify to chat": a profile with no verified way yet attaches this account and goes back to what it was doing
   // (#/verified); an account that already has another profile is refused there (nothing changes, no switch).
-  const attaching = Boolean(ctx.me && !canTalk(ctx.me));
-  const { existing, inUse } = await completeSignin(ctx, provider, r.person);
-  if (inUse) return redirectTo(res, verifyBackPath(provider, { reason: "in_use" }), { "Set-Cookie": clear });
-  redirectTo(res, attaching ? verifyBackPath(provider, { ok: true }) : existing ? `${BASE}/#/nearby` : `${BASE}/#/create?signin=${provider}&ok=1`, {
+  // #/me (owner 2026-10-13): the same attach-never-switch for any profile, and back to #/me.
+  const attaching = Boolean(ctx.me && (to || !canTalk(ctx.me)));
+  const { existing, inUse, refused: notAdded } = await completeSignin(ctx, provider, r.person, { attachOnly: attaching });
+  if (inUse) return redirectTo(res, verifyBackPath(provider, { reason: "in_use", to }), { "Set-Cookie": clear });
+  if (notAdded) return back(notAdded);
+  redirectTo(res, attaching ? verifyBackPath(provider, { ok: true, to }) : existing ? `${BASE}/#/nearby` : `${BASE}/#/create?signin=${provider}&ok=1`, {
     "Set-Cookie": [clear, ctx.headers["Set-Cookie"]].filter(Boolean),
   });
 }
@@ -1287,7 +1307,8 @@ async function signinCallback(req, res, url, d, provider) {
  * way yet (the "Verify to chat" sheet started it) — #/verified, which puts the person back where they were (after
  * the PIN, when the session locked meanwhile).
  */
-async function signinBack(d, req, provider, reason) {
+async function signinBack(d, req, provider, reason, to = null) {
+  if (to) return verifyBackPath(provider, { reason, to });
   const session = await loadSession(d, req);
   const me = session?.userId ? await d.collection(C.users).findOne({ _id: session.userId }) : null;
   if (me && !me.blocked && !canTalk(me)) return verifyBackPath(provider, { reason });
@@ -1304,14 +1325,16 @@ async function signinBack(d, req, provider, reason) {
  *   made there keeps the provider id (+ email when given). Never the provider's tokens.
  * → { existing } (true: a profile is signed in), or { inUse } (see above: nothing was done).
  */
-async function completeSignin(ctx, provider, person) {
+async function completeSignin(ctx, provider, person, { attachOnly = false } = {}) {
   const users = ctx.d.collection(C.users);
   const user = await users.findOne(signinUserFilter(provider, person.id));
-  // "Verify to chat": a profile with no verified way yet never switches to (or merges with) the profile that has
-  // this account → { inUse } and nothing changes.
-  const otherOwner = (u) => Boolean(u && ctx.me && u._id !== ctx.me._id && !canTalk(ctx.me));
+  // "Verify to chat" (and any sign-in started on #/me: attachOnly): the profile never switches to (or merges with)
+  // the profile that has this account → { inUse } and nothing changes.
+  const otherOwner = (u) => Boolean(u && ctx.me && u._id !== ctx.me._id && (attachOnly || !canTalk(ctx.me)));
   if (otherOwner(user)) return { existing: false, inUse: true };
   let plan = planSignin({ provider, person, user, me: ctx.me, session: ctx.session });
+  // #/me: the profile already has ANOTHER account of this provider — never replaced, never a switch.
+  if (attachOnly && plan.switched) return { existing: false, refused: "failed" };
   if (plan.kind === "attach") {
     // Only while the profile still has no account of this provider: two returns at once cannot overwrite each other.
     const r = await users.updateOne({ _id: plan.userId, [`signin.${provider}.id`]: { $exists: false } }, { $set: plan.userSet });
@@ -1373,7 +1396,7 @@ async function signinTry(req, res, d, provider, { rec, stateOk, params, clear })
 async function handleSignin(req, res, url, provider, step) {
   try {
     const d = await db();
-    if (step === "start") return await signinStart(req, res, d, provider);
+    if (step === "start") return await signinStart(req, res, url, d, provider);
     return await signinCallback(req, res, url, d, provider);
   } catch (err) {
     console.error("[30da signin]", provider, step, err instanceof Error ? err.message : err);
@@ -1443,6 +1466,7 @@ async function createProfile(ctx) {
     lang,
     language: LANG_ENGLISH[lang],
     ...(phone ? { phone } : {}),
+    ...(phone && phoneViaOf(session.phoneVia) ? { phoneVia: session.phoneVia } : {}),
     ...(typedPhone ? { phoneUnverified: typedPhone } : {}),
     verified: { phone: Boolean(phone), gmail: Boolean(session?.verified?.gmail), facebook: Boolean(session?.verified?.facebook), tiktok: Boolean(session?.verified?.tiktok) },
     // The Google / Facebook account this browser signed in with: its id (+ email when given), never a token.
@@ -1495,7 +1519,10 @@ async function getMe(ctx) {
     return {
       user: null,
       notices: [],
-      session: { phone: session.phone ?? null, phoneVerified: Boolean(session.phoneVerified), verified: session.verified ?? { gmail: false, facebook: false } },
+      session: {
+        phone: session.phone ?? null, phoneVerified: Boolean(session.phoneVerified),
+        phoneVia: session.phoneVerified ? phoneViaOf(session.phoneVia) : null, verified: session.verified ?? { gmail: false, facebook: false },
+      },
       lock: lockInfo(),
     };
   }

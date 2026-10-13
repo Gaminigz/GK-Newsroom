@@ -214,31 +214,22 @@ export const blankPhone = () => ({
   verifiedBy: null,
 });
 
-// Which app proved which number, remembered on this device (the server does not say): { phone, via }.
-const VIA_KEY = '30da.phoneVia';
-function rememberVia(phone, via) {
-  try { localStorage.setItem(VIA_KEY, JSON.stringify({ phone, via })); } catch { /* private mode */ }
-}
-function viaFor(phone) {
-  try {
-    const v = JSON.parse(localStorage.getItem(VIA_KEY) || 'null');
-    return v?.phone === phone && ['telegram', 'whatsapp'].includes(v.via) ? v.via : null;
-  } catch {
-    return null;
-  }
-}
+// Which app proved the number comes from the server (MeView / the pending session: phoneVia, owner 2026-10-13):
+// 'telegram' | 'whatsapp' get the ✓ on their round button; anything else (sms, not known) → no app ✓.
+const viaApp = (via) => (['telegram', 'whatsapp'].includes(via) ? via : null);
 const digitsOf = (p) => String(p ?? '').replace(/\D/g, '');
 
 /**
  * A phone model showing a proved number (owner 2026-10-13): the box keeps the number, editable; the app that proved
- * it shows a ✓. `phone` is E.164 (+85512345678); the country code goes in the picker when it is one of ours.
+ * it (`via`, the server's phoneVia) shows a ✓. `phone` is E.164 (+85512345678); the country code goes in the picker
+ * when it is one of ours.
  */
-export function verifiedPhoneModel(phone, model = blankPhone()) {
+export function verifiedPhoneModel(phone, model = blankPhone(), via = null) {
   const p = String(phone || '');
   const cc = COUNTRY_CODES.filter((c) => p.startsWith(c)).sort((a, b) => b.length - a.length)[0];
   return Object.assign(model, {
     cc: cc || model.cc, phone: cc ? p.slice(cc.length) : p, verified: Boolean(p), verifiedPhone: p || null,
-    verifiedBy: viaFor(p), codeSent: false, code: '', devCode: null,
+    verifiedBy: viaApp(via), codeSent: false, code: '', devCode: null,
   });
 }
 
@@ -400,8 +391,10 @@ function verifyErrorText(err) {
  * Facebook / Google say "Coming soon" until their keys are saved on the admin Code page; then a tap leaves for
  * Google / Facebook and comes back here (test mode without keys keeps its instant test sign-in).
  * `model` (see blankPhone) keeps the state across re-renders. onVerified(response) after a good code.
- * signin: { verified: () => ({ gmail, facebook }), onVerified(verified), beforeLeave() } — what the session has
- * proved; beforeLeave runs just before the page goes to Google / Facebook (to keep what was typed).
+ * signin: { verified: () => ({ gmail, facebook }), onVerified(verified), beforeLeave(), to } — what the session has
+ * proved; beforeLeave runs just before the page goes to Google / Facebook (to keep what was typed). to: 'me' — #/me
+ * (owner 2026-10-13): the same 5 round buttons, a sign-in ADDS that account to the profile (never a switch) and comes
+ * back to #/me; the rest keeps #/me's own layout (buttons, "Number verified ✓ · Change number", the number box).
  * notice: { text, ok, icon } shown once at the start, as a calm note (the way back from Google / Facebook:
  * "Verified with Google." or why not).
  * onMethods(methods) once GET /auth/methods has answered (not called when it failed), so the screen can word
@@ -441,6 +434,8 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
 
   const codeOn = (key) => methods?.code?.[key] !== false;
   const signinOn = (provider) => methods?.signin?.[provider] !== false;
+  // Create profile / the "Verify to chat" sheet: the number first, one short line. #/me keeps its own layout.
+  const cpLayout = Boolean(signin) && signin.to !== 'me';
   /**
    * Some code channel works (or it is not known yet). None → #/me: no phone box, "Codes by phone are coming
    * soon." instead; Create profile: the number box stays, without Send code.
@@ -449,7 +444,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
   /** "Sign-in with Google is coming soon." — pointing at the phone only while a code channel works. */
   const signinSoonText = (name) => t(anyCodeOn() ? 'cp_signin_soon' : 'cp_signin_soon_only', { name });
   /** Create profile: Send code only once GET /auth/methods answered and a code channel works (or a code is out). */
-  const sendShown = () => model.codeSent || !signin || (methodsAsked && anyCodeOn());
+  const sendShown = () => model.codeSent || !cpLayout || (methodsAsked && anyCodeOn());
 
   /** The other code channel can still be offered: it works and has not failed here already. */
   const otherWorks = (channel) => {
@@ -495,7 +490,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     if (methods?.signinTest?.[provider] !== true) {
       // The real sign-in: the whole page goes to Google / Facebook and comes back to this step.
       try { signin?.beforeLeave?.(); } catch { /* keeping the draft is a nicety */ }
-      location.assign(`/30da/api/auth/${provider}/start`);
+      location.assign(`/30da/api/auth/${provider}/start${signin?.to === 'me' ? '?to=me' : ''}`);
       return;
     }
     try {
@@ -620,7 +615,6 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
         endTelegram();
         if (pin && r.user?.pinSet) clearPinFlags();
         Object.assign(model, { verified: true, verifiedPhone: r.user?.phone || phone, verifiedBy: 'telegram', codeSent: false, code: '', devCode: null, failed: [] });
-        rememberVia(model.verifiedPhone, 'telegram');
         showError(null);
         render();
         onChange?.();
@@ -683,7 +677,6 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
       if (pin && r.user?.pinSet) clearPinFlags();
       const via = model.sentBy || model.channel;
       Object.assign(model, { verified: true, verifiedPhone: r.user?.phone || model.sentTo, verifiedBy: via, codeSent: false, code: '', devCode: null, failed: [] });
-      rememberVia(model.verifiedPhone, via);
       showError(null);
       render();
       onChange?.();
@@ -751,7 +744,8 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     });
     const code = Object.fromEntries(CODE_CHANNELS.map((c) => [c[0], c]));
     const sign = Object.fromEntries(SIGN_INS.map((s) => [s[0], s]));
-    // Owner's order (2026-10-13): TikTok, Telegram, Google, Facebook, WhatsApp. #/me (phone only): the two code apps.
+    // Owner's order (2026-10-13): TikTok, Telegram, Google, Facebook, WhatsApp — Create profile, the sheet and #/me.
+    // Without sign-ins (no `signin` given): the two code apps.
     const row = signin
       ? [signinBtn(sign.tiktok), codeBtn(code.telegram), signinBtn(sign.google), signinBtn(sign.facebook), codeBtn(code.whatsapp)]
       : CODE_CHANNELS.map(codeBtn);
@@ -787,7 +781,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
           if (model.codeSent && fullPhone(model) !== model.sentTo) Object.assign(model, { codeSent: false, devCode: null, code: '', live: false, sentBy: null });
           sendBtn.disabled = sending || waiting() || !fullPhone(model);
           codeBox.hidden = !model.codeSent;
-          hint.hidden = model.codeSent || (!signin && !codeOn(model.channel));
+          hint.hidden = model.codeSent || (!cpLayout && !codeOn(model.channel));
           if (numberFlagged) showError(null); // "Enter a valid phone number." from Next goes as they fix it
           reproved();
         },
@@ -800,9 +794,9 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     const hint = proved
       ? el('p', { class: 'way-hint way-watch way-verified', id: `${uid}-by`, role: 'status' },
         el('span', { class: 'verified-line' }, t('cp_phone_verified')),
-        signin ? el('span', { class: 'way-private' }, icon('lock', 12), t('cp_code_private'))
+        cpLayout ? el('span', { class: 'way-private' }, icon('lock', 12), t('cp_code_private'))
           : el('button', { type: 'button', class: 'link change-number', on: { click: changeNumber } }, t('cp_change_number')))
-      : signin
+      : cpLayout
       ? el('p', { class: 'way-hint way-watch', id: `${uid}-by`, hidden: model.codeSent }, t('cp_code_watch'),
         // Owner: say the number is only for verification and stays private.
         el('span', { class: 'way-private' }, icon('lock', 12), t('cp_code_private')))
@@ -810,7 +804,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
         t('cp_code_comes_by', { channel: channelName(model.channel) }));
     // #/me with no code channel offered at all (and no code out): no phone box and Send button that can only
     // fail, one calm line. Create profile keeps the box (the number is saved unverified), just without Send code.
-    const phoneSoon = !signin && !anyCodeOn() && !model.codeSent && !proved;
+    const phoneSoon = !cpLayout && !anyCodeOn() && !model.codeSent && !proved;
 
     const codeBox = el('div', { class: 'stack', style: { '--gap': '8px' }, hidden: !model.codeSent });
     if (model.codeSent) {
@@ -839,7 +833,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     const tgBox = tgWaitBox();
     if (tgBox) hint.hidden = true;
     // Create profile: the number first (right under the label), then the round buttons, then the one line.
-    if (signin) node.replaceChildren(...[phoneRow, waysRow(), hint, note, codeBox, tgBox, error].filter(Boolean));
+    if (cpLayout) node.replaceChildren(...[phoneRow, waysRow(), hint, note, codeBox, tgBox, error].filter(Boolean));
     else {
       node.replaceChildren(...[waysRow(), note, phoneSoon
         ? el('p', { class: 'way-hint way-soon', role: 'note' }, t('cp_phone_soon'))
@@ -885,7 +879,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     if (!alive) return;
     methodsAsked = true;
     // The call failed: every button stays on (#/me: nothing changes; Create profile: Send code shows now).
-    if (!m && !signin) return;
+    if (!m && !cpLayout) return;
     if (m) {
       methods = m;
       onMethods?.(m);
@@ -1039,7 +1033,7 @@ screen('/create', ({ root, query }) => {
   // A session that already proved something (e.g. phone verified, then the tab was closed).
   const pending = state.pending;
   // The box shows that number (editable) with a ✓ on the app that proved it.
-  if (pending?.phoneVerified && !draft.phone.verifiedPhone && pending.phone) verifiedPhoneModel(pending.phone, draft.phone);
+  if (pending?.phoneVerified && !draft.phone.verifiedPhone && pending.phone) verifiedPhoneModel(pending.phone, draft.phone, pending.phoneVia);
   if (pending?.verified) {
     draft.verified.gmail ||= Boolean(pending.verified.gmail);
     draft.verified.facebook ||= Boolean(pending.verified.facebook);
