@@ -846,8 +846,10 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .inline-row .name-input, .inline-row .year-select { flex: 0 1 auto; }
 .birth-year-line { font-weight: 700; font-variant-numeric: tabular-nums; }
 /* Me: five small language buttons on one row, thin borders. */
-.me .lang-grid { gap: 6px; } /* 3 + 2, like the opening screen */
-.me .lang-grid .btn { min-width: 0; min-height: 36px; gap: 5px; padding: 0 8px; border-width: 1px; border-color: #cfd6e2; border-radius: 999px; font-size: 13.5px; }
+.me .lang-grid { display: flex; flex-wrap: nowrap; justify-content: space-between; gap: 0; } /* just flag + text, no boxes, one row */
+.me .lang-grid .lang-label { gap: 3px; }
+.me .lang-grid .flag { font-size: 1.1em; }
+.me .lang-grid .btn { width: auto; min-width: 0; min-height: 32px; gap: 3px; padding: 0 6px; border: 0; border-radius: 999px; background: none; font-size: 13px; white-space: nowrap; }
 /* Little flag before each language name (Me, opening, language sheet). */
 .lang-label { display: inline-flex; align-items: center; gap: 6px; }
 .flag { display: inline-block; font-size: 1.25em; line-height: 1; font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
@@ -855,6 +857,8 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 /* Birth year + You are: the two "tell the truth" fields, in the warning's amber. */
 .truth-field, .select.truth-field { background-color: var(--orange-soft); color: #8a4500; border: 1px solid #f3cf9c; }
 .select.truth-field.placeholder { color: #b0752e; }
+.btn.truth-btn { background: var(--orange-soft); color: #8a4500; border: 1px solid #f3cf9c; }
+.btn.truth-btn:disabled { opacity: 0.55; }
 .me .lang-grid .btn[aria-pressed="true"] { background: var(--navy); color: #fff; border-color: var(--navy); }
 .kv { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .kv .icon { flex: none; color: var(--muted); }

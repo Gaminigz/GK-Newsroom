@@ -198,7 +198,7 @@ screen('/me', async ({ root }) => {
     placeholder: t('me_name_ph'), 'data-max-chars': String(NAME_MAX),
   }));
   // One row: app name · birth year · one Save (the year only while it has never been set).
-  const saveId = el('button', { type: 'button', class: 'btn btn-secondary', disabled: true }, t('me_save'));
+  const saveId = el('button', { type: 'button', class: 'btn truth-btn', disabled: true }, t('me_save'));
   const yearErr = el('p', { class: 'field-error', role: 'alert', hidden: true });
   const yearCell = el('div', { class: 'me-id-cell' });
   let picked = '';
@@ -299,7 +299,7 @@ screen('/me', async ({ root }) => {
 
   // --- role
   const roleSel = el('select', {
-    class: 'select truth-field', id: 'me-role',
+    class: 'select truth-field', id: 'me-role', 'aria-label': t('me_role'),
     on: {
       change: async () => {
         const prev = state.me.role;
@@ -368,8 +368,7 @@ screen('/me', async ({ root }) => {
           nameInput),
         yearCell,
         saveId),
-      nameErr, yearErr, truthNote()),
-    el('section', { class: 'section' }, el('label', { class: 'label ink', for: 'me-role' }, t('me_role')), roleSel),
+      nameErr, yearErr, roleSel, truthNote()), // the job sits right under name · year, then the warning
     section(t('me_verified_with'), chips, phoneBlock),
     section(t('me_hearts'), el('div', { class: 'row', style: { '--gap': '12px' } }, heartPills(me.hearts, 'lg')),
       place ? el('p', { class: 'kv' }, icon('pin', 16), el('span', {}, place)) : null),
