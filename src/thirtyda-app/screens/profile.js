@@ -1,6 +1,6 @@
 // Screen 4 · Profile view — verified chips, big photo, hearts, "You and Sophea · Level n/3", the photos this
 // viewer may see (slot 2 from Level 2, slots 3–4 from Level 3; the rest as locked placeholders) and one
-// primary action driven by pair.next (ask / answer / wait / chat).
+// primary action driven by pair.next (start the conversation / reply / wait / chat).
 import {
   screen, el, icon, t, go, api, toast, modal, state, topBar, levelBar, avatar, countdown, pronoun, fmtKm,
   pairRoute, stageLevel, registerStrings, morePhotosPrompt, stageOpenLevel, roleLabel,
@@ -58,9 +58,11 @@ function actionButton(person, pair, { reload, stops }) {
   const disabled = (label, iconName) => el('button', { type: 'button', class: 'btn btn-primary', disabled: true },
     icon(iconName, 18), el('span', {}, label));
   const open = () => go(pairRoute(pair));
+  // Level 1: start the conversation; Level 2: carry it on.
+  const startLabel = () => (stageLevel(pair) >= 2 ? t('pf_continue', { name }) : t(`pf_ask5_${pr}`, { name }));
 
   if (!pair) {
-    const b = el('button', { type: 'button', class: 'btn btn-primary' }, icon('question', 18), el('span', {}, t(`pf_ask_${pr}`, { name })));
+    const b = el('button', { type: 'button', class: 'btn btn-primary' }, icon('chat', 18), el('span', {}, t(`pf_ask_${pr}`, { name })));
     b.addEventListener('click', async () => {
       b.disabled = true;
       try {
@@ -76,11 +78,11 @@ function actionButton(person, pair, { reload, stops }) {
 
   switch (pair.next) {
     case 'ask':
-      return primary(t(`pf_ask5_${pr}`, { name }), 'question', open);
+      return primary(startLabel(), 'chat', open);
     case 'answer':
       return primary(t('pf_answer', { name }), null, open);
     case 'ask_answer':
-      return primary(pair.myOutgoing?.sent ? t('pf_answer', { name }) : t(`pf_ask5_${pr}`, { name }), 'question', open);
+      return primary(pair.myOutgoing?.sent ? t('pf_answer', { name }) : startLabel(), 'chat', open);
     case 'wait_them':
       return disabled(t('pf_waiting_for', { name }), 'clock');
     case 'wait_timer': {
@@ -178,13 +180,14 @@ registerStrings({
     pf_red_hearts: 'Red hearts',
     pf_orange_hearts: 'Orange hearts',
     pf_you_and: 'You and {name} · Level {n}/3',
-    pf_ask_her: 'Ask her',
-    pf_ask_him: 'Ask him',
-    pf_ask_them: 'Ask them',
-    pf_ask5_her: 'Ask her 5 questions',
-    pf_ask5_him: 'Ask him 5 questions',
-    pf_ask5_them: 'Ask them 5 questions',
-    pf_answer: 'Answer {name}’s 5 questions',
+    pf_ask_her: 'Start a conversation',
+    pf_ask_him: 'Start a conversation',
+    pf_ask_them: 'Start a conversation',
+    pf_ask5_her: 'Start a conversation',
+    pf_ask5_him: 'Start a conversation',
+    pf_ask5_them: 'Start a conversation',
+    pf_continue: 'Continue the conversation',
+    pf_answer: 'Reply to {name}',
     pf_waiting_for: 'Waiting for {name}',
     pf_opens_in: 'Level {n} opens in {time}',
     pf_chat_with: 'Chat with {name}',
@@ -210,13 +213,14 @@ registerStrings({
     pf_red_hearts: 'បេះដូងក្រហម',
     pf_orange_hearts: 'បេះដូងទឹកក្រូច',
     pf_you_and: 'អ្នក និង {name} · កម្រិត {n}/3',
-    pf_ask_her: 'សួរនាង',
-    pf_ask_him: 'សួរគាត់',
-    pf_ask_them: 'សួរគេ',
-    pf_ask5_her: 'សួរនាង 5 សំណួរ',
-    pf_ask5_him: 'សួរគាត់ 5 សំណួរ',
-    pf_ask5_them: 'សួរគេ 5 សំណួរ',
-    pf_answer: 'ឆ្លើយសំណួរទាំង 5 របស់ {name}',
+    pf_ask_her: 'ចាប់ផ្ដើមការសន្ទនា',
+    pf_ask_him: 'ចាប់ផ្ដើមការសន្ទនា',
+    pf_ask_them: 'ចាប់ផ្ដើមការសន្ទនា',
+    pf_ask5_her: 'ចាប់ផ្ដើមការសន្ទនា',
+    pf_ask5_him: 'ចាប់ផ្ដើមការសន្ទនា',
+    pf_ask5_them: 'ចាប់ផ្ដើមការសន្ទនា',
+    pf_continue: 'បន្តការសន្ទនា',
+    pf_answer: 'ឆ្លើយតបទៅ {name}',
     pf_waiting_for: 'កំពុងរង់ចាំ {name}',
     pf_opens_in: 'កម្រិត {n} បើកក្នុងរយៈពេល {time}',
     pf_chat_with: 'ជជែកជាមួយ {name}',
@@ -242,13 +246,14 @@ registerStrings({
     pf_red_hearts: '红心',
     pf_orange_hearts: '橙心',
     pf_you_and: '你和 {name} · 等级 {n}/3',
-    pf_ask_her: '问问她',
-    pf_ask_him: '问问他',
-    pf_ask_them: '问问 TA',
-    pf_ask5_her: '问她 5 个问题',
-    pf_ask5_him: '问他 5 个问题',
-    pf_ask5_them: '问 TA 5 个问题',
-    pf_answer: '回答 {name} 的 5 个问题',
+    pf_ask_her: '开始对话',
+    pf_ask_him: '开始对话',
+    pf_ask_them: '开始对话',
+    pf_ask5_her: '开始对话',
+    pf_ask5_him: '开始对话',
+    pf_ask5_them: '开始对话',
+    pf_continue: '继续对话',
+    pf_answer: '回复 {name}',
     pf_waiting_for: '等待 {name} 回应',
     pf_opens_in: '等级 {n} 将在 {time} 后开启',
     pf_chat_with: '和 {name} 聊天',
@@ -274,13 +279,14 @@ registerStrings({
     pf_red_hearts: '빨간 하트',
     pf_orange_hearts: '주황 하트',
     pf_you_and: '나와 {name} · 레벨 {n}/3',
-    pf_ask_her: '{name}님에게 질문하기',
-    pf_ask_him: '{name}님에게 질문하기',
-    pf_ask_them: '{name}님에게 질문하기',
-    pf_ask5_her: '{name}님에게 5가지 질문하기',
-    pf_ask5_him: '{name}님에게 5가지 질문하기',
-    pf_ask5_them: '{name}님에게 5가지 질문하기',
-    pf_answer: '{name}님의 질문 5개에 답하기',
+    pf_ask_her: '대화 시작하기',
+    pf_ask_him: '대화 시작하기',
+    pf_ask_them: '대화 시작하기',
+    pf_ask5_her: '대화 시작하기',
+    pf_ask5_him: '대화 시작하기',
+    pf_ask5_them: '대화 시작하기',
+    pf_continue: '대화 이어가기',
+    pf_answer: '{name}님에게 답장하기',
     pf_waiting_for: '{name}님을 기다리는 중',
     pf_opens_in: '레벨 {n}까지 {time}',
     pf_chat_with: '{name}님과 채팅',
@@ -306,13 +312,14 @@ registerStrings({
     pf_red_hearts: '赤いハート',
     pf_orange_hearts: 'オレンジのハート',
     pf_you_and: 'あなたと{name} · レベル {n}/3',
-    pf_ask_her: '{name}さんに質問する',
-    pf_ask_him: '{name}さんに質問する',
-    pf_ask_them: '{name}さんに質問する',
-    pf_ask5_her: '{name}さんに5つ質問する',
-    pf_ask5_him: '{name}さんに5つ質問する',
-    pf_ask5_them: '{name}さんに5つ質問する',
-    pf_answer: '{name}さんの5つの質問に答える',
+    pf_ask_her: '会話を始める',
+    pf_ask_him: '会話を始める',
+    pf_ask_them: '会話を始める',
+    pf_ask5_her: '会話を始める',
+    pf_ask5_him: '会話を始める',
+    pf_ask5_them: '会話を始める',
+    pf_continue: '会話を続ける',
+    pf_answer: '{name}さんに返信する',
     pf_waiting_for: '{name}さんの返事待ち',
     pf_opens_in: 'レベル{n}まで {time}',
     pf_chat_with: '{name}さんとチャット',

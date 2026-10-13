@@ -1211,7 +1211,7 @@ async function person(ctx) {
 async function createPair(ctx) {
   const { d, me, body } = ctx;
   const to = String(body.to ?? "");
-  if (!/^U-\d+$/.test(to) || to === me._id) throw invalid("Choose someone to ask.", { field: "to" });
+  if (!/^U-\d+$/.test(to) || to === me._id) throw invalid("Choose someone to talk to.", { field: "to" });
   const other = await d.collection(C.users).findOne({ _id: to }, { projection: { blocked: 1 } });
   if (!other || other.blocked) throw fail(404, "not_found", "This person is not here any more.");
 
@@ -1286,26 +1286,26 @@ async function sendSet(ctx) {
   await stopSplitContactDetails(ctx, pair, other, written, { level, kind: "question" });
 
   const { pick, write } = LEVEL_RULES[level];
-  if (list.length !== pick + write) throw invalid(`Send exactly ${pick + write} questions.`, { index: Math.min(list.length, pick + write - 1) });
+  if (list.length !== pick + write) throw invalid(`Send exactly ${pick + write} lines.`, { index: Math.min(list.length, pick + write - 1) });
   // The k-th picked question must be one of the 5 choices the admin set for Question k (slot k).
   const { slots } = await questionConfig(d, level);
   const chosen = new Map(); // index in the list → { slot (1-based), choice }
   let picked = 0;
   list.forEach((q, i) => {
     if (q?.source === "system") {
-      if (picked >= pick) throw invalid(`Pick ${pick} questions and write ${write}.`, { index: i });
+      if (picked >= pick) throw invalid(`Pick ${pick} and write ${write}.`, { index: i });
       const choice = slots[picked].find((c) => c.key === q.key);
-      if (!choice) throw invalid(`Pick question ${picked + 1} from its own list.`, { index: i, slot: picked + 1 });
+      if (!choice) throw invalid(`Pick line ${picked + 1} from its own list.`, { index: i, slot: picked + 1 });
       chosen.set(i, { slot: picked + 1, choice });
       picked++;
     } else if (q?.source === "written") {
       const r = checkWrittenQuestion(String(q.text ?? "").trim(), level);
-      if (!r.ok) throw invalid(ERROR_TEXT[r.error] || "Check this question.", { index: i, reason: r.error });
+      if (!r.ok) throw invalid(ERROR_TEXT[r.error] || "Check this line.", { index: i, reason: r.error });
     } else {
-      throw invalid("Unknown question.", { index: i });
+      throw invalid("Unknown line.", { index: i });
     }
   });
-  if (picked !== pick) throw invalid(`Pick ${pick} questions and write ${write}.`, { index: 0 });
+  if (picked !== pick) throw invalid(`Pick ${pick} and write ${write}.`, { index: 0 });
 
   const lang = me.lang ?? "en";
   const qs = await Promise.all(list.map(async (q, i) => {
@@ -1388,7 +1388,7 @@ async function setFor(ctx, direction) {
   const level = url.searchParams.has("level") ? levelParam(url.searchParams.get("level")) : Math.min(2, STAGE_LEVEL[pair.stage]);
   const query = direction === "in" ? { to: me._id } : { from: me._id };
   const set = await d.collection(C.sets).findOne({ pairId: pair._id, level, ...query });
-  if (!set) throw fail(404, "no_set", direction === "in" ? "No questions for you yet." : "You have not sent these questions yet.");
+  if (!set) throw fail(404, "no_set", direction === "in" ? "Nothing for you to reply to yet." : "You have not started this conversation yet.");
   const lang = me.lang ?? "en";
   await backfillSet(d, set, lang);
   const who = (u) => (u ? { id: u._id, name: u.name, gender: u.gender ?? null } : null);
@@ -1424,20 +1424,20 @@ async function sendAnswers(ctx) {
     await stopContactDetails(ctx, pair, other, texts, { level, kind: "answer" });
     await stopSplitContactDetails(ctx, pair, other, texts, { level, kind: "answer" });
   }
-  if (list.length !== set.questions.length) throw invalid(`Answer all ${set.questions.length} questions.`, { index: list.length });
+  if (list.length !== set.questions.length) throw invalid(`Reply to all ${set.questions.length}.`, { index: list.length });
   const seen = new Set();
   list.forEach((a, i) => {
     const n = Number(a?.n);
-    if (!set.questions.some((q) => q.n === n) || seen.has(n)) throw invalid("Answer each question once.", { index: i });
+    if (!set.questions.some((q) => q.n === n) || seen.has(n)) throw invalid("Reply to each line once.", { index: i });
     seen.add(n);
     if (level === 1) {
       const source = set.questions.find((q) => q.n === n)?.source;
       if (!l1Answers(source).some((x) => x.key === a.key)) {
-        throw invalid(source === "written" ? "Answer the written question with Yes or No." : "Pick one of the answers.", { index: i });
+        throw invalid(source === "written" ? "Reply to the written line with Yes or No." : "Pick one of the replies.", { index: i });
       }
     } else {
       const r = checkWrittenAnswer(String(a.text ?? "").trim());
-      if (!r.ok) throw invalid(ERROR_TEXT[r.error] || "Check this answer.", { index: i, reason: r.error });
+      if (!r.ok) throw invalid(ERROR_TEXT[r.error] || "Check this reply.", { index: i, reason: r.error });
     }
   });
 

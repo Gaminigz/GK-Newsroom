@@ -268,7 +268,7 @@
     music: { en: 'Old Khmer songs and some jazz.', km: 'ចម្រៀងខ្មែរសម័យដើម និង jazz ខ្លះ។' },
   };
   const GENERIC_ANSWERS = [
-    { en: 'Good question! I will tell you in the chat.', km: 'សំណួរល្អណាស់! ខ្ញុំនឹងប្រាប់អ្នកពេលជជែក។' },
+    { en: 'Nice one! I will tell you in the chat.', km: 'ល្អណាស់! ខ្ញុំនឹងប្រាប់អ្នកពេលជជែក។' },
     { en: 'In short: I really like it.', km: 'និយាយឲ្យខ្លី៖ ខ្ញុំចូលចិត្តវាណាស់។' },
     { en: 'I need to think about that, haha.', km: 'ខ្ញុំត្រូវគិតបន្តិចសិន ហាហា។' },
   ];
@@ -1020,7 +1020,7 @@
   function createPair({ body }) {
     const u = me();
     const to = String(body.to ?? '');
-    if (!/^U-\d+$/.test(to) || to === u.id) throw invalid('Choose someone to ask.', { field: 'to' });
+    if (!/^U-\d+$/.test(to) || to === u.id) throw invalid('Choose someone to talk to.', { field: 'to' });
     const other = W.users.get(to);
     if (!other || other.blocked) throw fail(404, 'not_found', 'This person is not here any more.');
     const key = [u.id, to].sort().join('|');
@@ -1073,23 +1073,23 @@
     stopSplitContactDetails(u, pair, other, written, { level, kind: 'question' });
 
     const { pick, write } = R.LEVEL_RULES[level];
-    if (list.length !== pick + write) throw invalid(`Send exactly ${pick + write} questions.`, { index: Math.min(list.length, pick + write - 1) });
+    if (list.length !== pick + write) throw invalid(`Send exactly ${pick + write} lines.`, { index: Math.min(list.length, pick + write - 1) });
     const keys = new Set();
     let picked = 0;
     list.forEach((q, i) => {
       if (q?.source === 'system') {
-        if (!R.SYSTEM_QUESTIONS[level].some((x) => x.key === q.key)) throw invalid('Pick a question from the list.', { index: i });
-        if (keys.has(q.key)) throw invalid('That question is already in your list.', { index: i });
+        if (!R.SYSTEM_QUESTIONS[level].some((x) => x.key === q.key)) throw invalid('Pick a line from the list.', { index: i });
+        if (keys.has(q.key)) throw invalid('That line is already in your list.', { index: i });
         keys.add(q.key);
         picked++;
       } else if (q?.source === 'written') {
         const r = R.checkWrittenQuestion(String(q.text ?? '').trim(), level);
-        if (!r.ok) throw invalid(ERROR_TEXT[r.error] || 'Check this question.', { index: i, reason: r.error });
+        if (!r.ok) throw invalid(ERROR_TEXT[r.error] || 'Check this line.', { index: i, reason: r.error });
       } else {
-        throw invalid('Unknown question.', { index: i });
+        throw invalid('Unknown line.', { index: i });
       }
     });
-    if (picked !== pick) throw invalid(`Pick ${pick} questions and write ${write}.`, { index: 0 });
+    if (picked !== pick) throw invalid(`Pick ${pick} and write ${write}.`, { index: 0 });
 
     const lang = u.lang ?? 'en';
     const qs = list.map((q, i) => (q.source === 'system'
@@ -1132,7 +1132,7 @@
     const { pair, other } = pairFor(u, params[0]);
     const level = url.searchParams.has('level') ? levelParam(url.searchParams.get('level')) : Math.min(2, STAGE_LEVEL[pair.stage]);
     const set = W.sets.find((s) => s.pairId === pair.id && s.level === level && (direction === 'in' ? s.to === u.id : s.from === u.id));
-    if (!set) throw fail(404, 'no_set', direction === 'in' ? 'No questions for you yet.' : 'You have not sent these questions yet.');
+    if (!set) throw fail(404, 'no_set', direction === 'in' ? 'Nothing for you to reply to yet.' : 'You have not started this conversation yet.');
     const lang = u.lang ?? 'en';
     const who = (x) => (x ? { id: x.id, name: x.name, gender: x.gender ?? null } : null);
     const [from, to] = direction === 'in' ? [other, u] : [u, other];
@@ -1166,20 +1166,20 @@
       stopContactDetails(u, pair, other, texts, { level, kind: 'answer' });
       stopSplitContactDetails(u, pair, other, texts, { level, kind: 'answer' });
     }
-    if (list.length !== set.questions.length) throw invalid(`Answer all ${set.questions.length} questions.`, { index: list.length });
+    if (list.length !== set.questions.length) throw invalid(`Reply to all ${set.questions.length}.`, { index: list.length });
     const seen = new Set();
     list.forEach((a, i) => {
       const n = Number(a?.n);
-      if (!set.questions.some((q) => q.n === n) || seen.has(n)) throw invalid('Answer each question once.', { index: i });
+      if (!set.questions.some((q) => q.n === n) || seen.has(n)) throw invalid('Reply to each line once.', { index: i });
       seen.add(n);
       if (level === 1) {
         const source = set.questions.find((q) => q.n === n)?.source;
         if (!R.l1Answers(source).some((x) => x.key === a.key)) {
-          throw invalid(source === 'written' ? 'Answer the written question with Yes or No.' : 'Pick one of the answers.', { index: i });
+          throw invalid(source === 'written' ? 'Reply to the written line with Yes or No.' : 'Pick one of the replies.', { index: i });
         }
       } else {
         const r = R.checkWrittenAnswer(String(a.text ?? '').trim());
-        if (!r.ok) throw invalid(ERROR_TEXT[r.error] || 'Check this answer.', { index: i, reason: r.error });
+        if (!r.ok) throw invalid(ERROR_TEXT[r.error] || 'Check this reply.', { index: i, reason: r.error });
       }
     });
 

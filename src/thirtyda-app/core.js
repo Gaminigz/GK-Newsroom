@@ -542,12 +542,12 @@ export function pairRoute(pair) {
   }
 }
 
-/** One short line for a pair that needs me ("Dara asked you 5", "Level 2 is open", "Chat with Sophea"). */
+/** One short line for a pair that needs me ("Dara started a conversation", "Level 2 is open — your turn", "Chat with Sophea"). */
 export function actionLabel(pair) {
   const name = pair?.other?.name || '';
   const lvl = stageLevel(pair);
   switch (pair?.next) {
-    case 'answer': return t('act_answer', { name });
+    case 'answer': return lvl >= 2 ? t('act_reply', { name }) : t('act_answer', { name });
     case 'ask': return lvl >= 2 ? t('act_level_open', { n: lvl }) : t('act_ask', { name });
     case 'ask_answer': return t('act_level_open', { n: lvl });
     case 'chat': return t('act_chat', { name });
@@ -668,9 +668,10 @@ registerStrings({
     err_network: 'No connection. Check your internet and try again.',
     err_generic: 'Something went wrong. Please try again.',
     err_not_found: 'This page is not available.',
-    act_answer: '{name} asked you 5',
-    act_ask: 'Ask {name} 5 questions',
-    act_level_open: 'Level {n} is open',
+    act_answer: '{name} started a conversation',
+    act_reply: 'Reply to {name}',
+    act_ask: 'Start a conversation with {name}',
+    act_level_open: 'Level {n} is open — your turn',
     act_level_soon: 'Level {n} opens soon',
     act_chat: 'Chat with {name}',
     act_waiting: 'Waiting for {name}',
@@ -690,9 +691,10 @@ registerStrings({
     err_network: 'គ្មានការតភ្ជាប់។ សូមពិនិត្យអ៊ីនធឺណិត ហើយព្យាយាមម្ដងទៀត។',
     err_generic: 'មានបញ្ហាបន្តិច។ សូមព្យាយាមម្ដងទៀត។',
     err_not_found: 'ទំព័រនេះមិនមានទេ។',
-    act_answer: '{name} បានសួរអ្នក 5 សំណួរ',
-    act_ask: 'សួរ {name} 5 សំណួរ',
-    act_level_open: 'កម្រិត {n} បានបើកហើយ',
+    act_answer: '{name} បានចាប់ផ្ដើមការសន្ទនា',
+    act_reply: 'ឆ្លើយតបទៅ {name}',
+    act_ask: 'ចាប់ផ្ដើមការសន្ទនាជាមួយ {name}',
+    act_level_open: 'កម្រិត {n} បានបើកហើយ — ដល់វេនអ្នក',
     act_level_soon: 'កម្រិត {n} នឹងបើកឆាប់ៗ',
     act_chat: 'ជជែកជាមួយ {name}',
     act_waiting: 'កំពុងរង់ចាំ {name}',
@@ -710,11 +712,12 @@ registerStrings({
     core_level_of: '等级 {n}/{total}',
     core_hearts_aria: '{red} 颗红心，{orange} 颗橙心',
     err_network: '网络未连接，请检查网络后重试。',
-    err_generic: '出了点问题，请重试。',
+    err_generic: '出错了，请重试。',
     err_not_found: '此页面不存在。',
-    act_answer: '{name} 问了你 5 个问题',
-    act_ask: '向 {name} 提 5 个问题',
-    act_level_open: '等级 {n} 已开启',
+    act_answer: '{name} 开始了对话',
+    act_reply: '回复 {name}',
+    act_ask: '和 {name} 开始对话',
+    act_level_open: '等级 {n} 已开启 — 轮到你了',
     act_level_soon: '等级 {n} 即将开启',
     act_chat: '和 {name} 聊天',
     act_waiting: '等待 {name} 回应',
@@ -734,9 +737,10 @@ registerStrings({
     err_network: '인터넷에 연결되어 있지 않아요. 연결을 확인하고 다시 시도해 주세요.',
     err_generic: '문제가 생겼어요. 다시 시도해 주세요.',
     err_not_found: '이 페이지를 찾을 수 없어요.',
-    act_answer: '{name}님이 5가지를 물었어요',
-    act_ask: '{name}님에게 5가지 질문하기',
-    act_level_open: '레벨 {n} 열림',
+    act_answer: '{name}님이 대화를 시작했어요',
+    act_reply: '{name}님에게 답장하기',
+    act_ask: '{name}님과 대화 시작하기',
+    act_level_open: '레벨 {n} 열림 — 내 차례',
     act_level_soon: '레벨 {n} 곧 열림',
     act_chat: '{name}님과 채팅',
     act_waiting: '{name}님을 기다리는 중',
@@ -756,9 +760,10 @@ registerStrings({
     err_network: '接続できません。インターネットを確認して、もう一度お試しください。',
     err_generic: '問題が発生しました。もう一度お試しください。',
     err_not_found: 'このページは表示できません。',
-    act_answer: '{name}さんから5つの質問',
-    act_ask: '{name}さんに5つ質問する',
-    act_level_open: 'レベル{n}が開きました',
+    act_answer: '{name}さんが会話を始めました',
+    act_reply: '{name}さんに返信する',
+    act_ask: '{name}さんと会話を始める',
+    act_level_open: 'レベル{n}が開きました — あなたの番',
     act_level_soon: 'まもなくレベル{n}',
     act_chat: '{name}さんとチャット',
     act_waiting: '{name}さんを待っています',
