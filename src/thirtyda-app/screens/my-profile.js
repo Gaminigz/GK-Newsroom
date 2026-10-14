@@ -590,7 +590,7 @@ registerStrings({
     me_slots_open: 'បានបើក {n} ក្នុងចំណោម {max}',
     me_photo_locked: 'រូបថតទី {slot} នឹងបើកនៅកម្រិត {n}។',
     me_photos_full: 'អ្នកអាចមានរូបថតបាន {max} សន្លឹក។',
-    me_add_photo: 'បន្ថែមរូបថត',
+    me_add_photo: 'បន្ថែម\u200bរូបថត', // may break after បន្ថែម: a photo slot is ~45 px wide on a 300 px phone
     me_photo_error: 'មិនអាចប្រើរូបថតនេះបានទេ។ សូមសាកល្បងរូបផ្សេង។',
     me_last_photo: 'សូមទុករូបថតមុខយ៉ាងហោចណាស់មួយសន្លឹក។',
     me_slots_kept: 'រូបថត {count} · បានបើក {n} ក្នុងចំណោម {max}',

@@ -4,7 +4,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { khmerKeep, khmerPlain, khmerClusters, hasKhmer, WORD_JOINER, KEEP_WHOLE } from './khmer.js';
 import { KHMER_WORDS } from './khmer-words.js';
+import { KHMER_COMPOUNDS } from './khmer-compounds.js';
 import { SYSTEM_QUESTIONS, SYSTEM_TOPICS, RETIRED_QUESTIONS, L1_ANSWERS, ROLES } from './questions.js';
+import { PAGE_STRINGS } from '../../lib/thirtyda-pages.mjs';
 
 const WJ = WORD_JOINER;
 const COENG = String.fromCharCode(0x17d2);
@@ -14,6 +16,10 @@ const KHMER = /[\u1780-\u17ff\u19e0-\u19ff]/;
 const MARK = /\p{M}/u;
 const SPACE = /[\s\u200b]/;
 const show = (s) => s.replaceAll(WJ, '·');
+/** Every built-in Khmer line, topic, tap and job (what the admin's own lines look like). */
+const questionLines = () => [
+  ...Object.values(SYSTEM_QUESTIONS).flat(), ...Object.values(RETIRED_QUESTIONS).flat(), ...L1_ANSWERS, ...ROLES,
+].map((q) => q.text.km).concat(Object.values(SYSTEM_TOPICS).flat().map((tp) => tp.km));
 
 // The owner's report (2026-10-14, the rules screen at 390 px) and other lines a browser split mid-word.
 const SAMPLES = [
@@ -126,8 +132,73 @@ test('a phrase too long for a phone line breaks only between whole words — nev
   }
   // As Node's ICU (the server's, and iOS's) splits them: between phrases inside the clause, never inside a word.
   assert.equal(marks('ឬការណាត់ជួបដើម្បីលុយ'), 'ឬការណាត់ជួប|ដើម្បីលុយ', 'ឬ and ដើម្បី go with the words after them');
-  assert.equal(marks('ព័ត៌មានទំនាក់ទំនងមិនត្រូវបានអនុញ្ញាតឡើយ។'), 'ព័ត៌មាន|ទំនាក់ទំនង|មិនត្រូវបាន|អនុញ្ញាតឡើយ។');
-  assert.equal(marks('តើថ្ងៃនេះជាថ្ងៃស្ងប់ស្ងាត់សម្រាប់អ្នកទេ?'), 'តើថ្ងៃនេះ|ជាថ្ងៃ|ស្ងប់ស្ងាត់|សម្រាប់អ្នកទេ?');
+  // As few as it takes: in front of a word that starts a part of the phrase (ជា, សម្រាប់, ដើម្បី, ដែល …), and inside
+  // a stretch still longer than KEEP_WHOLE clusters, one more near its middle.
+  assert.equal(marks('ព័ត៌មានទំនាក់ទំនងមិនត្រូវបានអនុញ្ញាតឡើយ។'), 'ព័ត៌មានទំនាក់ទំនង|មិនត្រូវបាន|អនុញ្ញាតឡើយ។');
+  assert.equal(marks('តើថ្ងៃនេះជាថ្ងៃស្ងប់ស្ងាត់សម្រាប់អ្នកទេ?'), 'តើថ្ងៃនេះ|ជាថ្ងៃស្ងប់ស្ងាត់|សម្រាប់អ្នកទេ?');
+  assert.equal(marks('ដូច្នេះគ្មាននរណាផ្សេងអាចមើលការជជែករបស់អ្នកបានទេ។'), 'ដូច្នេះគ្មាន|នរណាផ្សេង|អាចមើល|ការជជែក|របស់អ្នកបានទេ។');
+  // Never after ការ / មិន / កុំ, however long the stretch (the owner's ការ|យាយី): these stay whole.
+  for (const s of ['ការជួញដូរមនុស្ស', 'ឬការគំរាមកំហែង។', 'និងការកេងប្រវ័ញ្ចលើកុមារ', 'កុំដាក់លេខទូរស័ព្ទ', 'សូមស្វាគមន៍ការត្រឡប់មកវិញ']) {
+    assert.ok(!/(ការ|មិន|កុំ)\|/.test(marks(s)), marks(s));
+  }
+  // A short known word that only straddles two words protects nothing: សារ in ភាសា|របស់.
+  assert.equal(marks('និងភាសារបស់អ្នកផងដែរ។'), 'និងភាសា|របស់អ្នកផងដែរ។');
+  // No stretch of our own lines runs past LAST_RESORT (12) clusters without a place to break.
+  for (const s of [...SAMPLES, ...Object.values(PAGE_STRINGS.km), ...questionLines()]) {
+    for (const piece of khmerKeep(s).split(/[\s\u200b]+/)) assert.ok(clustersOf(piece) <= 12, `${show(khmerKeep(s)).replaceAll(ZWSP, '|')}: ${clustersOf(piece)} clusters with no place to break`);
+  }
+});
+
+// Found in Chrome at 300–430 px (2026-10-14 review): ICU's own cuts had put a zero-width space inside these, so a line
+// broke "…សារ·នី ‖ មួយ·ៗ…", "…អគ្គស្នងការ ‖ ដ្ឋាន…", "…ប្រហាក់ ‖ ប្រហែល…", "…ទទួល ‖ បាន…", "…នរណា ‖ ម្នាក់…", and the
+// admin's / the question bank's "…ស្មោះ ‖ ត្រង់…", "…ចុង ‖ សប្តាហ៍…".
+const COMPOUND_LINES = [
+  'សារនីមួយៗត្រូវបានបកប្រែជាភាសារបស់អ្នក។', 'ស្គាល់នរណាម្នាក់បន្តិចម្ដងៗ', 'អ្នកសម្របសម្រួលរបស់យើងពិនិត្យរូបថតថ្មីនីមួយៗ',
+  'ដូចជាអគ្គស្នងការដ្ឋាននគរបាលជាតិកម្ពុជា', 'ប្ដូរចំណុចប្រហាក់ប្រហែលទៅជាឈ្មោះតំបន់។', 'ចម្ងាយប្រហាក់ប្រហែល',
+  'វាមិនដែលទទួលបានឈ្មោះរបស់អ្នកទេ។', 'បន្ទាប់មកយើងឈប់ទទួលបានវា។', 'មាននរណាម្នាក់កំពុងស្វែងរកអ្នកដែរ។',
+  'តើអ្នកចង់ស្គាល់មនុស្សស្មោះត្រង់ម្នាក់ទេ?', 'ចុងសប្តាហ៍ត្រូវរៀបចំទុកមុន។', 'តើអ្នកចូលចិត្តចំណាយពេលចុងសប្ដាហ៍យ៉ាងដូចម្ដេច?',
+  'តើអ្នកចូលចិត្តធ្វើអ្វីនៅចុងសប្តាហ៍ជាមួយក្រុមគ្រួសារ?', 'តើនៅកន្លែងអ្នកមានថ្ងៃចាំងទេ?', 'ខ្ញុំសប្បាយចិត្តណាស់ដែលបានស្គាល់អ្នក។',
+  'អ្វីៗដែលចាត់ទុកកុមារជាវត្ថុផ្លូវភេទ', 'គណនីត្រូវហាមឃាត់ជារៀងរហូត', 'មានតែច្បាប់ចម្លងជាកូដដែលអានមិនបាន។',
+  'យើងរក្សាទុកលេខសម្គាល់ទូរស័ព្ទរបស់អ្នកជាទម្រង់កូដដែលអានមិនបាន', 'ហើយម៉ាស៊ីនមេរបស់យើងបដិសេធអ្នកដែលមានអាយុក្រោម',
+];
+
+test('a compound is never cut: the hand-kept KHMER_COMPOUNDS, in our lines and in any other text', () => {
+  const lines = [...COMPOUND_LINES, ...SAMPLES, ...Object.values(PAGE_STRINGS.km), ...questionLines()];
+  let seen = 0;
+  for (const line of lines) {
+    const kept = khmerKeep(line);
+    for (const word of KHMER_COMPOUNDS) {
+      for (let at = line.indexOf(word); at >= 0; at = line.indexOf(word, at + 1)) {
+        seen++;
+        // The same words, in order, with nothing but joiners between their letters: no zero-width space inside.
+        const inside = new RegExp([...word].join('\u2060?'));
+        assert.match(kept, inside, `${show(kept).replaceAll(ZWSP, '|')}: ${word} whole`);
+      }
+    }
+  }
+  assert.ok(seen > 30, `${seen} compounds checked`);
+  assert.equal(marks('សារនីមួយៗត្រូវបានបកប្រែជាភាសារបស់អ្នក។'), 'សារនីមួយៗ|ត្រូវបានបកប្រែ|ជាភាសា|របស់អ្នក។');
+  assert.equal(marks('ដូចជាអគ្គស្នងការដ្ឋាននគរបាលជាតិកម្ពុជា'), 'ដូចជា|អគ្គស្នងការដ្ឋាន|នគរបាលជាតិ|កម្ពុជា');
+  assert.equal(marks('ប្ដូរចំណុចប្រហាក់ប្រហែលទៅជាឈ្មោះតំបន់។'), 'ប្ដូរចំណុច|ប្រហាក់ប្រហែល|ទៅជាឈ្មោះតំបន់។');
+  assert.equal(marks('តើអ្នកចង់ស្គាល់មនុស្សស្មោះត្រង់ម្នាក់ទេ?').includes('ស្មោះត្រង់'), true);
+  assert.equal(marks('ចុងសប្តាហ៍ត្រូវរៀបចំទុកមុន។').startsWith('ចុងសប្តាហ៍'), true);
+  for (const word of KHMER_COMPOUNDS) {
+    assert.match(word, /^[\u1780-\u17ff]+$/, word);
+    assert.ok(KHMER_WORDS.includes(word), `${word} is in KHMER_WORDS (run src/scripts/thirtyda-khmer-words.mjs)`);
+  }
+});
+
+test('never a zero-width space in front of ៗ or other Khmer punctuation: a line never starts with ៗ', () => {
+  const lines = [...COMPOUND_LINES, ...SAMPLES, ...Object.values(PAGE_STRINGS.km), ...questionLines(),
+    'កុមារមិនអាចប្រើ 30+DA បានឡើយ។ អ្វីៗដែលចាត់ទុកកុមារជាវត្ថុផ្លូវភេទ', 'ស្គាល់គ្នាបន្តិចម្ដងៗជាភាសារបស់អ្នក',
+    'ត្រូវលុបភ្លាមៗគណនីត្រូវហាមឃាត់', 'សំណួរងាយៗមួយចំនួនសម្រាប់អ្នកទាំងពីរ', 'ពេលនេះរវល់ៗច្រើនណាស់សម្រាប់ខ្ញុំ'];
+  let opened = 0;
+  for (const line of lines) {
+    const kept = khmerKeep(line);
+    opened += kept.split(ZWSP).length - 1;
+    assert.ok(!/\u200b[\u17d4-\u17db]/.test(kept), `${show(kept).replaceAll(ZWSP, '|')}: no break before Khmer punctuation`);
+  }
+  assert.ok(opened > 100, `${opened} openings checked`);
 });
 
 test('idempotent: joined text comes back unchanged, a joiner already there is kept (never doubled)', () => {

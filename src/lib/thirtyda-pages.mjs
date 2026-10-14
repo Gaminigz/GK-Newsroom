@@ -470,7 +470,7 @@ export const PAGE_STRINGS = {
     home_string: "គេថា មានខ្សែក្រហមមួយដែលមើលមិនឃើញ ចងអ្នកជាប់នឹងនរណាម្នាក់។",
     home_lives: "ជីវិតមមាញឹក វ័យ 30+។ ខ្សែក្រហមមានរួចហើយ។",
     home_frame_2: "ទីក្រុងដែលពោរពេញដោយមនុស្សមិនស្គាល់គ្នា។",
-    home_frame_3: "មុខមួយស្រាប់តែច្បាស់ឡើង។",
+    home_frame_3: "មុខមួយ\u200bស្រាប់តែ\u200bច្បាស់ឡើង។", // may break after មុខមួយ / ស្រាប់តែ: the frame is ~85 px wide on a 300 px phone
     home_frame_4: "លើកនេះ កុំដើរ\u200bហួសគ្នាទៀត។", // may break after កុំដើរ: the frame is ~90 px wide on a 320 px phone
     home_terms: "លក្ខខណ្ឌប្រើប្រាស់",
     home_help: "ជំនួយ",
@@ -1594,7 +1594,7 @@ export function homePage({ lang: want, photos = {}, inApp = null } = {}) {
         <p class="hm-remind-km" lang="km">${say(km.home_remind)}</p>`;
   // "30+ lives": only the photos that are really there (no placeholders in this gallery).
   const lives = HOME_LIVES.filter((slot) => photos?.[slot]);
-  const tags = HOME_TAGS.map((tag) => (/[ក-៿]/.test(tag) ? `<span lang="km">${tag}</span>` : tag)).join(" ");
+  const tags = HOME_TAGS.map((tag) => (/[ក-៿]/.test(tag) ? `<span lang="km">${khmerKeep(tag)}</span>` : tag)).join(" "); // #ការណាត់ជួប whole
   const inner = `<header class="hm-top">
   <div class="hm-wrap hm-top-in">
     <a class="hm-logo" href="${WEB_APP_PATH}">30+DA</a>

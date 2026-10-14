@@ -24,6 +24,7 @@ import {
 import { handleThirtyDaApp } from './thirtyda-app.mjs';
 import { LEVEL_RULES, SYSTEM_QUESTIONS } from '../thirtyda-app/shared/questions.js';
 import { PHOTO_SLOT_LEVELS, AGE_MIN, REPLY_MAX } from '../thirtyda-app/shared/rules.js';
+import { khmerKeep, khmerPlain } from '../thirtyda-app/shared/khmer.js';
 
 const LANGS = ['en', 'km', 'zh', 'ko', 'ja'];
 const HOME_KEYS = Object.keys(PAGE_STRINGS.en).filter((k) => k.startsWith('home_'));
@@ -283,8 +284,10 @@ test('Support & Contact (the template\'s three), the hashtags, the footer', () =
     ], `${lang}: the three ways in`);
     assert.equal(CONTACT_EMAIL, 'gk.smart@ggmt.sg');
     const tags = html.match(/<p class="hm-tags">([\s\S]*?)<\/p>/)?.[1] ?? '';
-    assert.equal(shown(tags), HOME_TAGS.join(' '), `${lang}: hashtags`);
-    assert.ok(tags.includes('<span lang="km">#ការណាត់ជួប</span>'), `${lang}: the Khmer tag marked Khmer`);
+    assert.equal(khmerPlain(shown(tags)), HOME_TAGS.join(' '), `${lang}: hashtags`);
+    // The Khmer tag marked Khmer, and kept whole on a line (Chrome broke it "#ការ ‖ ណាត់ជួប" at 412 px).
+    assert.ok(tags.includes(`<span lang="km">${khmerKeep('#ការណាត់ជួប')}</span>`), `${lang}: the Khmer tag marked Khmer`);
+    assert.notEqual(khmerKeep('#ការណាត់ជួប'), '#ការណាត់ជួប');
     // Footer: the template's small line, who runs it, the small pages in the same language.
     const foot = block(html, '<footer class="hm-foot">', 'footer');
     assert.ok(foot.includes('<p class="hm-foot-brand">30+DA · GK Newsroom · ggmt.sg</p>'), `${lang}: brand line`);

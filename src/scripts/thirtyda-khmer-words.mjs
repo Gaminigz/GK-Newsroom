@@ -3,15 +3,17 @@
 // dictionary (Node's — the server's, and iPhone's) cuts them. shared/khmer.js keeps each of them whole when a long
 // phrase has to break, so Chrome / Android (whose own dictionary cuts much finer: ផ្ទៀង|ផ្ទាត់, បោក|ប្រាស់) break our
 // lines where iPhone and the server do. Run it after Khmer strings change:  node src/scripts/thirtyda-khmer-words.mjs
-// A word missing from the list only means Chrome may cut it where its dictionary does (as before the list).
+// ICU also cuts some real compounds (នី|មួយ|ៗ, ស្នងការ|ដ្ឋាន, ទទួល|បាន): those are kept by hand in
+// shared/khmer-compounds.js and added here whole, so KHMER_WORDS never carries only the halves.
 import { readFileSync, readdirSync, writeFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { KEEP_WHOLE, khmerClusters } from '../thirtyda-app/shared/khmer.js';
+import { KHMER_COMPOUNDS } from '../thirtyda-app/shared/khmer-compounds.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url)); // the folder may have a space in its name
 const SOURCES = ['src/thirtyda-app', 'src/lib/thirtyda-pages.mjs'];
-const SKIP = /(?:\.test\.mjs|khmer-words\.js|board[\\/]demo\.js)$/;
+const SKIP = /(?:\.test\.mjs|khmer-words\.js|khmer-compounds\.js|board[\\/]demo\.js)$/;
 const KHMER = /[\u1780-\u17FF]/;
 
 function files(path) {
@@ -37,6 +39,7 @@ for (const phrase of phrases) {
     if (isWordLike && /^[\u1780-\u17FF]+$/.test(segment) && khmerClusters(segment) >= 2) words.add(segment);
   }
 }
+for (const w of KHMER_COMPOUNDS) words.add(w); // the hand-kept compounds, whole
 const list = [...words].sort();
 
 const lines = [];
@@ -48,7 +51,8 @@ for (const w of list) {
 }
 if (line) lines.push(line);
 writeFileSync(join(root, 'src/thirtyda-app/shared/khmer-words.js'), `// Written by src/scripts/thirtyda-khmer-words.mjs — do not edit by hand. The Khmer words of 30+DA's own long phrases,
-// as ICU's Khmer dictionary (Node / iPhone) cuts them: shared/khmer.js never breaks a line inside one of these.
+// as ICU's Khmer dictionary (Node / iPhone) cuts them, plus the compounds of shared/khmer-compounds.js whole:
+// shared/khmer.js never breaks a line inside one of these.
 // Plain ES module, served to the browser unchanged.
 export const KHMER_WORDS = [
 ${lines.map((l) => `  ${l}`).join('\n')}
