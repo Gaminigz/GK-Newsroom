@@ -186,8 +186,11 @@ export async function secretStatus(d, name, { rawKey } = {}) {
 
 // ---------- writes ----------
 
-/** Seal and store `plain` as `name`. Refuses (SettingsError 'no_key') without a valid THIRTYDA_SECRET_KEY. */
-export async function saveSecret(d, name, plain, { by = "superadmin", rawKey } = {}) {
+/**
+ * Seal and store `plain` as `name`. Refuses (SettingsError 'no_key') without a valid THIRTYDA_SECRET_KEY.
+ * last4:false → no plain last 4 characters next to the box (a short secret, like the 6-digit review code).
+ */
+export async function saveSecret(d, name, plain, { by = "superadmin", rawKey, last4 = true } = {}) {
   checkName(name, SECRET_NAMES);
   const key = settingsKey(rawKey);
   const value = String(plain ?? "");
@@ -196,7 +199,7 @@ export async function saveSecret(d, name, plain, { by = "superadmin", rawKey } =
     _id: name,
     kind: "secret",
     box: sealSecret(value, key, name),
-    last4: lastFour(value),
+    ...(last4 ? { last4: lastFour(value) } : {}),
     updatedAt: new Date(),
     updatedBy: by,
   };

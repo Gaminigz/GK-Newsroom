@@ -25,10 +25,12 @@ const val = (v) => (v instanceof Date ? v.getTime() : v);
 const eq = (v, want) => (want === null ? v == null : Array.isArray(v) ? v.some((x) => val(x) === val(want)) : val(v) === val(want));
 function matches(doc, q) {
   for (const [k, cond] of Object.entries(q || {})) {
+    if (k === '$or') { if (!cond.some((c) => matches(doc, c))) return false; continue; }
     const v = get(doc, k);
     if (cond && typeof cond === 'object' && !(cond instanceof Date) && !Array.isArray(cond) && Object.keys(cond).some((x) => x.startsWith('$'))) {
       for (const [op, want] of Object.entries(cond)) {
         if (op === '$exists' && (v !== undefined) !== want) return false;
+        if (op === '$gte' && !(v != null && val(v) >= val(want))) return false;
         if (op === '$ne' && eq(v, want)) return false;
         if (op === '$in' && !want.some((w) => eq(v, w))) return false;
       }
@@ -169,9 +171,39 @@ test('the app checks the world in every route that shows or reaches a person (se
   assert.match(body('createPair'), /sameWorld\(me, other\)/, 'start a conversation');
   assert.match(body('pairFor'), /sameWorld\(me, other\)/, 'every conversation route (read and write)');
   for (const fn of ['listPairs', 'heartbeat', 'pendingCount']) assert.match(body(fn), /pairsInWorld\(d, me,/, fn);
-  assert.match(body('signInWithPhone'), /isReview\(user\) && user\._id !== me\?\._id\) throw phoneInUse\(\)/, 'a review number never signs in by a code or Telegram');
+  assert.match(body('signInWithPhone'), /if \(isReview\(user\)\) throw phoneInUse\(\)/, 'a review number never signs in by a code or Telegram');
   assert.match(body('sendCode'), /refuseReviewNumber\(d, phone\)/);
   assert.match(body('telegramStart'), /refuseReviewNumber\(d, phone\)/);
+});
+
+test('a signed-in review account adds or changes no way in: its number stays the admin\'s, no Google / Facebook / TikTok', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('./thirtyda-app.mjs', import.meta.url), 'utf8');
+  const body = (name) => {
+    const i = src.indexOf(`async function ${name}(`);
+    assert.ok(i >= 0, name);
+    return src.slice(i, src.indexOf('\n}\n', i));
+  };
+  // Proving a number (verify-code, the Telegram bot's status) from a review account: refused before anything is written.
+  const phone = body('signInWithPhone');
+  assert.ok(phone.indexOf('if (isReview(me)) throw reviewFixed();') >= 0, 'signInWithPhone refuses a review account');
+  assert.ok(phone.indexOf('if (isReview(me)) throw reviewFixed();') < phone.indexOf('users.updateOne('), '…before any write');
+  for (const fn of ['sendCode', 'telegramStart', 'verifySocial']) assert.match(body(fn), /if \(isReview\((ctx\.)?me\)\) throw reviewFixed\(\);/, fn);
+  assert.match(body('telegramStatus'), /err\?\.code !== "review_account"/, 'the bot path ends calmly (the check is used up)');
+  // Google / Facebook / TikTok: never into a review account, never added to one (the switch and Stop would not stop it).
+  const signin = body('completeSignin');
+  assert.match(signin, /if \(isReview\(user\) \|\| \(isReview\(ctx\.me\) && !user\)\) return \{ existing: false, refused: "review" \};/);
+  assert.ok(signin.indexOf('refused: "review"') < signin.indexOf('planSignin('), '…before any plan is carried out');
+  assert.match(src, /const reviewFixed = \(\) => fail\(409, "review_account"/);
+  // A renewed review session keeps its mark, so "Stop being a review account" still ends it.
+  assert.match(body('startSession'), /if \(session\?\.reviewSignin && doc\.userId && doc\.userId === session\.userId\) doc\.reviewSignin = true;/);
+  // The app words both in 5 languages.
+  const cp = readFileSync(new URL('../thirtyda-app/screens/create-profile.js', import.meta.url), 'utf8');
+  assert.equal((cp.match(/cp_review_fixed: '/g) || []).length, 5, 'cp_review_fixed in en / km / zh / ko / ja');
+  for (const f of ['create-profile', 'my-profile', 'verify-chat']) {
+    const js = readFileSync(new URL(`../thirtyda-app/screens/${f}.js`, import.meta.url), 'utf8');
+    assert.match(js, /'review'\) return \{ ok: false, icon: [A-Z_]+\.review, text: t\('cp_review_fixed'\) \}/, f);
+  }
 });
 
 // ---------------------------------------------------------------- the switch and the code
@@ -191,6 +223,7 @@ test('code: 6 digits, kept sealed (never in plain in the database), a new one re
   assert.match(code, /^\d{6}$/);
   const doc = d.docs(SETTINGS_COLLECTION).find((x) => x._id === REVIEW_CODE);
   assert.ok(doc.box && !JSON.stringify(doc).includes(code), 'sealed');
+  assert.equal('last4' in doc, false, 'not even its last 4 digits in plain (that would leave 100 guesses)');
   assert.equal((await reviewCodeView(d)).code, code);
   assert.deepEqual(await checkReviewCode(d, code), { ok: true });
   assert.deepEqual(await checkReviewCode(d, code === '000000' ? '111111' : '000000'), { ok: false, reason: 'wrong' });
@@ -244,6 +277,10 @@ test('sign-in: the code is for a CURRENT review account mock number only, and on
   await d.collection('thirtyda_users').updateOne({ _id: 'U-10001' }, { $unset: { deleting: '' } });
   await setReviewSwitch(d, false);
   assert.equal(await reviewAccountFor(d, DARA_PHONE), null, 'switched OFF: stops at once');
+  // Only the number the admin set (phoneVia 'review'): a review account whose number came another way never takes the code.
+  await d.collection('thirtyda_users').updateOne({ _id: 'U-10001' }, { $set: { phoneVia: 'telegram' } });
+  assert.equal(await reviewAccountFor(d, DARA_PHONE), null, 'a number not set by the admin: no');
+  await d.collection('thirtyda_users').updateOne({ _id: 'U-10001' }, { $set: { phoneVia: 'review' } });
   await setReviewSwitch(d, true);
   await stopReviewAccount(d, 'U-10001');
   assert.equal(await reviewAccountFor(d, DARA_PHONE), null, 'no longer a review account: no');
@@ -298,13 +335,15 @@ test('Use as review account: refusals (no profile, blocked, taken number, bad nu
 
 test('Stop being a review account: its own number, phoneVia and PIN come back; review sessions end, others stay', async () => {
   const d = await world();
-  await makeReviewAccount(d, 'U-10001', REVIEW_DEFAULTS[0]);
   const sessions = d.collection('thirtyda_user_sessions');
-  await sessions.insertOne({ _id: 's-review', userId: 'U-10001', reviewSignin: true });
-  await sessions.insertOne({ _id: 's-own', userId: 'U-10001' });
+  await sessions.insertOne({ _id: 's-own', userId: 'U-10001', created: new Date('2026-10-05') }); // the owner's phone, from before
+  await makeReviewAccount(d, 'U-10001', REVIEW_DEFAULTS[0], { now: Date.parse('2026-10-14T01:00:00Z') });
+  await sessions.insertOne({ _id: 's-review', userId: 'U-10001', reviewSignin: true, created: new Date('2026-10-14T02:00:00Z') });
+  // A session renewed since (a sign-in step) that lost its mark: it started after the profile became a review account.
+  await sessions.insertOne({ _id: 's-renewed', userId: 'U-10001', created: new Date('2026-10-14T03:00:00Z') });
   await sessions.insertOne({ _id: 's-other', userId: 'U-10002', reviewSignin: true });
   const { user, sessionsEnded } = await stopReviewAccount(d, 'U-10001');
-  assert.equal(sessionsEnded, 1);
+  assert.equal(sessionsEnded, 2);
   assert.deepEqual(d.docs('thirtyda_user_sessions').map((s) => s._id).sort(), ['s-other', 's-own']);
   assert.equal(user.demo, undefined);
   assert.equal(user.phone, '+85512345678');
@@ -347,6 +386,8 @@ test('page: real numbers masked to the last 3 digits, mock numbers in full, neve
   });
   assert.equal(v.profiles.find((p) => p.id === 'U-10002').ways.phone, '+855 10 000 2244', 'a mock number is not real: shown in full');
   assert.deepEqual(waysOf({ verified: { phone: true } }).phone, null, 'no number: nothing');
+  assert.equal(waysOf({ demo: REVIEW, phoneVia: 'telegram', phone: '+85512345678', verified: { phone: true } }).phone, '•••••••••678',
+    'a review account whose number the admin did not set: masked like any real number');
   assert.equal(profileRow({ _id: 'U-1', photos: ['x', null, 'y', 'z', 'w'] }).photos, 3, 'slots, max 4');
 });
 
@@ -365,10 +406,12 @@ test('page: review accounts with number + PIN + their conversations, and the not
   ]);
   assert.deepEqual(v.accounts[0].talks, [{ pairId: 'P-1', with: 'U-10002', withName: 'Sophea', stage: 'l3_open', level: 3 }], 'only the talk with the other review account');
   for (const want of ['Dara', '+855 10 000 1122', 'PIN 1122', 'Sophea', '+855 10 000 2244', 'PIN 2244', `Review code (for every demo account): ${code}`,
-    'pick a language', 'Set any 4-digit PIN', 'tap Telegram', 'Enter the review code']) {
+    'pick a language', 'Set any 4-digit PIN (used only until you sign in)', 'tap Telegram', 'Enter the review code',
+    "From then on the app unlocks with the demo account's PIN (1122 / 2244), not the one from step 2."]) {
     assert.ok(v.notes.includes(want), want);
   }
   assert.ok(!v.notes.includes('12345678'), 'never a real number');
+  assert.ok(!v.notes.includes('only locks the app on this phone'), 'the step-2 PIN is not the one that unlocks after sign-in');
   assert.match(reviewNotes({ accounts: [], code: null }), /<no code yet/);
 });
 

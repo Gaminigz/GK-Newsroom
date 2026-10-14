@@ -33,8 +33,8 @@ function slotsOf(me) {
 }
 
 const SIGNIN_NAMES = { google: 'Google', facebook: 'Facebook', tiktok: 'TikTok' };
-const BACK_ERRORS = ['cancelled', 'expired', 'unavailable', 'failed', 'too_many', 'in_use'];
-const BACK_ICON = { cancelled: 'question', expired: 'clock', too_many: 'clock', unavailable: 'refresh', failed: 'refresh', in_use: 'flag' };
+const BACK_ERRORS = ['cancelled', 'expired', 'unavailable', 'failed', 'too_many', 'in_use', 'review'];
+const BACK_ICON = { cancelled: 'question', expired: 'clock', too_many: 'clock', unavailable: 'refresh', failed: 'refresh', in_use: 'flag', review: 'flag' };
 
 /** The way back from Google / Facebook / TikTok started here: #/me?signin=google&ok=1 | &error=in_use → a calm note. */
 function backNotice(query) {
@@ -43,6 +43,7 @@ function backNotice(query) {
   if (query.ok === '1') return { ok: true, icon: 'check', text: t('cp_verified_with', { name }) };
   const reason = BACK_ERRORS.includes(query.error) ? query.error : 'failed';
   if (reason === 'in_use') return { ok: false, icon: BACK_ICON.in_use, text: t('vc_in_use', { name }) };
+  if (reason === 'review') return { ok: false, icon: BACK_ICON.review, text: t('cp_review_fixed') }; // an App review account
   if (reason === 'too_many') return { ok: false, icon: BACK_ICON.too_many, text: t('cp_too_many') };
   return { ok: false, icon: BACK_ICON[reason], text: t(`cp_signin_${reason}`, { name }) };
 }

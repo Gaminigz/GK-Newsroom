@@ -15,8 +15,8 @@ const RETURN_KEY = '30da_vc_return'; // where the person was when they left for 
 const RETURN_MS = 15 * 60e3;
 const NOT_BACK_TO = new Set(['/verified', '/create', '/opening', '/pin', '/blocked']);
 const SIGNIN_NAMES = { google: 'Google', facebook: 'Facebook', tiktok: 'TikTok' };
-const BACK_ERRORS = ['cancelled', 'expired', 'unavailable', 'failed', 'too_many', 'in_use'];
-const ERROR_ICON = { cancelled: 'question', expired: 'clock', too_many: 'clock', unavailable: 'refresh', failed: 'refresh', in_use: 'flag' };
+const BACK_ERRORS = ['cancelled', 'expired', 'unavailable', 'failed', 'too_many', 'in_use', 'review'];
+const ERROR_ICON = { cancelled: 'question', expired: 'clock', too_many: 'clock', unavailable: 'refresh', failed: 'refresh', in_use: 'flag', review: 'flag' };
 
 function keepReturn() {
   const raw = (typeof location === 'undefined' ? '' : location.hash).replace(/^#/, '');
@@ -124,6 +124,7 @@ function backNotice(query) {
   const name = SIGNIN_NAMES[query?.signin] || '';
   const reason = BACK_ERRORS.includes(query?.error) ? query.error : 'failed';
   if (reason === 'in_use') return { ok: false, icon: ERROR_ICON.in_use, text: t('vc_in_use', { name }) };
+  if (reason === 'review') return { ok: false, icon: ERROR_ICON.review, text: t('cp_review_fixed') }; // an App review account
   if (reason === 'too_many') return { ok: false, icon: ERROR_ICON.too_many, text: t('cp_too_many') };
   return { ok: false, icon: ERROR_ICON[reason], text: t(`cp_signin_${reason}`, { name }) };
 }

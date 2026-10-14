@@ -89,7 +89,7 @@ export async function releaseSignup(coll, key) {
 // ---------------------------------------------------------------- the way back from Google / Facebook / TikTok
 
 /** Reasons the app words for a sign-in started from the "Verify to chat" sheet (in_use: that account has another profile). */
-export const VERIFY_BACK_REASONS = ["cancelled", "expired", "unavailable", "failed", "too_many", "in_use"];
+export const VERIFY_BACK_REASONS = ["cancelled", "expired", "unavailable", "failed", "too_many", "in_use", "review"];
 
 /** Screens a sign-in may be started from to ATTACH an account (never switch): #/me (owner 2026-10-13). */
 export const ATTACH_FROM = ["me"];

@@ -306,6 +306,13 @@ export async function deleteAccount(d, userId, { now = Date.now(), deletePhoto =
     return { ok: true, already: true };
   }
   const handles = handlesOf(user);
+  // An App review account (src/lib/thirtyda-review.mjs): `phone` is the admin's mock number; the profile's own verified
+  // number waits in reviewWas. Its codes, Telegram checks and links go too — unless another profile has verified that
+  // number meanwhile (then they are that profile's).
+  const own = user.reviewWas?.phone ? String(user.reviewWas.phone) : null;
+  if (own && !handles.phones.includes(own) && !(await users.findOne({ phone: own, _id: { $ne: userId } }, { projection: { _id: 1 } }))) {
+    handles.phones.push(own);
+  }
   await users.updateOne({ _id: userId }, claimUpdate(user, handles, new Date(now)));
   const done = await cleanUp(d, userId, handles, at, { deletePhoto, ownSessions: false });
   await d.collection(AUDIT).updateOne(

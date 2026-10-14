@@ -307,6 +307,7 @@ function fullPhone(model) {
  * the words never name it ("…Please try again in a little while."), so nobody is sent round in a circle.
  */
 function sendErrorText(err, channel, otherOn = true) {
+  if (err.code === 'review_account') return t('cp_review_fixed'); // App review: a demo account keeps its number
   const names = { channel: channelName(channel), other: channelName(otherChannel(channel)) };
   const only = otherOn ? '' : '_only';
   if (err.code === 'channel_failed') return t(`${/^not_on_/.test(err.data?.reason || '') ? 'cp_ch_not_on' : 'cp_ch_failed'}${only}`, names);
@@ -333,6 +334,7 @@ registerStrings({
     cp_tg_match: 'Telegram shows the same sign:',
     cp_review_code: 'Enter the review code',
     cp_review_off: 'Review sign-in is off now. Tap the app again.',
+    cp_review_fixed: 'This is a demo account. Its number and sign-ins can’t be changed.',
   },
   km: {
     cp_tg_open_it: 'បើក Telegram',
@@ -346,6 +348,7 @@ registerStrings({
     cp_tg_match: 'Telegram បង្ហាញសញ្ញាដូចគ្នា៖',
     cp_review_code: 'បញ្ចូលលេខកូដពិនិត្យ',
     cp_review_off: 'ការចូលសម្រាប់ពិនិត្យត្រូវបានបិទ។ សូមចុចកម្មវិធីម្ដងទៀត។',
+    cp_review_fixed: 'នេះជាគណនីសាកល្បង។ មិនអាចប្ដូរលេខ ឬវិធីចូលរបស់វាបានទេ។',
   },
   zh: {
     cp_tg_open_it: '打开 Telegram',
@@ -359,6 +362,7 @@ registerStrings({
     cp_tg_match: 'Telegram 会显示同样的标记：',
     cp_review_code: '输入审核码',
     cp_review_off: '审核登录已关闭。请再点一次应用。',
+    cp_review_fixed: '这是演示账号，号码和登录方式不能更改。',
   },
   ko: {
     cp_tg_open_it: 'Telegram 열기',
@@ -372,6 +376,7 @@ registerStrings({
     cp_tg_match: 'Telegram에도 같은 표시가 나와요:',
     cp_review_code: '심사 코드를 입력하세요',
     cp_review_off: '심사용 로그인이 꺼졌어요. 앱을 다시 눌러 주세요.',
+    cp_review_fixed: '데모 계정이에요. 번호와 로그인 방법은 바꿀 수 없어요.',
   },
   ja: {
     cp_tg_open_it: 'Telegram を開く',
@@ -385,6 +390,7 @@ registerStrings({
     cp_tg_match: 'Telegram にも同じマークが出ます：',
     cp_review_code: '審査用コードを入力してください',
     cp_review_off: '審査用ログインはオフになりました。もう一度アプリを押してください。',
+    cp_review_fixed: 'これはデモ用アカウントです。番号とログイン方法は変更できません。',
   },
 });
 
@@ -394,6 +400,7 @@ function verifyErrorText(err) {
   if (err.code === 'code_sending') return t('cp_code_on_way');
   // "Verify to chat": verifying from a profile made without it — the number already has another profile.
   if (err.code === 'phone_in_use') return t('cp_phone_in_use');
+  if (err.code === 'review_account') return t('cp_review_fixed');
   if (err.status === 429) return t('cp_too_many');
   return err.status === 0 ? t('err_network') : t('err_generic');
 }
@@ -1177,8 +1184,8 @@ function takeStashedDraft() {
 }
 
 const SIGNIN_NAMES = { google: 'Google', facebook: 'Facebook', tiktok: 'TikTok' };
-const SIGNIN_ERRORS = ['cancelled', 'expired', 'unavailable', 'failed', 'too_many'];
-const SIGNIN_ERROR_ICON = { cancelled: 'question', expired: 'clock', too_many: 'clock', unavailable: 'refresh', failed: 'refresh' };
+const SIGNIN_ERRORS = ['cancelled', 'expired', 'unavailable', 'failed', 'too_many', 'review'];
+const SIGNIN_ERROR_ICON = { cancelled: 'question', expired: 'clock', too_many: 'clock', unavailable: 'refresh', failed: 'refresh', review: 'flag' };
 
 /** The way back from Google / Facebook (#/create?signin=google&ok=1 | &error=cancelled) → the phone step's notice. */
 function signinNotice(query) {
@@ -1186,6 +1193,7 @@ function signinNotice(query) {
   if (!name) return null;
   if (query.ok === '1') return { ok: true, icon: 'check', text: t('cp_verified_with', { name }) };
   const reason = SIGNIN_ERRORS.includes(query.error) ? query.error : 'failed';
+  if (reason === 'review') return { ok: false, icon: SIGNIN_ERROR_ICON.review, text: t('cp_review_fixed') }; // an App review account
   return { ok: false, icon: SIGNIN_ERROR_ICON[reason], text: reason === 'too_many' ? t('cp_too_many') : t(`cp_signin_${reason}`, { name }) };
 }
 

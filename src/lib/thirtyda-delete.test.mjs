@@ -491,6 +491,29 @@ test('a number typed without a code proves nothing: deleting that profile leaves
   assert.equal(JSON.stringify(d.docs(USERS)).includes(NEW), false);
 });
 
+test('an App review account: its own number (kept in reviewWas, the phone is the mock) loses its codes and Telegram links too', async () => {
+  const MOCK = '+855100001122';
+  const asReview = async (d) => d.collection(USERS).updateOne({ _id: A }, {
+    $set: { demo: 'review', phone: MOCK, phoneVia: 'review', reviewWas: { phone: A_PHONE, verifiedPhone: true, phoneVia: 'telegram' } },
+  });
+  const { d, photos } = await world();
+  await asReview(d);
+  await d.collection(TG_LINKS).insertOne({ _id: 7011, phone: MOCK });
+  await deleteAccount(d, A, { now: Date.parse('2026-10-14T10:00:00Z'), deletePhoto: photos.deletePhoto });
+  assert.deepEqual(traces(d), [], 'nothing of hers, her own number included');
+  assert.deepEqual(d.docs(OTPS).map((x) => x._id), ['+85512000222']);
+  assert.deepEqual(d.docs(TG_CHECKS).map((x) => x._id), ['c2']);
+  assert.deepEqual(d.docs(TG_LINKS).map((x) => x._id), [7002], 'her own number\'s link and the mock\'s');
+
+  // Her old number was verified by another profile meanwhile: its code / check / link are that profile's — they stay.
+  const other = await world();
+  await asReview(other.d);
+  await other.d.collection(USERS).updateOne({ _id: C }, { $set: { phone: A_PHONE } });
+  await deleteAccount(other.d, A, { now: Date.parse('2026-10-14T10:00:00Z'), deletePhoto: other.photos.deletePhoto });
+  assert.ok(other.d.docs(OTPS).some((x) => x._id === A_PHONE), "Cee's code stays");
+  assert.ok(other.d.docs(TG_LINKS).some((x) => x._id === 7001), "Cee's Telegram link stays");
+});
+
 test('a request in flight that writes during the delete (a new session, a number, a line) is cleaned up too', async () => {
   const { d, photos } = await world();
   let once = true;

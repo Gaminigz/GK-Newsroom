@@ -16,8 +16,10 @@
  *     'review_code') works ONLY while the admin switch "Review sign-in" is ON (thirtyda_settings 'review_signin', read
  *     from the database on every check: OFF stops it at once) and ONLY for a current review account's mock number.
  *     5 wrong tries per number per 15 minutes, the address limit of verify-code, and REVIEW_WRONG_MAX wrong tries in
- *     total per code (then only a New code works again). A review account is never signed into any other way by its
- *     number (a code or Telegram for it answers phone_in_use).
+ *     total per code (then only a New code works again). A review account is never signed into any other way: not by
+ *     its number (a code or Telegram for it answers phone_in_use), not by Google / Facebook / TikTok. Its number is
+ *     set only here: signed in, it can neither prove another number nor add a Google / Facebook / TikTok account
+ *     (409 review_account), so the code can never come to work for a real number.
  *
  * Pure apart from the `d` (Mongo Db) handed in, so the unit tests run without a database.
  */
@@ -79,9 +81,12 @@ export function spacedPhone(p) {
 const filled = (u) => (Array.isArray(u?.photos) ? u.photos.slice(0, PHOTO_MAX).filter(Boolean).length : 0);
 const iso = (t) => (t ? new Date(t).toISOString() : null);
 
+/** A mock number the admin set (shown in full: it is not real); any other number is masked. */
+const isMock = (u) => isReview(u) && u?.phoneVia === REVIEW;
+
 /** The verified ways of a profile as the page shows them: a real number masked, a mock number in full. */
 export function waysOf(u) {
-  const phone = u?.verified?.phone && u?.phone ? (isReview(u) ? spacedPhone(u.phone) : maskTail(u.phone)) : null;
+  const phone = u?.verified?.phone && u?.phone ? (isMock(u) ? spacedPhone(u.phone) : maskTail(u.phone)) : null;
   return { phone, google: Boolean(u?.verified?.gmail), facebook: Boolean(u?.verified?.facebook), tiktok: Boolean(u?.verified?.tiktok) };
 }
 
@@ -101,6 +106,9 @@ export function profileRow(u) {
   };
 }
 
+/** "1122 / 2244": the review accounts' PINs, for step 4 of the notes. */
+const pinList = (accounts) => accounts.map((a) => a.pin).filter(Boolean).join(" / ") || "shown above";
+
 /**
  * The text for App Store Connect / Play Console review notes: each review account's app name, mock number and PIN,
  * the code, and the steps. `code` null → "<no code yet>".
@@ -114,9 +122,9 @@ export function reviewNotes({ accounts, code }) {
   lines.push(
     "Steps:",
     "1. Open the app and pick a language.",
-    "2. Set any 4-digit PIN (it only locks the app on this phone).",
+    "2. Set any 4-digit PIN (used only until you sign in).",
     "3. Tap the profile icon (top right). In the phone number box keep +855, type the demo number (for example 10 000 1122) and tap Telegram. No Telegram app is needed.",
-    "4. Enter the review code, then the demo account's PIN.",
+    `4. Enter the review code, then the demo account's PIN. From then on the app unlocks with the demo account's PIN (${pinList(accounts)}), not the one from step 2.`,
   );
   lines.push("");
   if (accounts.length > 1) {
@@ -141,10 +149,13 @@ export async function setReviewSwitch(d, on, { by = "superadmin" } = {}) {
   return reviewSwitch(d);
 }
 
-/** A fresh 6-digit code, sealed (saveSecret: a new code also starts a new wrong-try count). → the code. */
+/**
+ * A fresh 6-digit code, sealed (saveSecret: a new code also starts a new wrong-try count). No last4 next to it: 4 of
+ * 6 digits in plain text would leave 100 guesses to anyone who can read the database. → the code.
+ */
 export async function newReviewCode(d, { by = "superadmin" } = {}) {
   const code = String(crypto.randomInt(0, 1e6)).padStart(6, "0");
-  await saveSecret(d, REVIEW_CODE, code, { by });
+  await saveSecret(d, REVIEW_CODE, code, { by, last4: false });
   return code;
 }
 
@@ -194,12 +205,13 @@ export function tryCounter(windowMs = WINDOW_MS) {
 
 /**
  * Which review account this number signs into right now: only while "Review sign-in" is ON, only a current review
- * account (not blocked, not being deleted). → the profile, or null.
+ * account (not blocked, not being deleted), and only the mock number the admin set (phoneVia 'review'). → the
+ * profile, or null.
  */
 export async function reviewAccountFor(d, phone) {
   if (!phone) return null;
   if (!(await reviewSwitch(d)).on) return null;
-  const u = await d.collection(USERS).findOne({ phone, demo: REVIEW });
+  const u = await d.collection(USERS).findOne({ phone, demo: REVIEW, phoneVia: REVIEW });
   return u && !u.blocked && !u.deleting ? u : null;
 }
 
@@ -282,8 +294,10 @@ export async function makeReviewAccount(d, id, { phone, pin }, { now = Date.now(
 
 /**
  * "Stop being a review account": the mark and the mock number go; the profile's own number comes back (unless another
- * profile has taken it meanwhile), its own phoneVia and PIN too (none → the app asks for a new PIN). The sessions the
- * review code made for it end (a reviewer's phone never keeps a real profile).
+ * profile has taken it meanwhile), its own phoneVia and PIN too (none → the app asks for a new PIN). Every session
+ * the review code made for it ends (reviewSignin, kept when such a session is renewed), and so does any other session
+ * of it started since it became a review account: a reviewer's phone never keeps a real profile. Its sessions from
+ * before (the owner's own phone) stay.
  */
 export async function stopReviewAccount(d, id) {
   const users = d.collection(USERS);
@@ -304,7 +318,10 @@ export async function stopReviewAccount(d, id) {
   if (was.pinHash) Object.assign(set, { pinHash: was.pinHash, pinAt: was.pinAt ?? new Date() });
   else Object.assign(unset, { pinHash: "", pinAt: "" });
   await users.updateOne({ _id: id, demo: REVIEW }, { $set: set, $unset: unset });
-  const ended = await d.collection(SESSIONS).deleteMany({ userId: id, reviewSignin: true });
+  const since = u.reviewAt ? new Date(u.reviewAt) : null;
+  const ended = await d.collection(SESSIONS).deleteMany({
+    userId: id, $or: [{ reviewSignin: true }, ...(since && !Number.isNaN(since.getTime()) ? [{ created: { $gte: since } }] : [])],
+  });
   return { user: await users.findOne({ _id: id }), sessionsEnded: ended.deletedCount ?? 0 };
 }
 
@@ -320,7 +337,7 @@ export async function reviewView(d) {
     reviewSwitch(d), reviewCodeView(d),
     d.collection(USERS).find({}, {
       projection: {
-        name: 1, createdAt: 1, level: 1, photos: 1, birthYear: 1, verified: 1, phone: 1, demo: 1, blocked: 1, deleting: 1, reviewPinBox: 1, reviewAt: 1,
+        name: 1, createdAt: 1, level: 1, photos: 1, birthYear: 1, verified: 1, phone: 1, phoneVia: 1, demo: 1, blocked: 1, deleting: 1, reviewPinBox: 1, reviewAt: 1,
       },
     }).toArray(),
   ]);
@@ -335,7 +352,7 @@ export async function reviewView(d) {
   const nameOf = new Map(review.map((u) => [u._id, u.name]));
   const accounts = review.map((u) => ({
     ...profileRow(u),
-    phone: u.phone ?? null,
+    phone: isMock(u) ? u.phone ?? null : maskTail(u.phone),
     pin: reviewPinOf(u),
     talks: pairs.filter((p) => p.members.includes(u._id) && p.members.every((m) => nameOf.has(m)))
       .map((p) => {

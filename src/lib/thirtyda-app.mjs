@@ -398,6 +398,9 @@ async function startSession(ctx, fields) {
     created: new Date(now),
     expires: new Date(now + SESSION_DAYS * 864e5),
   };
+  // A session the App review code made stays marked when it is renewed for the same profile ("Stop being a review
+  // account" ends every such session).
+  if (session?.reviewSignin && doc.userId && doc.userId === session.userId) doc.reviewSignin = true;
   await d.collection(C.sessions).insertOne(doc);
   if (old) await d.collection(C.sessions).deleteOne({ _id: old._id });
   if (doc.userId) await d.collection(C.users).updateOne({ _id: doc.userId }, { $set: { pinTries: 0 } });
@@ -940,6 +943,7 @@ async function sendCode(ctx) {
   if (!phone) throw invalid("That phone number does not look right.", { field: "phone" });
   const channel = body.channel == null || body.channel === "" ? DEFAULT_CHANNEL : body.channel;
   if (!CODE_CHANNELS.includes(channel)) throw invalid("Choose Telegram or WhatsApp.", { field: "channel" });
+  if (isReview(ctx.me)) throw reviewFixed();
   await refuseReviewNumber(d, phone);
   const name = CHANNEL_NAMES[channel];
   const otherKey = CODE_CHANNELS.find((c) => c !== channel);
@@ -1111,10 +1115,12 @@ async function verifyCode(ctx) {
  */
 async function signInWithPhone(ctx, phone, { newPin = null, newPinHash = null, via = null } = {}) {
   const { d, me } = ctx;
+  // An App review account's number is set only on the admin page: signed in, it never proves (adds or changes) one.
+  if (isReview(me)) throw reviewFixed();
   const users = d.collection(C.users);
   let user = await users.findOne({ phone });
   // An App review account's mock number signs in ONLY with the review code (reviewVerify), never by a code or Telegram.
-  if (isReview(user) && user._id !== me?._id) throw phoneInUse();
+  if (isReview(user)) throw phoneInUse();
   // "Verify to chat" (owner 2026-10-13): a profile with no verified way yet ATTACHES the number it proves. A number
   // that already belongs to another profile is refused in plain words — never a switch to it, never a merge.
   if (user && me && user._id !== me._id && !canTalk(me)) throw phoneInUse();
@@ -1142,6 +1148,8 @@ async function signInWithPhone(ctx, phone, { newPin = null, newPinHash = null, v
 }
 
 const phoneInUse = () => fail(409, "phone_in_use", "This phone number already has a profile.");
+/** A signed-in App review account adds / changes no way in (number, Google, Facebook, TikTok): the admin sets its number. */
+const reviewFixed = () => fail(409, "review_account", "This is a demo account: its number and sign-ins cannot be changed.");
 
 // ---------------------------------------------------------------- App review sign-in (owner 2026-10-14, src/lib/thirtyda-review.mjs)
 
@@ -1234,6 +1242,7 @@ async function telegramStart(ctx) {
   const phone = normalizePhone(body.phone);
   if (!phone) throw invalid("That phone number does not look right.", { field: "phone" });
   const newPin = waitingPin(body);
+  if (isReview(ctx.me)) throw reviewFixed();
   await refuseReviewNumber(d, phone);
   const cfg = (await botOffered(d)) ? await botConfig(d) : null;
   if (!cfg) throw fail(503, "channel_unavailable", "Telegram is not available yet.", { channel: "telegram" });
@@ -1268,7 +1277,7 @@ async function telegramStatus(ctx) {
   let out = await pollCheck(d, browser, {
     now,
     onVerified: (check) => signInWithPhone(ctx, check.phone, { newPinHash: check.pinHash ?? null, via: "telegram" }).catch((err) => {
-      if (err?.code !== "phone_in_use") throw err;
+      if (err?.code !== "phone_in_use" && err?.code !== "review_account") throw err;
       inUse = true;
       return {};
     }),
@@ -1284,6 +1293,7 @@ async function verifySocial(ctx) {
   const key = VERIFIED_KEY[body.provider];
   if (!key) throw invalid("Choose Google, Facebook or TikTok.", { field: "provider" });
   if (!DEV_AUTH) throw fail(503, "oauth_unavailable", "Google, Facebook and TikTok sign-in are not available yet.");
+  if (isReview(me)) throw reviewFixed();
   const s = ctx.session;
   const verified = { gmail: Boolean(s?.verified?.gmail), facebook: Boolean(s?.verified?.facebook), tiktok: Boolean(s?.verified?.tiktok), [key]: true };
   await startSession(ctx, { verified });
@@ -1586,6 +1596,9 @@ async function completeSignin(ctx, provider, person, { attachOnly = false } = {}
   // the profile that has this account → { inUse } and nothing changes.
   const otherOwner = (u) => Boolean(u && ctx.me && u._id !== ctx.me._id && (attachOnly || !canTalk(ctx.me)));
   if (otherOwner(user)) return { existing: false, inUse: true };
+  // An App review account is signed into ONLY by the review code, and adds no Google / Facebook / TikTok account
+  // (that would be a way in that ignores the switch and outlives "Stop being a review account").
+  if (isReview(user) || (isReview(ctx.me) && !user)) return { existing: false, refused: "review" };
   let plan = planSignin({ provider, person, user, me: ctx.me, session: ctx.session });
   // #/me: the profile already has ANOTHER account of this provider — never replaced, never a switch.
   if (attachOnly && plan.switched) return { existing: false, refused: "failed" };
