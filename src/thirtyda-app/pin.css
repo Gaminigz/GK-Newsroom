@@ -54,10 +54,6 @@ body.pin-locked .toast { display: none; }
 .pin-review:empty { display: none; }
 .pin-review-btn { min-height: 40px; padding: 0 18px; font-size: 14px; }
 .pin-review-cancel { margin-top: 4px; max-width: 320px; }
-/* "Sign in to the App Review demo account (Sophea)?" [Sign in] [No, this is my own PIN] */
-.pin-offer .sheet-title { max-width: 26ch; }
-.pin-offer .pin-sheet-error:empty { min-height: 0; }
-.pin-offer-actions { width: 100%; max-width: 320px; }
 
 /* #/pin: a back button over the screen (the screen itself is centred like the cover). */
 .screen.pin-route { position: relative; padding: 0; }

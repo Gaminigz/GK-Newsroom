@@ -8,6 +8,8 @@
  *     like the app's own PIN; the PIN itself is also kept SEALED on the profile, reviewPinBox, so the page can show it
  *     in the review notes). Photos, birth year, level and conversations stay exactly as they are. "Stop being a review
  *     account" puts the profile's own number / PIN back (reviewWas) and ends the sessions the review code made.
+ *   - "Create demo account" (src/lib/thirtyda-demo.mjs, owner 2026-10-14: "1 woman 1 man", PINs 5566 / 7788) makes a NEW,
+ *     fully filled profile directly as a review account (users.demoPreset), with 4 approved photos; Remove deletes it.
  *   - A PINNED Phnom Penh location: a review account is put on a fixed point in central Phnom Penh (REVIEW_SPOTS, area
  *     "Phnom Penh") and keeps it — POST /me/location answers OK but changes nothing for it (src/lib/thirtyda-app.mjs
  *     setLocation), so a store reviewer abroad tapping "Allow" never moves the demo. The spots are about 1.2 km apart,
@@ -122,28 +124,46 @@ export function profileRow(u) {
 
 /** "1122 / 3344": the review accounts' PINs. */
 const pinList = (accounts) => accounts.map((a) => a.pin).filter(Boolean).join(" / ") || "shown above";
-/** "1122 or 3344" (step 3 of the notes). */
-const pinOr = (accounts) => accounts.map((a) => a.pin).filter(Boolean).join(" or ") || "shown below";
+/** "1122, 3344, 5566 or 7788" (step 3 of the notes). */
+function pinOr(accounts) {
+  const pins = accounts.map((a) => a.pin).filter(Boolean);
+  return pins.length > 1 ? `${pins.slice(0, -1).join(", ")} or ${pins.at(-1)}` : pins[0] ?? "shown below";
+}
+
+/** "Dara and Sophea already have a conversation (Level 3 chat)." for every pair of review accounts (once each). */
+function talkLines(accounts) {
+  const seen = new Map();
+  for (const a of accounts) {
+    for (const t of a.talks ?? []) {
+      if (!seen.has(t.pairId)) seen.set(t.pairId, `${a.name} and ${t.withName} already have a conversation${t.stage === "l3_open" ? " (Level 3 chat)" : ""}.`);
+    }
+  }
+  return [...seen.values()];
+}
+
+const GENDER_WORD = { woman: "woman", man: "man", other: "other" };
 
 /**
- * The text for App Store Connect / Play Console review notes (owner 2026-10-14: "we don't need phone to log in, it's
- * just 1122 3344"): the PIN-only way first (type the demo PIN on the PIN screen and tap "Sign in" on the offer, or "App
- * review sign-in" first), then each review account's app name, PIN and mock number, and the number + code way as a
+ * The text for App Store Connect / Play Console review notes (owner 2026-10-14: "it should be right now only 1122 and
+ * 3344 in the system" — a demo PIN typed on the PIN screen signs straight in): the PIN-only way first, then EVERY review
+ * account (the ones made on the page too) with its app name, PIN and mock number, and the number + code way as a
  * second way. `code` null → "<no code yet>".
  */
 export function reviewNotes({ accounts, code }) {
   const lines = ["30+DA demo accounts for app review", ""];
+  const talks = talkLines(accounts);
   lines.push(
     "Sign in (no phone number, no code):",
     "1. Open the app and pick a language.",
     "2. Read the community rules and tap \"I agree\".",
-    `3. On the PIN screen type the demo PIN (${pinOr(accounts)}) and tap "Sign in" — or tap "App review sign-in" first.`,
-    "4. You are signed in: Nearby shows the other demo account, and your conversation with it is open (Level 3 chat). To report a message, tap it in the chat.",
+    `3. On "Set your PIN" type a demo PIN (${pinOr(accounts)}): you are signed in to that demo account at once, in the language you picked. (Or tap "App review sign-in" there and type it.)`,
+    `4. Nearby shows the other demo accounts with their photos.${talks.length ? ` ${talks.join(" ")} To report a message, tap it in the chat.` : ""}`,
     `When the app locks itself (30 seconds without a touch), unlock it with the same PIN (${pinList(accounts)}).`,
     "",
   );
   accounts.forEach((a, i) => {
-    lines.push(`Demo account ${i + 1}: ${a.name} · PIN ${a.pin ?? "(not readable: save it again)"} · phone ${spacedPhone(a.phone)}`);
+    const kind = GENDER_WORD[a.gender] ? ` (${GENDER_WORD[a.gender]})` : "";
+    lines.push(`Demo account ${i + 1}: ${a.name}${kind} · PIN ${a.pin ?? "(not readable: save it again)"} · phone ${spacedPhone(a.phone)}`);
   });
   lines.push("");
   lines.push(
@@ -151,9 +171,7 @@ export function reviewNotes({ accounts, code }) {
     `Review code (for every demo account): ${code ?? "<no code yet: press New code>"}`,
     "",
   );
-  if (accounts.length > 1) {
-    lines.push(`The demo accounts see only each other${accounts.some((a) => a.talks?.length) ? " and already have a conversation with each other" : ""}.`);
-  }
+  if (accounts.length > 1) lines.push("The demo accounts see only each other.");
   if (accounts.length) lines.push("The demo accounts stay in Phnom Penh, Cambodia: allowing location on your device does not move them.");
   lines.push("Please keep the demo accounts: to try Delete my account, make a new profile (no sign-in needed) and delete that one.");
   return lines.join("\n");
@@ -306,8 +324,9 @@ export async function reviewPinCheck(d, { pin, key, tries, now = Date.now() }) {
 /**
  * "Is this a demo PIN?" (POST /auth/review/pin { pin, probe: true }, owner 2026-10-14): exactly reviewPinCheck's checks
  * and try count (OFF → 404, review accounts only, REVIEW_PIN_TRIES wrong per address → 429, not one → 400 not_review),
- * but it NEVER signs in and never touches a session: the app only OFFERS the demo account and signs in after a tap.
- * → { review: true, name } (the demo account's app name, for "Sign in to the App Review demo account (Sophea)?").
+ * but it NEVER signs in and never touches a session. The app asks it first about a PIN typed on a visitor PIN screen
+ * and, on { review: true }, signs straight in with the normal sign-in (owner 2026-10-14: no confirm sheet any more), so
+ * a visitor's own PIN never counts as a wrong sign-in. → { review: true, name } (the demo account's app name).
  */
 export async function reviewPinProbe(d, opts) {
   const user = await reviewPinCheck(d, opts);
@@ -407,6 +426,9 @@ export async function stopReviewAccount(d, id) {
   const users = d.collection(USERS);
   const u = await users.findOne({ _id: id });
   if (!u || !isReview(u)) throw new ReviewError(404, "not_found", "This profile is not a review account.");
+  // Made on the page ("Create demo account", src/lib/thirtyda-demo.mjs): no profile of its own to go back to — stopping
+  // would only put a demo with made-up photos among real people. Remove deletes it.
+  if (u.demoPreset) throw new ReviewError(409, "made_here", "This demo account was made on this page: Remove it instead.");
   const was = u.reviewWas ?? {};
   const set = { pinTries: 0 };
   const unset = { demo: "", reviewWas: "", reviewPinBox: "", reviewAt: "" };
@@ -443,6 +465,7 @@ export async function reviewView(d) {
     d.collection(USERS).find({}, {
       projection: {
         name: 1, createdAt: 1, level: 1, photos: 1, birthYear: 1, verified: 1, phone: 1, phoneVia: 1, demo: 1, blocked: 1, deleting: 1, reviewPinBox: 1, reviewAt: 1,
+        gender: 1, demoPreset: 1,
       },
     }).toArray(),
   ]);
@@ -457,6 +480,9 @@ export async function reviewView(d) {
   const nameOf = new Map(review.map((u) => [u._id, u.name]));
   const accounts = review.map((u) => ({
     ...profileRow(u),
+    gender: u.gender ?? null,
+    // Made on the page (Create demo account): Remove, never Stop; "Refresh photos".
+    made: u.demoPreset ?? null,
     phone: isMock(u) ? u.phone ?? null : maskTail(u.phone),
     pin: reviewPinOf(u),
     talks: pairs.filter((p) => p.members.includes(u._id) && p.members.every((m) => nameOf.has(m)))

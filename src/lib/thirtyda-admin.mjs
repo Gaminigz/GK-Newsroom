@@ -55,7 +55,11 @@
  *                                             accounts cleared; OFF: review devices forgotten — src/lib/thirtyda-review-world.mjs)
  *   POST /30da/admin/api/review/code          New code (6 digits, sealed); clears the demo accounts' blocks + flags too
  *   POST /30da/admin/api/review/accounts/:id  { phone, pin } "Use as review account" (or save it again)
- *   POST /30da/admin/api/review/accounts/:id/stop   "Stop being a review account"
+ *   POST /30da/admin/api/review/accounts/:id/stop   "Stop being a review account" (409 for one made on the page)
+ *   POST /30da/admin/api/review/demo          { preset: 'woman'|'man', name, realName, gender, birthYear, role, lang, phone, pin }
+ *        "Create demo account": a NEW fully filled review account with 4 approved photos, or the same one updated
+ *        (src/lib/thirtyda-demo.mjs createDemoAccount)
+ *   POST /30da/admin/api/review/demo/:id/photos     "Refresh photos": the folder's files (placeholders for the rest)
  *        Every answer is the page's fresh data. Audited with ids only (never a number, a PIN or the code).
  *        "Remove" on that page is POST /30da/admin/api/users/:id/delete (above): one delete path.
  *
@@ -100,6 +104,7 @@ import {
 } from "./thirtyda-review.mjs";
 import { deleteAccount } from "./thirtyda-delete.mjs";
 import { clearReviewWorld, forgetReviewDevices } from "./thirtyda-review-world.mjs";
+import { createDemoAccount, refreshDemoPhotos, demoView } from "./thirtyda-demo.mjs";
 import { QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS } from "../thirtyda-app/shared/question-slots.js";
 import { resolveUpdate, reopenUpdate } from "./thirtyda-blocks.mjs";
 import { targetLabel } from "../thirtyda-app/shared/safety.js";
@@ -587,6 +592,12 @@ async function deleteUserRoute(req, res, id) {
   return json(res, 200, { ...(await overview()), deleted: id });
 }
 
+/** Everything the App review page shows: the review accounts, the notes, and the "Create demo account" panel. */
+async function reviewPage(d) {
+  const [view, demo] = await Promise.all([reviewView(d), demoView(d)]);
+  return { ...view, demo };
+}
+
 /**
  * The App review page's writes (signed in, same-origin JSON: checked before this). Every answer is the page's fresh
  * data; refusals are { error } in plain words. The audit carries ids and on/off only.
@@ -627,7 +638,42 @@ async function reviewRoute(req, res, m) {
     }
     throw err;
   }
-  return json(res, 200, await reviewView(d));
+  return json(res, 200, await reviewPage(d));
+}
+
+/**
+ * "Create demo account" (m[1] = 'demo') and "Refresh photos" (m[2] = the id) on the App review page (signed in,
+ * same-origin JSON: checked before this). → the page's fresh data (+ created / id); refusals { error, reason, field? }.
+ * Audited with ids and the preset only (never a number, a PIN or a name).
+ */
+async function demoRoute(req, res, m) {
+  if (writeLimited(req)) {
+    req.resume();
+    return json(res, 429, { error: "Too many changes. Try again in a few minutes." });
+  }
+  const body = await readJsonBody(req, 1e4);
+  if (body.tooLarge || body.bad) return json(res, 400, { error: "Send JSON." });
+  const v = body.value;
+  const d = await db();
+  const text = (x) => (typeof x === "string" || typeof x === "number" ? String(x) : undefined);
+  try {
+    if (m[2]) {
+      await refreshDemoPhotos(d, m[2]);
+      await audit(req, "review_demo_photos", { user: m[2] });
+      return json(res, 200, { ...(await reviewPage(d)), id: m[2] });
+    }
+    const preset = typeof v.preset === "string" ? v.preset : "";
+    const fields = {
+      name: text(v.name), realName: text(v.realName), gender: text(v.gender), birthYear: v.birthYear == null ? undefined : text(v.birthYear),
+      role: text(v.role), lang: text(v.lang), phone: text(v.phone), pin: text(v.pin),
+    };
+    const r = await createDemoAccount(d, preset, fields);
+    await audit(req, "review_demo_save", { user: r.user._id, preset, created: r.created });
+    return json(res, 200, { ...(await reviewPage(d)), id: r.user._id, created: r.created });
+  } catch (err) {
+    if (err instanceof ReviewError) return json(res, err.status, { error: err.message, reason: err.code, ...(err.field ? { field: err.field } : {}) });
+    throw err;
+  }
 }
 
 /**
@@ -924,9 +970,11 @@ export async function handleThirtyDaAdmin(req, res, url) {
   }
 
   // App review (src/lib/thirtyda-review.mjs): demo accounts for the App Store / Google Play reviewers.
-  if (req.method === "GET" && sub === "/api/review") return json(res, 200, await reviewView(await db()));
+  if (req.method === "GET" && sub === "/api/review") return json(res, 200, await reviewPage(await db()));
   m = sub.match(/^\/api\/review\/(switch|code|accounts\/(U-\d+)(\/stop)?)$/);
   if (req.method === "POST" && m) return reviewRoute(req, res, m);
+  m = sub.match(/^\/api\/review\/(demo)(?:\/(U-\d+)\/photos)?$/);
+  if (req.method === "POST" && m) return demoRoute(req, res, m);
 
   m = sub.match(/^\/api\/users\/(U-\d+)\/delete$/);
   if (req.method === "POST" && m) return deleteUserRoute(req, res, m[1]);

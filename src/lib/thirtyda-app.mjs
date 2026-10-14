@@ -303,7 +303,8 @@ async function nextIds(d, kind, n) {
   return Array.from({ length: n }, (_, i) => `${ID_PREFIX[kind]}${doc.seq - n + 1 + i}`);
 }
 
-const nextId = async (d, kind) => (await nextIds(d, kind, 1))[0];
+/** One fresh id (also the admin's "Create demo account", src/lib/thirtyda-demo.mjs: the same counter as POST /profile). */
+export const nextId = async (d, kind) => (await nextIds(d, kind, 1))[0];
 
 const nowIso = () => new Date().toISOString();
 const photoUrl = (id) => (id ? `${API}/photos/${id}` : null);
@@ -1444,8 +1445,8 @@ const reviewFail = (err) => fail(err.status, err.code, err.message, err.attempts
  * → { ok, existing: true, user, locked: false, notices, lock }.
  *
  * { pin, probe: true } — "is this a demo PIN?" (owner 2026-10-14): the app asks when a PIN is typed on "Set your PIN"
- * or a visitor's "Enter your PIN" (a wrong one, or the visitor's own when it is a demo PIN too), then OFFERS the demo
- * account ("Sign in to the App Review demo account (Sophea)?") — nobody is signed in by a PIN alone without that tap.
+ * or a visitor's "Enter your PIN" (a wrong one, or the visitor's own when it is a demo PIN too), and on { review: true }
+ * signs straight in with this same route (owner 2026-10-14: no confirm sheet; src/thirtyda-app/lock.js reviewPinSignIn).
  * The same checks and the same review-PIN count (reviewPinProbe), but it NEVER signs in, never makes or touches a
  * session, and is not audited. Not on verify-code's address limit: while the switch is ON every visitor's own new PIN
  * is asked about. → { review: true, name } · 400 not_review.

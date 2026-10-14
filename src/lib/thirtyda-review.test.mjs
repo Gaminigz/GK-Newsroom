@@ -244,7 +244,7 @@ test('"App review sign-in" sits on the VISITOR PIN screens only ("Set your PIN" 
   assert.match(lockFn('guestBody'), /reviewLink\(\)/, 'a phone with no profile: "Enter your PIN" has it');
   assert.match(readSource(new URL('../thirtyda-app/screens/pin.js', import.meta.url), 'utf8'), /pinFrame\(steps\.node, reviewLink\(\)\)/, '"Set your PIN" has it');
   for (const f of ['enterBody', 'signinBody', 'setBody', 'changePinSheet']) {
-    assert.doesNotMatch(lockFn(f), /reviewLink|offerReview|reviewSheet|\/auth\/review/, `${f}: a signed-in profile never swaps to a demo one`);
+    assert.doesNotMatch(lockFn(f), /reviewLink|reviewPinSignIn|reviewSheet|reviewSignedIn|\/auth\/review/, `${f}: a signed-in profile never swaps to a demo one`);
   }
   // A visible small outlined button (not a faint link), only once GET /auth/methods says review:true.
   const link = lockFn('reviewLink');
@@ -254,69 +254,90 @@ test('"App review sign-in" sits on the VISITOR PIN screens only ("Set your PIN" 
   assert.match(lockJs, /review_link: 'App review sign-in'/);
 });
 
-test('typing a demo PIN OFFERS the demo account: probe first (only while ON), then [Sign in] / [No, this is my own PIN]', () => {
-  const offer = lockFn('offerReview');
-  // Switch OFF (GET /auth/methods review:false): nothing is asked, the screen goes on as before.
-  assert.ok(offer.indexOf('if (!(await reviewShown())) return null;') > 0
-    && offer.indexOf('if (!(await reviewShown())) return null;') < offer.indexOf("'/auth/review/pin'"), 'no probe while OFF');
-  assert.match(offer, /api\.post\('\/auth\/review\/pin', \{ pin, probe: true \}, \{ redirect: false \}\)/);
-  assert.doesNotMatch(offer, /termsBody|reviewSignedIn|location\.reload/, 'the probe itself never signs in');
-  assert.match(offer, /if \(probe\?\.review !== true\) return null;\s*return String\(probe\.name \|\| ''\);/);
-  assert.match(offer, /if \(name == null\) return false;\s*return reviewOffer\(pin, name\);/, 'only a demo PIN is offered');
-  // The sheet: "Sign in" → the normal sign-in (and the fresh boot); "No" / closed → false (as before).
-  const sheet = lockFn('reviewOffer');
-  assert.match(sheet, /t\('review_offer_title', \{ name \}\)/);
-  assert.match(sheet, /on: \{ click: signIn \} \}, t\('review_offer_yes'\)/);
-  assert.match(sheet, /const sayNo = \(\) => \{ declineReview\(pin\); sheet\.close\(\); \};/);
-  assert.match(sheet, /on: \{ click: sayNo \} \}, t\('review_offer_no'\)/);
-  assert.match(sheet, /sheet\.close = \(\) => \{ close\(\); settle\(false\); \};/, 'closed any way but "Sign in": false');
+test('A: while ON a demo PIN typed on a visitor PIN screen SIGNS STRAIGHT IN (probe → the normal sign-in → fresh boot), no confirm sheet', () => {
+  const fn = lockFn('reviewPinSignIn');
+  // ON (GET /auth/methods review:true): the probe first (never signs in), then — on { review: true } — the sign-in itself.
+  const probeAt = fn.indexOf("api.post('/auth/review/pin', { pin, probe: true }, { redirect: false })");
+  const signAt = fn.indexOf("api.post('/auth/review/pin', await reviewSignInBody(pin), { redirect: false })");
+  assert.ok(probeAt > 0 && signAt > probeAt, 'probe, then the real sign-in');
+  assert.match(fn, /return probe\?\.review === true;/);
+  assert.match(fn, /if \(demo !== true\) return false;/, 'only a demo PIN goes on to the sign-in');
+  assert.ok(fn.indexOf('if (demo !== true) return false;') < signAt);
+  assert.match(fn, /await reviewSignedIn\(r\);\s*return true;/, 'signed in → the fresh boot, and the screen stops');
   // (reviewSignInBody: { pin, ...termsBody(), deviceId? } — the phone's id for review devices, src/lib/thirtyda-review-world.mjs)
-  assert.match(sheet, /const r = await api\.post\('\/auth\/review\/pin', await reviewSignInBody\(pin\), \{ redirect: false \}\);\s*settle\(true\);\s*close\(\);\s*reviewSignedIn\(r\);/,
-    'only the tap on "Sign in" signs in');
   assert.match(lockFn('reviewSignInBody'), /return \{ pin, \.\.\.termsBody\(\), \.\.\.\(device \? \{ deviceId: device \} : \{\}\) \};/);
-  assert.match(lockFn('reviewSignedIn'), /clearPinFlags\(\);[\s\S]*leaveWithoutLock\(\);\s*history\.replaceState\(null, '', '\/30da\/#\/nearby'\);\s*location\.reload\(\);/, 'the existing fresh boot');
+  assert.match(lockFn('reviewSheet'), /r = await api\.post\('\/auth\/review\/pin', await reviewSignInBody\(pin\), \{ redirect: false \}\);/);
+  // No question in between: no sheet, no buttons, no "No, this is my own PIN".
+  assert.doesNotMatch(fn, /modal\(|reviewOffer|review_offer|declineReview|sayNo/);
+  assert.doesNotMatch(lockJs, /function reviewOffer\(|review_offer_(title|yes|no)|REVIEW_NO_KEY|reviewDeclined|declineReview/, 'the confirm sheet is gone');
+  assert.match(lockJs, /kept\.del\('30da_review_no'\);/, 'an older version\'s "No" answers are cleared, never read');
+  // A refused sign-in says why (15-minute limits) and the screen goes on; switched off meanwhile (404): as before.
+  assert.match(fn, /if \(e\.status === 404\) reviewOn = null;[^\n]*\n\s*else toast\(reviewFailText\(e\)\);\s*return false;/);
   // "Set your PIN": asked about the first 4 before "Type it again"; true → stop, anything else → the steps go on.
   const pinJs = readSource(new URL('../thirtyda-app/screens/pin.js', import.meta.url), 'utf8');
-  assert.match(pinJs, /checkFirst: offerReview,/);
+  assert.match(pinJs, /checkFirst: reviewPinSignIn,/);
   const steps = lockFn('setPinSteps');
   assert.match(steps, /if \(checkFirst\) \{[\s\S]*const took = await [^\n]*checkFirst\(pin\)[^\n]*\.catch\(\(\) => false\);[\s\S]*if \(took === true\) return;\s*\}\s*first = pin;/);
   assert.ok(steps.indexOf('checkNewPin(pin)') < steps.indexOf('checkFirst(pin)'), 'only a PIN the app would take is asked about');
-  // A visitor's "Enter your PIN": a WRONG one is asked about, and "No" is the plain "Wrong PIN. Try again." — no count,
-  // ever. (The right one: the next test.)
+  // A visitor's "Enter your PIN": a WRONG one and the visitor's OWN one (owner's iPhone: his visitor PIN was 1122) both
+  // sign in when they are a demo PIN; the own one waits at most GUEST_ASK_MS, then the home screen as always.
   const guest = lockFn('guestBody');
-  assert.match(guest, /\/\/ Not this phone's PIN[^\n]*\n\s*const took = await offerReview\(pin\)\.catch\(\(\) => false\);\s*if \(took\) return;[\s\S]*err\.show\(t\('pin_wrong'\)\);/);
-  for (const lang of ['en', 'km', 'zh', 'ko', 'ja']) {
-    const at = lockJs.slice(lockJs.indexOf(`  ${lang}: {`));
-    for (const key of ['review_link', 'review_offer_title', 'review_offer_yes', 'review_offer_no', 'review_too_many', 'pin_wrong', 'pin_too_many']) {
-      assert.ok(at.match(new RegExp(`${key}: '([^']+)'`))?.[1], `${lang}.${key}`);
-    }
-    assert.ok(at.match(/review_offer_title: '([^']+)'/)[1].includes('{name}'), `${lang}: the demo account's name`);
-  }
-  assert.match(lockJs, /review_offer_title: 'Sign in to the App Review demo account \(\{name\}\)\?'/);
-  assert.match(lockJs, /review_offer_no: 'No, this is my own PIN'/);
-});
-test('the owner\'s iPhone: a visitor whose OWN PIN is a demo PIN (1122) is offered the demo too, once ("No" is remembered)', () => {
-  const guest = lockFn('guestBody');
-  // The right PIN: asked about first (while ON), with a time limit; "Sign in" → the demo; anything else → the home.
+  assert.match(guest, /\/\/ Not this phone's PIN[^\n]*\n\s*const took = await reviewPinSignIn\(pin\)\.catch\(\(\) => false\);\s*if \(took\) return;[\s\S]*err\.show\(t\('pin_wrong'\)\);/);
   const right = guest.slice(guest.indexOf('if (pin === want) {'));
-  assert.ok(right.length > 0 && guest.indexOf('if (pin === want) {') < guest.indexOf("// Not this phone's PIN"), 'the right PIN has its own branch');
-  assert.match(right, /^if \(pin === want\) \{[\s\S]*?const took = await offerReview\(pin, \{ within: GUEST_ASK_MS \}\)\.catch\(\(\) => false\);\s*if \(took\) return;\s*return guestOpened\(\);\s*\}/,
-    'own PIN: offered first, then the visitor home');
-  assert.doesNotMatch(guest, /if \(pin === want\) return guestOpened\(\);/, 'never straight to the empty home without asking');
-  assert.match(lockJs, /const GUEST_ASK_MS = (\d+);/);
+  assert.match(right, /^if \(pin === want\) \{[\s\S]*?const took = await reviewPinSignIn\(pin, \{ within: GUEST_ASK_MS \}\)\.catch\(\(\) => false\);\s*if \(took\) return;\s*return guestOpened\(\);\s*\}/);
+  assert.match(fn, /within > 0 \? Promise\.race\(\[ask, new Promise\(\(r\) => \{ setTimeout\(\(\) => r\(false\), within\); \}\)\]\) : ask/);
   const wait = Number(lockJs.match(/const GUEST_ASK_MS = (\d+);/)[1]);
   assert.ok(wait >= 1000 && wait <= 5000, 'the own PIN never waits long on the network');
-  // offerReview: a PIN answered "No" on this phone is never asked about again (no probe at all); the time limit gives up → false.
-  const offer = lockFn('offerReview');
-  assert.ok(offer.indexOf('if (reviewDeclined(pin)) return false;') > 0
-    && offer.indexOf('if (reviewDeclined(pin)) return false;') < offer.indexOf('reviewShown()'), '"No" before: nothing asked');
-  assert.match(offer, /within > 0 \? Promise\.race\(\[ask, new Promise\(\(r\) => \{ setTimeout\(\(\) => r\(null\), within\); \}\)\]\) : ask/);
-  // Kept on the phone (localStorage), per PIN; it goes with the waiting PIN (never outlives it).
-  assert.match(lockJs, /const REVIEW_NO_KEY = '30da_review_no';/);
-  assert.match(lockFn('declineReview'), /kept\.set\(REVIEW_NO_KEY, JSON\.stringify\(\[\.\.\.list, pin\]\.slice\(-10\)\)\)/);
-  assert.match(lockFn('reviewNos'), /JSON\.parse\(kept\.get\(REVIEW_NO_KEY\) \|\| '\[\]'\)[\s\S]*catch \{\s*return \[\];/, 'a broken value → nothing remembered');
-  assert.match(lockFn('clearPinFlags'), /kept\.del\(REVIEW_NO_KEY\);/);
-  assert.match(lockFn('afterUser'), /kept\.del\(WAIT_KEY\);[^\n]*\n\s*kept\.del\(REVIEW_NO_KEY\);/);
+  // The "App review sign-in" sheet signs in the same way (same fresh boot).
+  assert.match(lockFn('reviewSheet'), /sheet\.close\(\);\s*await reviewSignedIn\(r\);/);
+  for (const lang of ['en', 'km', 'zh', 'ko', 'ja']) {
+    const at = lockJs.slice(lockJs.indexOf(`  ${lang}: {`));
+    for (const key of ['review_link', 'review_title', 'review_text', 'review_wrong', 'review_too_many', 'pin_wrong']) {
+      assert.ok(at.match(new RegExp(`${key}: '([^']+)'`))?.[1], `${lang}.${key}`);
+    }
+  }
+});
+
+test('A: switch OFF → nothing changes (no probe, no sign-in, the screen goes on); never on a signed-in profile\'s lock', () => {
+  const fn = lockFn('reviewPinSignIn');
+  const off = fn.indexOf('if (!(await reviewShown())) return false;');
+  assert.ok(off > 0 && off < fn.indexOf("'/auth/review/pin'"), 'OFF: nothing is asked, nothing signs in');
+  assert.match(lockFn('reviewShown'), /reviewOn = \{ at: Date\.now\(\), value: m\?\.review === true \};/, 'ON only when GET /auth/methods says so');
+  // The visitor screens are the only callers; the signed-in lock, the "Sign in again" body, a PIN set after sign-in and
+  // Change PIN never reach it.
+  const callers = [...lockJs.matchAll(/reviewPinSignIn\(/g)].length;
+  assert.equal(callers, 3, 'its own definition + the two calls in guestBody');
+  for (const f of ['enterBody', 'signinBody', 'setBody', 'changePinSheet', 'afterUser', 'lockNow']) {
+    assert.doesNotMatch(lockFn(f), /reviewPinSignIn|reviewSignedIn|\/auth\/review/, f);
+  }
+  // The server too: OFF → 404 before anything; a signed-in (or locked real) phone → 409, demo or not.
+  const app = readSource(new URL('./thirtyda-app.mjs', import.meta.url), 'utf8');
+  const i = app.indexOf('async function reviewPin(');
+  const route = app.slice(i, app.indexOf('\n}\n', i));
+  assert.ok(route.indexOf('throw fail(404, "not_found"') < route.indexOf('if (me) throw fail(409, "signed_in"'));
+  assert.ok(route.indexOf('if (me) throw fail(409, "signed_in"') < route.indexOf('body.probe === true'));
+  assert.match(route, /if \(lockedId && !isReview\(await d\.collection\(C\.users\)\.findOne\(\{ _id: lockedId \}\)\)\) \{\s*throw fail\(409, "signed_in"/);
+});
+
+test('B: a demo sign-in keeps the language picked on the opening screen (PATCH /me { lang } before the fresh boot)', async () => {
+  const fn = lockFn('reviewSignedIn');
+  // The picked language is read BEFORE setMe (which would switch the app to the account's own).
+  const pick = fn.indexOf('const lang = state.lang;');
+  assert.ok(pick > 0 && pick < fn.indexOf('setMe('), 'read first');
+  assert.match(fn, /if \(user && user\.lang !== lang\) \{\s*try \{\s*user = \(await api\.patch\('\/me', \{ lang \}, \{ redirect: false \}\)\)\?\.user \?\? \{ \.\.\.user, lang \};/);
+  const save = fn.indexOf("api.patch('/me', { lang }");
+  assert.ok(save < fn.indexOf('location.reload()') && save < fn.indexOf('setMe(user)') && save < fn.indexOf('opened({ ...r, user })'), 'saved before the fresh boot');
+  assert.match(fn, /catch \{\s*user = \{ \.\.\.user, lang \};/, 'not saved: this boot keeps it anyway');
+  assert.match(fn, /clearPinFlags\(\);[\s\S]*leaveWithoutLock\(\);\s*history\.replaceState\(null, '', '\/30da\/#\/nearby'\);\s*location\.reload\(\);/, 'the existing fresh boot');
+  // The server allows exactly that on a demo account: a language-only PATCH /me (anything more → 409 review_account).
+  const app = readSource(new URL('./thirtyda-app.mjs', import.meta.url), 'utf8');
+  const i = app.indexOf('async function patchMe(');
+  const patch = app.slice(i, app.indexOf('\n}\n', i));
+  assert.match(patch, /if \(isReview\(me\) && Object\.keys\(body \?\? \{\}\)\.some\(\(k\) => k !== "lang"\)\) throw reviewKept\(\);/);
+  assert.match(patch, /if \(body\.lang !== undefined\) Object\.assign\(set, \{ lang: checkLang\(body\.lang\), language: LANG_ENGLISH\[body\.lang\] \}\);/);
+  // …and the next boot (GET /me → setMe) reads it back: setMe sets the app language from the account.
+  const core = readSource(new URL('../thirtyda-app/core.js', import.meta.url), 'utf8');
+  assert.match(core, /if \(user\?\.lang\) setLang\(user\.lang, \{ rerender: false \}\);/);
 });
 
 test('the review sign-in\'s 15-minute limits say 15 minutes; "Wait a minute" is only the PIN guard\'s (too_many_tries)', () => {
@@ -327,10 +348,9 @@ test('the review sign-in\'s 15-minute limits say 15 minutes; "Wait a minute" is 
   const reviewFail = lockJs.slice(i, lockJs.indexOf(';\n', i));
   assert.match(reviewFail, /e\?\.code === 'not_review' \? t\('review_wrong'\)/);
   assert.match(reviewFail, /e\?\.code === 'too_many_attempts' \|\| e\?\.code === 'rate_limited' \? t\('review_too_many'\)/);
-  for (const f of ['reviewSheet', 'reviewOffer']) {
-    assert.match(lockFn(f), /err\.show\(reviewFailText\(e\)\);/, f);
-    assert.doesNotMatch(lockFn(f), /pinFailText/, `${f}: never the PIN guard's "Wait a minute"`);
-  }
+  assert.match(lockFn('reviewSheet'), /err\.show\(reviewFailText\(e\)\);/);
+  assert.match(lockFn('reviewPinSignIn'), /toast\(reviewFailText\(e\)\);/);
+  for (const f of ['reviewSheet', 'reviewPinSignIn']) assert.doesNotMatch(lockFn(f), /pinFailText/, `${f}: never the PIN guard's "Wait a minute"`);
   // The server's own words for those two codes on POST /auth/review/pin.
   const review = readSource(new URL('./thirtyda-review.mjs', import.meta.url), 'utf8');
   assert.match(review, /new ReviewError\(429, "too_many_attempts", "Too many tries\. Try again in 15 minutes\."\)/);
@@ -738,8 +758,8 @@ test('page: review accounts with number + PIN + their conversations, and the not
   assert.deepEqual(v.accounts[0].talks, [{ pairId: 'P-1', with: 'U-10002', withName: 'Sophea', stage: 'l3_open', level: 3 }], 'only the talk with the other review account');
   for (const want of ['Dara', '+855 10 000 1122', 'PIN 1122', 'Sophea', '+855 10 000 3344', 'PIN 3344', `Review code (for every demo account): ${code}`,
     'Sign in (no phone number, no code):', '1. Open the app and pick a language.', '2. Read the community rules and tap "I agree".',
-    '3. On the PIN screen type the demo PIN (1122 or 3344) and tap "Sign in" — or tap "App review sign-in" first.',
-    '4. You are signed in: Nearby shows the other demo account, and your conversation with it is open (Level 3 chat).',
+    '3. On "Set your PIN" type a demo PIN (1122 or 3344): you are signed in to that demo account at once, in the language you picked.',
+    '4. Nearby shows the other demo accounts with their photos. Dara and Sophea already have a conversation (Level 3 chat). To report a message, tap it in the chat.',
     'unlock it with the same PIN (1122 / 3344)', 'Second way (not needed)', 'tap Telegram', 'enter the review code',
     'The demo accounts stay in Phnom Penh, Cambodia: allowing location on your device does not move them.']) {
     assert.ok(v.notes.includes(want), want);

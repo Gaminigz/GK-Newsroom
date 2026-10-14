@@ -6,6 +6,7 @@ const $ = (id) => document.getElementById(id);
 const BASE = '/30da/admin/api/review';
 let view = null;
 let editing = null; // the profile id the form is for
+let demoEditing = null; // the preset ('woman' | 'man') the demo form is for
 let busy = false;
 
 // ---------- api ----------
@@ -76,8 +77,8 @@ function render() {
   $('sw-pill').textContent = v.on ? 'ON' : 'OFF';
   $('sw-pill').classList.toggle('on', v.on);
   $('sw-help').textContent = v.on
-    ? `Reviewers sign in with a review account's PIN (typed on the app's PIN screen, or "App review sign-in" there), or its mock number and the code. Turn it off after the review${v.switchedAt ? ` (on since ${whenOf(v.switchedAt)})` : ''}.`
-    : 'Off: "App review sign-in" is not shown in the app, a demo PIN is never offered, the review PINs and the review code do not work, and the mock numbers act like any other number. Turn it on before you send the app for review.';
+    ? `Reviewers sign in with a review account's PIN (typed on the app's "Set your PIN" screen it signs straight in; or "App review sign-in" there), or its mock number and the code. Turn it off after the review${v.switchedAt ? ` (on since ${whenOf(v.switchedAt)})` : ''}.`
+    : 'Off: "App review sign-in" is not shown in the app, a demo PIN typed in the app is just a PIN (it signs in to nothing), the review code does not work, and the mock numbers act like any other number. Turn it on before you send the app for review.';
   $('sw-btn').textContent = v.on ? 'Turn off' : 'Turn on';
   $('sw-btn').classList.toggle('on', !v.on);
   $('sw-btn').disabled = false;
@@ -106,10 +107,21 @@ function render() {
       a.birthYear ? null : 'No birth year',
       a.blocked ? 'Blocked: reviewers cannot sign in' : null,
       a.pin ? null : 'PIN not readable: save it again',
-      v.accounts.length > 1 && !a.talks.length ? 'No conversation with another review account' : null,
+      v.accounts.length > 1 && !a.talks.length && !a.made ? 'No conversation with another review account' : null,
     ].filter(Boolean);
+    // Made on this page (Create demo account): edit it there, Refresh photos, Remove — never "Stop" (no own profile).
+    const actions = a.made
+      ? [
+        el('button', { type: 'button', class: 'link', onclick: () => openDemo(a.made) }, 'Edit demo account'),
+        el('button', { type: 'button', class: 'link', onclick: () => refreshPhotos(a) }, 'Refresh photos'),
+        el('button', { type: 'button', class: 'link danger', onclick: () => remove(a) }, 'Remove'),
+      ]
+      : [
+        el('button', { type: 'button', class: 'link', onclick: () => openForm(a) }, 'Change number / PIN'),
+        el('button', { type: 'button', class: 'link danger', onclick: () => stop(a) }, 'Stop being a review account'),
+      ];
     return el('li', { class: 'rv-account', 'data-id': a.id },
-      el('div', { class: 'rv-account-head' }, el('b', {}, a.name), el('small', {}, a.id)),
+      el('div', { class: 'rv-account-head' }, el('b', {}, a.made ? `${a.name} · made here` : a.name), el('small', {}, a.id)),
       el('dl', { class: 'rv-facts' },
         el('dt', {}, 'Mock number'), el('dd', { class: 'rv-mono' }, a.ways.phone ?? a.phone ?? '—'),
         el('dt', {}, 'PIN'), el('dd', { class: 'rv-mono' }, a.pin ?? '—'),
@@ -119,10 +131,10 @@ function render() {
         el('dt', {}, 'Verified'), el('dd', {}, waysChips(a.ways)),
         el('dt', {}, 'Talks with'), el('dd', {}, a.talks.length ? a.talks.map((t) => `${t.withName} · ${STAGE[t.stage] ?? t.stage}`).join(', ') : '—')),
       warn.length ? el('ul', { class: 'rv-warn' }, warn.map((w) => el('li', {}, w))) : null,
-      el('div', { class: 'rv-actions' },
-        el('button', { type: 'button', class: 'link', onclick: () => openForm(a) }, 'Change number / PIN'),
-        el('button', { type: 'button', class: 'link danger', onclick: () => stop(a) }, 'Stop being a review account')));
+      el('div', { class: 'rv-actions' }, actions));
   }));
+
+  renderDemos();
 
   // all profiles
   $('all-count').textContent = `${v.profiles.length}`;
@@ -138,6 +150,109 @@ function render() {
     el('td', { class: 'rv-acts' }, el('div', { class: 'row-actions' },
       p.review ? null : el('button', { type: 'button', class: 'link use', onclick: () => openForm(p) }, 'Use as review account'),
       el('button', { type: 'button', class: 'link danger remove', onclick: () => remove(p) }, 'Remove'))))));
+}
+
+// ---------- Create demo account (src/lib/thirtyda-demo.mjs) ----------
+const GENDER_TEXT = { woman: 'Woman', man: 'Man', other: 'Other' };
+
+/** "Photos: …" for a preset: which of the Media Director's 4 files are in the folder (placeholders for the rest). */
+function photoLine(p) {
+  const f = p.files;
+  if (!f.count) return { text: 'Photos: placeholders — real demo photos not added yet', cls: 'is-placeholder' };
+  if (f.count === f.of) return { text: `Photos: real demo photos (${f.count} of ${f.of})`, cls: 'is-real' };
+  const missing = f.names.filter((_, i) => !f.real[i]);
+  return { text: `Photos: ${f.count} of ${f.of} real — placeholders for ${missing.join(', ')}`, cls: 'is-placeholder' };
+}
+
+function renderDemos() {
+  const dm = view.demo;
+  if (!dm) return;
+  $('demo-state').textContent = `${dm.presets.filter((p) => p.account).length} of ${dm.presets.length} made`;
+  $('demos').replaceChildren(...dm.presets.map((p) => {
+    const a = p.account;
+    const pin = a?.pin ?? p.defaults.pin;
+    const line = photoLine(p);
+    const facts = a
+      ? el('dl', { class: 'rv-facts' },
+        el('dt', {}, 'App name'), el('dd', {}, a.name),
+        el('dt', {}, 'Real name'), el('dd', {}, a.realName || '—'),
+        el('dt', {}, 'Born'), el('dd', {}, a.birthYear ?? '—'),
+        el('dt', {}, 'Mock number'), el('dd', { class: 'rv-mono' }, spaced(a.phone) || '—'),
+        el('dt', {}, 'PIN'), el('dd', { class: 'rv-mono' }, a.pin ?? '—'),
+        el('dt', {}, 'Photos'), el('dd', {}, `${a.photos} of 4 · ${a.realPhotos ? `${a.realPhotos} real` : 'placeholders'}`))
+      : el('p', { class: 'rv-help' }, `Not made yet: ${p.defaults.name}, ${GENDER_TEXT[p.defaults.gender] ?? p.defaults.gender}, born ${p.defaults.birthYear}, ${spaced(p.defaults.phone)}.`);
+    return el('li', { class: ['rv-demo', a && 'is-made'], 'data-preset': p.preset },
+      el('div', { class: 'rv-demo-head' }, el('b', {}, `${p.label} (PIN ${pin})`), a ? el('small', {}, a.id) : null),
+      facts,
+      el('p', { class: ['rv-photos', line.cls] }, line.text),
+      a?.refresh ? el('p', { class: 'rv-help' }, 'New photo files are in the folder: press Refresh photos to use them.') : null,
+      el('div', { class: 'rv-actions' },
+        el('button', { type: 'button', class: 'btn-primary', onclick: () => openDemo(p.preset) }, a ? 'Edit' : `Create ${p.label.toLowerCase()}`),
+        a ? el('button', { type: 'button', class: 'link', onclick: () => refreshPhotos({ id: a.id, name: a.name }) }, 'Refresh photos') : null,
+        a ? el('button', { type: 'button', class: 'link danger', onclick: () => remove({ id: a.id, name: a.name }) }, 'Remove') : null));
+  }));
+  const names = dm.presets.map((p) => `${p.files.names[0]} … ${p.files.names.at(-1)}`).join(' and ');
+  $('demo-folder').replaceChildren('Real demo photos: put ', el('code', {}, names), ' in ', el('code', {}, dm.folder),
+    ' (photo 1 = the face), then Create or Refresh photos. Until then each slot gets a navy / grey silhouette placeholder.');
+}
+
+function options(select, list, value) {
+  select.replaceChildren(...list.map((o) => el('option', { value: o.key, selected: o.key === value }, o.text)));
+  select.value = value;
+}
+
+function openDemo(preset) {
+  const p = view.demo?.presets.find((x) => x.preset === preset);
+  if (!p) return;
+  demoEditing = preset;
+  const v = p.account ? { ...p.defaults, ...Object.fromEntries(Object.entries(p.account).filter(([, x]) => x != null && x !== '')) } : p.defaults;
+  $('demo-form-title').textContent = p.account ? `Edit ${p.label.toLowerCase()}` : `Create ${p.label.toLowerCase()}`;
+  $('demo-form-who').textContent = p.account
+    ? `${p.account.name} (${p.account.id}). Saving updates this same account, its photos too.`
+    : 'A new profile, made as a review account at once.';
+  $('demo-name').value = v.name ?? '';
+  $('demo-real').value = v.realName ?? '';
+  options($('demo-gender'), view.demo.genders.map((g) => ({ key: g, text: GENDER_TEXT[g] ?? g })), v.gender);
+  $('demo-birth').value = v.birthYear ?? '';
+  options($('demo-role'), view.demo.roles, v.role);
+  options($('demo-lang'), view.demo.langs, v.lang);
+  $('demo-phone').value = spaced(v.phone);
+  $('demo-pin').value = v.pin ?? '';
+  $('demo-form-photos').textContent = photoLine(p).text;
+  $('demo-save').textContent = p.account ? 'Save' : 'Create';
+  $('demo-error').hidden = true;
+  $('demo-dialog').showModal();
+  $('demo-name').focus();
+}
+
+$('demo-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!demoEditing) return;
+  const pin = $('demo-pin').value.replace(/\D/g, '');
+  if (pin.length !== 4) {
+    $('demo-error').textContent = 'A PIN is 4 digits.';
+    $('demo-error').hidden = false;
+    return;
+  }
+  $('demo-save').disabled = true;
+  try {
+    const r = await act('demo', {
+      preset: demoEditing, name: $('demo-name').value, realName: $('demo-real').value, gender: $('demo-gender').value,
+      birthYear: $('demo-birth').value.trim(), role: $('demo-role').value, lang: $('demo-lang').value, phone: $('demo-phone').value, pin,
+    });
+    $('demo-dialog').close();
+    toast(r?.created ? 'Made: the demo account is a review account now.' : 'Saved: the demo account is updated.');
+  } catch (err) {
+    $('demo-error').textContent = err.message;
+    $('demo-error').hidden = false;
+  } finally {
+    $('demo-save').disabled = false;
+  }
+});
+$('demo-cancel').addEventListener('click', () => $('demo-dialog').close());
+
+async function refreshPhotos(a) {
+  await act(`demo/${a.id}/photos`, {}, `${a.name}: photos refreshed (approved, photo 1 = the face).`).catch(() => {});
 }
 
 async function load() {

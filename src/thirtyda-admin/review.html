@@ -63,8 +63,10 @@
         <span class="label" id="state">Loading…</span>
       </div>
       <p class="rv-lede">
-        Demo accounts for the App Store and Google Play reviewers. They sign in with the account's PIN only: 1122 / 3344
-        typed on the app's PIN screen, then "Sign in" (or "App review sign-in" there first) — no number, no code. The mock number + review code still work as a second way. Review accounts see only each other; real people never see them.
+        Demo accounts for the App Store and Google Play reviewers. They sign in with the account's PIN only: a demo PIN
+        typed on the app's "Set your PIN" screen (or a visitor's "Enter your PIN") signs straight in while Review sign-in is
+        ON — no number, no code, no question. The mock number + review code still work as a second way. Review accounts see
+        only each other; real people never see them.
       </p>
 
       <div class="rv-top">
@@ -97,6 +99,18 @@
           <button type="button" class="btn" id="notes-copy">Copy text</button>
         </div>
         <textarea class="input rv-notes" id="notes" rows="14" readonly aria-label="Review notes text"></textarea>
+      </section>
+
+      <section class="panel rv-demo-panel" aria-labelledby="demo-title">
+        <div class="panel-head">
+          <h2 id="demo-title">Create demo account</h2>
+          <span class="label" id="demo-state"></span>
+        </div>
+        <p class="rv-help">A new profile made directly as a review account: every field filled, verified by its mock number,
+          its PIN, pinned in Phnom Penh, and 4 photos already approved (photo 1 = the face). Creating the same one again
+          updates that account. Remove (below) deletes it.</p>
+        <ul class="rv-demos" id="demos"></ul>
+        <p class="rv-help rv-folder" id="demo-folder"></p>
       </section>
 
       <section class="panel" aria-labelledby="acc-title">
@@ -152,6 +166,53 @@
       <div class="rv-dialog-actions">
         <button type="button" class="link" id="form-cancel">Cancel</button>
         <button type="submit" class="btn-primary rv-save" id="form-save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="rv-dialog rv-demo-dialog" id="demo-dialog" aria-labelledby="demo-form-title">
+    <form method="dialog" id="demo-form" novalidate>
+      <h2 id="demo-form-title">Create demo account</h2>
+      <p class="rv-help" id="demo-form-who"></p>
+      <div class="rv-grid">
+        <label class="field">
+          <span class="label">App name (2–7 characters)</span>
+          <input class="input" id="demo-name" type="text" maxlength="64" autocomplete="off" required>
+        </label>
+        <label class="field">
+          <span class="label">Real name (shown at Level 3)</span>
+          <input class="input" id="demo-real" type="text" maxlength="80" autocomplete="off" required>
+        </label>
+        <label class="field">
+          <span class="label">Gender</span>
+          <select class="input" id="demo-gender" required></select>
+        </label>
+        <label class="field">
+          <span class="label">Birth year (30+)</span>
+          <input class="input" id="demo-birth" type="text" inputmode="numeric" maxlength="4" autocomplete="off" required>
+        </label>
+        <label class="field">
+          <span class="label">Job</span>
+          <select class="input" id="demo-role" required></select>
+        </label>
+        <label class="field">
+          <span class="label">Language</span>
+          <select class="input" id="demo-lang" required></select>
+        </label>
+        <label class="field">
+          <span class="label">Mock phone number</span>
+          <input class="input" id="demo-phone" type="tel" autocomplete="off" required>
+        </label>
+        <label class="field">
+          <span class="label">PIN (4 digits)</span>
+          <input class="input" id="demo-pin" type="text" inputmode="numeric" maxlength="4" autocomplete="off" required>
+        </label>
+      </div>
+      <p class="rv-help" id="demo-form-photos"></p>
+      <p class="form-error" id="demo-error" role="alert" hidden></p>
+      <div class="rv-dialog-actions">
+        <button type="button" class="link" id="demo-cancel">Cancel</button>
+        <button type="submit" class="btn-primary rv-save" id="demo-save">Create</button>
       </div>
     </form>
   </dialog>
