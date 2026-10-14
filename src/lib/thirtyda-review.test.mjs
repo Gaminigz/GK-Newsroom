@@ -271,8 +271,10 @@ test('A: while ON a demo PIN typed on a visitor PIN screen SIGNS STRAIGHT IN (pr
   assert.doesNotMatch(fn, /modal\(|reviewOffer|review_offer|declineReview|sayNo/);
   assert.doesNotMatch(lockJs, /function reviewOffer\(|review_offer_(title|yes|no)|REVIEW_NO_KEY|reviewDeclined|declineReview/, 'the confirm sheet is gone');
   assert.match(lockJs, /kept\.del\('30da_review_no'\);/, 'an older version\'s "No" answers are cleared, never read');
-  // A refused sign-in says why (15-minute limits) and the screen goes on; switched off meanwhile (404): as before.
-  assert.match(fn, /if \(e\.status === 404\) reviewOn = null;[^\n]*\n\s*else toast\(reviewFailText\(e\)\);\s*return false;/);
+  // A refused sign-in says why (15-minute limits) and the screen goes on; switched off meanwhile (404): as before. A
+  // screen that shows it itself (onRefused: the visitor's cover, which hides toasts) gets the words; else a toast.
+  assert.match(fn, /if \(e\.status === 404\) reviewOn = null;[^\n]*\n\s*else if \(onRefused\) onRefused\(reviewFailText\(e\)\);\s*else toast\(reviewFailText\(e\)\);\s*return false;/);
+  assert.match(fn, /^export async function reviewPinSignIn\(pin, \{ within = 0, onRefused = null \} = \{\}\)/);
   // "Set your PIN": asked about the first 4 before "Type it again"; true → stop, anything else → the steps go on.
   const pinJs = readSource(new URL('../thirtyda-app/screens/pin.js', import.meta.url), 'utf8');
   assert.match(pinJs, /checkFirst: reviewPinSignIn,/);
@@ -282,9 +284,9 @@ test('A: while ON a demo PIN typed on a visitor PIN screen SIGNS STRAIGHT IN (pr
   // A visitor's "Enter your PIN": a WRONG one and the visitor's OWN one (owner's iPhone: his visitor PIN was 1122) both
   // sign in when they are a demo PIN; the own one waits at most GUEST_ASK_MS, then the home screen as always.
   const guest = lockFn('guestBody');
-  assert.match(guest, /\/\/ Not this phone's PIN[^\n]*\n\s*const took = await reviewPinSignIn\(pin\)\.catch\(\(\) => false\);\s*if \(took\) return;[\s\S]*err\.show\(t\('pin_wrong'\)\);/);
+  assert.match(guest, /\/\/ Not this phone's PIN[^\n]*\n[\s\S]*?let refused = '';\s*const took = await reviewPinSignIn\(pin, \{ onRefused: \(text\) => \{ refused = text; \} \}\)\.catch\(\(\) => false\);\s*if \(took\) return;[\s\S]*err\.show\(refused \|\| t\('pin_wrong'\)\);/);
   const right = guest.slice(guest.indexOf('if (pin === want) {'));
-  assert.match(right, /^if \(pin === want\) \{[\s\S]*?const took = await reviewPinSignIn\(pin, \{ within: GUEST_ASK_MS \}\)\.catch\(\(\) => false\);\s*if \(took\) return;\s*return guestOpened\(\);\s*\}/);
+  assert.match(right, /^if \(pin === want\) \{[\s\S]*?let refused = '';\s*const took = await reviewPinSignIn\(pin, \{ within: GUEST_ASK_MS, onRefused: \(text\) => \{ refused = text; \} \}\)\.catch\(\(\) => false\);\s*if \(took\) return;\s*guestOpened\(\);\s*if \(refused\) toast\(refused\);[^\n]*\n\s*return;\s*\}/);
   assert.match(fn, /within > 0 \? Promise\.race\(\[ask, new Promise\(\(r\) => \{ setTimeout\(\(\) => r\(false\), within\); \}\)\]\) : ask/);
   const wait = Number(lockJs.match(/const GUEST_ASK_MS = (\d+);/)[1]);
   assert.ok(wait >= 1000 && wait <= 5000, 'the own PIN never waits long on the network');
@@ -324,10 +326,24 @@ test('B: a demo sign-in keeps the language picked on the opening screen (PATCH /
   // The picked language is read BEFORE setMe (which would switch the app to the account's own).
   const pick = fn.indexOf('const lang = state.lang;');
   assert.ok(pick > 0 && pick < fn.indexOf('setMe('), 'read first');
-  assert.match(fn, /if \(user && user\.lang !== lang\) \{\s*try \{\s*user = \(await api\.patch\('\/me', \{ lang \}, \{ redirect: false \}\)\)\?\.user \?\? \{ \.\.\.user, lang \};/);
-  const save = fn.indexOf("api.patch('/me', { lang }");
+  assert.match(fn, /if \(user && user\.lang !== lang\) \{\s*const saved = await saveReviewLang\(lang\);\s*if \(saved\) user = saved;/);
+  const save = fn.indexOf('await saveReviewLang(lang)');
   assert.ok(save < fn.indexOf('location.reload()') && save < fn.indexOf('setMe(user)') && save < fn.indexOf('opened({ ...r, user })'), 'saved before the fresh boot');
-  assert.match(fn, /catch \{\s*user = \{ \.\.\.user, lang \};/, 'not saved: this boot keeps it anyway');
+  // One retry: PATCH /me { lang } twice at most, then null.
+  const saver = lockFn('saveReviewLang');
+  assert.match(saver, /for \(let i = 0; i < 2; i \+= 1\) \{\s*try \{\s*return \(await api\.patch\('\/me', \{ lang \}, \{ redirect: false \}\)\)\?\.user \?\? null;\s*\} catch/);
+  assert.match(saver, /\} catch [^\n]*\n\s*\}\n\s*return null;\n\}\n/, 'then null: the boot keeps it');
+  // Not saved even then: kept in this tab for the fresh boot (GET /me would bring back the account's own language)…
+  assert.match(fn, /else \{\s*tab\.set\(REVIEW_LANG_KEY, JSON\.stringify\(\{ id: user\.id, lang \}\)\);[^\n]*\n\s*user = \{ \.\.\.user, lang \};/);
+  assert.ok(fn.indexOf('tab.set(REVIEW_LANG_KEY') < fn.indexOf('location.reload()'), 'kept before the reload');
+  assert.match(lockJs, /const tab = storageOf\(\(\) => sessionStorage\);/, 'this tab only: our own reload keeps it, a closed app does not');
+  // …and the boot reads it ONCE, right after setMe, for that same account only, then tries the save again.
+  const keep = lockFn('keepReviewLang');
+  assert.match(keep, /const raw = tab\.get\(REVIEW_LANG_KEY\);\s*if \(raw == null\) return;\s*tab\.del\(REVIEW_LANG_KEY\);/, 'one-shot');
+  assert.match(keep, /if \(!user \|\| v\?\.id !== user\.id \|\| typeof v\.lang !== 'string' \|\| v\.lang === user\.lang\) return;\s*setLang\(v\.lang, \{ rerender: false \}\);/);
+  assert.match(keep, /api\.patch\('\/me', \{ lang: v\.lang \}, \{ redirect: false \}\)/);
+  const appJs = readSource(new URL('../thirtyda-app/app.js', import.meta.url), 'utf8');
+  assert.match(appJs, /if \(r\.user\) \{\s*setMe\(r\.user\);\s*keepReviewLang\(r\.user\);/, 'the boot: after setMe (which sets the account\'s own)');
   assert.match(fn, /clearPinFlags\(\);[\s\S]*leaveWithoutLock\(\);\s*history\.replaceState\(null, '', '\/30da\/#\/nearby'\);\s*location\.reload\(\);/, 'the existing fresh boot');
   // The server allows exactly that on a demo account: a language-only PATCH /me (anything more → 409 review_account).
   const app = readSource(new URL('./thirtyda-app.mjs', import.meta.url), 'utf8');

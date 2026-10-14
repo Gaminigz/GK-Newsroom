@@ -354,6 +354,28 @@ export function reviewPinOf(u) {
   }
 }
 
+/**
+ * The other CURRENT review account (demo 'review', not being deleted; any but `selfId`) whose PIN is `pin` → it, else
+ * null. Two review accounts never share a PIN: the PIN-only way would sign into the one made first while the notes
+ * name the other (reviewAccountForPin). Matched on the sealed PIN (reviewPinOf) and on the hash the sign-in itself
+ * checks (verifyPin), so an account whose box this server cannot open still counts.
+ */
+export async function reviewPinInUse(d, pin, selfId = null) {
+  const others = (await d.collection(USERS).find(
+    { demo: REVIEW, _id: { $ne: selfId } }, { projection: { _id: 1, name: 1, reviewPinBox: 1, pinHash: 1, deleting: 1 } },
+  ).toArray()).filter((o) => !o.deleting);
+  for (const o of others) {
+    if (reviewPinOf(o) === pin) return o;
+    if (o.pinHash && (await verifyPin(pin, o.pinHash).catch(() => false))) return o;
+  }
+  return null;
+}
+
+/** 409 pin_in_use: the PIN is another review account's (its app name says which). */
+export const pinInUse = (other) => Object.assign(new ReviewError(
+  409, "pin_in_use", `${other?.name ? `${other.name} (another review account)` : "Another review account"} already has this PIN. Choose another PIN.`,
+), { field: "pin" });
+
 const spotKey = (c) => (Array.isArray(c) ? `${c[0]},${c[1]}` : "");
 
 /**
@@ -371,7 +393,8 @@ export async function reviewSpotFor(d, u) {
 /**
  * "Use as review account" (or save it again with another number / PIN): `phone` already normalised by the caller
  * (the app's normalizePhone). Refuses: no such profile (404), blocked / being deleted (409), REVIEW_MAX reached (409),
- * a number another profile has (409 phone_in_use), a PIN the app would not take (422), no lock key (503).
+ * a number another profile has (409 phone_in_use), a PIN another review account has (409 pin_in_use), a PIN the app
+ * would not take (422), no lock key (503).
  * The profile's own number / PIN / phoneVia / location are kept the first time (reviewWas) for "Stop being a review
  * account". Its location is pinned to a Phnom Penh spot (reviewSpotFor) every time it is saved.
  */
@@ -390,6 +413,9 @@ export async function makeReviewAccount(d, id, { phone, pin }, { now = Date.now(
   if (await users.findOne({ phone, _id: { $ne: id } }, { projection: { _id: 1 } })) {
     throw new ReviewError(409, "phone_in_use", "Another profile has this number. Choose another mock number.");
   }
+  // One PIN, one review account: a shared PIN would sign into the one made first (reviewAccountForPin).
+  const clash = await reviewPinInUse(d, c.pin, id);
+  if (clash) throw pinInUse(clash);
   const at = new Date(now);
   const set = {
     demo: REVIEW, phone, "verified.phone": true, phoneVia: "review", pinHash: await hashPin(c.pin), pinAt: at, pinTries: 0,

@@ -26,7 +26,9 @@
 import { readFile, access } from "node:fs/promises";
 import sharp from "sharp";
 import { savePhoto, deletePhoto, isPhotoId, PhotoError } from "./thirtyda-photos.mjs";
-import { REVIEW, REVIEW_MAX, ReviewError, isReview, makeReviewAccount, reviewPinOf } from "./thirtyda-review.mjs";
+import {
+  REVIEW, REVIEW_MAX, ReviewError, isReview, makeReviewAccount, reviewPinOf, reviewPinInUse, pinInUse,
+} from "./thirtyda-review.mjs";
 import { checkNewPin } from "./thirtyda-pin.mjs";
 import { keyReady } from "./thirtyda-settings.mjs";
 import { nextId, normalizePhone } from "./thirtyda-app.mjs";
@@ -52,12 +54,14 @@ export const DEMO_PRESETS = Object.freeze({
   }),
 });
 export const DEMO_PRESET_KEYS = Object.keys(DEMO_PRESETS);
+/** A real preset key only ("woman" / "man"): never a name every object has, like "constructor" or "__proto__". */
+export const isDemoPreset = (preset) => typeof preset === "string" && Object.hasOwn(DEMO_PRESETS, preset);
 
 /** Where the Media Director's photos go (in the repo; never served as files: they go through the photo store). */
 export const DEMO_PHOTO_DIR = new URL("../thirtyda-admin/review/", import.meta.url);
 export const DEMO_PHOTO_DIR_NAME = "src/thirtyda-admin/review/";
 /** "woman", 1 → "demo-w-1.jpg" (slot 1 = the face). */
-export const demoPhotoFile = (preset, slot) => `demo-${DEMO_PRESETS[preset]?.file ?? "x"}-${slot}.jpg`;
+export const demoPhotoFile = (preset, slot) => `demo-${isDemoPreset(preset) ? DEMO_PRESETS[preset].file : "x"}-${slot}.jpg`;
 export const DEMO_REAL = "real";
 export const DEMO_PLACEHOLDER = "placeholder";
 
@@ -170,8 +174,8 @@ const bad = (message, field) => Object.assign(new ReviewError(422, "bad_field", 
 
 /** The admin's form → checked fields (the app's own rules), or 422 bad_field with a plain line. */
 export function checkDemoFields(preset, input = {}, { now = Date.now() } = {}) {
+  if (!isDemoPreset(preset)) throw new ReviewError(400, "bad_preset", "Choose Demo woman or Demo man.");
   const base = DEMO_PRESETS[preset];
-  if (!base) throw new ReviewError(400, "bad_preset", "Choose Demo woman or Demo man.");
   const v = { ...base, ...Object.fromEntries(Object.entries(input).filter(([, x]) => x !== undefined && x !== null)) };
   const name = checkAppName(v.name);
   if (!name.ok) throw bad(`The app name needs ${NAME_MIN} to ${NAME_MAX} characters, and no contact detail or rude word.`, "name");
@@ -207,7 +211,7 @@ export async function demoAccountOf(d, preset) {
  * phone, pin }). A new account when the preset has none; else that same account is updated (fields, photos, number,
  * PIN). Refuses before anything is written: bad fields (422), no lock key (503), REVIEW_MAX review accounts already
  * (409 too_many, a new one only), a number another profile has (409 phone_in_use), an app name another review account
- * has (409 name_in_use). → { user, created }.
+ * has (409 name_in_use), a PIN another review account has (409 pin_in_use). → { user, created }.
  * opts (tests): save / remove (the photo store), newId, dir (the photo folder), now.
  */
 export async function createDemoAccount(d, preset, input, opts = {}) {
@@ -227,6 +231,9 @@ export async function createDemoAccount(d, preset, input, opts = {}) {
   if (others.some((o) => sameName(o.name, f.name))) {
     throw new ReviewError(409, "name_in_use", `Another review account is called ${f.name}. Choose another app name.`);
   }
+  // One PIN, one review account (makeReviewAccount checks it again): asked here too, before any photo is stored.
+  const clash = await reviewPinInUse(d, f.pin, selfId);
+  if (clash) throw pinInUse(clash);
 
   const { ids, kinds } = await storeDemoPhotos(await demoPhotoBuffers(preset, f.gender, { dir }), { save, remove });
   const at = new Date(now);
@@ -275,7 +282,7 @@ export async function refreshDemoPhotos(d, id, opts = {}) {
   const { save = savePhoto, remove = deletePhoto, dir = DEMO_PHOTO_DIR, now = Date.now() } = opts;
   const users = d.collection(USERS);
   const u = await users.findOne({ _id: id });
-  if (!u || u.deleting || !DEMO_PRESETS[u.demoPreset] || !isReview(u)) throw new ReviewError(404, "not_found", "This is not a demo account made on this page.");
+  if (!u || u.deleting || !isDemoPreset(u.demoPreset) || !isReview(u)) throw new ReviewError(404, "not_found", "This is not a demo account made on this page.");
   const { ids, kinds } = await storeDemoPhotos(await demoPhotoBuffers(u.demoPreset, u.gender, { dir }), { save, remove });
   const r = await users.updateOne(
     { _id: id, demoPreset: u.demoPreset }, { $set: { photos: ids, demoPhotos: kinds, demoAt: new Date(now) }, $unset: { photoReview: "", photoReviewAt: "" } },

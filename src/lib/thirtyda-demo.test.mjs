@@ -17,7 +17,7 @@ process.env.THIRTYDA_SECRET_KEY ||= crypto.randomBytes(32).toString('hex');
 
 const {
   DEMO_PRESETS, DEMO_PRESET_KEYS, DEMO_PHOTO_DIR, demoPhotoFile, demoPhotoFiles, placeholderPhoto, placeholderSvg, checkDemoFields,
-  createDemoAccount, refreshDemoPhotos, demoView, demoAccountOf,
+  createDemoAccount, refreshDemoPhotos, demoView, demoAccountOf, isDemoPreset,
 } = await import('./thirtyda-demo.mjs');
 const {
   REVIEW, REVIEW_MAX, REVIEW_DEFAULTS, REVIEW_SPOTS, REVIEW_PLACE, isReview, sameWorld, worldFilter, makeReviewAccount, stopReviewAccount,
@@ -352,6 +352,85 @@ test('C: refusals — bad fields (422), a taken number, a review name in use, RE
     await assert.rejects(createDemoAccount(d, 'man', {}, { ...opts, newId: async () => { throw new Error('counter down'); } }), /counter down/);
     assert.equal(await demoAccountOf(d, 'man'), null);
     assert.equal(store.files.size, PHOTO_MAX, 'only the woman\'s photos');
+  } finally {
+    await f.done();
+  }
+});
+
+test('C: a PIN another review account has → 409 pin_in_use (Create and "Use as review account"); nothing is written', async () => {
+  const d = await world(); // Dara 1122, Sophea 3344
+  const store = photoStore();
+  const f = await folder();
+  const opts = { ...store, dir: f.url, now: Date.parse('2026-10-14T05:00:00Z') };
+  const users = d.collection('thirtyda_users');
+  const pinInUse = (e) => e instanceof ReviewError && e.status === 409 && e.code === 'pin_in_use' && e.field === 'pin';
+  try {
+    const w = (await createDemoAccount(d, 'woman', {}, opts)).user; // 5566
+    const before = structuredClone(d.docs('thirtyda_users'));
+    const stored = new Set(store.files.keys());
+    // The finding: the demo man with the PIN field edited to Dara's 1122 (a typo) — and the woman's 5566, Sophea's 3344.
+    for (const pin of ['1122', '3344', '5566']) {
+      await assert.rejects(createDemoAccount(d, 'man', { pin }, opts), pinInUse, pin);
+    }
+    assert.deepEqual(d.docs('thirtyda_users'), before, 'no account made, none changed');
+    assert.deepEqual(new Set(store.files.keys()), stored, 'no photo stored');
+    assert.equal(await demoAccountOf(d, 'man'), null);
+    // "Use as review account" and saving one again go through the same check (makeReviewAccount).
+    await assert.rejects(makeReviewAccount(d, 'U-10003', { phone: '+855100009900', pin: '5566' }), pinInUse);
+    assert.equal(isReview(await users.findOne({ _id: 'U-10003' })), false, 'still a real profile');
+    await assert.rejects(makeReviewAccount(d, 'U-10002', { phone: '+855100003344', pin: '1122' }), pinInUse, 'Sophea → Dara\'s PIN');
+    assert.equal(reviewPinOf(await users.findOne({ _id: 'U-10002' })), '3344');
+    await makeReviewAccount(d, 'U-10002', { phone: '+855100003344', pin: '3344' }); // its own: fine
+    // An account whose sealed PIN this server cannot open still counts (the hash the sign-in checks).
+    await users.updateOne({ _id: 'U-10001' }, { $unset: { reviewPinBox: '' } });
+    await assert.rejects(makeReviewAccount(d, 'U-10003', { phone: '+855100009900', pin: '1122' }), pinInUse, 'by the hash');
+    // A review account being deleted no longer holds its PIN.
+    await users.updateOne({ _id: 'U-10001' }, { $set: { deleting: true } });
+    await makeReviewAccount(d, 'U-10003', { phone: '+855100009900', pin: '1122' });
+    await stopReviewAccount(d, 'U-10003');
+    await users.updateOne({ _id: 'U-10001' }, { $unset: { deleting: '' } });
+    await makeReviewAccount(d, 'U-10001', REVIEW_DEFAULTS[0]); // Dara's PIN sealed again
+    // The man with his own PIN; then saving him again with Dara's PIN is refused and he keeps 7788.
+    const m = (await createDemoAccount(d, 'man', {}, opts)).user;
+    const manBefore = await users.findOne({ _id: m._id });
+    await assert.rejects(createDemoAccount(d, 'man', { pin: '1122' }, opts), pinInUse);
+    assert.deepEqual(await users.findOne({ _id: m._id }), manBefore, 'unchanged');
+    assert.equal(reviewPinOf(await users.findOne({ _id: m._id })), '7788');
+    // Saving an account again with its OWN PIN is no clash.
+    assert.equal((await createDemoAccount(d, 'man', { pin: '7788' }, opts)).created, false);
+    // Every PIN signs into its own account, and the notes name each once.
+    await setReviewSwitch(d, true);
+    for (const [pin, id] of [['1122', 'U-10001'], ['3344', 'U-10002'], ['5566', w._id], ['7788', m._id]]) {
+      assert.equal((await reviewAccountForPin(d, pin))?._id, id, pin);
+    }
+    const pins = (await reviewView(d)).accounts.map((a) => a.pin).filter(Boolean);
+    assert.equal(new Set(pins).size, pins.length, 'no PIN twice in the notes');
+  } finally {
+    await f.done();
+  }
+});
+
+test('C: only a real preset key — "constructor", "__proto__", "toString" … are 400 bad_preset, nothing written, no photo file', async () => {
+  const d = await world();
+  const store = photoStore();
+  const f = await folder();
+  const opts = { ...store, dir: f.url, now: Date.parse('2026-10-14T05:00:00Z') };
+  const n = d.docs('thirtyda_users').length;
+  try {
+    assert.equal(isDemoPreset('woman'), true);
+    assert.equal(isDemoPreset('man'), true);
+    for (const preset of ['constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf', 'isPrototypeOf', '', undefined, null, 1]) {
+      assert.equal(isDemoPreset(preset), false, String(preset));
+      assert.throws(() => checkDemoFields(preset, { name: 'Proto' }), (e) => e instanceof ReviewError && e.status === 400 && e.code === 'bad_preset', String(preset));
+      await assert.rejects(createDemoAccount(d, preset, { name: 'Proto', phone: '+855100009911', pin: '9911' }, opts), (e) => e.status === 400 && e.code === 'bad_preset');
+      assert.equal(demoPhotoFile(preset, 1), 'demo-x-1.jpg', 'never a file named after an object key');
+    }
+    assert.equal(d.docs('thirtyda_users').length, n, 'no orphan review account');
+    assert.equal(store.files.size, 0);
+    // An account an older build left with such a preset: "Refresh photos" refuses it (404), nothing stored.
+    await d.collection('thirtyda_users').insertOne({ _id: 'U-10009', name: 'Proto', demo: REVIEW, demoPreset: 'constructor', gender: 'woman', photos: [] });
+    await assert.rejects(refreshDemoPhotos(d, 'U-10009', opts), (e) => e.status === 404 && e.code === 'not_found');
+    assert.equal(store.files.size, 0);
   } finally {
     await f.done();
   }

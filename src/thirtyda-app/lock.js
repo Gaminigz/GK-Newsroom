@@ -12,7 +12,7 @@
 //  - "Forgot PIN?": signed out, back to the sign-in step to sign in again and set a new PIN.
 //  - A profile with no PIN yet sets one before anything else; #/me has "Change PIN".
 import {
-  state, bus, api, t, el, icon, go, toast, modal, setMe, registerStrings, errorText, coverScreen, uncoverScreen,
+  state, bus, api, t, el, icon, go, toast, modal, setMe, setLang, registerStrings, errorText, coverScreen, uncoverScreen,
   activity, checkNewPin, pinDigits, PIN_LENGTH, IDLE_COVER_MS, LOCK_IDLE_MS, INPUT_AGE_HEADER, inputAge,
 } from './core.js';
 import { onAppReturn, deviceId } from './shell.js';
@@ -432,6 +432,39 @@ export function reviewLink() {
   return slot;
 }
 
+// A demo sign-in whose language could not be saved on the account (PATCH /me failed twice): { id, lang } kept in THIS
+// tab across our own reload, read once by the boot (keepReviewLang), so the reviewer still lands in the picked language.
+const REVIEW_LANG_KEY = '30da_review_lang';
+
+/** PATCH /me { lang } on the demo account just signed in: one retry (a blip). → the account as saved, or null. */
+async function saveReviewLang(lang) {
+  for (let i = 0; i < 2; i += 1) {
+    try {
+      return (await api.patch('/me', { lang }, { redirect: false }))?.user ?? null;
+    } catch { /* once more, then the boot keeps it (keepReviewLang) */ }
+  }
+  return null;
+}
+
+/**
+ * The boot (app.js, right after setMe) after a demo sign-in whose language could not be saved: the picked language
+ * again, for that same account only, and one more try to save it (the account's own would come back with the next
+ * answer that carries it). Read once: the flag goes whatever it says.
+ */
+export function keepReviewLang(user) {
+  const raw = tab.get(REVIEW_LANG_KEY);
+  if (raw == null) return;
+  tab.del(REVIEW_LANG_KEY);
+  let v = null;
+  try { v = JSON.parse(raw); } catch { return; }
+  if (!user || v?.id !== user.id || typeof v.lang !== 'string' || v.lang === user.lang) return;
+  setLang(v.lang, { rerender: false });
+  state.me = { ...state.me, lang: v.lang };
+  api.patch('/me', { lang: v.lang }, { redirect: false })
+    .then((saved) => { if (saved?.user && state.me?.id === saved.user.id) state.me = { ...state.me, lang: saved.user.lang }; })
+    .catch(() => { /* this boot keeps it; nothing more to do */ });
+}
+
 /**
  * The demo sign-in's body (POST /auth/review/pin): the PIN, the "I agree" kept on this phone, and this phone's id — while
  * review sign-in is ON that phone may make fresh profiles to try Delete my account (src/lib/thirtyda-review-world.mjs).
@@ -445,18 +478,21 @@ async function reviewSignInBody(pin) {
  * Signed in as the demo account (POST /auth/review/pin answered): nothing waits on this phone any more (the demo account
  * keeps its own PIN). The demo account takes the language picked on the opening screen (iOS session 2026-10-14, owner
  * agreed: a reviewer who picked English never lands in Khmer) — saved on it (PATCH /me { lang }: a language-only change
- * is the one a demo account allows) BEFORE the fresh boot, which reads it back. Then a fresh boot on Nearby (Android
- * 2026-10-14: Nearby kept the guest's empty list until a reload). Our own reload: no PIN lock on the way back.
+ * is the one a demo account allows; one retry) BEFORE the fresh boot, which reads it back. Not saved even then: the
+ * fresh boot reads it from this tab instead (REVIEW_LANG_KEY → keepReviewLang), since GET /me brings back the account's
+ * own. Then a fresh boot on Nearby (Android 2026-10-14: Nearby kept the guest's empty list until a reload). Our own
+ * reload: no PIN lock on the way back.
  */
 async function reviewSignedIn(r) {
   clearPinFlags();
   const lang = state.lang; // the language picked on the opening screen (setMe below would switch to the account's)
   let user = r?.user ?? null;
   if (user && user.lang !== lang) {
-    try {
-      user = (await api.patch('/me', { lang }, { redirect: false }))?.user ?? { ...user, lang };
-    } catch {
-      user = { ...user, lang }; // this boot at least; the account keeps its own on the server
+    const saved = await saveReviewLang(lang);
+    if (saved) user = saved;
+    else {
+      tab.set(REVIEW_LANG_KEY, JSON.stringify({ id: user.id, lang })); // the boot after the reload keeps it
+      user = { ...user, lang };
     }
   }
   if (lock.covered) opened({ ...r, user });
@@ -510,8 +546,12 @@ function reviewSheet() {
  * demo PIN, no answer, or the sign-in refused → false (the screen goes on as before; a refusal says why). Signed in →
  * true (the app reloads as the demo account).
  * within (ms): give up on the question after that long → false (the visitor's own right PIN never waits on the network).
+ * onRefused(text): a demo PIN whose sign-in was refused (e.g. verify-code's address limit behind a reviewer's shared
+ * address) — the reason, for a screen that shows it itself. A visitor's "Enter your PIN" is a COVER, and a cover hides
+ * every toast (pin.css), so it must not end as a toast there (it would read as "Wrong PIN"). Without it: a toast
+ * ("Set your PIN" is a route, the toast shows).
  */
-export async function reviewPinSignIn(pin, { within = 0 } = {}) {
+export async function reviewPinSignIn(pin, { within = 0, onRefused = null } = {}) {
   const ask = (async () => {
     if (!(await reviewShown())) return false; // switched off: nothing is asked
     try {
@@ -529,6 +569,7 @@ export async function reviewPinSignIn(pin, { within = 0 } = {}) {
     r = await api.post('/auth/review/pin', await reviewSignInBody(pin), { redirect: false });
   } catch (e) {
     if (e.status === 404) reviewOn = null; // switched off meanwhile: as before
+    else if (onRefused) onRefused(reviewFailText(e));
     else toast(reviewFailText(e));
     return false;
   }
@@ -572,16 +613,21 @@ function guestBody() {
     if (pin === want) {
       // This phone's own PIN, and maybe a demo PIN too (a reviewer, or a phone that chose 1122 before): while review
       // sign-in is on it signs into the demo; not a demo PIN, no answer in time or switched off → the home screen.
-      const took = await reviewPinSignIn(pin, { within: GUEST_ASK_MS }).catch(() => false);
+      let refused = '';
+      const took = await reviewPinSignIn(pin, { within: GUEST_ASK_MS, onRefused: (text) => { refused = text; } }).catch(() => false);
       if (took) return;
-      return guestOpened();
+      guestOpened();
+      if (refused) toast(refused); // a demo PIN whose sign-in was refused: said once the cover is gone (it hides toasts)
+      return;
     }
     // Not this phone's PIN: maybe a store reviewer typing the demo PIN (signs straight in while review sign-in is on).
-    const took = await reviewPinSignIn(pin).catch(() => false);
+    // A demo PIN whose sign-in was refused says why in this screen's own line (a cover hides toasts), not "Wrong PIN".
+    let refused = '';
+    const took = await reviewPinSignIn(pin, { onRefused: (text) => { refused = text; } }).catch(() => false);
     if (took) return;
     pad.setBusy(false);
     pad.clear();
-    err.show(t('pin_wrong')); // "Wrong PIN. Try again." — as often as it takes
+    err.show(refused || t('pin_wrong')); // "Wrong PIN. Try again." — as often as it takes
     pad.shake();
     pad.focus();
   }

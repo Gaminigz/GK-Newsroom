@@ -5,7 +5,7 @@
 import {
   state, api, bus, t, el, icon, go, modal, heartbeat, startRouter, setMe, registerStrings, actionLabel, pairRoute,
 } from './core.js';
-import { startLock, bootLock, applyLockInfo, waitingPin, pinResetPending, leaveWithoutLock } from './lock.js';
+import { startLock, bootLock, applyLockInfo, waitingPin, pinResetPending, leaveWithoutLock, keepReviewLang } from './lock.js';
 // The community rules' "I agree" (store policy, owner 2026-10-14): screens/rules.js, kept on the phone by terms.js.
 import { agreedHere, syncTerms, termsNeeded } from './terms.js';
 import { shellPlatform } from './shell.js';
@@ -56,6 +56,7 @@ async function loadSession() {
     applyLockInfo(r.lock);
     if (r.user) {
       setMe(r.user);
+      keepReviewLang(r.user); // after a demo sign-in whose language could not be saved: the picked one, not the account's
       state.notices = Array.isArray(r.notices) ? r.notices : [];
     } else {
       state.pending = r.session || null; // a session without a profile yet, or nobody
