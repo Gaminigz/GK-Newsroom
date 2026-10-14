@@ -103,7 +103,7 @@ test('privacy: who sees what — guests see app name, gender, job, hearts, a dis
 
 test('privacy: every outside service by name — Railway, MongoDB Atlas, Nominatim, our translation server, Google Fonts, Telegram, WhatsApp/Meta, Google/Facebook/TikTok/Apple', () => {
   assert.equal(TRANSLATE_HOST, 'llm.ggmt.sg');
-  assert.deepEqual(PROCESSORS.map(([, k]) => k), ['proc_railway', 'proc_atlas', 'proc_osm', 'proc_translate', 'proc_fonts', 'priv_codes', 'proc_signin']);
+  assert.deepEqual(PROCESSORS.map(([, k]) => k), ['proc_railway', 'proc_atlas', 'proc_osm', 'proc_translate', 'proc_fonts', 'priv_codes', 'proc_signin', 'proc_dictation']);
   const colon = { en: ':', km: '៖', zh: '：', ko: ':', ja: '：' };
   for (const lang of LANGS) {
     const t = PAGE_STRINGS[lang];

@@ -10,6 +10,7 @@ import {
 } from '../core.js';
 // Inside the iOS / Android app a blocked microphone is the app's own setting, never "your browser settings" (Apple 4.2).
 import { permissionOff } from '../in-app.js';
+import { shellPlatform, shellCanDictate, shellDictate } from '../shell.js';
 
 const POLL_MS = 3000;
 const POLL_MAX_MS = 20000; // back-off ceiling while offline
@@ -21,6 +22,7 @@ const LONG_PRESS_MS = 480;
 const REPORT_REASONS = CHAT_REPORT_REASONS; // rude, scam, sexual, underage, other (shared/safety.js)
 const CONTACT_TYPES = ['phone', 'email', 'handle', 'app', 'link'];
 const NO_SPACE_LANGS = new Set(['zh', 'ja']); // dictation appends without a space
+const DICTATION_MAX_MS = 30e3; // owner 2026-10-14: one short message, never a long voice talk
 
 const SpeechRec = typeof window === 'undefined'
   ? null
@@ -193,6 +195,7 @@ function viewPhotos(urls, start, name, reportPhoto = null) {
  */
 function dictation(button, input, onChange) {
   let rec = null;
+  let cap = null; // stops the browser's recognition after DICTATION_MAX_MS
   const setOn = (on) => {
     button.classList.toggle('listening', on);
     button.setAttribute('aria-pressed', String(on));
@@ -222,6 +225,7 @@ function dictation(button, input, onChange) {
       else if (e.error !== 'aborted') toast(t('chat_mic_failed'));
     };
     r.onend = () => {
+      clearTimeout(cap);
       if (rec !== r) return;
       rec = null;
       setOn(false);
@@ -230,12 +234,46 @@ function dictation(button, input, onChange) {
       r.start();
       rec = r;
       setOn(true);
+      clearTimeout(cap);
+      cap = setTimeout(() => { if (rec === r) { try { r.stop(); } catch { /* already stopping */ } } }, DICTATION_MAX_MS);
     } catch {
       toast(t('chat_mic_failed'));
     }
   }
 
+  /** The Android app's own dictation (Google's listening sheet over the app): → text in the box, never sent by itself. */
+  async function startNative() {
+    const lang = state.lang;
+    const before = input.value.trim();
+    const sep = before && !NO_SPACE_LANGS.has(lang) ? ' ' : '';
+    const run = {};
+    rec = run;
+    setOn(true);
+    try {
+      const r = await shellDictate(SPEECH_LOCALE[lang] || 'en-US');
+      if (rec !== run) return; // the screen went away meanwhile
+      const said = typeof r?.text === 'string' ? r.text.trim() : '';
+      if (said) {
+        input.value = before + sep + said;
+        onChange();
+      }
+    } catch (e) {
+      if (rec !== run) return;
+      if (e?.code === 'UNAVAILABLE') button.hidden = true;
+      else toast(t('chat_mic_failed'));
+    } finally {
+      if (rec === run) {
+        rec = null;
+        setOn(false);
+      }
+    }
+  }
+
   button.addEventListener('click', () => {
+    if (button.dataset.native === '1') {
+      if (!rec) startNative();
+      return;
+    }
     if (!rec) return start();
     try { rec.stop(); } catch { /* already stopping */ }
   });
@@ -243,8 +281,9 @@ function dictation(button, input, onChange) {
   return () => {
     const r = rec;
     rec = null;
+    clearTimeout(cap);
     setOn(false);
-    if (!r) return;
+    if (!r || typeof r.abort !== 'function') return;
     r.onresult = null;
     r.onerror = null;
     r.onend = null;
@@ -539,9 +578,18 @@ export function mountChat(root, { pair, data, gate, history = null, header: head
     spellcheck: 'true', maxlength: 200, lang: myLang,
   });
   const sendBtn = el('button', { type: 'button', class: 'round-btn', 'aria-label': t('chat_send'), 'aria-disabled': 'true' }, icon('send', 18));
-  const mic = SpeechRec
-    ? el('button', { type: 'button', class: 'round-btn outline', 'aria-label': t('chat_mic'), 'aria-pressed': 'false' }, icon('mic', 18))
-    : null;
+  // Dictation, only where it really works: the browser's own speech (laptops, phone browsers, the iPhone app — but Apple
+  // has no Khmer recognizer, so not in Khmer there), else the Android app's own (ThirtyDaShell.dictate, Khmer included).
+  const webMic = Boolean(SpeechRec) && !(shellPlatform() === 'ios' && state.lang === 'km');
+  const mic = el('button', { type: 'button', class: 'round-btn outline', 'aria-label': t('chat_mic'), 'aria-pressed': 'false' }, icon('mic', 18));
+  if (!webMic) {
+    mic.hidden = true;
+    shellCanDictate().then((ok) => {
+      if (!ok || !alive) return;
+      mic.dataset.native = '1';
+      mic.hidden = false;
+    });
+  }
   const marker = el('span', { class: 'meter-marker', style: { left: '0%' } });
   const meter = el('div', { class: 'meter', 'aria-hidden': 'true' },
     el('span', {

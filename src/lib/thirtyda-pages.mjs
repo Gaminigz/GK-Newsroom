@@ -142,6 +142,7 @@ export const PAGE_STRINGS = {
     priv_codes_k: "Telegram or WhatsApp (Meta):",
     priv_codes: "your number, only to send or check your code.",
     proc_signin: "sign you in, only if you choose them.",
+    proc_dictation: "turn your voice into text when you use the microphone in the chat (Apple on iPhone, Google elsewhere). Only the words come back.",
     priv_never: "We never sell your data. No ads, no tracking.",
     priv_long_h: "How long we keep it",
     priv_long_k: "How long:",
@@ -346,6 +347,7 @@ export const PAGE_STRINGS = {
     priv_codes_k: "Telegram ឬ WhatsApp (Meta)៖",
     priv_codes: "ប្រើលេខរបស់អ្នក តែដើម្បីផ្ញើ ឬពិនិត្យលេខកូដប៉ុណ្ណោះ។",
     proc_signin: "ឲ្យអ្នកចូល លុះត្រាតែអ្នកជ្រើសរើសវា។",
+    proc_dictation: "បំប្លែងសំឡេងរបស់អ្នកទៅជាអក្សរ ពេលអ្នកប្រើមីក្រូហ្វូនក្នុងការជជែក (Apple លើ iPhone, Google នៅកន្លែងផ្សេង)។ មានតែពាក្យប៉ុណ្ណោះដែលត្រឡប់មកវិញ។",
     priv_never: "យើងមិនលក់ទិន្នន័យរបស់អ្នកទេ។ គ្មានពាណិជ្ជកម្ម គ្មានការតាមដាន។",
     priv_long_h: "យើងរក្សាទុករយៈពេលប៉ុន្មាន",
     priv_long_k: "រយៈពេល៖",
@@ -545,6 +547,7 @@ export const PAGE_STRINGS = {
     priv_codes_k: "Telegram 或 WhatsApp（Meta）：",
     priv_codes: "只用你的号码发送或核对验证码。",
     proc_signin: "只在你选择用它们登录时使用。",
+    proc_dictation: "在聊天中使用麦克风时，把你的语音转成文字（iPhone 上是 Apple，其他设备是 Google）。只返回文字。",
     priv_never: "我们绝不出售你的数据。没有广告，没有追踪。",
     priv_long_h: "保存多久",
     priv_long_k: "保存多久：",
@@ -744,6 +747,7 @@ export const PAGE_STRINGS = {
     priv_codes_k: "Telegram·WhatsApp(Meta):",
     priv_codes: "인증 코드를 보내거나 확인할 때만 번호를 써요.",
     proc_signin: "직접 선택했을 때만 로그인에 써요.",
+    proc_dictation: "채팅에서 마이크를 쓸 때 목소리를 글자로 바꿔요 (iPhone은 Apple, 그 밖에는 Google). 글자만 돌아와요.",
     priv_never: "데이터를 절대 팔지 않아요. 광고도, 추적도 없어요.",
     priv_long_h: "보관 기간",
     priv_long_k: "보관 기간:",
@@ -943,6 +947,7 @@ export const PAGE_STRINGS = {
     priv_codes_k: "Telegram・WhatsApp（Meta）：",
     priv_codes: "コードを送ったり確認したりするためだけに番号を使います。",
     proc_signin: "あなたが選んだときだけ、ログインに使います。",
+    proc_dictation: "チャットでマイクを使うとき、声を文字に変えます（iPhone では Apple、それ以外は Google）。戻ってくるのは文字だけです。",
     priv_never: "データは売りません。広告も追跡もありません。",
     priv_long_h: "どのくらい保存するか",
     priv_long_k: "保存期間：",
@@ -1186,6 +1191,7 @@ export const TRANSLATE_HOST = "llm.ggmt.sg";
  *   Google Fonts            the app's letters (every page loads them)
  *   Telegram / WhatsApp     the number, to send or check a code (and the Telegram support bot)
  *   Google, Facebook, TikTok, Apple   sign-in, only when chosen
+ *   Apple / Google speech   the chat microphone: voice → text (owner 2026-10-14)
  */
 export const PROCESSORS = Object.freeze([
   ["Railway", "proc_railway"],
@@ -1195,6 +1201,7 @@ export const PROCESSORS = Object.freeze([
   ["Google Fonts", "proc_fonts"],
   [null, "priv_codes"],
   ["Google, Facebook, TikTok, Apple", "proc_signin"],
+  ["Apple, Google", "proc_dictation"],
 ]);
 
 /**

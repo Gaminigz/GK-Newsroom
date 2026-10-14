@@ -82,6 +82,26 @@ function randomId() {
 }
 
 /**
+ * The 30+DA app's own dictation (Android 1.0.1+: ThirtyDaShell.dictate — Google speech, Khmer included; the WebView has no
+ * Web Speech). info().dictate is true only when the phone has a recognizer; an older app has no key → false.
+ */
+export async function shellCanDictate() {
+  const plugin = window.Capacitor?.Plugins?.ThirtyDaShell;
+  if (!shellPlatform() || typeof plugin?.dictate !== 'function' || typeof plugin?.info !== 'function') return false;
+  try {
+    const info = await Promise.race([plugin.info(), new Promise((resolve) => { setTimeout(() => resolve(null), 1500); })]);
+    return info?.dictate === true;
+  } catch {
+    return false;
+  }
+}
+
+/** → { text } | { cancelled: true }; rejects (code 'UNAVAILABLE') only when the phone has no recognizer. */
+export function shellDictate(lang) {
+  return window.Capacitor.Plugins.ThirtyDaShell.dictate({ lang });
+}
+
+/**
  * This phone's id, for "one profile without verifying per phone" (owner 2026-10-14; the server keeps only a hash of it,
  * 30 days): in the 30+DA app its own id (ThirtyDaShell.info().deviceId), else a random id kept on this phone
  * (localStorage). → the id, or null (storage off and no app id: the server then only counts per address).
