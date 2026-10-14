@@ -23,7 +23,12 @@ screen('/opening', ({ root }) => {
       el('h1', { class: 'opening-headline' }, t('op_headline')),
       el('div', { class: 'opening-mark wordmark', role: 'img', 'aria-label': '30+DA' }, letters),
       el('div', { class: 'opening-rule', 'aria-hidden': 'true' }, el('span')),
-      el('p', { class: 'opening-tagline' }, t('op_tagline'))),
+      el('p', { class: 'opening-tagline' }, t('op_tagline')),
+      // The same promise in the other four languages, small (owner 2026-10-14: "I want users to know right from
+      // the start, in their language" — before they have picked one).
+      el('div', { class: 'opening-others' },
+        LANGS.filter((code) => code !== state.lang).map((code) => el('p', { lang: code },
+          `${OP_STRINGS[code].op_headline} ${OP_STRINGS[code].op_tagline}`)))),
     el('div', { class: 'opening-langs' },
       el('p', { class: 'label', id: 'op-lang-label' }, t('op_language')),
       el('div', { class: 'lang-grid', role: 'group', 'aria-labelledby': 'op-lang-label' },
@@ -43,7 +48,7 @@ screen('/opening', ({ root }) => {
   );
 });
 
-registerStrings({
+const OP_STRINGS = {
   en: {
     op_headline: 'Don’t make the same mistake again.',
     op_tagline: 'Safe and calm dating for 30+',
@@ -79,4 +84,5 @@ registerStrings({
     op_pick: '言語を選んで、始めましょう。',
     op_translate: '自動で翻訳されます。',
   },
-});
+};
+registerStrings(OP_STRINGS);
