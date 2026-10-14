@@ -11,11 +11,11 @@ import {
   APPLE, KEYS_TTL_MS, SKEW_S, CLIENT_SECRET_S, APPLE_NONCES, NONCE_TTL_MS, NONCE_COOKIE, normalizeP8, checkAppleFields, appleKeys,
   appleClientSecret, newAppleBinder, createAppleNonce, takeAppleNonce, appleNonceCookie, readAppleNonceCookie, appleKeyCache,
   jwksKeys, appleKey, verifyAppleToken, applePerson, appleTokenRequest, appleRevokeRequest, classifyAppleError, exchangeAppleCode,
-  revokeAppleToken, tryAppleKey, sealAppleRefresh, openAppleRefresh, revokeAppleFor, appleRevokeOf, nonceHash, TOKEN_REASONS,
+  revokeAppleToken, tryAppleKey, sealAppleRefresh, openAppleRefresh, appleRefreshFor, revokeAppleFor, appleRevokeOf, nonceHash, TOKEN_REASONS,
 } from './thirtyda-apple.mjs';
 import { saveFields, clearSettingsCache, FIELD_SETTINGS, SETTINGS_COLLECTION } from './thirtyda-settings.mjs';
 import { makeTestFetch, redactCall, TEST_FETCH_COLLECTION } from './thirtyda-test-fetch.mjs';
-import { planSignin, VERIFIED_KEY, ACCOUNT_PROVIDERS, SIGNIN_PROVIDERS, KEEP_NAME } from './thirtyda-signin.mjs';
+import { planSignin, withSigninExtra, VERIFIED_KEY, ACCOUNT_PROVIDERS, SIGNIN_PROVIDERS, KEEP_NAME } from './thirtyda-signin.mjs';
 import { whileLocked } from './thirtyda-pin.mjs';
 import { talksToSomeone, signinsOf, canTalk, neverVerifiedFilter } from './thirtyda-verify.mjs';
 import { API_ROUTES, meView } from './thirtyda-app.mjs';
@@ -372,6 +372,48 @@ test('the refresh token is sealed for its Apple id only; revokeAppleFor: revoked
   assert.equal(await revokeAppleFor(d, { sub: SUB, box }, { fetchImpl: apple.fetchImpl }), 'failed');
   assert.equal(await revokeAppleFor(d, null, { fetchImpl: apple.fetchImpl }), 'unreadable');
   assert.deepEqual(await revokeAppleToken(KEYS, 't', { fetchImpl: async () => { throw new TypeError('fetch failed'); } }), { ok: false, reason: 'network', detail: null });
+}));
+
+test('a pending session that signs in with a second Apple id keeps only that id\'s token (none when its exchange fails); Create profile keeps a token only for its own Apple id', async () => withKey(async () => {
+  const A = SUB;
+  const B = '009876.fakeb1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6.0800';
+  const boxA = sealAppleRefresh('r.FAKE-refresh-A', A);
+  const boxB = sealAppleRefresh('r.FAKE-refresh-B', B);
+  const withB = { user: { appleRefresh: boxB }, session: { appleRefresh: boxB } };
+  // No profile yet, Apple id A signed in (its exchange worked): A's link and A's token wait on the session.
+  const session = { userId: null, verified: { gmail: false, facebook: false, apple: true }, signin: { apple: { id: A } }, appleRefresh: boxA };
+  const plan = planSignin({ provider: 'apple', person: { id: B }, session });
+  assert.equal(plan.kind, 'new');
+  assert.equal(plan.session.signin.apple.id, B, 'B replaces A on the session');
+  // B's exchange failed (Apple slow, a used code, no code, no key): the new session says "no token", never keeps A's.
+  assert.equal(withSigninExtra(plan, 'apple', null).session.appleRefresh, null);
+  assert.equal(withSigninExtra(plan, 'apple', withB).session.appleRefresh, boxB);
+  const switched = planSignin({ provider: 'apple', person: { id: B }, me: { _id: 'U-1', signin: { apple: { id: A } } } });
+  assert.equal(withSigninExtra(switched, 'apple', null).session.appleRefresh, null, 'a switch to another Apple id: none either');
+  // Another provider onto Create profile leaves the Apple link and its token as they were (they still match).
+  const google = withSigninExtra(planSignin({ provider: 'google', person: { id: 'g1' }, session }), 'google', null);
+  assert.equal('appleRefresh' in google.session, false);
+  assert.equal(google.session.signin.apple.id, A);
+  // A profile signed in / attached to: the token goes on the profile, never on its session.
+  const back = withSigninExtra(planSignin({ provider: 'apple', person: { id: B }, user: { _id: 'U-2' } }), 'apple', withB);
+  assert.equal(back.userSet.appleRefresh, boxB);
+  assert.equal('appleRefresh' in back.session, false);
+  const attach = withSigninExtra(planSignin({ provider: 'apple', person: { id: B }, me: { _id: 'U-3', verified: { phone: true } } }), 'apple', null);
+  assert.equal('appleRefresh' in attach.userSet || 'appleRefresh' in attach.session, false);
+  // Create profile: only a token that opens for the profile's own Apple id.
+  assert.equal(appleRefreshFor(boxA, B), null, 'A\'s token on B\'s profile: never kept (it could never be revoked)');
+  assert.equal(appleRefreshFor(boxB, B), boxB);
+  assert.equal(appleRefreshFor(boxA, A), boxA);
+  assert.equal(appleRefreshFor(boxA, null), null, 'no Apple id on the profile');
+  assert.equal(appleRefreshFor(null, A), null);
+  // The app carries it out: completeSignin plans through withSigninExtra, a session drops an empty token, Create profile
+  // keeps the token through appleRefreshFor.
+  const src = readFileSync(new URL('./thirtyda-app.mjs', import.meta.url), 'utf8');
+  const body = (name) => src.slice(src.indexOf(`async function ${name}(`), src.indexOf('\n}\n', src.indexOf(`async function ${name}(`)));
+  assert.match(body('completeSignin'), /const withExtra = \(p\) => withSigninExtra\(p, provider, extra\);/);
+  assert.match(body('startSession'), /if \(doc\.userId \|\| !doc\.appleRefresh\) delete doc\.appleRefresh;/);
+  assert.match(body('createProfile'), /appleRefreshFor\(session\?\.appleRefresh, signinOf\(session\)\?\.apple\?\.id\) \? \{ appleRefresh: session\.appleRefresh \}/);
+  assert.equal((body('createProfile').match(/appleRefresh: session\.appleRefresh/g) || []).length, 1, 'no other way onto the profile');
 }));
 
 // ---------------------------------------------------------------- what a sign-in writes, and the delete's handles

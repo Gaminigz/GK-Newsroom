@@ -125,13 +125,13 @@ import { CODE_CHANNELS, DEFAULT_CHANNEL, CHANNEL_NAMES, channelOffered, testCode
 import {
   SIGNIN_PROVIDERS, SIGNIN_WIRED, VERIFIED_KEY, SIGNIN_STATES, signinKeys, signinKeysSaved, signinRedirect, authorizeUrl,
   createSigninState, takeSigninState, stateCookie, readStateCookie, adminSessionAlive, signinPerson, callbackError,
-  signinUserFilter, planSignin, pkcePair,
+  signinUserFilter, planSignin, withSigninExtra, pkcePair,
   stateHash, APP_TICKETS, APP_ERRORS, platformOf, newBinder, appCookie, readAppCookie, createAppTicket, takeAppTicket, appReturnQuery,
   appSchemeUrl, appIntentUrl, publicOrigin, appPlatformOf, ACCOUNT_PROVIDERS, KEEP_NAME,
 } from "./thirtyda-signin.mjs";
 import {
   APPLE_NONCES, newAppleBinder, createAppleNonce, takeAppleNonce, appleNonceCookie, readAppleNonceCookie, nonceHash, verifyAppleToken,
-  applePerson, appleKeys, exchangeAppleCode, sealAppleRefresh,
+  applePerson, appleKeys, exchangeAppleCode, sealAppleRefresh, appleRefreshFor,
 } from "./thirtyda-apple.mjs";
 import { noteSecretUse } from "./thirtyda-settings.mjs";
 import { outboundFetch } from "./thirtyda-test-fetch.mjs";
@@ -479,8 +479,9 @@ async function startSession(ctx, fields) {
   // A session the App review code made stays marked when it is renewed for the same profile ("Stop being a review
   // account" ends every such session).
   if (session?.reviewSignin && doc.userId && doc.userId === session.userId) doc.reviewSignin = true;
-  // A session of a profile never carries a pending Apple token (Create profile put it on the profile, or it was another's).
-  if (doc.userId) delete doc.appleRefresh;
+  // A session of a profile never carries a pending Apple token (Create profile put it on the profile, or it was another's);
+  // nor does one an Apple sign-in left with none (withSigninExtra: null — an earlier Apple id's token is dropped).
+  if (doc.userId || !doc.appleRefresh) delete doc.appleRefresh;
   await d.collection(C.sessions).insertOne(doc);
   if (old) await d.collection(C.sessions).deleteOne({ _id: old._id });
   if (doc.userId) await d.collection(C.users).updateOne({ _id: doc.userId }, { $set: { pinTries: 0 } });
@@ -2021,12 +2022,8 @@ async function completeSignin(ctx, provider, person, { attachOnly = false, extra
   // An App review account is signed into ONLY by the review code, and adds no Google / Facebook / TikTok account
   // (that would be a way in that ignores the switch and outlives "Stop being a review account").
   if (isReview(user) || (isReview(ctx.me) && !user)) return { existing: false, refused: "review" };
-  /** The plan with what the provider adds: on the profile (returning / attach), or on the new session (new). */
-  const withExtra = (p) => (!extra ? p : {
-    ...p,
-    ...(p.userSet ? { userSet: { ...p.userSet, ...(extra.user || {}) } } : {}),
-    ...(p.kind === "new" ? { session: { ...p.session, ...(extra.session || {}) } } : {}),
-  });
+  /** The plan with what the provider adds: on the profile (returning / attach), or on the new session (new; Apple: this id's token or none). */
+  const withExtra = (p) => withSigninExtra(p, provider, extra);
   let plan = withExtra(planSignin({ provider, person, user, me: ctx.me, session: ctx.session }));
   // #/me: the profile already has ANOTHER account of this provider — never replaced, never a switch.
   if (attachOnly && plan.switched) return { existing: false, refused: "failed" };
@@ -2199,8 +2196,9 @@ async function createProfile(ctx) {
     },
     // The Google / Facebook account this browser signed in with: its id (+ email when given), never a token.
     ...(signinOf(session) ? { signin: signinOf(session) } : {}),
-    // Sign in with Apple's refresh token, SEALED (only with the admin's key): "Delete my account" revokes it.
-    ...(session?.appleRefresh && signinOf(session)?.apple ? { appleRefresh: session.appleRefresh } : {}),
+    // Sign in with Apple's refresh token, SEALED (only with the admin's key): "Delete my account" revokes it. Only one that
+    // opens for this profile's Apple id (appleRefreshFor): another Apple id's token could never be revoked from here.
+    ...(appleRefreshFor(session?.appleRefresh, signinOf(session)?.apple?.id) ? { appleRefresh: session.appleRefresh } : {}),
     photos: [photoId],
     // Photo 1 waits for the team's approval; until then only its owner sees it (src/lib/thirtyda-photo-review.mjs).
     ...newProfileReview(new Date(madeAt).toISOString()),

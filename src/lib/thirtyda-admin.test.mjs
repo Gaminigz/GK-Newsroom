@@ -197,6 +197,26 @@ test('Users list: a red Delete next to Block / Unblock on every row, through the
   assert.match(r.headers['Content-Type'], /^text\/javascript/);
 });
 
+test('overview: Sign in with Apple\'s sealed refresh token never leaves the server — not on the profile, not in a started delete (its Apple id only)', async () => {
+  const SUB = '001234.fake0a1b2c3d4e5f60718293a4b5c6d7e8f.0800';
+  const box = { v: 1, alg: 'aes-256-gcm', iv: 'IV-fake', tag: 'TAG-fake', data: 'SEALED-fake' };
+  const users = d.collection('thirtyda_users').docs;
+  Object.assign(users.get('U-10001'), { signin: { apple: { id: SUB } }, verified: { apple: true }, appleRefresh: box });
+  Object.assign(users.get('U-10002'), { deleting: { at: new Date(), phones: [], signins: [{ provider: 'apple', id: SUB }], photos: [], apple: { sub: SUB, box } } });
+  const r = await admin('GET', '/30da/admin/api/overview');
+  assert.equal(r.status, 200);
+  assert.equal(/appleRefresh|"box"|SEALED-fake|TAG-fake|IV-fake/.test(r.body), false, 'no sealed token, no box, in the answer');
+  const [dara, sophea] = ['U-10001', 'U-10002'].map((id) => r.json().users.find((u) => u.id === id));
+  assert.equal(dara.signin.apple.id, SUB, 'the rest of the row as before');
+  assert.equal('appleRefresh' in dara, false);
+  assert.deepEqual(sophea.deleting.apple, { sub: SUB }, 'a started delete: what it wrote down, the Apple id without its token');
+  assert.deepEqual(sophea.deleting.signins, [{ provider: 'apple', id: SUB }]);
+  assert.equal('deleting' in dara, false, 'no delete started: no deleting');
+  // The delete's answer (and every other route that answers with the overview) goes through the same overview().
+  const src = readFileSync(new URL('./thirtyda-admin.mjs', import.meta.url), 'utf8');
+  assert.match(src, /return json\(res, 200, \{ \.\.\.\(await overview\(\)\), deleted: id/);
+});
+
 // ---------------------------------------------------------------- the Code page, tower 10: Sign in with Apple's key
 
 /** An Apple-style .p8 (PKCS #8, EC P-256). */

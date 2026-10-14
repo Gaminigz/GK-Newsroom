@@ -414,6 +414,12 @@ export function openAppleRefresh(box, sub, { rawKey } = {}) {
 }
 
 /**
+ * The sealed token a new profile keeps from its session (Create profile): only one that opens for the Apple id the profile
+ * is made with — a token another Apple id left on the session could never be revoked for this one. → the box, or null.
+ */
+export const appleRefreshFor = (box, sub, { rawKey } = {}) => (box && sub && openAppleRefresh(box, String(sub), { rawKey }) ? box : null);
+
+/**
  * What "Delete my account" does with a profile's Sign in with Apple (`apple` = { sub, box }: its Apple id and the sealed
  * refresh token). Best effort and quick (5 s): → 'revoked' | 'no_key' (no admin key saved: nothing to sign the request
  * with) | 'unreadable' (the token cannot be opened) | 'failed' (Apple did not take it, or did not answer).

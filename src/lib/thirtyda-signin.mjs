@@ -724,3 +724,19 @@ export function planSignin({ provider, person, user = null, me = null, session =
   }
   return { kind: "new", session: { verified: proved(session), signin: { ...(session?.signin || {}), [provider]: link } } };
 }
+
+/**
+ * The plan with what the provider adds (`extra`: { user, session }, so far only Apple's sealed refresh token): on the
+ * profile (returning / attach), or on the new session (new). An Apple sign-in onto Create profile always says which token
+ * the new session keeps — this Apple id's, or none (no key, no code, a failed exchange: null) — so a token an earlier
+ * Apple id left on the session never goes onto a profile made with another one (it could never be revoked there).
+ */
+export function withSigninExtra(plan, provider, extra = null) {
+  const out = !extra ? plan : {
+    ...plan,
+    ...(plan.userSet ? { userSet: { ...plan.userSet, ...(extra.user || {}) } } : {}),
+    ...(plan.kind === "new" ? { session: { ...plan.session, ...(extra.session || {}) } } : {}),
+  };
+  if (provider !== "apple" || out.kind !== "new") return out;
+  return { ...out, session: { ...out.session, appleRefresh: extra?.session?.appleRefresh ?? null } };
+}

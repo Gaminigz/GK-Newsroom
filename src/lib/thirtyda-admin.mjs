@@ -172,6 +172,8 @@ async function db() {
 
 const LEVEL_NAMES = { 1: "question", 2: "answer", 3: "chat" };
 const strip = ({ _id, ...doc }) => doc;
+/** A started delete as the overview shows it: what it wrote down, its Apple id without the sealed token (apple.box). */
+const withoutAppleBox = ({ apple, ...was }) => ({ ...was, ...(apple ? { apple: { sub: apple.sub } } : {}) });
 
 /** Live presence from the app's heartbeat; older (sample) rows keep their stored value. */
 function presenceOf(u, now = Date.now()) {
@@ -206,9 +208,11 @@ async function overview() {
       reviewAccounts: users.filter(isReview).length,
     },
     // The PIN's hash and its wrong-try count never leave the server (the admin sees only whether one is set); nor does
-    // a review account's sealed PIN or the number it had before.
-    users: users.map(({ blockResolved, location, locOffset, locMoves, locAt, notices, pinHash, pinAt, pinTries, reviewPinBox, reviewWas, ...u }) => ({
+    // a review account's sealed PIN or the number it had before, nor Sign in with Apple's sealed refresh token (on the
+    // profile, or in deleting.apple while a delete runs: only its Apple id stays there).
+    users: users.map(({ blockResolved, location, locOffset, locMoves, locAt, notices, pinHash, pinAt, pinTries, reviewPinBox, reviewWas, appleRefresh, deleting, ...u }) => ({
       ...u,
+      ...(deleting ? { deleting: withoutAppleBox(deleting) } : {}),
       review: isReview(u),
       pinSet: Boolean(pinHash),
       openFlags: open.filter((f) => f.from === u.id).length,
