@@ -62,6 +62,7 @@ const SAMPLES = [
   ['POST', '/auth/review/check', true], ['POST', '/auth/review/verify', true], ['POST', '/auth/review/pin', true],
   ['POST', '/auth/app/begin', true], ['GET', '/auth/app', true], ['POST', '/auth/signout', true], ['POST', '/profile', true],
   ['GET', '/me', true], ['POST', '/me/lock', true], ['POST', '/me/pin/forgot', true], ['POST', '/guest/nearby', true],
+  ['POST', '/guest/report', true], // a guest's report on a card (no profile: the gate is for profiles only)
   ['GET', `/photos/${'a'.repeat(32)}`, true],
   // Before agreeing: agree, the PIN, delete the account, the locked app's count.
   ['POST', '/me/terms', true], ['POST', '/me/unlock', true], ['POST', '/me/pin', true], ['POST', '/me/delete', true], ['GET', '/me/pending', true],
@@ -80,7 +81,8 @@ const SAMPLES = [
 const NO_PROFILE = new Set(['GET /auth/methods', 'POST /auth/send-code', 'POST /auth/verify-code', 'POST /auth/verify-social',
   'POST /auth/review/check', 'POST /auth/review/verify', 'POST /auth/review/pin',
   'POST /auth/telegram/start', 'GET /auth/telegram/status', 'POST /auth/app/begin', 'GET /auth/app', 'POST /auth/signout',
-  'POST /profile', 'GET /me', 'POST /me/lock', 'POST /me/pin/forgot', 'POST /guest/nearby', `GET /photos/${'a'.repeat(32)}`]);
+  'POST /profile', 'GET /me', 'POST /me/lock', 'POST /me/pin/forgot', 'POST /guest/nearby', 'POST /guest/report',
+  `GET /photos/${'a'.repeat(32)}`]);
 
 test('gate: every route of the real router is listed; before agreeing only agree / PIN / delete / the count stay open', () => {
   for (const { method, re } of API_ROUTES) {

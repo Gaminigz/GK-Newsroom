@@ -155,7 +155,8 @@ function queueHtml() {
     const how = f.kind === 'stopped' && f.field ? 'Stopped by the app · name not saved'
       : f.kind === 'stopped' ? 'Stopped by the app before sending'
       : f.kind === 'blocked' ? `${esc(f.toName)} blocked ${esc(f.fromName)} in the app`
-        : `Delivered · ${esc(f.toName)} reported it${target}`;
+        : f.guest ? `A guest (no profile yet) reported it${target}` // POST /guest/report
+          : `Delivered · ${esc(f.toName)} reported it${target}`;
     const body = f.photo ? `<img class="flag-photo" src="${esc(f.photo)}" alt="Reported photo" loading="lazy">`
       : f.message?.text ? bubble(f.message) : '';
     const tag = f.level ? `<span class="tag">Level ${f.level} ${esc(f.levelName)}</span>` : f.targetLabel ? `<span class="tag">${esc(f.targetLabel)}</span>` : '';
@@ -172,7 +173,7 @@ function queueHtml() {
         <button type="button" class="btn" data-warn="${esc(f.id)}" ${f.warned ? 'disabled' : ''}>${f.warned ? 'Warning sent' : 'Send warning'}</button>
       </div>
       <div class="flag-links">
-        ${f.field ? '' : `<button type="button" class="link" data-chat-flag="${esc(f.id)}">View chat</button>`}
+        ${f.field || f.guest ? '' : `<button type="button" class="link" data-chat-flag="${esc(f.id)}">View chat</button>`}
         <button type="button" class="link plain" data-dismiss="${esc(f.id)}">Dismiss</button>
       </div>
     </article>`;

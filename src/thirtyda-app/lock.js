@@ -15,7 +15,7 @@ import {
   state, bus, api, t, el, icon, go, toast, modal, setMe, registerStrings, errorText, coverScreen, uncoverScreen,
   activity, checkNewPin, pinDigits, PIN_LENGTH, IDLE_COVER_MS, LOCK_IDLE_MS, INPUT_AGE_HEADER, inputAge,
 } from './core.js';
-import { onAppReturn } from './shell.js';
+import { onAppReturn, deviceId } from './shell.js';
 import { termsBody } from './terms.js';
 
 // ---------------------------------------------------------------- what waits on this phone
@@ -449,6 +449,15 @@ export function reviewLink() {
 }
 
 /**
+ * The demo sign-in's body (POST /auth/review/pin): the PIN, the "I agree" kept on this phone, and this phone's id — while
+ * review sign-in is ON that phone may make fresh profiles to try Delete my account (src/lib/thirtyda-review-world.mjs).
+ */
+async function reviewSignInBody(pin) {
+  const device = await deviceId().catch(() => null);
+  return { pin, ...termsBody(), ...(device ? { deviceId: device } : {}) };
+}
+
+/**
  * Signed in as the demo account (POST /auth/review/pin answered): nothing waits on this phone any more (the demo account
  * keeps its own PIN), then a fresh boot on Nearby (Android 2026-10-14: Nearby kept the guest's empty list until a
  * reload). Our own reload: no PIN lock on the way back.
@@ -481,7 +490,7 @@ function reviewSheet() {
     pad.setBusy(true);
     err.show('');
     try {
-      const r = await api.post('/auth/review/pin', { pin, ...termsBody() }, { redirect: false });
+      const r = await api.post('/auth/review/pin', await reviewSignInBody(pin), { redirect: false });
       sheet.close();
       reviewSignedIn(r);
     } catch (e) {
@@ -546,7 +555,7 @@ function reviewOffer(pin, name) {
       no.disabled = true;
       err.show('');
       try {
-        const r = await api.post('/auth/review/pin', { pin, ...termsBody() }, { redirect: false });
+        const r = await api.post('/auth/review/pin', await reviewSignInBody(pin), { redirect: false });
         settle(true);
         close();
         reviewSignedIn(r);

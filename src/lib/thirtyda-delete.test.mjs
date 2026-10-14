@@ -768,3 +768,32 @@ test('deleteAccount: every block by her or of her goes; others\' blocks stay; he
   assert.equal(f10.status, 'open', 'a block BY her stays open for the team (about someone else)');
   assert.deepEqual(traces(d), []);
 });
+
+// ---------------------------------------------------------------- an App review demo account (owner 2026-10-14, the iOS audit)
+
+test('POST /me/delete on a demo account: the same checks and answer, THAT session signed out, nothing deleted', async () => {
+  const { d, photos } = await world();
+  await d.collection(USERS).updateOne({ _id: A }, { $set: { demo: 'review' } });
+  const me = await d.collection(USERS).findOne({ _id: A });
+  const before = JSON.stringify(d.dump());
+  const calls = [];
+  const demo = (ctx) => deleteMe(ctx, { ...deps(calls, photos), demo: true });
+  await assert.rejects(demo(routeCtx(d, me, { origin: null })), (e) => e.code === 'bad_origin' && e.status === 403);
+  await assert.rejects(demo(routeCtx(d, me)), (e) => e.code === 'invalid' && e.extra.field === 'pin', 'its PIN is asked like a real one');
+  await assert.rejects(demo(routeCtx(d, me, { pin: '1111' })), (e) => e.code === 'wrong_pin');
+  assert.equal(JSON.stringify(d.dump()), before, 'a wrong PIN changes nothing');
+  const ctx = routeCtx(d, me, { pin: '2580' });
+  assert.deepEqual(await demo(ctx), { ok: true, deleted: true }, 'the answer of a real delete: the app says "Your account was deleted."');
+  assert.equal(ctx.headers['Set-Cookie'], 'thirtyda_s=; Max-Age=0', 'the cookie is cleared');
+  assert.equal(ctx.session, null);
+  assert.deepEqual(d.docs(SESSIONS).filter((s) => s.userId === A).map((s) => s._id), ['s-a2'], 'only the session that asked ends');
+  const kept = d.docs(USERS).find((u) => u._id === A);
+  assert.ok(kept && kept.phone === A_PHONE && kept.pinHash === PIN_HASH && kept.photos.length === A_PHOTOS.length, 'the demo profile stays whole');
+  assert.ok(!kept.deleting && !kept.blocked);
+  assert.deepEqual([...photos.store].sort(), [...A_PHOTOS.filter(Boolean), B_PHOTO].sort(), 'no photo deleted');
+  assert.equal(d.docs(PAIRS).find((p) => p._id === 'P-1').stage, 'l3_open', 'its conversations go on');
+  const lines = d.docs(AUDIT).filter((x) => x.action === 'review_delete_kept');
+  assert.equal(lines.length, 1);
+  assert.deepEqual(Object.keys(lines[0]).filter((k) => k !== '_id').sort(), ['action', 'at', 'userId'], 'ids only');
+  assert.equal(d.docs(AUDIT).some((x) => x.action === 'account_deleted'), false);
+});

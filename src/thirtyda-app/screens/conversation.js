@@ -22,6 +22,9 @@ import {
 import { sendPanel, translateNote, redirected, myLang, enc } from './level-ask.js';
 import { mountChat, ensureStyles, partnerHeader, fmtTime, dayLabel } from './chat.js';
 import { personMenuButton, reportPerson } from './safety.js';
+// "Remind me" inside the iOS app: the app's own reminders on the phone (a web view has no web notifications).
+import { shellPlatform } from '../shell.js';
+import { permissionOff } from '../in-app.js';
 
 const POLL_MS = 4000; // the other person's lines, replies and choice show up while you look
 const POLL_MAX_MS = 30000; // back-off ceiling while offline
@@ -71,6 +74,32 @@ function askNotifications() {
     }
   });
 }
+
+// The app's own reminders (owner 2026-10-14, the iOS audit: "Notifications are off in this browser" inside the app):
+// ThirtyDaShell.notifyStatus / notifyPermission / remind / cancelRemind (iOS), one reminder on the phone at the time the
+// level opens; the same id replaces the earlier one. Else the browser's notifications as before. Where neither works
+// (the Android app, a browser without notifications) the chip is not shown at all.
+
+/** ThirtyDaShell when it has all four reminder calls, else null (the website, or an app without them). */
+function shellReminders() {
+  const p = shellPlatform() ? window.Capacitor?.Plugins?.ThirtyDaShell : null;
+  return p && ['notifyStatus', 'notifyPermission', 'remind', 'cancelRemind'].every((k) => typeof p[k] === 'function') ? p : null;
+}
+
+/** Can "Remind me" do anything here: the app's reminders, or the browser's notifications. */
+const canRemind = () => Boolean(shellReminders()) || notificationState() !== 'unsupported';
+
+/** The app's own permission: asked only when not given yet (iOS asks once, then just answers). → true when allowed. */
+async function shellAllowed(shell) {
+  try {
+    if ((await shell.notifyStatus())?.granted === true) return true;
+    return (await shell.notifyPermission())?.granted === true;
+  } catch {
+    return false;
+  }
+}
+
+const reminderId = (pairId) => `pair-${pairId}`; // one per conversation: a new one replaces it
 
 // ---------------------------------------------------------------- the screen
 
@@ -309,7 +338,8 @@ function mountConversation(root, base, initial, chat) {
     ].filter(Boolean);
   }
 
-  function remindButton() {
+  /** level + until: the wait it reminds of (the app's own reminder fires when that level opens). */
+  function remindButton(level, until) {
     const on = Boolean(conv.pair?.remind);
     const b = el('button', {
       type: 'button', class: ['chip chip-sm conv-remind', on && 'on'], 'aria-pressed': String(on), disabled: remindBusy,
@@ -319,12 +349,25 @@ function mountConversation(root, base, initial, chat) {
       const want = !conv.pair?.remind;
       remindBusy = true;
       b.disabled = true;
-      const asked = want ? askNotifications() : Promise.resolve(notificationState());
+      const shell = shellReminders();
+      // The browser's question must run inside the tap (before any await); the app's own needs no tap.
+      const asked = shell ? (want ? shellAllowed(shell) : Promise.resolve(true)).then((ok) => (ok ? 'granted' : 'denied'))
+        : want ? askNotifications() : Promise.resolve(notificationState());
       asked.then(async (permission) => {
         try {
           const r = await api.post(`${base}/remind`, { on: want });
-          if (conv.pair) conv.pair.remind = Boolean(r.pair?.remind ?? want);
-          if (want && permission !== 'granted') toast(t('cv_notify_off'));
+          const now = Boolean(r.pair?.remind ?? want);
+          if (conv.pair) conv.pair.remind = now;
+          if (shell && pairId) {
+            const id = reminderId(pairId);
+            if (now && permission === 'granted' && ms(until) > Date.now()) {
+              await shell.remind({
+                id, at: ms(until), title: '30+DA', body: t('cv_remind_note', { n: level, name: name() }),
+                url: `${location.origin}/30da/#/c/${encodeURIComponent(pairId)}`,
+              }).catch(() => {});
+            } else if (!now) await shell.cancelRemind({ id }).catch(() => {});
+          }
+          if (want && permission !== 'granted') permissionOff('notify', t('cv_notify_off'));
         } catch (err) {
           if (!redirected(err)) toast(errorText(err));
         }
@@ -345,7 +388,7 @@ function mountConversation(root, base, initial, chat) {
     return el('div', { class: 'conv-wait' },
       el('span', { class: 'conv-wait-icon', 'aria-hidden': 'true' }, icon('clock', 16)),
       el('span', { class: 'conv-wait-text' }, before, time, after),
-      chatMode ? null : remindButton());
+      chatMode || !canRemind() ? null : remindButton(level, until));
   }
 
   function timelineNodes() {
@@ -850,6 +893,7 @@ registerStrings({
     cv_remind: 'Remind me',
     cv_remind_on: 'Reminder on',
     cv_notify_off: 'Notifications are off in this browser, so you will see it here.',
+    cv_remind_note: 'Level {n} with {name} is open now.',
     cv_all_replied: 'All 5 replied. {name} can see them.',
     cv_they_all: '{name} replied to all 5.',
     cv_level_open: 'Level {n} is open.',
@@ -900,6 +944,7 @@ registerStrings({
     cv_remind: 'រំលឹកខ្ញុំ',
     cv_remind_on: 'ការរំលឹកបានបើក',
     cv_notify_off: 'ការជូនដំណឹងត្រូវបានបិទនៅក្នុងកម្មវិធីរុករកនេះ ដូច្នេះអ្នកនឹងឃើញវានៅទីនេះ។',
+    cv_remind_note: 'កម្រិត {n} ជាមួយ {name} បានបើកហើយ។',
     cv_all_replied: 'បានឆ្លើយតបទាំង 5 ហើយ។ {name} អាចមើលឃើញ។',
     cv_they_all: '{name} បានឆ្លើយតបទាំង 5 ហើយ។',
     cv_level_open: 'កម្រិត {n} បានបើកហើយ។',
@@ -950,6 +995,7 @@ registerStrings({
     cv_remind: '提醒我',
     cv_remind_on: '提醒已开启',
     cv_notify_off: '此浏览器已关闭通知，你会在这里看到提醒。',
+    cv_remind_note: '你和 {name} 的等级 {n} 已开启。',
     cv_all_replied: '5 句都已回复，{name} 可以看到了。',
     cv_they_all: '{name} 已回复全部 5 句。',
     cv_level_open: '等级 {n} 已开启。',
@@ -1000,6 +1046,7 @@ registerStrings({
     cv_remind: '알려 주세요',
     cv_remind_on: '알림 켜짐',
     cv_notify_off: '이 브라우저는 알림이 꺼져 있어서 여기에서 알려 드려요.',
+    cv_remind_note: '{name}님과의 레벨 {n}이 열렸어요.',
     cv_all_replied: '5개 모두 답장했어요. {name}님이 볼 수 있어요.',
     cv_they_all: '{name}님이 5개 모두 답장했어요.',
     cv_level_open: '레벨 {n} 열림',
@@ -1050,6 +1097,7 @@ registerStrings({
     cv_remind: '知らせる',
     cv_remind_on: 'リマインダーON',
     cv_notify_off: 'このブラウザでは通知がオフのため、ここでお知らせします。',
+    cv_remind_note: '{name}さんとのレベル{n}が開きました。',
     cv_all_replied: '5つすべてに返信しました。{name}さんに届いています。',
     cv_they_all: '{name}さんが5つすべてに返信しました。',
     cv_level_open: 'レベル{n}が開きました。',

@@ -84,6 +84,7 @@ export const COVERAGE = {
   [SIGNIN_STATES]: null, // a 10-minute state carries no profile; a 'to: me' one that comes back later is a plain new sign-in
   [SIGNUP_LIMITS]: null, // per address and day (hashed), no profile
   [SIGNUP_DEVICES]: null, // per phone (a one-way hash of its id), no link to any profile; gone after 30 days
+  thirtyda_review_devices: null, // App review phones (a one-way hash of the id), no link to any profile; gone when review sign-in goes OFF
   thirtyda_counters: null, // id counters
   thirtyda_questions: null, // the admin's question choices
   thirtyda_settings: null, // the admin's sealed keys
@@ -463,7 +464,7 @@ const limits = windowLimiter(15 * 60e3);
  * router: fail(status, code, message, extra) makes its API errors, checkPinTry(ctx, pin) is the lock screen's own PIN
  * check (no try limit; 429 only for scripts), signedOutCookie(req) the cleared session cookie.
  */
-export async function deleteMe(ctx, { fail, checkPinTry, signedOutCookie, deletePhoto = deleteStoredPhoto, now = Date.now() }) {
+export async function deleteMe(ctx, { fail, checkPinTry, signedOutCookie, deletePhoto = deleteStoredPhoto, now = Date.now(), demo = false }) {
   const { d, req, me, body } = ctx;
   if (!req.headers.origin) throw fail(403, "bad_origin", "Requests must come from the 30+DA app.");
   if (limits.over(`ip:${clientIp(req)}`, DELETE_PER_IP, now) || limits.over(`user:${me._id}`, DELETE_PER_PROFILE, now)) {
@@ -477,11 +478,28 @@ export async function deleteMe(ctx, { fail, checkPinTry, signedOutCookie, delete
     if (pin.length !== PIN_LENGTH) throw fail(422, "invalid", "Enter your 4-digit PIN.", { field: "pin" });
     await checkPinTry(ctx, pin); // 400 wrong_pin (ask again) · 429 too_many_tries (scripts only) — like the lock screen
   }
+  if (demo) return demoDelete(ctx, { signedOutCookie, now });
   // Others' deletes that stopped half way finish now too (best effort, never in the way of this one).
   await resumeDeletions(d, { now, deletePhoto }).catch((err) => {
     console.error("[30da delete] resume:", err instanceof Error ? err.message : err);
   });
   await deleteAccount(d, me._id, { now, deletePhoto });
+  ctx.session = null;
+  ctx.headers["Set-Cookie"] = signedOutCookie(req);
+  return { ok: true, deleted: true };
+}
+
+/**
+ * "Delete my account" on an App review demo account (deleteMe { demo }, src/lib/thirtyda-review.mjs; owner 2026-10-14,
+ * the iOS audit): the store reviewer must be able to finish the flow, but the demo profile, its PIN and its conversation
+ * stay for the next reviewer. After the same checks (Origin, limits, the PIN like the lock screen) it ends exactly like a
+ * real delete for the reviewer — THIS session signed out, the cookie cleared, the same answer, so the app says "Your
+ * account was deleted." — and deletes nothing. One audit line, ids only.
+ */
+async function demoDelete(ctx, { signedOutCookie, now }) {
+  const { d, req, me, session } = ctx;
+  if (session?._id) await d.collection(SESSIONS).deleteMany({ _id: session._id });
+  await d.collection(AUDIT).insertOne({ at: new Date(now), action: "review_delete_kept", userId: me._id }).catch(() => {});
   ctx.session = null;
   ctx.headers["Set-Cookie"] = signedOutCookie(req);
   return { ok: true, deleted: true };

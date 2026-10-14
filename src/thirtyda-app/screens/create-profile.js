@@ -624,7 +624,9 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     input.readOnly = true;
     const { phone } = model.review;
     try {
-      const r = await api.post('/auth/review/verify', { phone, code: input.value }, { redirect: false });
+      // This phone's id: while review sign-in is ON it may make fresh profiles (src/lib/thirtyda-review-world.mjs).
+      const device = await deviceId().catch(() => null);
+      const r = await api.post('/auth/review/verify', { phone, code: input.value, ...(device ? { deviceId: device } : {}) }, { redirect: false });
       // The account keeps its own PIN: the PIN that waited on this phone is not used (the lock asks the account's).
       clearPinFlags();
       Object.assign(model, { review: null, verified: true, verifiedPhone: r.user?.phone || phone, verifiedBy: null, failed: [] });

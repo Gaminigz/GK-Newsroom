@@ -16,6 +16,8 @@
  * Pure apart from the collections handed in, so the unit tests run without a database.
  */
 
+import crypto from "node:crypto";
+
 export const BLOCKS = "thirtyda_blocks";
 
 export const blockId = (by, who) => `${by}|${who}`;
@@ -80,6 +82,23 @@ export function reportFlag({ id, by, byName, who, at, label, target, chatId = nu
   return {
     _id: id, id, chatId, from: who, to: by, at, reason: `Reported by ${byName} · ${label}`, kind: "reported", status: "open",
     warned: false, target, ...extra, key: reportFlagKey(by, who, target),
+  };
+}
+
+/** The key that keeps one open guest report per address (hashed) + person. */
+export const guestReportKey = (by, who) => `guest|${by}|${who}`;
+/** A guest's address as a report keeps it: a one-way hash (one open report per address + person; never the address). */
+export const guestReporter = (ip) => crypto.createHash("sha256").update(`30da-guest-report|${String(ip ?? "")}`).digest("hex").slice(0, 24);
+
+/**
+ * The admin's flag for a guest's report (store policy, owner 2026-10-14: a guest — no profile yet — sees members' cards,
+ * so a guest can report one too, POST /guest/report): about `who` (from), "Reported by a guest · <label>", the profile
+ * as the target. A guest has no profile, so no `to` and no name: `guest: true` says who reported it. `by` = guestReporter.
+ */
+export function guestReportFlag({ id, by, who, at, label }) {
+  return {
+    _id: id, id, chatId: null, from: who, to: null, guest: true, at, reason: `Reported by a guest · ${label}`, kind: "reported",
+    status: "open", warned: false, target: "profile", key: guestReportKey(by, who),
   };
 }
 

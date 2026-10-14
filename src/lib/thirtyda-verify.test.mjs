@@ -56,6 +56,8 @@ const SAMPLES = [
   // must be able to block and report too.
   ['GET', '/me/blocks', false], ['POST', '/people/U-10231/block', false], ['DELETE', '/people/U-10231/block', false],
   ['POST', '/people/U-10231/report', false],
+  // A guest's report on a card (store policy): safety, never gated (a guest has no profile anyway).
+  ['POST', '/guest/report', false],
 ];
 
 test('gate: every route of the real router has a sample, and only the 6 that talk to someone are gated', () => {

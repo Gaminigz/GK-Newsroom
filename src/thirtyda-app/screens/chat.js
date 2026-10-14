@@ -8,6 +8,8 @@ import {
   screen, el, icon, t, go, api, toast, modal, state, topBar, avatar, langPair, errorText,
   registerStrings, checkChatMessage, CHAT_MIN, CHAT_MAX, SPEECH_LOCALE, PHOTO_MAX, CHAT_REPORT_REASONS,
 } from '../core.js';
+// Inside the iOS / Android app a blocked microphone is the app's own setting, never "your browser settings" (Apple 4.2).
+import { permissionOff } from '../in-app.js';
 
 const POLL_MS = 3000;
 const POLL_MAX_MS = 20000; // back-off ceiling while offline
@@ -215,7 +217,7 @@ function dictation(button, input, onChange) {
       onChange();
     };
     r.onerror = (e) => {
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast(t('chat_mic_denied'));
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') permissionOff('mic', t('chat_mic_denied'));
       else if (e.error === 'no-speech') toast(t('chat_mic_nothing'));
       else if (e.error !== 'aborted') toast(t('chat_mic_failed'));
     };

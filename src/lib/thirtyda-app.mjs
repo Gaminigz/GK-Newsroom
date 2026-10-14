@@ -93,6 +93,12 @@
  * While "Review sign-in" is ON, GET /auth/methods says review:true and the phone step asks POST /auth/review/check
  * { phone } → { review } before any way; a review number gets a 6-digit box: POST /auth/review/verify { phone, code } →
  * the same answer as verify-code for that profile, its session LOCKED (the PIN lock asks the account's PIN).
+ * For the reviewers (src/lib/thirtyda-review-world.mjs): MeView.review true on a demo account (the app words its kept
+ * profile calmly); its "Delete my account" signs that session out with the usual answer and keeps the profile; a phone
+ * that signed in to one is a review device, which Create profile's per-phone and per-address limits skip while ON.
+ *
+ * A guest's report (store policy, owner 2026-10-14): POST /guest/report { id, reason } — a guest sees members' cards,
+ * so a guest can report one: an admin flag "Reported by a guest", rate-limited per address.
  */
 
 import crypto from "node:crypto";
@@ -134,6 +140,7 @@ import {
 import { deleteMe, finishDeletesInBackground, expireUnverifiedInBackground } from "./thirtyda-delete.mjs";
 import {
   BLOCKS, blockedIds, blockedBetween, addBlock, removeBlock, myBlocks, blockFlag, blockFlagKey, reportFlag, resolveUpdate,
+  guestReportFlag, guestReporter,
 } from "./thirtyda-blocks.mjs";
 import { PERSON_REPORT_REASONS, CHAT_REPORT_REASONS, REPORT_LABELS, parseReportTarget } from "../thirtyda-app/shared/safety.js";
 import { isPending, publicPhotoId, pendingFlags, pendingSet, reviewUnset, newProfileReview } from "./thirtyda-photo-review.mjs";
@@ -145,6 +152,8 @@ import {
   REVIEW, REVIEW_TRIES, isReview, sameWorld, worldFilter, pairsInWorld, reviewSwitch, reviewAccountFor, checkReviewCode, tryCounter,
   reviewPinCheck, reviewPinProbe, ReviewError,
 } from "./thirtyda-review.mjs";
+// The reviewers' side (owner 2026-10-14, the iOS audit): review devices skip Create profile's phone / address limits.
+import { REVIEW_DEVICES, markReviewDevice, isReviewDevice } from "./thirtyda-review-world.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
   PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
@@ -246,6 +255,8 @@ export async function ensureThirtyDaIndexes(d) {
     d.collection(SIGNUP_LIMITS).createIndex({ purgeAt: 1 }, { expireAfterSeconds: 0 }),
     // One unverified profile per phone: each phone's (hashed) id goes 30 days after it made one (thirtyda-verify.mjs).
     d.collection(SIGNUP_DEVICES).createIndex({ purgeAt: 1 }, { expireAfterSeconds: 0 }),
+    // App review phones (src/lib/thirtyda-review-world.mjs): forgotten when review sign-in goes OFF, else after 30 days.
+    d.collection(REVIEW_DEVICES).createIndex({ purgeAt: 1 }, { expireAfterSeconds: 0 }),
     // People blocking each other (src/lib/thirtyda-blocks.mjs): _id '<by>|<who>'; found by either side.
     d.collection(BLOCKS).createIndex({ by: 1, at: -1 }),
     d.collection(BLOCKS).createIndex({ who: 1 }),
@@ -507,6 +518,9 @@ export function meView(u) {
     verifyBy: verifyByOf(u),
     // The community rules this profile agreed to ({ version, at } or null): not the current version → the rules first.
     terms: termsView(u),
+    // An App review demo account (src/lib/thirtyda-review.mjs): its photos, name and PIN stay as they are; the app says
+    // so calmly on My profile instead of an error (owner 2026-10-14, the iOS audit).
+    review: isReview(u),
   };
 }
 
@@ -1303,8 +1317,10 @@ const phoneInUse = () => fail(409, "phone_in_use", "This phone number already ha
 const reviewFixed = () => fail(409, "review_account", "This is a demo account: its number and sign-ins cannot be changed.");
 /**
  * A signed-in App review account also keeps its PIN, profile and photos and is never deleted from the app (PATCH /me
- * except a language-only change, POST /me/pin, the /me/photos routes, POST /me/delete): its PIN is in the review
- * notes, so whoever signs in with it must not lock the store reviewers out. Only the admin changes or deletes it.
+ * except a language-only change, POST /me/pin, the /me/photos routes): its PIN is in the review notes, so whoever signs
+ * in with it must not lock the store reviewers out. Only the admin changes or deletes it. The app words this 409 as
+ * "Demo account: photos, name and PIN stay as they are." (MeView.review). POST /me/delete answers like a real delete
+ * but keeps the profile (src/lib/thirtyda-delete.mjs deleteMe { demo }).
  */
 const reviewKept = () => fail(409, "review_account", "This is a demo account: it cannot be changed or deleted.");
 
@@ -1377,6 +1393,7 @@ async function reviewVerify(ctx) {
   // The account's own PIN comes first (the PIN lock): locked, and no "new PIN without the old one".
   await d.collection(C.sessions).updateOne({ _id: ctx.session._id }, { $set: { pinOk: false }, $unset: { pinResetUntil: "" } });
   await audit({ ok: true });
+  await markReviewDevice(d, body.deviceId).catch(() => {}); // this phone may make fresh profiles while ON (review-world)
   return { ok: true, existing: true, user: meView(user), locked: true };
 }
 
@@ -1450,6 +1467,7 @@ async function reviewPin(ctx) {
   // Open (startSession: pinOk true, active now): the PIN was just proven. No "new PIN without the old one".
   await d.collection(C.sessions).updateOne({ _id: ctx.session._id }, { $set: { pinOk: true }, $unset: { pinResetUntil: "" } });
   await audit({ ok: true, userId: user._id });
+  await markReviewDevice(d, body.deviceId).catch(() => {}); // this phone may make fresh profiles while ON (review-world)
   return { ok: true, existing: true, user: meView(user), locked: false, notices: unseenNotices(user), lock: lockInfo() };
 }
 
@@ -1947,7 +1965,10 @@ async function createProfile(ctx) {
   // Unverified: this phone's one (owner 2026-10-14: its id kept only hashed, 30 days; no id → no phone check), then one
   // of today's few for this address — both given back if the profile is not made after all.
   const devices = d.collection(SIGNUP_DEVICES);
-  const deviceAt = unverified ? deviceKey(body.deviceId) : null;
+  // A phone that signed in to an App review demo account, while "Review sign-in" is ON (src/lib/thirtyda-review-world.mjs):
+  // store reviewers share phones and addresses and are asked to make a fresh profile, so neither limit applies to it.
+  const reviewDevice = unverified && (await isReviewDevice(d, body.deviceId).catch(() => false));
+  const deviceAt = unverified && !reviewDevice ? deviceKey(body.deviceId) : null;
   const device = deviceAt ? await claimDevice(devices, deviceAt) : null;
   if (device && !device.ok) throw fail(409, "device_used", "This phone already made a profile. Verify your number to make a new one.");
   const limits = d.collection(SIGNUP_LIMITS);
@@ -1957,7 +1978,7 @@ async function createProfile(ctx) {
     await releaseDevice(devices, device?.key);
   };
   try {
-    slot = unverified ? await claimSignup(limits, clientIp(ctx.req)) : null;
+    slot = unverified && !reviewDevice ? await claimSignup(limits, clientIp(ctx.req)) : null;
   } catch (err) {
     await releaseDevice(devices, device?.key);
     throw err;
@@ -2422,6 +2443,35 @@ async function guestNearby(ctx) {
   // Photo 1 only, and not while it waits for the team's approval.
   const people = rows.map(({ photos, photoReview, ...u }) => guestCard({ ...u, photo: publicPhotoId({ photos, photoReview }, 0) }, { photoUrl }));
   return { guest: true, near: device ? "you" : "phnom_penh", gps: true, count: people.length, people };
+}
+
+const GUEST_REPORTS = 10; // per address per 15 minutes
+const guestReports = windowLimiter(OTP_WINDOW_MS);
+
+/**
+ * POST /guest/report { id, reason } → { ok, already? } (store policy, owner 2026-10-14, the iOS audit: a guest — no
+ * profile yet — sees members' cards, so a guest can report one). The reasons of a member's report (PERSON_REPORT_REASONS),
+ * about the profile. GUEST_REPORTS per address per 15 minutes (429 rate_limited), counted before any await. Only someone
+ * a guest may see (not blocked, not being deleted, the same world: never an App review account) — else 404, as for
+ * someone gone. One open flag per address + person (guestReporter: a hash, never the address): again → { already }.
+ */
+async function guestReport(ctx) {
+  const { d, me, req, body } = ctx;
+  if (guestReports.over(clientIp(req), GUEST_REPORTS)) throw fail(429, "rate_limited", "Too many reports. Try again in 15 minutes.");
+  const reason = String(body.reason ?? "");
+  if (!PERSON_REPORT_REASONS.includes(reason)) throw invalid("Choose a reason.", { field: "reason" });
+  const id = String(body.id ?? "");
+  if (!/^U-\d{1,12}$/.test(id)) throw invalid("Say who you report.", { field: "id" });
+  const u = await d.collection(C.users).findOne({ _id: id }, { projection: { blocked: 1, deleting: 1, demo: 1 } });
+  if (!u || u.blocked || u.deleting || u._id === me?._id || !sameWorld(me, u)) throw fail(404, "not_found", "This person is not here any more.");
+  const flagId = await nextId(d, "flag");
+  try {
+    await d.collection(C.flags).insertOne(guestReportFlag({ id: flagId, by: guestReporter(clientIp(req)), who: u._id, at: nowIso(), label: REPORT_LABELS[reason] }));
+  } catch (err) {
+    if (err?.code === 11000) return { ok: true, already: true };
+    throw err;
+  }
+  return { ok: true };
 }
 
 /** Distance for a profile: only for someone within Nearby range (or with a pair), never 0. */
@@ -3420,12 +3470,15 @@ const ROUTES = [
   ["POST", /^\/me\/pin\/forgot$/, forgotPin, { auth: "none", blockedOk: true }],
   // "Delete my account" (src/lib/thirtyda-delete.mjs): unlocked only (not a whileLocked route), the PIN checked like the
   // lock screen's; blockedOk only so a delete that stopped half way can finish (a blocked profile is refused there).
-  ["POST", /^\/me\/delete$/, (ctx) => isReview(ctx.me) ? Promise.reject(reviewKept()) : deleteMe(ctx, { fail, checkPinTry, signedOutCookie: (req) => cookieFor(req, "", 0) }), { blockedOk: true }],
+  // An App review demo account: the same checks and answer, that session signed out, the profile kept (demo: review-world).
+  ["POST", /^\/me\/delete$/, (ctx) => deleteMe(ctx, { fail, checkPinTry, signedOutCookie: (req) => cookieFor(req, "", 0), demo: isReview(ctx.me) }), { blockedOk: true }],
   ["POST", /^\/notices\/([\w-]{1,64})\/seen$/, noticeSeen],
   // auth "none": a guest (no profile yet) sees photo 1 only, as on the cards of POST /guest/nearby.
   ["GET", /^\/photos\/([a-f0-9]{32})$/, getPhoto, { auth: "none" }],
   ["GET", /^\/nearby$/, nearby],
   ["POST", /^\/guest\/nearby$/, guestNearby, { auth: "none" }],
+  // A guest's report on a card (store policy): rate-limited per address, an admin flag "Reported by a guest".
+  ["POST", /^\/guest\/report$/, guestReport, { auth: "none" }],
   ["GET", /^\/people\/(U-\d+)$/, person],
   ["POST", /^\/pairs$/, createPair],
   ["GET", /^\/pairs$/, listPairs],

@@ -8,6 +8,14 @@ import {
 import { startLock, bootLock, applyLockInfo, waitingPin, pinResetPending, leaveWithoutLock } from './lock.js';
 // The community rules' "I agree" (store policy, owner 2026-10-14): screens/rules.js, kept on the phone by terms.js.
 import { agreedHere, syncTerms, termsNeeded } from './terms.js';
+import { shellPlatform } from './shell.js';
+
+// Inside the iOS / Android app (owner 2026-10-14, the iOS audit): <html data-shell="ios|android"> — app.css then keeps
+// the page from being selected like a web page (fields stay selectable). The website has no data-shell.
+try {
+  const shell = shellPlatform();
+  if (shell) document.documentElement.dataset.shell = shell;
+} catch { /* the website look */ }
 
 // Each screen registers its own route. One failing module must not take the whole app down,
 // so they load side by side and a failure is only logged.

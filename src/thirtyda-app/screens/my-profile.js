@@ -24,7 +24,22 @@ function nameProblem(value) {
   return problem === 'contact' ? t('me_name_contact') : null;
 }
 
-const errText = (err) => (err.status === 0 ? t('err_network') : t('err_generic'));
+// 409 review_account (an App review demo account): the calm demo line, never "Something went wrong".
+const errText = (err) => (err.status === 0 ? t('err_network') : err.code === 'review_account' ? t('err_review') : t('err_generic'));
+
+/**
+ * An App review demo account (MeView.review, src/lib/thirtyda-review.mjs; owner 2026-10-14, the iOS audit): its photos,
+ * name and PIN are in the store's review notes and stay as they are. Its controls are off — inert, dimmed — so a tap
+ * never ends in an error; one calm line at the top says why. The language still changes, and "Delete my account" ends
+ * like a real delete for the reviewer (the server keeps the demo profile).
+ */
+function demoOff(node) {
+  if (!node) return node;
+  node.inert = true;
+  node.classList.add('demo-off');
+  node.setAttribute('aria-disabled', 'true');
+  return node;
+}
 
 /** { max, allowed, levels } from MeView.photoSlots (worked out from the level if an old server leaves it out). */
 function slotsOf(me) {
@@ -72,6 +87,8 @@ screen('/me', async ({ root, query }) => {
   }
   const me = state.me;
   let phone = null;
+  const demo = me?.review === true;
+  const off = (node) => (demo ? demoOff(node) : node);
 
   // --- photos
   // MeView.photos is slot-aligned: photos[i] is slot i+1 (null = empty). A photo never changes slots,
@@ -470,16 +487,18 @@ screen('/me', async ({ root, query }) => {
   body.replaceChildren(
     // Never verified: "Verify within 48 hours to keep your profile" + the time left (owner 2026-10-14).
     ...[verifyBanner()].filter(Boolean),
+    // An App review demo account: one calm line, its controls off below (demoOff).
+    ...(demo ? [el('p', { class: 'demo-note', role: 'note' }, icon('lock', 14), el('span', {}, t('err_review')))] : []),
     // Language first: it decides what everything below (and every chat) is shown in.
     // Owner (2026-10-13): hearts (left) and where I am (right) at the top, not hidden at the bottom.
     el('div', { class: 'me-hearts-top' },
       el('div', { class: 'me-hearts-left' }, el('span', { class: 'label' }, t('me_hearts')), heartPills(me.hearts, 'lg')),
       place ? el('span', { class: 'me-place' }, icon('pin', 14), el('span', {}, place)) : null),
     section(t('me_language'), el('div', { class: 'lang-grid' }, langBtns), el('p', { class: 'help' }, t('me_language_note'))),
-    el('section', { class: 'section' },
+    off(el('section', { class: 'section' },
       el('div', { class: 'section-head' }, el('span', { class: 'label ink' }, t('me_photos')), slotCount),
-      slots, keptNote, waitNote, el('p', { class: 'help' }, t('me_photos_note')), file.inputs),
-    el('section', { class: 'section' },
+      slots, keptNote, waitNote, el('p', { class: 'help' }, t('me_photos_note')), file.inputs)),
+    off(el('section', { class: 'section' },
       el('div', { class: 'me-id-row' },
         el('div', { class: 'me-id-cell' },
           el('div', { class: 'field-head' }, el('label', { class: 'label ink', for: 'me-name' }, t('me_app_name')),
@@ -490,9 +509,9 @@ screen('/me', async ({ root, query }) => {
       nameErr, yearErr, genderSeg, roleSel,
       el('div', { class: 'field-head' }, el('label', { class: 'label ink', for: 'me-real' }, t('me_real_name')),
         el('span', { class: 'tag' }, icon('lock', 11), t('me_real_tag'))),
-      realInput, realErr, truthNote()), // gender, job, real name (shown at Level 3), then the warning
-    section(t('me_verified_with'), phoneBlock),
-    me.pinSet ? changePin : null,
+      realInput, realErr, truthNote())), // gender, job, real name (shown at Level 3), then the warning
+    off(section(t('me_verified_with'), phoneBlock)),
+    me.pinSet ? off(changePin) : null,
     // Store policy (owner 2026-10-14): the people I blocked, each with Unblock.
     blockedPeopleSection(),
     signOut,

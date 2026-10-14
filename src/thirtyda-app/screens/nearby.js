@@ -1,11 +1,14 @@
 // Screen 3 · Nearby — GPS card, distance slider, Everyone/Women/Men, the "waiting for you" strip
 // and the 3-column grid of faces with heart pills.
 import {
-  screen, el, icon, t, go, api, toast, state, bus, store, avatar, heartPills, fmtKm, pairRoute, actionLabel,
+  screen, el, icon, t, go, api, toast, modal, state, bus, store, avatar, heartPills, fmtKm, pairRoute, actionLabel,
   heartbeat, updateLocation, locate, registerStrings, roleLabel,
 } from '../core.js';
 import { profileFirst } from '../guest.js';
 import { verifyBanner } from './verify-chat.js';
+// Inside the iOS / Android app: location is the app's own setting, never "your browser settings" (Apple 4.2).
+import { permissionOff } from '../in-app.js';
+import { shellPlatform } from '../shell.js';
 
 const KM_KEY = 'thirtyda_km';
 const SHOW_KEY = 'thirtyda_show';
@@ -31,6 +34,35 @@ function locationErrorText(err) {
   if (err?.code === 'unsupported') return t('nb_loc_unsupported');
   if (err?.status === 0) return t('err_network');
   return t('nb_loc_fail');
+}
+
+/** Say why the location could not be read: in the app, a blocked (or missing) location is the app's own setting. */
+function sayLocationError(err) {
+  if (shellPlatform() && (err?.code === 'denied' || err?.code === 'unsupported')) permissionOff('location');
+  else toast(locationErrorText(err));
+}
+
+/** "Sign out of 30+DA?" in the app's own dialog (never the browser's confirm). → Promise<boolean>. */
+function confirmSignOut(text) {
+  return new Promise((resolve) => {
+    let done = false;
+    const yes = el('button', { type: 'button', class: 'btn btn-primary' }, icon('logout', 18), el('span', {}, t('nb_signout')));
+    const no = el('button', { type: 'button', class: 'btn btn-secondary' }, t('nb_cancel'));
+    const dlg = modal(el('div', { class: 'dialog-body', role: 'alertdialog', 'aria-labelledby': 'nb-out-title' },
+      el('span', { class: 'dialog-icon', 'aria-hidden': 'true' }, icon('logout', 22)),
+      el('p', { id: 'nb-out-title' }, text),
+      el('div', { class: 'dialog-actions' }, no, yes)), { label: t('nb_signout') });
+    const finish = (v) => {
+      if (done) return;
+      done = true;
+      resolve(v);
+      dlg.close();
+    };
+    yes.addEventListener('click', () => finish(true));
+    no.addEventListener('click', () => finish(false));
+    dlg.node.addEventListener('close', () => finish(false));
+    no.focus();
+  });
 }
 
 screen('/nearby', ({ root }) => {
@@ -59,8 +91,9 @@ screen('/nearby', ({ root }) => {
       on: { click: signOutNow },
     }, icon('logout', 18))));
   async function signOutNow(e) {
-    if (!window.confirm(t(Object.values(state.me?.verified || {}).some(Boolean) ? 'nb_signout_ask' : 'nb_signout_ask_unverified'))) return;
-    e.currentTarget.disabled = true;
+    const btn = e.currentTarget;
+    if (!(await confirmSignOut(t(Object.values(state.me?.verified || {}).some(Boolean) ? 'nb_signout_ask' : 'nb_signout_ask_unverified')))) return;
+    btn.disabled = true;
     try { await api.post('/auth/signout', {}, { redirect: false }); } catch { /* signed out locally either way */ }
     state.me = null;
     state.actions = [];
@@ -90,7 +123,7 @@ screen('/nearby', ({ root }) => {
       else await updateLocation();
       refreshedThisLoad = true;
     } catch (err) {
-      if (!silent && alive) toast(locationErrorText(err));
+      if (!silent && alive) sayLocationError(err);
     } finally {
       locating = false;
     }
@@ -169,7 +202,8 @@ screen('/nearby', ({ root }) => {
   const emptyBox = (text, action) => el('div', { class: 'empty' },
     el('span', { class: 'icon-circle', 'aria-hidden': 'true' }, icon('pin', 22)), el('p', {}, text), action);
 
-  const openPerson = (p) => (guest ? profileFirst(`/person/${p.id}`) : go(`/person/${encodeURIComponent(p.id)}`));
+  // A guest: "Make your profile first", with "Report this profile" for the card that was tapped (POST /guest/report).
+  const openPerson = (p) => (guest ? profileFirst(`/person/${p.id}`, { id: p.id, name: p.name }) : go(`/person/${encodeURIComponent(p.id)}`));
   const tile = (p) => el('button', { type: 'button', class: 'person', on: { click: () => openPerson(p) } },
     el('span', { class: 'face' }, avatar(p.photo || null, '100%'), heartPills(p.hearts, 'sm')),
     el('span', { class: 'person-name' }, p.name),
@@ -255,6 +289,7 @@ registerStrings({
     nb_signout: 'Sign out',
     nb_signout_ask: 'Sign out of 30+DA?',
     nb_signout_ask_unverified: 'Sign out? You have not verified yet, so you cannot sign back in to this profile.',
+    nb_cancel: 'Cancel',
     nb_near_you: 'Near you',
     nb_gps_on: 'Near you · GPS on',
     nb_gps_off: 'GPS off',
@@ -284,6 +319,7 @@ registerStrings({
     nb_signout: 'ចាកចេញ',
     nb_signout_ask: 'ចាកចេញពី 30+DA មែនទេ?',
     nb_signout_ask_unverified: 'ចាកចេញមែនទេ? អ្នកមិនទាន់ផ្ទៀងផ្ទាត់ទេ ដូច្នេះអ្នកមិនអាចចូលប្រវត្តិរូបនេះវិញបានទេ។',
+    nb_cancel: 'បោះបង់',
     nb_near_you: 'នៅជិតអ្នក',
     nb_gps_on: 'នៅជិតអ្នក · GPS បើក',
     nb_gps_off: 'GPS បិទ',
@@ -313,6 +349,7 @@ registerStrings({
     nb_signout: '退出登录',
     nb_signout_ask: '要退出 30+DA 吗？',
     nb_signout_ask_unverified: '要退出吗？你还没有验证，退出后无法再登录这个资料。',
+    nb_cancel: '取消',
     nb_near_you: '你附近',
     nb_gps_on: '你附近 · GPS 已开启',
     nb_gps_off: 'GPS 已关闭',
@@ -342,6 +379,7 @@ registerStrings({
     nb_signout: '로그아웃',
     nb_signout_ask: '30+DA에서 로그아웃할까요?',
     nb_signout_ask_unverified: '로그아웃할까요? 아직 인증하지 않아서 이 프로필로 다시 들어올 수 없어요.',
+    nb_cancel: '취소',
     nb_near_you: '내 주변',
     nb_gps_on: '내 주변 · GPS 켜짐',
     nb_gps_off: 'GPS 꺼짐',
@@ -371,6 +409,7 @@ registerStrings({
     nb_signout: 'ログアウト',
     nb_signout_ask: '30+DA からログアウトしますか？',
     nb_signout_ask_unverified: 'ログアウトしますか？まだ確認していないので、このプロフィールには戻れません。',
+    nb_cancel: 'キャンセル',
     nb_near_you: '近く',
     nb_gps_on: '近く · GPS オン',
     nb_gps_off: 'GPS オフ',

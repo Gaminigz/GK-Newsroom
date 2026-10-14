@@ -270,8 +270,10 @@ test('typing a demo PIN OFFERS the demo account: probe first (only while ON), th
   assert.match(sheet, /const sayNo = \(\) => \{ declineReview\(pin\); sheet\.close\(\); \};/);
   assert.match(sheet, /on: \{ click: sayNo \} \}, t\('review_offer_no'\)/);
   assert.match(sheet, /sheet\.close = \(\) => \{ close\(\); settle\(false\); \};/, 'closed any way but "Sign in": false');
-  assert.match(sheet, /const r = await api\.post\('\/auth\/review\/pin', \{ pin, \.\.\.termsBody\(\) \}, \{ redirect: false \}\);\s*settle\(true\);\s*close\(\);\s*reviewSignedIn\(r\);/,
+  // (reviewSignInBody: { pin, ...termsBody(), deviceId? } — the phone's id for review devices, src/lib/thirtyda-review-world.mjs)
+  assert.match(sheet, /const r = await api\.post\('\/auth\/review\/pin', await reviewSignInBody\(pin\), \{ redirect: false \}\);\s*settle\(true\);\s*close\(\);\s*reviewSignedIn\(r\);/,
     'only the tap on "Sign in" signs in');
+  assert.match(lockFn('reviewSignInBody'), /return \{ pin, \.\.\.termsBody\(\), \.\.\.\(device \? \{ deviceId: device \} : \{\}\) \};/);
   assert.match(lockFn('reviewSignedIn'), /clearPinFlags\(\);[\s\S]*leaveWithoutLock\(\);\s*history\.replaceState\(null, '', '\/30da\/#\/nearby'\);\s*location\.reload\(\);/, 'the existing fresh boot');
   // "Set your PIN": asked about the first 4 before "Type it again"; true → stop, anything else → the steps go on.
   const pinJs = readSource(new URL('../thirtyda-app/screens/pin.js', import.meta.url), 'utf8');
@@ -341,11 +343,12 @@ test('the review sign-in\'s 15-minute limits say 15 minutes; "Wait a minute" is 
   assert.ok(words.every((w) => w.includes('15')), '15 minutes in every language');
 });
 
-test('a signed-in review account keeps its PIN, profile and photos and is not deleted from the app (409 review_account)', () => {
+test('a signed-in review account keeps its PIN, profile and photos (409 review_account); its delete keeps the profile', () => {
   const app = readSource(new URL('./thirtyda-app.mjs', import.meta.url), 'utf8');
   const body = (name) => app.slice(app.indexOf(`async function ${name}(`), app.indexOf('\n}\n', app.indexOf(`async function ${name}(`)));
   for (const f of ['patchMe', 'addPhoto', 'putPhoto', 'removePhoto', 'setPin']) assert.match(body(f), /isReview\((ctx\.)?me\)[^\n]*throw reviewKept\(\)/, f);
-  assert.match(app, /\/\^\\\/me\\\/delete\$\/, \(ctx\) => isReview\(ctx\.me\) \? Promise\.reject\(reviewKept\(\)\)/);
+  // "Delete my account" on a demo account answers like a real delete for the reviewer, the profile kept (review-world).
+  assert.match(app, /\/\^\\\/me\\\/delete\$\/, \(ctx\) => deleteMe\(ctx, \{[^\n]*demo: isReview\(ctx\.me\) \}\)/);
   assert.match(body('reviewPin'), /ctx\.lockedSession\?\.userId/, 'a locked real profile is never swapped for a demo one');
 });
 

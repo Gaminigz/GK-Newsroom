@@ -201,6 +201,8 @@ export const api = {
 /** Human text for an ApiError (or any error) in the UI language. */
 export function errorText(err) {
   if (err?.status === 0) return t('err_network');
+  // An App review demo account keeps its photos, name and PIN (409 review_account): said calmly, never "went wrong".
+  if (err?.code === 'review_account') return t('err_review');
   if (err?.status === 404) return t('err_not_found');
   return t('err_generic');
 }
@@ -762,6 +764,7 @@ registerStrings({
     err_network: 'No connection. Check your internet and try again.',
     err_generic: 'Something went wrong. Please try again.',
     err_not_found: 'This page is not available.',
+    err_review: 'Demo account: photos, name and PIN stay as they are.',
     act_answer: '{name} started a conversation',
     act_reply: 'Reply to {name}',
     act_ask: 'Start a conversation with {name}',
@@ -789,6 +792,7 @@ registerStrings({
     err_network: 'គ្មានការតភ្ជាប់។ សូមពិនិត្យអ៊ីនធឺណិត ហើយព្យាយាមម្ដងទៀត។',
     err_generic: 'មានបញ្ហាបន្តិច។ សូមព្យាយាមម្ដងទៀត។',
     err_not_found: 'ទំព័រនេះមិនមានទេ។',
+    err_review: 'គណនីសាកល្បង៖ រូបថត ឈ្មោះ និងលេខ PIN នៅដដែល។',
     act_answer: '{name} បានចាប់ផ្ដើមការសន្ទនា',
     act_reply: 'ឆ្លើយតបទៅ {name}',
     act_ask: 'ចាប់ផ្ដើមការសន្ទនាជាមួយ {name}',
@@ -816,6 +820,7 @@ registerStrings({
     err_network: '网络未连接，请检查网络后重试。',
     err_generic: '出错了，请重试。',
     err_not_found: '此页面不存在。',
+    err_review: '演示账号：照片、名字和 PIN 码保持不变。',
     act_answer: '{name} 开始了对话',
     act_reply: '回复 {name}',
     act_ask: '和 {name} 开始对话',
@@ -843,6 +848,7 @@ registerStrings({
     err_network: '인터넷에 연결되어 있지 않아요. 연결을 확인하고 다시 시도해 주세요.',
     err_generic: '문제가 생겼어요. 다시 시도해 주세요.',
     err_not_found: '이 페이지를 찾을 수 없어요.',
+    err_review: '데모 계정이에요. 사진, 이름, PIN은 그대로 유지돼요.',
     act_answer: '{name}님이 대화를 시작했어요',
     act_reply: '{name}님에게 답장하기',
     act_ask: '{name}님과 대화 시작하기',
@@ -870,6 +876,7 @@ registerStrings({
     err_network: '接続できません。インターネットを確認して、もう一度お試しください。',
     err_generic: '問題が発生しました。もう一度お試しください。',
     err_not_found: 'このページは表示できません。',
+    err_review: 'デモ用アカウントです。写真・名前・PINはそのままです。',
     act_answer: '{name}さんが会話を始めました',
     act_reply: '{name}さんに返信する',
     act_ask: '{name}さんと会話を始める',

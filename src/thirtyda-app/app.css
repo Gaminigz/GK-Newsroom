@@ -60,7 +60,8 @@ img { display: block; max-width: 100%; }
 /* Members' photos are not for keeping (store policy, owner 2026-10-14): no "Save image" from a long press on iPhone,
    no dragging one out on a computer. */
 img { -webkit-touch-callout: none; -webkit-user-drag: none; user-select: none; -webkit-user-select: none; }
-a { color: inherit; }
+/* No "Open in new tab / Copy link" sheet from a long press on a link: an app, not a web page (owner 2026-10-14). */
+a { color: inherit; -webkit-touch-callout: none; }
 :focus-visible { outline: 2px solid #3b6fe0; outline-offset: 2px; }
 .visually-hidden {
   position: absolute !important;
@@ -271,7 +272,7 @@ a { color: inherit; }
   border-radius: var(--radius);
   border: 1px solid var(--line);
   background: #fff;
-  font-size: 15px;
+  font-size: 16px; /* never under 16px: iOS zooms the page into a smaller field on focus */
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
 }
@@ -290,7 +291,7 @@ a { color: inherit; }
   border-radius: var(--radius);
   border: 1px solid transparent;
   background: var(--field);
-  font-size: 15px;
+  font-size: 16px; /* never under 16px: iOS zooms on focus */
   line-height: 1.45;
   resize: vertical;
   outline: none;
@@ -305,7 +306,7 @@ a { color: inherit; }
   border-radius: var(--radius);
   border: 1px solid transparent;
   background: var(--field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%230b1c3f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center;
-  font-size: 15px;
+  font-size: 16px; /* never under 16px: iOS zooms on focus */
   font-weight: 600;
   outline: none;
   text-overflow: ellipsis;
@@ -510,7 +511,7 @@ a { color: inherit; }
   border-radius: 999px;
   border: 1.5px solid transparent;
   background: var(--field);
-  font-size: 15px;
+  font-size: 16px; /* never under 16px: iOS zooms on focus */
   outline: none;
 }
 .composer-input:focus { background: #fff; border-color: var(--navy); }
@@ -785,7 +786,7 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .phone-row { display: grid; grid-template-columns: 94px minmax(0, 1fr); gap: 8px; align-items: center; }
 /* Create profile: the one line under the buttons ("Tap the app you want to verify with." → "Check Telegram for the next step."). */
 .way-watch { font-weight: 600; text-align: center; }
-.phone-row .select { padding: 0 26px 0 10px; background-position: right 6px center; font-family: var(--mono); font-size: 14px; }
+.phone-row .select { padding: 0 24px 0 8px; background-position: right 5px center; font-family: var(--mono); font-size: 16px; }
 /* A proved number stays in its box (editable), green; "Number verified ✓" under the apps (owner 2026-10-13). */
 .phone-row .input.is-verified { border-color: var(--green); background: var(--green-soft); }
 .verified-line { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--green); white-space: nowrap; }
@@ -1231,3 +1232,18 @@ dialog.verify-sheet { overflow-y: auto; }
   .opening { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); align-items: center; column-gap: clamp(48px, 6vw, 96px); padding: 40px 56px calc(40px + env(safe-area-inset-bottom)); }
   .opening-langs { gap: 18px; }
 }
+
+/* ---------- Inside the iOS / Android app (html[data-shell], app.js; owner 2026-10-14, the iOS audit) ---------- */
+/* An app, not a web page: a long press never selects the screen's words. Typed fields stay selectable. */
+html[data-shell] body { -webkit-user-select: none; user-select: none; }
+html[data-shell] input, html[data-shell] textarea, html[data-shell] [contenteditable] { -webkit-user-select: text; user-select: text; }
+
+/* ---------- App review demo account on My profile (screens/my-profile.js demoOff) ---------- */
+.demo-note { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 12px; border-radius: var(--radius); background: var(--field); color: var(--ink); font-size: 14px; font-weight: 600; line-height: 1.4; }
+.demo-note .icon { flex: none; margin-top: 2px; color: var(--muted); }
+.demo-off { pointer-events: none; }
+.demo-off :is(button, input, select, textarea) { opacity: 0.55; }
+.me-pin.demo-off { opacity: 0.55; }
+
+/* A guest's "Report this profile" under "Just looking" (guest.js). */
+.gf-report { display: inline-flex; align-items: center; gap: 6px; margin-top: -8px; }

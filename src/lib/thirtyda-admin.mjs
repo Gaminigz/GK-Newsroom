@@ -8,7 +8,7 @@
  *   POST /30da/admin/api/signout
  *   GET  /30da/admin/api/overview         counts, users, open flags
  *   GET  /30da/admin/api/chat?flag=|user= one full conversation
- *   POST /30da/admin/api/users/:id/block|unblock   { flagId?, undo? }
+ *   POST /30da/admin/api/users/:id/block|unblock   { flagId?, undo? } — an App review demo account is never blocked (409)
  *   POST /30da/admin/api/users/:id/delete  { confirm: id } the whole account, for good — the app's own full delete
  *        (src/lib/thirtyda-delete.mjs deleteAccount). The one delete path: Users → Delete and App review → Remove.
  *        → the overview (counts + users); 400 confirm ≠ id, 404 no such profile. Audited with the id only.
@@ -51,8 +51,9 @@
  *        Both act only while that photo is still pending in that slot (409 otherwise). Audited with ids only.
  *   GET  /30da/admin/review                   App review: demo accounts for the App Store / Google Play reviewers
  *   GET  /30da/admin/api/review               { on, code, accounts, profiles, notes, … } (src/lib/thirtyda-review.mjs reviewView)
- *   POST /30da/admin/api/review/switch        { on } "Review sign-in" ON / OFF
- *   POST /30da/admin/api/review/code          New code (6 digits, sealed)
+ *   POST /30da/admin/api/review/switch        { on } "Review sign-in" ON / OFF (ON: blocks + open flags between demo
+ *                                             accounts cleared; OFF: review devices forgotten — src/lib/thirtyda-review-world.mjs)
+ *   POST /30da/admin/api/review/code          New code (6 digits, sealed); clears the demo accounts' blocks + flags too
  *   POST /30da/admin/api/review/accounts/:id  { phone, pin } "Use as review account" (or save it again)
  *   POST /30da/admin/api/review/accounts/:id/stop   "Stop being a review account"
  *        Every answer is the page's fresh data. Audited with ids only (never a number, a PIN or the code).
@@ -98,6 +99,7 @@ import {
   reviewView, setReviewSwitch, newReviewCode, makeReviewAccount, stopReviewAccount, ReviewError, isReview,
 } from "./thirtyda-review.mjs";
 import { deleteAccount } from "./thirtyda-delete.mjs";
+import { clearReviewWorld, forgetReviewDevices } from "./thirtyda-review-world.mjs";
 import { QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS } from "../thirtyda-app/shared/question-slots.js";
 import { resolveUpdate, reopenUpdate } from "./thirtyda-blocks.mjs";
 import { targetLabel } from "../thirtyda-app/shared/safety.js";
@@ -212,7 +214,8 @@ async function overview() {
       return {
         ...rest,
         fromName: byId.get(f.from)?.name ?? f.from,
-        toName: byId.get(f.to)?.name ?? f.to,
+        // A guest's report (POST /guest/report): nobody's profile on the other side.
+        toName: f.guest ? "A guest" : byId.get(f.to)?.name ?? f.to,
         level,
         levelName: level ? LEVEL_NAMES[level] : null,
         // Store policy (owner 2026-10-14): what a report points at ("Profile", "Photo 2", "Line 3"), and the reported
@@ -601,10 +604,14 @@ async function reviewRoute(req, res, m) {
     if (m[1] === "switch") {
       if (typeof v.on !== "boolean") return json(res, 400, { error: "Send { on: true | false }." });
       const r = await setReviewSwitch(d, v.on);
-      await audit(req, "review_switch", { on: v.on, sessionsEnded: r.sessionsEnded });
+      // OFF: the phones that signed in to a demo account lose their Create profile pass (src/lib/thirtyda-review-world.mjs).
+      const devicesForgotten = v.on ? 0 : await forgetReviewDevices(d);
+      await audit(req, "review_switch", { on: v.on, sessionsEnded: r.sessionsEnded, devicesForgotten });
+      if (v.on) await freshReviewWorld(req, d);
     } else if (m[1] === "code") {
       await newReviewCode(d);
       await audit(req, "review_code_new");
+      await freshReviewWorld(req, d);
     } else if (m[2] && m[3]) {
       const r = await stopReviewAccount(d, m[2]);
       await audit(req, "review_account_stop", { user: m[2], sessionsEnded: r.sessionsEnded });
@@ -621,6 +628,16 @@ async function reviewRoute(req, res, m) {
     throw err;
   }
   return json(res, 200, await reviewView(d));
+}
+
+/**
+ * Review sign-in ON / New code (owner 2026-10-14, the iOS audit): a block between two demo accounts would leave the next
+ * reviewer an empty Nearby the blocked side cannot undo — lift those blocks and close the open flags between demo
+ * accounts (src/lib/thirtyda-review-world.mjs). Audited with ids only, only when there was something to clear.
+ */
+async function freshReviewWorld(req, d) {
+  const r = await clearReviewWorld(d);
+  if (r.blocks.length || r.flags.length) await audit(req, "review_world_reset", { blocks: r.blocks, flags: r.flags });
 }
 
 export async function handleThirtyDaAdmin(req, res, url) {
@@ -922,6 +939,10 @@ export async function handleThirtyDaAdmin(req, res, url) {
     const u = await users.findOne({ _id: m[1] });
     if (!u) return json(res, 404, { error: "No such user." });
     const { flagId = null, undo = false } = await readJson(req);
+    // A demo account stays usable for the store reviewers: the App review page stops it first (owner 2026-10-14).
+    if (m[2] === "block" && isReview(u)) {
+      return json(res, 409, { error: "This is an App review demo account, so it is not blocked. Stop it on the App review page first.", reason: "review_account" });
+    }
     const alreadyBlocked = m[2] === "block" && Boolean(u.blocked);
     if (m[2] === "block") {
       await blockUser(d, u);
@@ -970,7 +991,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
     let blocked = null;
     if (body.value.block === true) {
       const u = await users.findOne({ _id: target.userId });
-      if (u) blocked = await blockUser(d, u);
+      if (u && !isReview(u)) blocked = await blockUser(d, u); // a demo account is never blocked (App review)
     }
     await audit(req, "photo_reject", {
       user: target.userId, slot, photo: target.photoId, block: Boolean(blocked), ...(blocked ? { alreadyBlocked: blocked.alreadyBlocked } : {}),
