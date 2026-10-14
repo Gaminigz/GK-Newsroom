@@ -864,12 +864,12 @@
 
   // ------------------------------------------------------------------ meetings (src/lib/thirtyda-meet.mjs)
 
-  // The demo's place search: a few Phnom Penh places instead of OpenStreetMap (nothing leaves the browser). A place
-  // without a point opens Google Maps by its name, like "Use what I typed".
+  // The demo's place search: a few Phnom Penh places instead of OpenStreetMap (nothing leaves the browser). Each has its
+  // OpenStreetMap point, so Google Maps drops a pin on it (a name search can list a sponsored shop first).
   const DEMO_PLACES = [
-    { name: 'Brown Coffee Toul Kork', address: 'Russian Federation Blvd, Toul Kork, Phnom Penh', lat: null, lng: null },
-    { name: 'Brown Coffee BKK1', address: 'Street 57, BKK1, Phnom Penh', lat: null, lng: null },
-    { name: 'Aeon Mall Phnom Penh', address: 'Samdech Sothearos Blvd, Tonle Bassac, Phnom Penh', lat: null, lng: null },
+    { name: 'Brown Coffee Toul Kork', address: 'Street 315, Boeung Kak 2, Toul Kork, Phnom Penh', lat: 11.5808, lng: 104.8959 },
+    { name: 'Brown Coffee BKK1', address: 'Street 57, BKK1, Phnom Penh', lat: 11.5533, lng: 104.9248 },
+    { name: 'Aeon Mall Phnom Penh', address: 'Samdech Sothearos Blvd, Tonle Bassac, Phnom Penh', lat: 11.5481, lng: 104.9326 },
     { name: 'Wat Phnom', address: 'Daun Penh, Phnom Penh', lat: 11.5762, lng: 104.9231 },
     { name: 'Independence Monument', address: 'Norodom Blvd, BKK1, Phnom Penh', lat: 11.5564, lng: 104.9282 },
   ];
