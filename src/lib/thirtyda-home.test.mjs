@@ -3,7 +3,7 @@
 // you the example of what MUST be on the home page" … "and windows"), in the app's colours ("it's not had orange"), no
 // numbers for show ("no numbers — it's 30+ year olds' dating life"). The page (src/lib/thirtyda-pages.mjs homePage): the top
 // bar (wordmark, flags, store icons), the phone-shaped card (people-1, the store icons, "30+DA App", the sign-in pills), the
-// words (eyebrow, 💞 headline, the Khmer line, lead, Open 30+DA, ⚠️ Reminder, how it works in words, Support & Contact,
+// words (eyebrow, red-string knot + headline, the Khmer line, lead, Open 30+DA, ⚠️ Reminder, how it works in words, Support & Contact,
 // hashtags), the teaser's strip on one red thread, the footer; SEO + JSON-LD; 5 languages; no script but the JSON-LD data
 // block, no inline style. App Store / Google Play: "coming soon", no link; Windows: the web app. The photo slots
 // (src/lib/thirtyda-home.mjs): an <img> only when the file is there, else a night-city placeholder; the image route: tight
@@ -57,7 +57,8 @@ const hexRgb = (hex) => {
   const full = x.length <= 4 ? [...x.slice(0, 3)].map((c) => c + c).join('') : x.slice(0, 6);
   return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
 };
-const PEOPLE_PHOTOS = { [HOME_HERO]: ['jpg'], 'people-1': ['jpg'], 'people-2': ['jpg'], 'people-3': ['jpg'], 'people-4': ['jpg'] };
+const PEOPLE_PHOTOS = { [HOME_HERO]: ['jpg'], 'people-1': ['jpg'], 'people-2': ['jpg'], 'people-3': ['jpg'], 'people-4': ['jpg'],
+  ...Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`life-${i + 1}`, ['jpg']])) };
 
 async function get(path, headers = {}, method = 'GET') {
   const req = { method, url: path, headers: { host: 'ecom.ggmt.sg', ...headers } };
@@ -232,13 +233,13 @@ test('the card: people-1 fills it, "30+DA App" + the tagline + two lines, and th
   assert.equal(WEB_APP_PATH, '/30da/');
 });
 
-test('the words: eyebrow, 💞 headline (h1), the Khmer line on the other 4 languages, the lead, Open 30+DA, the ⚠️ Reminder, how it works in words', () => {
+test('the words: eyebrow, red-string knot + headline (h1), the Khmer line on the other 4 languages, the lead, Open 30+DA, the ⚠️ Reminder, how it works in words', () => {
   const km = PAGE_STRINGS.km;
   for (const lang of LANGS) {
     const t = PAGE_STRINGS[lang];
     const html = homePage({ lang });
     assert.ok(html.includes(`<p class="hm-eyebrow">30+DA · ${homeText(t.home_place)}</p>`), `${lang}: eyebrow`);
-    assert.ok(html.includes(`<h1 class="hm-h1"><span class="hm-emoji" aria-hidden="true">💞</span> ${homeText(t.home_headline)}</h1>`), `${lang}: h1`);
+    assert.ok(html.includes(`<h1 class="hm-h1"><svg class="hm-knot" viewBox="0 0 48 32" aria-hidden="true" focusable="false"><path d="M0 22C10 22 14 8 24 8c8 0 10 12 2 14s-6-10 4-10 12 6 18 4"/></svg> ${homeText(t.home_headline)}</h1>`) && !html.includes('💞'), `${lang}: h1 with the red-string knot, no 💞`);
     assert.equal((html.match(/<h1\b/g) || []).length, 1, `${lang}: one h1`);
     // The local language under it (the template has Sinhala): Khmer, unless the page is Khmer already.
     const khmer = `<p class="hm-km" lang="km">${homeText(km.home_headline)}<span>${homeText(km.home_tagline)}</span></p>`;
@@ -370,7 +371,7 @@ test('Chinese and Japanese break only between phrases: the "|" marks become <wbr
 });
 
 test('photos: people-1 on the card, the sequence people-2 → 3 → 4 together in order on the strip; hero = the share picture; placeholders when missing', () => {
-  assert.deepEqual(HOME_SLOTS, ['hero', 'people-1', 'people-2', 'people-3', 'people-4']);
+  assert.deepEqual(HOME_SLOTS, ['hero', 'people-1', 'people-2', 'people-3', 'people-4', 'life-1', 'life-2', 'life-3', 'life-4', 'life-5', 'life-6', 'life-7', 'life-8', 'life-9', 'life-10']);
   assert.equal(HOME_HERO, 'hero');
   assert.equal(HOME_PORTRAIT, 'people-1');
   assert.deepEqual(HOME_SEQUENCE, ['people-2', 'people-3', 'people-4']);
@@ -585,7 +586,7 @@ test('only the app\'s colours — navy, white, the soft greys, the red as the th
   // The red is only the thread: the strip's line, and the line + knots of how it works.
   const redRules = [...block.matchAll(/([^{}]+)\{([^}]*var\(--red\)[^}]*)\}/g)].map((m) => m[1].trim());
   assert.ok(redRules.length >= 3);
-  for (const sel of redRules) assert.match(sel, /hm-fr-box::before|hm-path::before|hm-path li::before|hm-thread path/, `red only on the thread: ${sel}`);
+  for (const sel of redRules) assert.match(sel, /hm-fr-box::before|hm-path::before|hm-path li::before|hm-thread path|hm-knot path/, `red only on the thread: ${sel}`);
   // The button: navy on white, like the app's light button on the dark screen.
   assert.match(block, /\.page-home \.hm-btn \{[^}]*background: #fff; color: var\(--navy\);/);
   // The page itself: no warm colour anywhere outside the Play logo (which keeps its own four).

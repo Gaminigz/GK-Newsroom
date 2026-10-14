@@ -241,7 +241,9 @@ p { margin: 0 0 10px; }
 /* ---- The words. */
 .page-home .hm-eyebrow { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--on-dark-muted); }
 .page-home .hm-h1 { margin-top: 8px; font-size: 31px; line-height: 1.14; font-weight: 900; font-stretch: 106%; letter-spacing: -0.015em; text-wrap: balance; overflow-wrap: break-word; }
-.page-home .hm-emoji { font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; font-weight: 400; }
+/* A small loop of the red string before the headline (owner 2026-10-14: the 💞 was "too babyish"). */
+.page-home .hm-knot { display: inline-block; width: 1.3em; height: 0.85em; margin-right: 0.15em; vertical-align: -0.04em; overflow: visible; }
+.page-home .hm-knot path { fill: none; stroke: var(--red); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
 .page-home .hm-km { margin-top: 12px; font-size: 17px; line-height: 1.7; font-weight: 600; color: var(--on-dark-soft); }
 .page-home .hm-km span { display: block; font-size: 14.5px; font-weight: 400; color: var(--on-dark-muted); }
 .page-home .hm-lead { margin-top: 14px; font-size: 17px; line-height: 1.6; color: var(--on-dark-soft); }
@@ -286,6 +288,22 @@ p { margin: 0 0 10px; }
 .page-home .hm-contact a { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 16px; font-weight: 600; text-decoration: none; color: #fff; }
 .page-home .hm-contact a:hover { text-decoration: underline; }
 .page-home .hm-tags { margin-top: 14px; font-size: 13px; line-height: 1.8; color: var(--on-dark-muted); overflow-wrap: anywhere; }
+
+/* ---- "30+ lives" (owner 2026-10-14 "need more photos"): 10 people at work, the red thread through each. Phones: one
+   row that swipes sideways (inside the row, never the page); PC: two rows of five. */
+.page-home .hm-lives { padding: 8px 0 60px; background: var(--navy-2); }
+.page-home .hm-lives-h { max-width: 22em; margin: 0 auto; text-align: center; font-size: 18px; line-height: 1.35; font-weight: 700; color: var(--on-dark-soft); text-wrap: balance; }
+.page-home .hm-lives-row { display: grid; grid-auto-flow: column; grid-auto-columns: 36%; gap: 10px; margin: 22px 0 0; padding: 0 0 8px; list-style: none;
+  overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; }
+.page-home .hm-lives-row::-webkit-scrollbar { display: none; }
+.page-home .hm-lives-row li { scroll-snap-align: start; aspect-ratio: 220 / 394; border-radius: 12px; overflow: hidden; background: var(--navy); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.1); }
+.page-home .hm-lives-row img { display: block; width: 100%; height: 100%; object-fit: cover; }
+@media (min-width: 900px) {
+  .page-home .hm-lives { padding: 0 0 88px; }
+  .page-home .hm-lives-h { font-size: 22px; }
+  .page-home .hm-lives-row { grid-auto-flow: row; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-auto-columns: auto; gap: 18px; max-width: 900px; margin: 30px auto 0; overflow: visible; }
+  .page-home .hm-lives-row li { border-radius: 14px; }
+}
 
 /* ---- The teaser's strip: people-2 → 3 → 4 side by side, in order, on ONE taut red thread that runs across the page
    behind them (each frame's box carries the same straight line at the same height, so it never breaks into loose

@@ -258,6 +258,7 @@ export const PAGE_STRINGS = {
     home_verify: "Look around freely. Verify your number only when you want to chat.",
     home_contact_h: "Support & Contact",
     home_string: "They say an invisible red string ties you to someone.",
+    home_lives: "Busy lives, all 30+. The red string is already there.",
     home_frame_2: "A city full of strangers.",
     home_frame_3: "One face comes into focus.",
     home_frame_4: "This time, don’t walk past.",
@@ -456,6 +457,7 @@ export const PAGE_STRINGS = {
     home_verify: "មើលដោយសេរី។ ផ្ទៀងផ្ទាត់លេខទូរស័ព្ទរបស់អ្នក តែពេលអ្នកចង់ជជែកប៉ុណ្ណោះ។",
     home_contact_h: "ជំនួយ និងទំនាក់ទំនង",
     home_string: "គេថា មានខ្សែក្រហមមួយដែលមើលមិនឃើញ ចងអ្នកជាប់នឹងនរណាម្នាក់។",
+    home_lives: "ជីវិតមមាញឹក វ័យ 30+។ ខ្សែក្រហមមានរួចហើយ។",
     home_frame_2: "ទីក្រុងដែលពោរពេញដោយមនុស្សមិនស្គាល់គ្នា។",
     home_frame_3: "មុខមួយស្រាប់តែច្បាស់ឡើង។",
     home_frame_4: "លើកនេះ កុំដើរហួសគ្នាទៀត។",
@@ -654,6 +656,7 @@ export const PAGE_STRINGS = {
     home_verify: "随意看看。|只有在|想聊天的时候，|才需要|验证手机号。",
     home_contact_h: "支持与联系",
     home_string: "传说，|一根|看不见的红线，|把你|和某个人|系在一起。",
+    home_lives: "忙碌的生活，|都已 30+。|红线|早已在那里。",
     home_frame_2: "满城|都是陌生人。",
     home_frame_3: "有一张脸，|忽然|清晰起来。",
     home_frame_4: "这一次，|别再|擦肩而过。",
@@ -852,6 +855,7 @@ export const PAGE_STRINGS = {
     home_verify: "자유롭게 둘러보세요. 전화번호 인증은 채팅하고 싶을 때만 해요.",
     home_contact_h: "지원 및 문의",
     home_string: "보이지 않는 붉은 실이 당신과 누군가를 이어 준대요.",
+    home_lives: "바쁜 삶, 모두 30+. 붉은 실은 이미 거기 있어요.",
     home_frame_2: "낯선 사람들로 가득한 도시.",
     home_frame_3: "한 얼굴이 또렷해져요.",
     home_frame_4: "이번에는 스쳐 지나가지 마세요.",
@@ -1050,6 +1054,7 @@ export const PAGE_STRINGS = {
     home_verify: "自由に|見てまわって。|電話番号の|確認は、|チャットしたい|ときだけ。",
     home_contact_h: "サポート・|お問い合わせ",
     home_string: "見えない|赤い糸が、|あなたと|誰かを|結んでいると|いいます。",
+    home_lives: "忙しい|毎日、|みんな 30+。|赤い糸は|もう|そこに。",
     home_frame_2: "見知らぬ人で|あふれる街。",
     home_frame_3: "ひとつの顔に、|ふと|ピントが合う。",
     home_frame_4: "今度こそ、|すれ違わないで。",
@@ -1379,7 +1384,9 @@ export const HOME_HERO = "hero";
 export const HOME_PORTRAIT = "people-1";
 export const HOME_SEQUENCE = Object.freeze(["people-2", "people-3", "people-4"]);
 export const HOME_PEOPLE = Object.freeze([HOME_PORTRAIT, ...HOME_SEQUENCE]);
-export const HOME_SLOTS = Object.freeze([HOME_HERO, ...HOME_PEOPLE]);
+/** The "30+ lives" gallery (owner 2026-10-14 "need more photos"): AI-made 30+ people at work, a red thread through each. */
+export const HOME_LIVES = Object.freeze(Array.from({ length: 10 }, (_, i) => `life-${i + 1}`));
+export const HOME_SLOTS = Object.freeze([HOME_HERO, ...HOME_PEOPLE, ...HOME_LIVES]);
 export const HOME_IMG_PATH = "/30da/home/img/";
 /** The photo kinds a slot may have, in the order a <picture> offers them (webp first, jpg the fallback). */
 export const HOME_IMG_EXTS = Object.freeze(["webp", "jpg"]);
@@ -1501,7 +1508,7 @@ function homeHead(t, lang, title) {
  * "I give you the example of what MUST be on the home page"), in the app's own colours (navy, white, the soft greys; the
  * app's red only as the thin red string). Top bar: the wordmark, the flags, the store icons. PC: a phone-shaped card
  * left (people-1, the store icons top right, "30+DA App" + a line + two lines + the sign-in pills at the bottom) and the
- * words right; phones: the card first. The words: an eyebrow, the app's headline as the h1 with 💞, the same in Khmer
+ * words right; phones: the card first. The words: an eyebrow, the app's headline as the h1 with a small red-string knot (owner: the 💞 was too babyish), the same in Khmer
  * (on the other 4 languages), the lead, Open 30+DA (/30da/), the ⚠️ Reminder (free; never money, bank or card details;
  * never send money), how it works in words, Support & Contact (email, Telegram, WhatsApp), the hashtags. Then the
  * teaser's strip (people-2 → 3 → 4 on one taut red thread) and the footer. True to the code:
@@ -1535,6 +1542,8 @@ export function homePage({ lang: want, photos = {} } = {}) {
       <p class="hm-km" lang="km">${say(km.home_headline)}<span>${say(km.home_tagline)}</span></p>`;
   const khmerRemind = lang === "km" ? "" : `
         <p class="hm-remind-km" lang="km">${say(km.home_remind)}</p>`;
+  // "30+ lives": only the photos that are really there (no placeholders in this gallery).
+  const lives = HOME_LIVES.filter((slot) => photos?.[slot]);
   const tags = HOME_TAGS.map((tag) => (/[ក-៿]/.test(tag) ? `<span lang="km">${tag}</span>` : tag)).join(" ");
   const inner = `<header class="hm-top">
   <div class="hm-wrap hm-top-in">
@@ -1560,7 +1569,7 @@ export function homePage({ lang: want, photos = {} } = {}) {
     </div>
     <div class="hm-text">
       <p class="hm-eyebrow">30+DA · ${say(t.home_place)}</p>
-      <h1 class="hm-h1"><span class="hm-emoji" aria-hidden="true">💞</span> ${say(t.home_headline)}</h1>${khmerSub}
+      <h1 class="hm-h1"><svg class="hm-knot" viewBox="0 0 48 32" aria-hidden="true" focusable="false"><path d="M0 22C10 22 14 8 24 8c8 0 10 12 2 14s-6-10 4-10 12 6 18 4"/></svg> ${say(t.home_headline)}</h1>${khmerSub}
       <p class="hm-lead">${say(t.home_line)}${cjk ? "<wbr>" : " "}${say(t.home_lead)}</p>
       <p class="hm-cta"><a class="hm-btn" href="${WEB_APP_PATH}">${t.app_open}${ARROW}</a></p>
       <div class="hm-remind" role="note">
@@ -1591,7 +1600,15 @@ ${[1, 2, 3].map(step).join("\n")}
 ${HOME_SEQUENCE.map(frame).join("\n")}
     </ol>
   </div>
-</section>
+</section>${lives.length ? `
+<section class="hm-lives" aria-labelledby="hm-lives-h">
+  <div class="hm-wrap">
+    <h2 class="hm-lives-h" id="hm-lives-h">${say(t.home_lives)}</h2>
+    <ul class="hm-lives-row">
+${lives.map((slot) => `      <li>${photo(slot, "")}</li>`).join("\n")}
+    </ul>
+  </div>
+</section>` : ""}
 <footer class="hm-foot">
   <div class="hm-wrap">
     <p class="hm-foot-brand">30+DA · GK Newsroom · ggmt.sg</p>
