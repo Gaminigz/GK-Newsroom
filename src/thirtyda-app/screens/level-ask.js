@@ -1,6 +1,6 @@
 // Screens 5 + 8 · Level 1 / Level 2 · "Send your 5" — the panel at the bottom of the conversation screen
 // (screens/conversation.js): lines 1..pick are picked, each from its own 5 choices (set by the super admin),
-// the rest are written (replied to with Yes / No, at both levels), live contact-detail check. Also exports the
+// the rest are written (every line gets a short typed reply, 1–10 characters), live contact-detail check. Also exports the
 // small helpers the conversation shares (rule messages, notes, the send button paint). The old
 // #/ask/:pairId/:level address redirects to the conversation.
 import {
@@ -110,7 +110,7 @@ const PICK_STYLE = {
 
 /**
  * "Send your 5" — lines 1..pick are picked, each from its own list of 5 (set by the super admin), the rest
- * are written (the other person replies Yes / No to them, at both levels), with the live contact-detail check. A tap on the
+ * are written (the other person gives every line a short typed reply), with the live contact-detail check. A tap on the
  * greyed-out Send while a contact detail is present still posts the set: the server records the stopped
  * attempt for the admin (design A2). Unsent work survives leaving the screen (not a reload).
  *
@@ -350,8 +350,8 @@ registerStrings({
     lv_check_n: 'Check line {n}.',
     lv_sending: 'Sending…',
     la_rule: 'Pick {pick} · Write {write}',
-    la_ph_1: 'Write your own line (yes/no reply)',
-    la_ph_2: 'Write your own line (yes/no reply)',
+    la_ph_1: 'Write your own line (short reply)',
+    la_ph_2: 'Write your own line (short reply)',
     la_lock_1: 'No phone numbers or chat handles.',
     la_lock_2: 'No phone numbers or chat handles.',
     la_ask_them: 'Send',
@@ -375,8 +375,8 @@ registerStrings({
     lv_check_n: 'សូមពិនិត្យឃ្លាទី {n}។',
     lv_sending: 'កំពុងផ្ញើ…',
     la_rule: 'ជ្រើស {pick} · សរសេរ {write}',
-    la_ph_1: 'សរសេរឃ្លាផ្ទាល់ខ្លួន (ឆ្លើយតប បាទ/ចាស ឬ ទេ)',
-    la_ph_2: 'សរសេរឃ្លាផ្ទាល់ខ្លួន (ឆ្លើយតប បាទ/ចាស ឬ ទេ)',
+    la_ph_1: 'សរសេរឃ្លាផ្ទាល់ខ្លួន (ឆ្លើយតបខ្លីៗ)',
+    la_ph_2: 'សរសេរឃ្លាផ្ទាល់ខ្លួន (ឆ្លើយតបខ្លីៗ)',
     la_lock_1: 'គ្មានលេខទូរស័ព្ទ ឬឈ្មោះគណនីជជែកទេ។',
     la_lock_2: 'គ្មានលេខទូរស័ព្ទ ឬឈ្មោះគណនីជជែកទេ។',
     la_ask_them: 'ផ្ញើ',
@@ -400,8 +400,8 @@ registerStrings({
     lv_check_n: '请检查第 {n} 句。',
     lv_sending: '发送中…',
     la_rule: '选 {pick} 句 · 自己写 {write} 句',
-    la_ph_1: '写一句你的话（用“是/不是”回复）',
-    la_ph_2: '写一句你的话（用“是/不是”回复）',
+    la_ph_1: '写一句你的话（对方简短回复）',
+    la_ph_2: '写一句你的话（对方简短回复）',
     la_lock_1: '不能留电话号码或聊天账号。',
     la_lock_2: '不能留电话号码或聊天账号。',
     la_ask_them: '发送',
@@ -425,8 +425,8 @@ registerStrings({
     lv_check_n: '{n}번째 한마디를 확인해 주세요.',
     lv_sending: '보내는 중…',
     la_rule: '{pick}개 고르기 · {write}개 직접 쓰기',
-    la_ph_1: '한마디 쓰기 (예/아니요로 답장)',
-    la_ph_2: '한마디 쓰기 (예/아니요로 답장)',
+    la_ph_1: '한마디 쓰기 (짧은 답장)',
+    la_ph_2: '한마디 쓰기 (짧은 답장)',
     la_lock_1: '전화번호나 채팅 아이디는 안 돼요.',
     la_lock_2: '전화번호나 채팅 아이디는 안 돼요.',
     la_ask_them: '보내기',
@@ -450,8 +450,8 @@ registerStrings({
     lv_check_n: '{n}つ目のひとことを確認してください。',
     lv_sending: '送信中…',
     la_rule: '{pick}つ選ぶ · {write}つ書く',
-    la_ph_1: 'ひとことを書く（はい/いいえで返信）',
-    la_ph_2: 'ひとことを書く（はい/いいえで返信）',
+    la_ph_1: 'ひとことを書く（短い返信）',
+    la_ph_2: 'ひとことを書く（短い返信）',
     la_lock_1: '電話番号やチャットIDは書けません。',
     la_lock_2: '電話番号やチャットIDは書けません。',
     la_ask_them: '送信',

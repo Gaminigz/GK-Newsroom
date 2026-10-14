@@ -11,7 +11,8 @@
  *   ?fast=1  the 24-hour waits last 10 seconds
  *
  * Screens 5–12 are the ONE conversation screen (#/c/P-1) in different states: Level 1 and Level 2 run both
- * ways (each person sends their own 5 and replies to the other's line by line, one tap each), after Level 2
+ * ways (each person sends their own 5 and replies to the other's line by line, a short typed reply each — 1–10
+ * characters, checked like the server's: contact details and bad words stopped, also split down replies), after Level 2
  * each chooses "Open the chat" or "Forget it", and Level 3 is the chat with everything before it above and
  * the real names in the header. The other person is simulated: after you act they reply one line at a time,
  * send their own 5 when they have not yet, and choose to open the chat after you do.
@@ -263,8 +264,8 @@
   // ------------------------------------------------------------------ texts written by Dara and Sophea
 
   // Written lines (original + translation; the bank covers the picked ones in all 5 languages).
-  // Level 1: 4 picked + 1 written; Level 2: 3 picked + 2 written. Every reply is one tap: a picked line
-  // Yes / No / Not really / Maybe, a written line Yes / No. Picked line k is one of list k's 5 choices.
+  // Level 1: 4 picked + 1 written; Level 2: 3 picked + 2 written. Every reply is a short typed one (1–10
+  // characters, owner 2026-10-14), to a picked line and a written one alike. Picked line k is one of list k's 5 choices.
   const Q_NOISY = 'l1_noisy'; // Dara's own Level 1 line reads exactly like this bank line
   const SOPHEA_L1 = { km: 'តើអ្នកចូលចិត្តផឹកកាហ្វេទេ?', en: 'Do you like coffee?' };
   const DARA_L2 = [
@@ -275,7 +276,14 @@
     { km: 'តើអ្នកចូលចិត្តភ្លៀងទេ?', en: 'Do you like the rain?' },
     { km: 'តើអ្នកចូលចិត្តអានសៀវភៅទេ?', en: 'Do you like reading books?' },
   ];
-  const TAP_REPLIES = ['yes', 'not_really', 'no', 'maybe', 'yes'];
+  // What the other (simulated) person types back, line after line: 1–10 characters in either language.
+  const BOT_REPLIES = [
+    { en: 'Yes, a bit', km: 'បាទ បន្តិច' },
+    { en: 'Not today', km: 'ថ្ងៃនេះអត់ទេ' },
+    { en: 'No 🙂', km: 'ទេ 🙂' },
+    { en: 'Maybe', km: 'ប្រហែលជា' },
+    { en: 'Yes!', km: 'បាទ!' },
+  ];
 
   // The design's Level 3 conversation (original + translation), and what each side replies when you write.
   const CHAT = [
@@ -337,7 +345,11 @@
     translations: bankTr((l) => R.questionText(level, key, l)),
   });
   const writtenQ = (n, tr, lang) => ({ n, source: 'written', key: null, text: tr[lang] ?? tr.en, lang, translations: fullTr(tr) });
-  const tapAnswer = (n, key, lang, at) => ({ n, key, text: null, lang, translations: bankTr((l) => R.answerText(key, l)), at });
+  /** A typed reply as the server stores it: the words, their language, the translations (here: written out). */
+  const typedAnswer = (n, tr, lang, at) => {
+    const l = tr[lang] ? lang : 'en';
+    return { n, key: null, text: tr[l], lang: l, translations: fullTr(tr), at };
+  };
 
   function newSet(pairId, level, from, to, questions, sentAt) {
     const set = { id: nextId('set', 'S-'), pairId, level, from, to, questions, answers: [], sentAt, completedAt: null };
@@ -362,10 +374,9 @@
     return [...picks.map((k, i) => bankQ(level, k, i + 1, lang)), ...written.map((w, j) => writtenQ(picks.length + j + 1, w, lang))];
   }
 
-  /** `user`'s tap reply to line `q` (the i-th) of a set: a written line gets Yes / No only. */
+  /** `user`'s short typed reply to line `q` (the i-th) of a set. */
   function botReply(set, q, i, user, at) {
-    const key = q.source === 'written' ? (i % 2 ? 'no' : 'yes') : TAP_REPLIES[i % TAP_REPLIES.length];
-    return tapAnswer(q.n, key, user.lang, at);
+    return typedAnswer(q.n, BOT_REPLIES[i % BOT_REPLIES.length], user.lang, at);
   }
 
   /** The first `count` lines of a set get `user`'s replies; all 5 = complete. */
@@ -613,12 +624,12 @@
   };
 
   /** A refused text: kept in the chat log as stopped (never shown) plus an open flag, like the server. */
-  function recordStopped(u, pair, other, { text, level, kind, hits, reason }) {
+  function recordStopped(u, pair, other, { text, level, kind, hits, reason, n = null }) {
     const flagId = nextId('flag', 'f');
     const h = hits?.[0];
     const at = nowIso();
     chatLog(pair).push({
-      id: nextId('msg', 'M-'), from: u.id, at, kind, level, text, lang: u.lang, translations: { [u.lang]: text },
+      id: nextId('msg', 'M-'), from: u.id, at, kind, level, ...(n == null ? {} : { n }), text, lang: u.lang, translations: { [u.lang]: text },
       hit: h ? (text.includes(h.match) ? h.match : text.slice(h.start, h.end)) : null, flagId, stopped: true,
     });
     W.flags.push({ id: flagId, chatId: pair.id, from: u.id, to: other.id, at, reason: reason || 'Contact details shared', kind: 'stopped', status: 'open' });
@@ -626,11 +637,11 @@
 
   const plainHits = (hits) => hits.map(({ type, match, start, end }) => ({ type, match, start, end }));
 
-  function stopContactDetails(u, pair, other, texts, opts) {
+  function stopContactDetails(u, pair, other, texts, { find = R.findContactDetails, ...opts }) {
     for (let i = 0; i < texts.length; i++) {
       if (texts[i] == null) continue;
       const text = String(texts[i]).trim();
-      const c = R.findContactDetails(text);
+      const c = find(text);
       if (c.ok) continue;
       recordStopped(u, pair, other, { text, ...opts, hits: c.hits, reason: c.reason });
       throw fail(422, 'contact_detail', c.reason || 'Contact details are not allowed.', { index: i, hits: c.hits, reason: c.reason });
@@ -666,6 +677,17 @@
     const reason = R.CONTACT_REASONS[hits[0].type] ?? c.reason;
     recordStopped(u, pair, other, { text, level: 3, kind: 'chat', hits, reason });
     throw fail(422, 'contact_detail', reason || 'Contact details are not allowed.', { hits, reason, count: R.charCount(text) });
+  }
+
+  /** My last chat lines in the pair (not stopped), as { text, at }: read together with a new text of mine. */
+  const myChat = (u, pair) => chatLog(pair).filter((m) => m.kind === 'chat' && m.from === u.id && !m.stopped).slice(-3).map((m) => ({ text: m.text, at: m.at }));
+
+  /** A contact detail written down several of my texts (shared/conversation.js orders): one stopped message, 422. */
+  function stopSplitOrders(u, pair, other, orders, { extra = () => ({}), ...opts }) {
+    const c = R.findSplitContactDetails(orders);
+    if (c.ok) return;
+    recordStopped(u, pair, other, { text: c.text, ...opts, hits: c.hits, reason: c.reason });
+    throw fail(422, 'contact_detail', c.reason || 'Contact details are not allowed.', { ...extra(c), split: true, hits: plainHits(c.hits), reason: c.reason });
   }
 
   // Bad words (store policy, owner 2026-10-14): stopped and recorded like a contact detail, 422 bad_word.
@@ -1359,6 +1381,9 @@
     const written = list.map((q) => (q?.source === 'written' ? String(q.text ?? '').trim() : null));
     stopContactDetails(u, pair, other, written, { level, kind: 'question' });
     stopSplitContactDetails(u, pair, other, written, { level, kind: 'question' });
+    stopSplitOrders(u, pair, other, R.writtenOrders({ sets: setsOf(pair), me: u.id, written, chat: myChat(u, pair) }), {
+      level, kind: 'question', extra: (c) => ({ index: c.items.find((x) => x.fresh)?.id ?? 0 }),
+    });
     stopBadWords(u, pair, other, written, { level, kind: 'question' });
 
     const { pick, write } = R.LEVEL_RULES[level];
@@ -1405,11 +1430,11 @@
   }
 
   function answerView(a, level, lang) {
-    if (level === 1 || a.key) {
+    if (a.key) {
       return { n: a.n, key: a.key, text: R.answerText(a.key, lang), original: R.answerText(a.key, a.lang), originalLang: a.lang };
     }
     const tr = a.lang === lang ? null : a.translations?.[lang] ?? null;
-    return { n: a.n, key: null, text: tr ?? a.text, original: a.text, originalLang: a.lang, translated: Boolean(tr) };
+    return { n: a.n, key: null, text: tr ?? a.text ?? '', original: a.text ?? '', originalLang: a.lang, translated: Boolean(tr) };
   }
 
   function setFor({ url, params }, direction) {
@@ -1446,7 +1471,7 @@
     return set;
   }
 
-  /** POST /pairs/:id/answers — all replies at once (older screens). */
+  /** POST /pairs/:id/answers — all replies at once (older screens): each checked like PUT /replies, read with the ones before. */
   function sendAnswers({ body, params }) {
     const u = me();
     const level = levelParam(body.level);
@@ -1459,14 +1484,19 @@
       const n = Number(a?.n);
       if (!set.questions.some((q) => q.n === n) || seen.has(n)) throw invalid('Reply to each line once.', { index: i });
       seen.add(n);
-      const source = set.questions.find((q) => q.n === n)?.source;
-      if (!R.replyOptions(source).some((x) => x.key === a.key)) {
-        throw invalid(source === 'written' ? 'Reply to the written line with Yes or No.' : 'Pick one of the replies.', { index: i });
-      }
     });
-    const lang = u.lang ?? 'en';
     const at = nowIso();
-    for (const a of [...list].sort((x, y) => Number(x.n) - Number(y.n))) putReply(pair, set, tapAnswer(Number(a.n), a.key, lang, at));
+    const working = { ...set, answers: [] };
+    const sets = setsOf(pair).map((s) => (s === set ? working : s));
+    for (const [i, a] of list.entries()) {
+      try {
+        working.answers = R.withReply(working.answers, checkedReply(u, pair, other, { level, n: Number(a.n), body: a, at, sets }));
+      } catch (err) {
+        if (err instanceof Fail && err.status === 422) err.extra = { ...err.extra, index: i };
+        throw err;
+      }
+    }
+    for (const a of working.answers) putReply(pair, set, a);
     botTick(pair, u);
     return { pair: pairView(pair, u), conversation: conversationOf(pair, u) };
   }
@@ -1475,11 +1505,11 @@
 
   function replyView(a, level, lang) {
     if (!a) return null;
-    if (level === 1 || a.key) {
-      return { key: a.key ?? null, text: R.answerText(a.key, lang) ?? '', original: R.answerText(a.key, a.lang) ?? '', translated: a.lang !== lang, at: a.at ?? null };
+    if (a.key) {
+      return { key: a.key, text: R.answerText(a.key, lang) ?? '', original: R.answerText(a.key, a.lang) ?? '', translated: a.lang !== lang, at: a.at ?? null };
     }
     const tr = a.lang === lang ? null : a.translations?.[lang] ?? null;
-    return { key: null, text: tr ?? a.text, original: a.text, translated: Boolean(tr), at: a.at ?? null };
+    return { key: null, text: tr ?? a.text ?? '', original: a.text ?? '', translated: Boolean(tr), at: a.at ?? null };
   }
 
   function setView(set, u, lang, open) {
@@ -1491,12 +1521,12 @@
         n: v.n, source: v.source, topic: null, text: v.text, original: v.original, originalLang: v.originalLang, translated: v.translated,
         reply: replyView(set.answers.find((a) => a.n === q.n), level, lang),
       };
-      if (from === 'them') line.options = R.replyOptions(q.source).map((o) => ({ key: o.key, text: o.text[lang] || o.text.en }));
       return line;
     });
     return {
       id: set.id, level, from, sentAt: set.sentAt, completedAt: set.completedAt ?? null,
-      replied: R.repliedCount(set), total: lines.length, canReply: from === 'them' && open && !set.completedAt, lines,
+      replied: R.repliedCount(set), total: lines.length, canReply: from === 'them' && open && !set.completedAt,
+      ...(from === 'them' ? { max: R.REPLY_MAX } : {}), lines,
     };
   }
 
@@ -1573,7 +1603,41 @@
     return conversationOf(pairFor(u, params[0]).pair, u);
   }
 
-  /** PUT /pairs/:id/replies { level, n, key } — one tap reply (both levels), changeable until all 5 are in. */
+  // An older app's tap (yes / no / not_really / maybe): taken as those words, typed in the replier's language.
+  const isTapKey = (key) => R.L1_ANSWERS.some((a) => a.key === key); // R loads after this script runs
+
+  /**
+   * One reply, checked as the server's checkedReply does: a contact detail (the reply's stricter detector) or a bad
+   * word stopped and recorded; the split check over everything `u` wrote in the pair; 1–10 characters.
+   */
+  function checkedReply(u, pair, other, { level, n, body, at, sets = setsOf(pair) }) {
+    const lang = u.lang ?? 'en';
+    let text;
+    let tap = null;
+    if (typeof body?.text === 'string') {
+      if (body.text.length > 1000) throw invalid(`Keep it to ${R.REPLY_MAX} characters.`, { field: 'text', n, reason: 'too_long', max: R.REPLY_MAX });
+      text = R.cleanReply(body.text);
+    } else if (typeof body?.key === 'string' && isTapKey(body.key)) {
+      tap = body.key;
+      text = R.answerText(tap, lang);
+    } else {
+      throw invalid('Type a short reply.', { field: 'text', n, reason: 'empty', max: R.REPLY_MAX });
+    }
+    const where = { level, kind: 'answer', n };
+    stopContactDetails(u, pair, other, [text], { ...where, find: R.findReplyContactDetails });
+    stopSplitOrders(u, pair, other, R.replyOrders({ sets, me: u.id, reply: { level, n, text }, chat: myChat(u, pair) }), { ...where, extra: () => ({ n }) });
+    stopBadWords(u, pair, other, [text], where);
+    const r = R.checkReply(text);
+    if (!r.ok) {
+      const msg = r.error === 'too_long' ? `Keep it to ${R.REPLY_MAX} characters.` : 'Type a short reply.';
+      throw invalid(msg, { field: 'text', n, reason: r.error, count: r.count, max: R.REPLY_MAX });
+    }
+    // No translation provider on the board: a typed reply shows as typed (an old tap still has its words).
+    const translations = tap ? bankTr((l) => R.answerText(tap, l)) : { [lang]: text };
+    return { n, key: null, text, lang, translations, at };
+  }
+
+  /** PUT /pairs/:id/replies { level, n, text } — one short typed reply (both levels), changeable until all 5 are in. */
   function saveReply({ body, params }) {
     const u = me();
     const level = levelParam(body.level);
@@ -1582,11 +1646,7 @@
     const n = Number(body.n);
     const q = set.questions.find((x) => x.n === n);
     if (!q) throw invalid('Reply to one of the lines.', { field: 'n', n: body.n ?? null });
-    if (body.key === undefined && body.text !== undefined) throw invalid('Reply with one tap.', { field: 'key', n, reason: 'taps_only' });
-    if (!R.replyOptions(q.source).some((x) => x.key === body.key)) {
-      throw invalid(q.source === 'written' ? 'Reply to this line with Yes or No.' : 'Pick one of the replies.', { field: 'key', n });
-    }
-    putReply(pair, set, tapAnswer(n, body.key, u.lang ?? 'en', nowIso()));
+    putReply(pair, set, checkedReply(u, pair, other, { level, n, body, at: nowIso() }));
     botTick(pair, u);
     return { conversation: conversationOf(pair, u) };
   }

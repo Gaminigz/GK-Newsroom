@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   SYSTEM_QUESTIONS, SYSTEM_TOPICS, RETIRED_QUESTIONS, LEVEL_RULES, L1_ANSWERS, ROLES, questionText, answerText, replyOptions, l1Answers,
 } from './questions.js';
-import { LANGS, findContactDetails, checkWrittenQuestion } from './rules.js';
+import { LANGS, findContactDetails, checkWrittenQuestion, checkReply } from './rules.js';
 
 // A real translation is written in its own script, not a copy of the English.
 const SCRIPT = {
@@ -63,12 +63,12 @@ test('Level 2 is the owner\'s lists: Intentions, Time of Comfort, Venue Vibe (to
   assert.deepEqual(SYSTEM_QUESTIONS[2].filter((_, i) => i % 3 === 0).map((x) => x.key), ['inten_1', 'inten_2', 'inten_3', 'inten_4', 'inten_5']);
 });
 
-test('Level 1 lines are yes/no questions; Level 2 lines are statements a tap answers, never open questions', () => {
+test('Level 1 lines are yes/no questions; Level 2 lines are statements a short reply answers, never open questions', () => {
   for (const x of SYSTEM_QUESTIONS[1]) {
     assert.match(x.text.en, /^(Is|Are|Do|Does|Can|Has|Have)\b.*\?$/, x.key);
     for (const lang of LANGS) assert.match(x.text[lang], /[?？]$/, `${x.key}.${lang} ends with a question mark`);
   }
-  // Yes / No / Not really / Maybe has to make sense under every Level 2 line (Gamini 2026-10-13: replies are taps).
+  // A short reply ("Yes", "Not today") has to make sense under every Level 2 line (Gamini 2026-10-13; typed since 2026-10-14).
   for (const x of SYSTEM_QUESTIONS[2]) {
     assert.doesNotMatch(x.text.en, /^(What|How|Where|Which|Who|When|Why)\b/, x.key);
     for (const lang of LANGS) {
@@ -107,11 +107,21 @@ test('level rules: always 5 questions', () => {
   }
 });
 
-test('replies are taps at both levels: a picked line 4 options, a written line Yes / No', () => {
+test('the taps are retired (replies are typed, owner 2026-10-14) but every old tap still reads back in all 5 languages', () => {
+  // What the taps were (kept so replies stored as these keys read back, and an older app's tap is taken as its words).
   assert.deepEqual(replyOptions('system').map((x) => x.key), ['yes', 'no', 'not_really', 'maybe']);
   assert.deepEqual(replyOptions('written').map((x) => x.key), ['yes', 'no']);
   assert.equal(l1Answers, replyOptions); // the older name
-  // A Level 2 reply in words from before the taps has no key: answerText gives null, the words read back.
+  for (const key of ['yes', 'no', 'not_really', 'maybe', 'ok']) {
+    for (const lang of LANGS) {
+      const words = answerText(key, lang);
+      assert.equal(typeof words, 'string', `${key}.${lang}`);
+      // An older app's tap becomes a typed reply in the replier's language: it must pass the typed-reply rule.
+      if (key !== 'ok') assert.equal(checkReply(words).ok, true, `${key}.${lang} "${words}" passes checkReply`);
+    }
+  }
+  assert.equal(answerText('ok', 'en'), 'OK'); // retired 2026-10-13, still reads back
+  // A typed reply (or a Level 2 reply in words from before the taps) has no key: answerText gives null, the words read back.
   assert.equal(answerText(null, 'en'), null);
 });
 

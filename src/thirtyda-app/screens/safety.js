@@ -46,9 +46,12 @@ export function reportSheet({ title, quote = null, reasons = PERSON_REPORT_REASO
   return dlg;
 }
 
-/** Report a person: their profile (default), one photo (reportTarget.photo(n)) or one written line (reportTarget.line). */
+/**
+ * Report a person: their profile (default), one photo (reportTarget.photo(n)), one written line (reportTarget.line)
+ * or one typed reply (reportTarget.reply).
+ */
 export function reportPerson(person, target = reportTarget.profile(), { quote = null } = {}) {
-  const kind = target.startsWith('photo:') ? 'photo' : target.startsWith('line:') ? 'line' : 'profile';
+  const kind = ['photo', 'line', 'reply'].find((k) => target.startsWith(`${k}:`)) || 'profile';
   return reportSheet({
     title: t(`sf_report_${kind}`, { name: person?.name || '' }),
     quote,
@@ -169,6 +172,7 @@ registerStrings({
     sf_report_profile: 'Report {name}',
     sf_report_photo: 'Report this photo',
     sf_report_line: 'Report this line',
+    sf_report_reply: 'Report this reply',
     sf_report_photo_btn: 'Report photo',
     sf_report_why: 'Why are you reporting it?',
     sf_reason_rude: 'Rude',
@@ -197,6 +201,7 @@ registerStrings({
     sf_report_profile: 'រាយការណ៍ {name}',
     sf_report_photo: 'រាយការណ៍រូបថតនេះ',
     sf_report_line: 'រាយការណ៍ឃ្លានេះ',
+    sf_report_reply: 'រាយការណ៍ការឆ្លើយតបនេះ',
     sf_report_photo_btn: 'រាយការណ៍រូបថត',
     sf_report_why: 'ហេតុអ្វីបានជាអ្នករាយការណ៍?',
     sf_reason_rude: 'មិនគួរសម',
@@ -225,6 +230,7 @@ registerStrings({
     sf_report_profile: '举报 {name}',
     sf_report_photo: '举报这张照片',
     sf_report_line: '举报这句话',
+    sf_report_reply: '举报这条回复',
     sf_report_photo_btn: '举报照片',
     sf_report_why: '举报原因是什么？',
     sf_reason_rude: '粗鲁无礼',
@@ -253,6 +259,7 @@ registerStrings({
     sf_report_profile: '{name}님 신고',
     sf_report_photo: '이 사진 신고',
     sf_report_line: '이 문장 신고',
+    sf_report_reply: '이 답장 신고',
     sf_report_photo_btn: '사진 신고',
     sf_report_why: '신고하는 이유를 골라 주세요.',
     sf_reason_rude: '무례함',
@@ -281,6 +288,7 @@ registerStrings({
     sf_report_profile: '{name}さんを報告',
     sf_report_photo: 'この写真を報告',
     sf_report_line: 'この文を報告',
+    sf_report_reply: 'この返信を報告',
     sf_report_photo_btn: '写真を報告',
     sf_report_why: '報告する理由を選んでください。',
     sf_reason_rude: '失礼な内容',

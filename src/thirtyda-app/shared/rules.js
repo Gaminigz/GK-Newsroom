@@ -784,6 +784,120 @@ export function findContactDetailsAcross(texts) {
   return { ...r, text, hits: r.hits.map((h) => ({ ...h, index: indexAt(h.start), lastIndex: indexAt(Math.max(h.start, h.end - 1)) })) };
 }
 
+// ---------------------------------------------------------------------------
+// Replies to Level 1 and Level 2 lines (owner 2026-10-14: "all questions answering method change to 10 characters
+// max" — "so no more yes no not really maybe"): typed, 1–10 characters, one line. And "same rule — can not write
+// numbers like a phone or a TG handle, or imply them by words, even if they write them vertically or horizontally":
+// on top of findContactDetails, one reply may not carry 5 or more digits in any form (digits, number words in the
+// five languages, spaced or glued) nor any @name, and a person's replies are also read together, down the screen and
+// in the order typed (findSplitContactDetails), so a number or a handle split over several replies is stopped too.
+
+export const REPLY_MIN = 1, REPLY_MAX = 10;
+const REPLY_DIGITS_MAX = 4; // "10:30", "1990", "2 or 3" pass; "0 1 2 8 8", "零一二八八", "oh 1 2 3 4" do not
+const REPLY_RAW_MAX = 64; // code points in all (marks that join a character count as nothing, so they cannot stack)
+const REPLY_CHAR_MAX = 12; // code points in one character: a Khmer stack, an emoji family with skin tones
+
+// All the digits one reply carries, however they are written. Hangul digit syllables and one-kana digits are also
+// everyday words (일이 "work", に a particle), so they count only in a run of four number words or more.
+function replyDigitHit(f) {
+  let total = 0, fs = -1, fe = -1;
+  for (const run of numberRuns(f.low)) {
+    const n = run.toks.reduce((sum, k) => sum + (k.weak && run.toks.length < 4 ? 0 : k.n), 0);
+    if (!n) continue;
+    total += n;
+    if (fs < 0) fs = run.start;
+    fe = run.end;
+  }
+  return total > REPLY_DIGITS_MAX ? { type: 'phone', fs, fe } : null;
+}
+
+// "@ab", "@x_1": a reply has no use for an @name of any length ("@home", "@5pm" are just "at").
+const REPLY_HANDLE_RE = /@([a-z0-9_][a-z0-9_.]*)/g;
+function replyHandleHits(f) {
+  return scan(REPLY_HANDLE_RE, f.low, (m) => (NOT_HANDLES.has(m[1]) || TIME_WORD.test(m[1])
+    ? null : { type: 'handle', fs: m.index, fe: m.index + m[0].length }));
+}
+
+/**
+ * Contact details in ONE reply: findContactDetails, plus 5 or more digits in any form (phone) and any @name (handle).
+ * → { ok, hits:[{ type, match, start, end }], reason }
+ */
+export function findReplyContactDetails(text) {
+  const c = findContactDetails(text);
+  if (!c.ok) return c;
+  const f = fold(text);
+  const hits = [replyDigitHit(f), ...replyHandleHits(f)].filter(Boolean).map((h) => toHit(f, h)).sort((a, b) => a.start - b.start);
+  return hits.length ? { ok: false, hits, reason: CONTACT_REASONS[hits[0].type] } : c;
+}
+
+// One reading of the texts in an order, joined by `glue`: the hits that span two texts or more, one of them fresh,
+// with their places re-counted in the spanned texts joined by line breaks (what the admin sees).
+function splitHits(items, glue) {
+  const starts = [];
+  let at = 0;
+  for (const x of items) { starts.push(at); at += x.text.length + glue.length; }
+  const itemAt = (pos) => { let k = 0; while (k + 1 < starts.length && starts[k + 1] <= pos) k++; return k; };
+  const joined = items.map((x) => x.text).join(glue);
+  const r = findContactDetails(joined, glue ? { chainGap: Infinity } : {});
+  let found = r.hits;
+  if (!glue) {
+    // Glued, only the letters count ("we" + "chat", "@" + "ab"): numbers are read line by line, where breaks are gaps.
+    const f = fold(joined);
+    found = [...found.filter((h) => h.type !== 'phone'), ...replyHandleHits(f).map((h) => toHit(f, h))];
+  }
+  const spans = found
+    .map((h) => ({ h, index: itemAt(h.start), lastIndex: itemAt(Math.max(h.start, h.end - 1)) }))
+    .filter((s) => s.lastIndex > s.index && items.slice(s.index, s.lastIndex + 1).some((x) => x.fresh));
+  if (!spans.length) return null;
+  const { index, lastIndex } = spans[0];
+  const span = items.slice(index, lastIndex + 1);
+  const text = span.map((x) => x.text).join('\n');
+  const local = []; // where each spanned text starts in `text`
+  let pos = 0;
+  for (const x of span) { local.push(pos); pos += x.text.length + 1; }
+  const place = (p, end) => {
+    const k = itemAt(end ? Math.max(0, p - 1) : p);
+    const off = Math.min(p - starts[k], items[k].text.length);
+    return k < index || k > lastIndex ? null : local[k - index] + off;
+  };
+  const hits = spans.filter((s) => s.index >= index && s.lastIndex <= lastIndex).map(({ h, index: i, lastIndex: j }) => {
+    const start = place(h.start, false), end = place(h.end, true);
+    return { type: h.type, match: text.slice(start, end), start, end, index: i, lastIndex: j };
+  });
+  return { ok: false, hits, reason: CONTACT_REASONS[hits[0].type], text, items: span };
+}
+
+const GLUE_WINDOW = 6; // texts glued together at most ("te" / "le" / "gr" / "am"); one letter each is read line by line
+
+/**
+ * Contact details written down (or across) several texts of one person that each pass alone: a reply per line read
+ * top to bottom ("012" / "887" / "766", "zero" / "one" / "two" …, "tele" / "gram", "we" / "chat", "@" / "dara"), a
+ * reply that finishes what a written line began. `orders` = lists of { text, fresh, id? }, each read as one, line by
+ * line (like findContactDetailsAcross), and every 2–6 neighbouring texts with a fresh one among them glued together
+ * (letters only: "we" + "chat"). Only a hit that spans two texts or more, one of them fresh, counts: what was let
+ * through before stays let through.
+ * → { ok, hits:[{ type, match, start, end, index, lastIndex }], reason, text, items } — text = the spanned texts joined
+ *   by line breaks (what the admin sees; hits point into it), items = the spanned { text, fresh, id }.
+ */
+export function findSplitContactDetails(orders) {
+  for (const order of Array.isArray(orders) ? orders : []) {
+    const items = (Array.isArray(order) ? order : [])
+      .map((x) => ({ text: String(x?.text ?? '').trim(), fresh: Boolean(x?.fresh), id: x?.id ?? null }))
+      .filter((x) => x.text);
+    if (items.length < 2 || !items.some((x) => x.fresh)) continue;
+    const found = splitHits(items, '\n');
+    if (found) return found;
+    for (let size = 2; size <= Math.min(GLUE_WINDOW, items.length); size++) {
+      for (let i = 0; i + size <= items.length; i++) {
+        const window = items.slice(i, i + size);
+        const glued = window.some((x) => x.fresh) ? splitHits(window, '') : null;
+        if (glued) return glued;
+      }
+    }
+  }
+  return { ok: true, hits: [], reason: null, text: '', items: [] };
+}
+
 /**
  * Sexual words, slurs, rude or threatening words, and money / escort words (store policy, owner 2026-10-14; the lists
  * and how they match: ./bad-words.js), read through the same folding as contact details (ｆｕｃｋ, fück, f.u.c.k).
@@ -924,10 +1038,35 @@ export function checkWrittenQuestion(text, level) {
   return checkWritten(text, QUESTION_LIMITS[level] || QUESTION_LIMITS[2]);
 }
 
-// Answers in words, 2–120 characters: Level 2 took them until replies became taps (2026-10-13). Nothing
-// sends words any more; kept for the rule's tests and for reading what was written before.
+// Answers in words, 2–120 characters: Level 2 took them until replies became taps (2026-10-13), and replies are
+// short typed ones now (checkReply). Nothing sends these; kept for the rule's tests and for reading old ones.
 export function checkWrittenAnswer(text) {
   return checkWritten(text, ANSWER_LIMITS);
+}
+
+/** A reply as it is kept: trimmed, one line (any run of spaces or line breaks is one space). */
+export function cleanReply(text) {
+  return String(text ?? '').replace(/\s+/g, ' ').trim();
+}
+
+const NOTHING_SEEN = /[\p{M}\p{C}\p{Z}]/gu;
+
+/**
+ * A typed reply to a Level 1 or Level 2 line → { ok, text, count, error: null|'empty'|'too_long'|'contact'|'word', hits,
+ * reason } (text = cleanReply). A contact detail is reported first (findReplyContactDetails), then a bad word, then
+ * 1–10 characters as a person counts them (charCount: "ខ្ញុំ" is one, "好的" two). too_long also covers the raw caps.
+ */
+export function checkReply(raw) {
+  const text = cleanReply(raw);
+  const { count, widest } = scanChars(text);
+  const c = findReplyContactDetails(text);
+  const result = (error, x = c) => ({ ok: !error, text, count, error, hits: x.hits, reason: x.reason });
+  if (!c.ok) return result('contact');
+  const words = findBadWords(text);
+  if (!words.ok) return result('word', words);
+  if (count < REPLY_MIN || !text.replace(INVISIBLE, '').replace(NOTHING_SEEN, '')) return result('empty');
+  if (count > REPLY_MAX || widest > REPLY_CHAR_MAX || [...text].length > REPLY_RAW_MAX) return result('too_long');
+  return result(null);
 }
 
 // ---------------------------------------------------------------------------

@@ -22,8 +22,8 @@ import {
   homePhotos, sendHomeImage, HOME_IMG_RE, HOME_IMG_DIR, HOME_IMG_TYPES, HOME_IMG_CACHE,
 } from './thirtyda-home.mjs';
 import { handleThirtyDaApp } from './thirtyda-app.mjs';
-import { LEVEL_RULES, SYSTEM_QUESTIONS, replyOptions } from '../thirtyda-app/shared/questions.js';
-import { PHOTO_SLOT_LEVELS, AGE_MIN } from '../thirtyda-app/shared/rules.js';
+import { LEVEL_RULES, SYSTEM_QUESTIONS } from '../thirtyda-app/shared/questions.js';
+import { PHOTO_SLOT_LEVELS, AGE_MIN, REPLY_MAX } from '../thirtyda-app/shared/rules.js';
 
 const LANGS = ['en', 'km', 'zh', 'ko', 'ja'];
 const HOME_KEYS = Object.keys(PAGE_STRINGS.en).filter((k) => k.startsWith('home_'));
@@ -110,13 +110,14 @@ test('no numbers: the levels in words, true to the code; only the brand (30+DA, 
   // The rules the page describes (if these change, the page's words must change too).
   assert.deepEqual(LEVEL_RULES, { 1: { pick: 4, write: 1 }, 2: { pick: 3, write: 2 } });
   assert.ok(SYSTEM_QUESTIONS[1].every((x) => /\?$/.test(x.text.en)), 'Level 1 lines are questions');
-  assert.ok(replyOptions('picked').length > 1 && replyOptions('written').length > 1, 'answered with one tap');
+  assert.ok(REPLY_MAX > 0 && REPLY_MAX <= 10, 'each answered with a short reply (owner 2026-10-14: 10 characters max)');
   assert.ok(LEVEL_RULES[2].pick > 0 && LEVEL_RULES[2].write > 1, 'Level 2: a few more, a couple you write yourself');
   assert.equal(PHOTO_SLOT_LEVELS[1], 2, 'another photo (photo 2) opens at Level 2');
   assert.equal(AGE_MIN, 30);
   const en = PAGE_STRINGS.en;
   assert.deepEqual([en.home_l1_h, en.home_l2_h, en.home_l3_h], ['Say hello', 'Go deeper', 'Chat']);
-  assert.equal(en.home_l1, 'A few easy questions. One tap to answer.');
+  assert.equal(en.home_l1, 'A few easy questions. A short reply to each.');
+  for (const lang of LANGS) assert.ok(!/tap|ワンタップ|点一下|한 번 눌러|ចុចតែម្ដង/i.test(PAGE_STRINGS[lang].home_l1), `${lang}.home_l1: no taps any more`);
   // The owner's "then 3" (3 picked + 2 written), in words: a few more, a couple you write yourself — not "all in your own words".
   assert.equal(en.home_l2, 'Then a few more — a couple you write yourself. Another photo opens.');
   assert.match(en.home_l3, /^Every message translated into your language\. Real names/);

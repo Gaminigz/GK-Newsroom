@@ -1029,6 +1029,18 @@ button.bubble { display: block; text-align: left; font-size: 15px; line-height: 
 .bubble.can-change { cursor: pointer; }
 .bubble.can-change:active { background: var(--navy-2); }
 .conv-chips { align-self: flex-end; justify-content: flex-end; max-width: 100%; }
+/* A short typed reply under a line of theirs (owner 2026-10-14: 1–10 characters): one compact row — the box, n/10,
+   Send — and the red line under it. The sent reply sits on the right, bold, like the taps before it. */
+.conv-thread .conv-line:has(.conv-reply-box) { flex-direction: column; align-items: stretch; gap: 5px; }
+.conv-reply-box { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.conv-reply-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.conv-reply-row .conv-reply-input { height: 38px; padding: 0 14px; font-size: 16px; } /* 16px: iOS Safari never zooms */
+.conv-reply-count { flex: none; min-width: 36px; text-align: right; }
+.round-btn.conv-reply-send { width: 38px; height: 38px; }
+.round-btn.conv-reply-send[aria-disabled="true"] { background: var(--disabled-bg); border-color: var(--disabled-bg); color: var(--disabled-ink); cursor: default; }
+.round-btn.conv-reply-send.busy { opacity: 0.6; cursor: progress; }
+.conv-line .conv-reply .trans { margin-top: 2px; font-size: 12.5px; font-weight: 500; overflow-wrap: anywhere; }
+.conv-line .conv-reply .orig { overflow-wrap: anywhere; }
 /* Under my line until their reply comes: faint. */
 .conv-pending { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: 999px; border: 1.5px dashed var(--line); color: var(--muted-2); font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; }
 :lang(km) .conv-pending, :lang(zh) .conv-pending, :lang(ko) .conv-pending, :lang(ja) .conv-pending { letter-spacing: 0.02em; font-size: 10.5px; }

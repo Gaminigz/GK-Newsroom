@@ -61,17 +61,18 @@
       title: 'Level 1 · Start the conversation', who: 'Dara · English',
       notes: [
         'One conversation screen for everything (5–12): what each of you sent and replied stays above, like a chat.',
-        'Either person can start. Dara sends 5 lines: 4 picked from the admin’s lists (one per list) + 1 of his own, a Yes / No line.',
+        'Either person can start. Dara sends 5 lines: 4 picked from the admin’s lists (one per list) + 1 of his own.',
         'Phone numbers, emails, @handles and chat-app names are never allowed: the box turns red and Send stays off.',
-        'Sent → his 5 lines sit on the right; Sophea’s replies appear under each one as she taps (“Sophea replied 2 of 5”).',
+        'Sent → his 5 lines sit on the right; Sophea’s short replies appear under each one as she sends them (“Sophea replied 2 of 5”).',
         'Sophea sends her own 5 too, in any order → they show on the left for Dara to reply to.',
       ],
     },
     6: {
       title: 'Level 1 · Reply line by line', who: 'Sophea · English',
       notes: [
-        'Dara’s 5 lines on the left, each with its reply under it: Yes / No / Not really / Maybe (his own written line: Yes / No).',
-        'Each tap saves on its own and Dara sees it at once. A reply can be changed until all 5 are in.',
+        'Dara’s 5 lines on the left, each with a one-line box under it: a short typed reply, 1–10 characters (live n/10), Send or Enter.',
+        'No phone number, handle, app name or bad word — not in one reply, and not split down several (“012” / “887” / “766”).',
+        'Each reply saves on its own and Dara sees it at once (translated when their languages differ). A reply can be changed until all 5 are in.',
         'Sophea can send her own 5 to Dara at any time (the composer at the bottom).',
         'Level 1 is done when both have sent their 5 and both have replied to all 5 → 7.',
       ],
@@ -89,15 +90,15 @@
       notes: [
         'Level 2 works the same way, both ways: 3 lines picked from the admin’s lists — Intentions, Time of Comfort, Venue Vibe — + 2 of his own (numbered 6–10).',
         'Sophea already sent her Level 2: her lines wait on the left for Dara’s replies.',
-        'Replies are one tap again: Yes / No / Not really / Maybe, his own written lines Yes / No. Phone numbers and chat handles are never allowed.',
+        'Replies are short typed ones again (1–10 characters). Phone numbers and chat handles are never allowed.',
       ],
     },
     9: {
-      title: 'Level 2 · Reply with a tap', who: 'Sophea · English',
+      title: 'Level 2 · Reply in a few words', who: 'Sophea · English',
       notes: [
-        'Under each of Dara’s lines: Yes / No / Not really / Maybe (his own written lines: Yes / No), like Level 1.',
-        'She has replied 2 of 5; Dara has replied 3 of 5 to hers. Each tap shows to the other as soon as it is saved.',
-        'A reply can be changed until all 5 are in. (Level 2 sets replied to in words before the taps still read back.)',
+        'Under each of Dara’s lines: the same one-line box, 1–10 characters, like Level 1.',
+        'She has replied 2 of 5; Dara has replied 3 of 5 to hers. Each reply shows to the other as soon as it is saved.',
+        'A reply can be changed until all 5 are in. (Replies given with the old taps — Yes / No / Not really / Maybe — still read back.)',
         'Level 2 is done when both sets have all 5 replies → 10.',
       ],
     },

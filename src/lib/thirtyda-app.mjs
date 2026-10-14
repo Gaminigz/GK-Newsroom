@@ -15,7 +15,10 @@
  *
  * A conversation (shared/conversation.js): Level 1 and Level 2 each run both ways. Each person sends
  * the other ONE set of 5 lines per level, in any order, and replies to the set they got line by line
- * with one tap (PUT /pairs/:id/replies saves one reply at a time; a reply can change until all 5 are in).
+ * with a short typed reply, 1–10 characters (owner 2026-10-14; PUT /pairs/:id/replies saves one reply at a time; a
+ * reply can change until all 5 are in). A reply is checked like a written line — contact details and bad words
+ * stopped and recorded for the admin — and also read together with the same person's other texts in the pair, so a
+ * phone number or a handle written down several replies is stopped too.
  * A level is done when both sets are complete. Level 2 opens after the wait. After Level 2 each person
  * chooses (POST /pairs/:id/decide): the chat (Level 3) opens as soon as both chose to open it, and one
  * "Forget it" ends the conversation for both (stage 'ended': readable, nothing more to send). Real names
@@ -156,16 +159,17 @@ import {
 import { REVIEW_DEVICES, markReviewDevice, isReviewDevice, claimReviewSignup, releaseReviewSignup } from "./thirtyda-review-world.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
+  REPLY_MAX, cleanReply, checkReply, findReplyContactDetails, findSplitContactDetails,
   PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
   NAME_MIN, NAME_MAX, AGE_MIN, AGE_MAX, checkAppName, checkBirthYear, findBadWords, checkRealName,
 } from "../thirtyda-app/shared/rules.js";
 import {
-  LEVEL_RULES, replyOptions, ROLES, questionText, answerText,
+  LEVEL_RULES, L1_ANSWERS, ROLES, questionText, answerText,
 } from "../thirtyda-app/shared/questions.js";
 import { questionConfig, slotsView, flatView } from "./thirtyda-questions.mjs";
 import {
   convStage, L1_STAGES, openSetLevel, currentSetLevel, levelState, repliedCount, allReplied, levelComplete,
-  nextStep, isMyTurn, decisionOf, afterDecisions,
+  nextStep, isMyTurn, decisionOf, afterDecisions, replyOrders, writtenOrders, withReply,
 } from "../thirtyda-app/shared/conversation.js";
 
 const BASE = "/30da";
@@ -751,7 +755,7 @@ async function appendMessages(d, pair, messages) {
  * A message the rules refused: kept in the chat log with stopped:true and an
  * open `stopped` flag so the admin can act. Never shown to either user.
  */
-async function recordStopped(ctx, pair, other, { text, level, kind, hits, reason }) {
+async function recordStopped(ctx, pair, other, { text, level, kind, hits, reason, n = null }) {
   const { d, me } = ctx;
   const lang = me.lang ?? "en";
   const [flagId, msgId, english] = await Promise.all([
@@ -763,7 +767,7 @@ async function recordStopped(ctx, pair, other, { text, level, kind, hits, reason
   const hit = h ? (text.includes(h.match) ? h.match : text.slice(h.start, h.end)) : null;
   const at = nowIso();
   await appendMessages(d, pair, [{
-    id: msgId, from: me._id, at, kind, level, text, lang, english, translations: { [lang]: text },
+    id: msgId, from: me._id, at, kind, level, ...(n == null ? {} : { n }), text, lang, english, translations: { [lang]: text },
     hit, flagId, stopped: true,
   }]);
   await d.collection(C.flags).insertOne({
@@ -790,14 +794,40 @@ async function stopSplitContactDetails(ctx, pair, other, texts, { level, kind })
   });
 }
 
-/** Contact details anywhere in `texts` → stop + record the first one and throw 422. */
-async function stopContactDetails(ctx, pair, other, texts, { level, kind }) {
+/** My last chat lines in this pair (not stopped), oldest first, as { text, at }: read together with a new text of mine. */
+async function myRecentChat(d, pair, meId) {
+  const chat = await d.collection(C.chats).findOne({ _id: pair._id }, { projection: { messages: { $slice: -40 } } });
+  return (chat?.messages || [])
+    .filter((m) => m.kind === "chat" && m.from === meId && !m.stopped)
+    .slice(-CHAT_SPLIT_LINES)
+    .map((m) => ({ text: m.text, at: m.at }));
+}
+
+/**
+ * A contact detail written down several of my texts in this pair (`orders`: shared/conversation.js replyOrders /
+ * writtenOrders, read by rules.js findSplitContactDetails): the spanned texts are kept as ONE stopped message (the
+ * admin sees the whole attempt, "012↵887↵766") and 422 contact_detail { …extra(c), split: true, hits, reason }.
+ */
+async function stopSplitOrders(ctx, pair, other, orders, { level, kind, n = null, extra = () => ({}) }) {
+  const c = findSplitContactDetails(orders);
+  if (c.ok) return;
+  await recordStopped(ctx, pair, other, { text: c.text, level, kind, n, hits: c.hits, reason: c.reason });
+  throw fail(422, "contact_detail", c.reason || "Contact details are not allowed.", {
+    ...extra(c), split: true, hits: plainHits(c.hits), reason: c.reason,
+  });
+}
+
+/**
+ * Contact details anywhere in `texts` → stop + record the first one and throw 422. `find` = the detector
+ * (a reply's is stricter: findReplyContactDetails); `n` = the line a reply is for.
+ */
+async function stopContactDetails(ctx, pair, other, texts, { level, kind, n = null, find = findContactDetails }) {
   for (let i = 0; i < texts.length; i++) {
     if (texts[i] == null) continue;
     const text = String(texts[i]).trim();
-    const c = findContactDetails(text);
+    const c = find(text);
     if (c.ok) continue;
-    await recordStopped(ctx, pair, other, { text, level, kind, hits: c.hits, reason: c.reason });
+    await recordStopped(ctx, pair, other, { text, level, kind, n, hits: c.hits, reason: c.reason });
     throw fail(422, "contact_detail", c.reason || "Contact details are not allowed.", {
       index: i, hits: c.hits, reason: c.reason,
     });
@@ -814,13 +844,13 @@ const badWord = (w, extra = {}) => fail(422, "bad_word", w.reason || "Rude, sexu
 });
 
 /** Bad words anywhere in `texts` → stop + record the first (the chat log + a flag, like a contact detail) and throw 422. */
-async function stopBadWords(ctx, pair, other, texts, { level, kind }) {
+async function stopBadWords(ctx, pair, other, texts, { level, kind, n = null }) {
   for (let i = 0; i < texts.length; i++) {
     if (texts[i] == null) continue;
     const text = String(texts[i]).trim();
     const w = findBadWords(text);
     if (w.ok) continue;
-    await recordStopped(ctx, pair, other, { text, level, kind, hits: w.hits, reason: w.reason });
+    await recordStopped(ctx, pair, other, { text, level, kind, n, hits: w.hits, reason: w.reason });
     throw badWord(w, { index: i });
   }
 }
@@ -2598,6 +2628,11 @@ async function sendSet(ctx) {
   const written = list.map((q) => (q?.source === "written" ? String(q.text ?? "").trim() : null));
   await stopContactDetails(ctx, pair, other, written, { level, kind: "question" });
   await stopSplitContactDetails(ctx, pair, other, written, { level, kind: "question" });
+  // …and read after everything I wrote in this pair before: replies "012" and "887", then a line "766 …".
+  const before = await sets.find({ pairId: pair._id }).toArray();
+  await stopSplitOrders(ctx, pair, other, writtenOrders({ sets: before, me: me._id, written, chat: await myRecentChat(d, pair, me._id) }), {
+    level, kind: "question", extra: (c) => ({ index: c.items.find((x) => x.fresh)?.id ?? 0 }),
+  });
   await stopBadWords(ctx, pair, other, written, { level, kind: "question" });
 
   const { pick, write } = LEVEL_RULES[level];
@@ -2690,12 +2725,14 @@ function questionView(q, level, lang, titles = []) {
   return { n: q.n, source: "written", key: null, text: tr ?? q.text, original: q.text, originalLang: q.lang, translated: Boolean(tr) };
 }
 
+// An old tap (stored as its key) reads back as its words in my language; a typed reply as typed, with my
+// language's translation when there is one (Level 1 too: replies are typed at both levels since 2026-10-14).
 function answerView(a, level, lang) {
-  if (level === 1 || a.key) {
+  if (a.key) {
     return { n: a.n, key: a.key, text: answerText(a.key, lang), original: answerText(a.key, a.lang), originalLang: a.lang };
   }
   const tr = a.lang === lang ? null : a.translations?.[lang] ?? null;
-  return { n: a.n, key: null, text: tr ?? a.text, original: a.text, originalLang: a.lang, translated: Boolean(tr) };
+  return { n: a.n, key: null, text: tr ?? a.text ?? "", original: a.text ?? "", originalLang: a.lang, translated: Boolean(tr) };
 }
 
 // ---------------------------------------------------------------- the conversation (one read model)
@@ -2703,25 +2740,28 @@ function answerView(a, level, lang) {
 /** A set's replies in line order (stored in the order they were last saved). */
 const byLine = (answers) => [...(answers || [])].sort((x, y) => x.n - y.n);
 
-/** A reply as its line shows it: the words in my language (Level 1: the option's text), the replier's own words, when. */
+/**
+ * A reply as its line shows it: the words in my language (an old tap: its option's text; a typed reply: its
+ * translation, or as typed), the replier's own words, when.
+ */
 function replyView(a, level, lang) {
   if (!a) return null;
-  if (level === 1 || a.key) {
+  if (a.key) {
     return {
-      key: a.key ?? null, text: answerText(a.key, lang) ?? a.text ?? "", original: answerText(a.key, a.lang) ?? a.text ?? "",
+      key: a.key, text: answerText(a.key, lang) ?? a.text ?? "", original: answerText(a.key, a.lang) ?? a.text ?? "",
       translated: a.lang !== lang, at: a.at ?? null,
     };
   }
   const tr = a.lang === lang ? null : a.translations?.[lang] ?? null;
-  return { key: null, text: tr ?? a.text, original: a.text, translated: Boolean(tr), at: a.at ?? null };
+  return { key: null, text: tr ?? a.text ?? "", original: a.text ?? "", translated: Boolean(tr), at: a.at ?? null };
 }
 
 /**
  * SetView: one set of 5 lines with the replies so far. from 'me' = the set I sent (its replies are theirs:
  * the sender sees "2 of 5" and the words as they come); 'them' = the set sent to me (the replies are mine,
- * and `canReply` while the level is open and the set is not complete). Lines I reply to carry their tap
- * `options` at both levels (a written line: Yes / No only). Level 2 sets replied to in words before the
- * taps (2026-10-13) read back as they were. Stopped texts are never saved, so they never show.
+ * and `canReply` while the level is open and the set is not complete; `max` = how long a reply may be).
+ * Every reply is typed now (2026-10-14); old taps and the Level 2 words from before them read back as they
+ * were. Stopped texts are never saved, so they never show.
  */
 function setView(set, meId, lang, titles, { open }) {
   const level = set.level;
@@ -2733,12 +2773,12 @@ function setView(set, meId, lang, titles, { open }) {
       n: v.n, source: v.source, topic: v.topic ?? null, text: v.text, original: v.original, originalLang: v.originalLang,
       translated: v.translated, reply: replyView(byN.get(q.n), level, lang),
     };
-    if (from === "them") line.options = replyOptions(q.source).map((o) => ({ key: o.key, text: o.text[lang] || o.text.en }));
     return line;
   });
   return {
     id: set._id, level, from, sentAt: set.sentAt, completedAt: set.completedAt ?? null,
-    replied: repliedCount(set), total: lines.length, canReply: from === "them" && open && !set.completedAt, lines,
+    replied: repliedCount(set), total: lines.length, canReply: from === "them" && open && !set.completedAt,
+    ...(from === "them" ? { max: REPLY_MAX } : {}), lines,
   };
 }
 
@@ -2874,10 +2914,49 @@ async function onSetComplete(d, pair, set) {
   }
 }
 
+// An older app's tap (yes / no / not_really / maybe): taken as those words, typed in the replier's language.
+const TAP_KEYS = new Set(L1_ANSWERS.map((a) => a.key));
+const REPLY_ERROR_TEXT = { empty: "Type a short reply.", too_long: `Keep it to ${REPLY_MAX} characters.` };
+
+/** The reply a request asks for: { text } (typed), or an older app's { key } (an old tap, as its words). → { text, tap } */
+function replyInput(body, lang, n) {
+  if (typeof body?.text === "string") {
+    if (body.text.length > 1000) throw invalid(REPLY_ERROR_TEXT.too_long, { field: "text", n, reason: "too_long", max: REPLY_MAX });
+    return { text: cleanReply(body.text), tap: null };
+  }
+  if (typeof body?.key === "string" && TAP_KEYS.has(body.key)) return { text: answerText(body.key, lang), tap: body.key };
+  throw invalid(REPLY_ERROR_TEXT.empty, { field: "text", n, reason: "empty", max: REPLY_MAX });
+}
+
 /**
- * PUT /pairs/:id/replies { level, n, key } → { conversation }. One tap reply at Level 1 and Level 2:
- * Yes / No / Not really / Maybe to a picked line, Yes / No to the sender's own written line. Saved on its
- * own; it can be changed until the set is complete (all 5 replied). Replies in words are no longer taken.
+ * One reply to line `n`, checked like a written line — a contact detail or a bad word is stopped and recorded for the
+ * admin (kind 'answer', with its line) — plus the reply's own rules: findReplyContactDetails (5 or more digits in any
+ * form, any @name), the split check over everything I wrote in this pair (shared/conversation.js replyOrders: my
+ * replies down the screen and as typed, my written lines, my last chat lines), and 1–10 characters (checkReply).
+ * `sets` = the pair's sets as stored, with my replies so far. → the reply to store: { n, key: null, text, lang,
+ * translations, at }, translated like a written line (THIRTYDA_TRANSLATE_URL; otherwise it shows as typed).
+ */
+async function checkedReply(ctx, pair, other, sets, { level, n, body, at }) {
+  const { d, me } = ctx;
+  const lang = me.lang ?? "en";
+  const { text, tap } = replyInput(body, lang, n);
+  const where = { level, kind: "answer", n };
+  await stopContactDetails(ctx, pair, other, [text], { ...where, find: findReplyContactDetails });
+  const chat = await myRecentChat(d, pair, me._id);
+  await stopSplitOrders(ctx, pair, other, replyOrders({ sets, me: me._id, reply: { level, n, text }, chat }), { ...where, extra: () => ({ n }) });
+  await stopBadWords(ctx, pair, other, [text], where);
+  const r = checkReply(text);
+  if (!r.ok) {
+    throw invalid(REPLY_ERROR_TEXT[r.error] || "Check this reply.", { field: "text", n, reason: r.error, count: r.count, max: REPLY_MAX });
+  }
+  const translations = tap ? bankTranslations((l) => answerText(tap, l)) : (await translateAll(text, lang)).translations;
+  return { n, key: null, text, lang, translations, at };
+}
+
+/**
+ * PUT /pairs/:id/replies { level, n, text } → { conversation }. One short typed reply (1–10 characters, owner
+ * 2026-10-14) to line n of the set sent to me, at Level 1 and Level 2, checked by checkedReply. Saved on its own; it
+ * can be changed until the set is complete (all 5 replied). An older app's { key } (a tap) is taken as its words.
  */
 async function saveReply(ctx) {
   const { d, me, body, params } = ctx;
@@ -2888,18 +2967,10 @@ async function saveReply(ctx) {
   const q = set.questions.find((x) => x.n === n);
   if (!q) throw invalid("Reply to one of the lines.", { field: "n", n: body.n ?? null });
 
-  // Level 2 used to take replies in words; every reply is one tap now (old word replies still read back).
-  if (body.key === undefined && body.text !== undefined) {
-    throw invalid("Reply with one tap.", { field: "key", n, reason: "taps_only" });
-  }
-  if (!replyOptions(q.source).some((x) => x.key === body.key)) {
-    throw invalid(q.source === "written" ? "Reply to this line with Yes or No." : "Pick one of the replies.", { field: "key", n });
-  }
-  const lang = me.lang ?? "en";
-  const at = nowIso();
-  const reply = { n, key: body.key, text: null, lang, translations: bankTranslations((l) => answerText(body.key, l)), at };
-
   const sets = d.collection(C.sets);
+  const at = nowIso();
+  const reply = await checkedReply(ctx, pair, other, await sets.find({ pairId: pair._id }).toArray(), { level, n, body, at });
+
   // Replace this line's reply in one atomic update, only while the set is still open ($literal: the
   // reply is data, never a field path).
   let saved = await sets.findOneAndUpdate(
@@ -2930,7 +3001,10 @@ async function saveReply(ctx) {
   return { conversation: await conversationFor(d, me, fresh, other) };
 }
 
-/** POST /pairs/:id/answers — all replies to a set at once (the older screens). Same rules as saveReply: taps only. */
+/**
+ * POST /pairs/:id/answers { level, answers: [{ n, text }] } — all replies to a set at once (the older screens). Same
+ * rules as saveReply, each reply read together with the ones before it; a 422 says which ({ index, n }).
+ */
 async function sendAnswers(ctx) {
   const { d, me, body, params } = ctx;
   const level = levelParam(body.level);
@@ -2945,18 +3019,23 @@ async function sendAnswers(ctx) {
     const n = Number(a?.n);
     if (!set.questions.some((q) => q.n === n) || seen.has(n)) throw invalid("Reply to each line once.", { index: i });
     seen.add(n);
-    const source = set.questions.find((q) => q.n === n)?.source;
-    if (!replyOptions(source).some((x) => x.key === a.key)) {
-      throw invalid(source === "written" ? "Reply to the written line with Yes or No." : "Pick one of the replies.", { index: i });
-    }
   });
 
-  const lang = me.lang ?? "en";
   const at = nowIso();
-  const answers = [...list].sort((x, y) => Number(x.n) - Number(y.n))
-    .map((a) => ({ n: Number(a.n), key: a.key, text: null, lang, translations: bankTranslations((l) => answerText(a.key, l)), at }));
+  const all = await sets.find({ pairId: pair._id }).toArray();
+  const working = all.find((s) => s._id === set._id) ?? set;
+  working.answers = []; // the batch replaces whatever was saved one by one
+  const order = list.map((a, i) => ({ a, i })).sort((x, y) => Number(x.a.n) - Number(y.a.n));
+  for (const { a, i } of order) {
+    try {
+      working.answers = withReply(working.answers, await checkedReply(ctx, pair, other, all, { level, n: Number(a.n), body: a, at }));
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 422) err.extra = { ...err.extra, index: i };
+      throw err;
+    }
+  }
   const saved = await sets.findOneAndUpdate(
-    { _id: set._id, completedAt: null }, { $set: { answers, completedAt: at } }, { returnDocument: "after" },
+    { _id: set._id, completedAt: null }, { $set: { answers: working.answers, completedAt: at } }, { returnDocument: "after" },
   );
   if (!saved) throw notYourTurn();
   await onSetComplete(d, pair, saved);
@@ -3224,10 +3303,11 @@ async function listBlocks(ctx) {
 
 /**
  * POST /people/:id/report { reason, target } → { ok, already? }. target: 'profile' (default), 'photo:n' (the n-th photo
- * GET /people shows me of them, kept on the flag as its id + slot), or 'line:S-12/3' (a line they wrote to me in a set:
- * a picked line is the admin's own words, so only written ones). One open flag per reporter + person + target: a double
- * tap or a second report while the first is open → { already: true }. A line's flag is also marked on its row in the
- * admin's chat log, so the admin reads it there. Open to every profile, verified or not, blocked between or not.
+ * GET /people shows me of them, kept on the flag as its id + slot), 'line:S-12/3' (a line they wrote to me in a set:
+ * a picked line is the admin's own words, so only written ones) or 'reply:S-12/3' (the reply they typed to line 3 of a
+ * set I sent them; an old tap is not their own words). One open flag per reporter + person + target: a double tap or a
+ * second report while the first is open → { already: true }. A line's (or a reply's) flag is also marked on its row in
+ * the admin's chat log, so the admin reads it there. Open to every profile, verified or not, blocked between or not.
  */
 async function reportPerson(ctx) {
   const { d, me, body } = ctx;
@@ -3255,7 +3335,15 @@ async function reportPerson(ctx) {
     if (!q || q.source !== "written") throw fail(404, "not_found", "No such line.");
     chatId = set.pairId;
     extra.level = set.level;
-    line = { level: set.level, n: q.n };
+    line = { kind: "question", level: set.level, n: q.n };
+  } else if (target.kind === "reply") {
+    const set = await d.collection(C.sets).findOne({ _id: target.setId, from: me._id, to: u._id });
+    const a = set?.answers?.find((x) => x?.n === target.n);
+    if (!a || a.key || !a.text) throw fail(404, "not_found", "No such reply.");
+    chatId = set.pairId;
+    // Its row reaches the admin's chat log only once all 5 replies are in: the flag carries the words meanwhile.
+    Object.assign(extra, { level: set.level, text: a.text, english: a.lang === "en" ? null : a.translations?.en ?? null });
+    line = { kind: "answer", level: set.level, n: a.n };
   }
   const id = await nextId(d, "flag");
   try {
@@ -3267,10 +3355,11 @@ async function reportPerson(ctx) {
     throw err;
   }
   if (line) {
-    // The admin's chat log: the line's row carries this flag (the newest one), as a reported chat line does.
+    // The admin's chat log: the line's row carries this flag (the newest one), as a reported chat line does. A reply's
+    // row is there once all 5 replies of its set are in.
     await d.collection(C.chats).updateOne(
       { _id: chatId }, { $set: { "messages.$[m].flagId": id } },
-      { arrayFilters: [{ "m.kind": "question", "m.from": u._id, "m.level": line.level, "m.n": line.n, "m.stopped": { $ne: true } }] },
+      { arrayFilters: [{ "m.kind": line.kind, "m.from": u._id, "m.level": line.level, "m.n": line.n, "m.stopped": { $ne: true } }] },
     );
   }
   return { ok: true };

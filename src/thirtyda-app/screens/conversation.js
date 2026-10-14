@@ -4,10 +4,13 @@
 // chat; the things above just become texts: what you told me before and what you asked me before.")
 //
 // Level 1 and Level 2: each person sends the other ONE set of 5 lines per level, in any order, and replies
-// to the 5 they got, line by line, with one tap — Yes / No / Not really / Maybe, the sender's own written
-// line Yes / No (Level 2 sets replied to in words before the taps read back as they were). Everything
-// stays above as plain history, oldest first, like a chat: their lines on the left with my replies under
-// them, my lines on the right with theirs.
+// to the 5 they got, line by line, with a short typed reply (owner 2026-10-14: "all questions answering
+// method change to 10 characters max" — "so no more yes no not really maybe"): a one-line box under each
+// line with a live n/10 counter, sent with its small Send or Enter, checked like a written line (no phone
+// number, handle, app name or bad word — not even split down several replies). The old taps (yes / no /
+// not really / maybe / ok) and the Level 2 words before them read back as they were. Everything stays above
+// as plain history, oldest first, like a chat: their lines on the left with my replies under them, my lines
+// on the right with theirs (a reply in their language shows my language's translation under it).
 // After Level 2 each person chooses "Open the chat (Level 3)" or "Forget it" ("after these 10 answers the
 // sender can activate Level 3 or forget it"): the chat opens as soon as both chose it — under the
 // history, with each other's real name in the header — and one "Forget it" ends the conversation for
@@ -17,9 +20,9 @@
 // choice with POST /decide.
 import {
   screen, el, icon, t, go, api, toast, modal, topBar, levelBar, countdown, errorText, registerStrings, heartbeat,
-  stageLevel, nextKind, l1Answers, answerText, reportTarget,
+  stageLevel, nextKind, answerText, reportTarget, REPLY_MAX, checkReply,
 } from '../core.js';
-import { sendPanel, translateNote, redirected, myLang, enc } from './level-ask.js';
+import { sendPanel, translateNote, redirected, myLang, enc, ruleMessage, showError } from './level-ask.js';
 import { mountChat, ensureStyles, partnerHeader, fmtTime, dayLabel } from './chat.js';
 import { personMenuButton, reportPerson } from './safety.js';
 // "Remind me" inside the iOS app: the app's own reminders on the phone (a web view has no web notifications).
@@ -31,6 +34,9 @@ const POLL_MAX_MS = 30000; // back-off ceiling while offline
 
 // Survive leaving the screen (not a reload).
 const panelOpen = new Map(); // pairId → the send panel opened (true) or folded (false) by hand
+const replyDrafts = new Map(); // `${pairId}|${setId}|${n}` → a reply being typed
+const REPLY_INPUT_MAX = 64; // code units: a 10-character Khmer reply is far under it; the server counts characters
+const SPLIT_TYPES = ['phone', 'email', 'handle', 'app', 'link'];
 
 const unwrap = (r) => (r && typeof r === 'object' && r.conversation ? r.conversation : r);
 
@@ -137,6 +143,8 @@ function mountConversation(root, base, initial, chat) {
   let deciding = false; // "Open the chat" / "Forget it" is being saved
   const editing = new Set(); // reply keys reopened to change
   const busy = new Set(); // reply keys being saved
+  const replyErr = new Map(); // reply key → { text, msg, word } the server refused that exact text (until it changes)
+  const boxes = new Map(); // reply key → the open reply box's repaint
 
   const name = () => conv.other?.name || conv.pair?.other?.name || '';
   const theirLang = () => conv.other?.lang || conv.pair?.other?.lang || 'en';
@@ -154,8 +162,14 @@ function mountConversation(root, base, initial, chat) {
   // The server says so per set (canReply); older answers are worked out the same way here.
   const canReply = (s) => !chatMode && !frozen() && !ended() && !s.completedAt && s.from !== 'me'
     && (typeof s.canReply === 'boolean' ? s.canReply : levelOf(s.level)?.state === 'open');
-  // A reply as words in my language: a tap's option, or (Level 2 sets from before the taps) the words.
+  // A reply as words in my language: an old tap's option, or the words as typed.
   const replyText = (r) => (r?.key ? answerText(r.key, myLang()) || r.text || '' : r?.original ?? r?.text ?? '');
+  const draftKey = (key) => `${pairId}|${key}`;
+  /** A reply box has the keyboard: timeline repaints wait until it lets go (the typing and the IME stay intact). */
+  const typing = () => {
+    const a = document.activeElement;
+    return Boolean(a?.classList?.contains('conv-reply-input') && timeline?.contains(a));
+  };
 
   /** The first line sent to me (in the open level) that has no reply from me yet. */
   function firstUnreplied() {
@@ -206,7 +220,7 @@ function mountConversation(root, base, initial, chat) {
   function intro(level) {
     return el('div', { class: 'conv-intro' },
       el('span', { class: 'conv-intro-icon', 'aria-hidden': 'true' }, icon('chat', 20)),
-      el('p', {}, t(level === 1 ? 'cv_intro_1' : 'cv_intro_2', { name: name() })),
+      el('p', {}, t(level === 1 ? 'cv_intro_1' : 'cv_intro_2', { name: name(), max: REPLY_MAX })),
       translateNote({ other: { lang: theirLang() } }));
   }
 
@@ -231,22 +245,28 @@ function mountConversation(root, base, initial, chat) {
     return parts;
   }
 
-  /** Their reply under one of my lines: a tap (in my language), or — Level 2 from before the taps — their words. */
-  function theirReply(r) {
+  /**
+   * Their reply under one of my lines: an old tap (in my language), or their words as typed with my language's
+   * translation under them when there is one (no translation provider → just as typed). Typed words are theirs, so
+   * they can be reported like a line they wrote (store policy).
+   */
+  function theirReply(r, s, line) {
     if (r.key) return el('div', { class: 'bubble theirs conv-reply' }, el('span', { class: 'orig' }, replyText(r)));
     const orig = r.original ?? r.text ?? '';
     const tr = r.text && !same(r.text, orig) ? r.text : null;
-    const untranslated = !tr && theirLang() !== myLang() && r.translated !== true;
-    return el('div', { class: 'bubble theirs conv-reply' },
-      el('span', { class: 'orig', lang: theirLang() }, orig),
-      tr ? el('span', { class: 'trans', lang: myLang() }, tr) : untranslated ? el('span', { class: 'trans-note' }, t('cv_no_translation')) : null);
+    const parts = () => [el('span', { class: 'orig', lang: theirLang() }, orig), tr ? el('span', { class: 'trans', lang: myLang() }, tr) : null];
+    const bubble = el('div', { class: 'bubble theirs conv-reply' }, ...parts());
+    if (s?.id) {
+      reportable(bubble, reportTarget.reply(s.id, line.n), () => el('div', { class: 'bubble theirs report-quote' }, ...parts()));
+    }
+    return bubble;
   }
 
-  function myLine(line) {
+  function myLine(s, line) {
     return el('div', { class: 'conv-line mine' },
       el('div', { class: 'bubble mine' }, lineParts(line, true)),
       line.reply
-        ? theirReply(line.reply)
+        ? theirReply(line.reply, s, line)
         // Nothing is "waiting" in an ended conversation (when the other person left, their replies went with them).
         : ended() ? null : el('span', { class: 'conv-pending' }, icon('clock', 12), el('span', {}, t('cv_waiting'))));
   }
@@ -254,24 +274,22 @@ function mountConversation(root, base, initial, chat) {
   function theirLine(s, line) {
     const key = keyOf(s, line);
     const bubble = el('div', { class: 'bubble theirs', id: lineId(key) }, lineParts(line, false));
-    if (line.source === 'written') reportableLine(bubble, s, line);
+    // A line they wrote themselves; a picked line is the admin's own words, so only written ones.
+    if (line.source === 'written' && s?.id) {
+      reportable(bubble, reportTarget.line(s.id, line.n), () => el('div', { class: 'bubble theirs report-quote' }, lineParts(line, false)));
+    }
     return el('div', { class: 'conv-line theirs', dataset: { key } }, bubble, myReply(s, line, key));
   }
 
-  /**
-   * A line they wrote themselves (store policy, owner 2026-10-14): tap it (or Enter) to report it, like a chat line.
-   * A picked line is the admin's own words, so only written ones.
-   */
-  function reportableLine(bubble, s, line) {
+  /** Words they wrote (store policy, owner 2026-10-14): tap them (or Enter) to report them, like a chat line. */
+  function reportable(bubble, target, quote) {
     const who = person();
-    if (!who || !s?.id) return;
+    if (!who) return;
     bubble.classList.add('can-report');
     bubble.tabIndex = 0;
     bubble.setAttribute('role', 'button');
     bubble.setAttribute('aria-haspopup', 'dialog');
-    const open = () => reportPerson(who, reportTarget.line(s.id, line.n), {
-      quote: el('div', { class: 'bubble theirs report-quote' }, lineParts(line, false)),
-    });
+    const open = () => reportPerson(who, target, { quote: quote() });
     bubble.addEventListener('click', open);
     bubble.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter' && e.key !== ' ') return;
@@ -280,7 +298,7 @@ function mountConversation(root, base, initial, chat) {
     });
   }
 
-  /** My reply under one of their lines: the tap I gave (tap it to change while the set is not complete), or the choices. */
+  /** My reply under one of their lines: what I typed (tap it to change while the set is not complete), or the box. */
   function myReply(s, line, key) {
     const r = line.reply;
     const open = canReply(s);
@@ -292,20 +310,87 @@ function mountConversation(root, base, initial, chat) {
         on: { click: () => startEdit(key) },
       }, el('span', { class: 'orig' }, text));
     }
-    return open ? replyChips(s, line, key) : null;
+    return open ? replyBox(s, line, key) : null;
   }
 
-  // Yes / No / Not really / Maybe; the sender's own written line: Yes / No (the server lists them per line).
-  function replyChips(s, line, key) {
-    const current = line.reply?.key ?? null;
-    const options = Array.isArray(line.options) && line.options.length
-      ? line.options
-      : l1Answers(line.source).map((a) => ({ key: a.key, text: answerText(a.key, myLang()) || a.text.en }));
-    return el('div', { class: 'chips conv-chips', role: 'group', 'aria-labelledby': lineId(key) },
-      options.map((a) => el('button', {
-        type: 'button', class: 'chip', 'aria-pressed': String(current === a.key), disabled: busy.has(key),
-        dataset: { answer: a.key }, on: { click: () => replyTap(s, line, a.key, key) },
-      }, answerText(a.key, myLang()) || a.text || a.key)));
+  /**
+   * The one-line reply box under a line of theirs: 1–10 characters (shared/rules.js checkReply: Khmer and CJK
+   * counted as a person counts them), a live n/10 counter, Send (or Enter). A contact detail or a bad word turns it
+   * red; Send still posts it once, so the server records the stopped try for the admin (as the send panel does).
+   */
+  function replyBox(s, line, key) {
+    const id = lineId(key);
+    const dk = draftKey(key);
+    const start = replyDrafts.has(dk) ? replyDrafts.get(dk) : line.reply ? replyText(line.reply) : '';
+    const input = el('input', {
+      type: 'text', class: 'composer-input conv-reply-input', value: start, placeholder: t('cv_reply_ph'),
+      'aria-label': t('cv_reply_label', { n: line.n }), 'aria-describedby': `${id}-count ${id}-err`,
+      autocomplete: 'off', autocapitalize: 'sentences', enterkeyhint: 'send', spellcheck: 'false',
+      maxlength: REPLY_INPUT_MAX, lang: myLang(), dataset: { replyKey: key },
+    });
+    const counter = el('span', { class: 'counter conv-reply-count', id: `${id}-count` });
+    const send = el('button', {
+      type: 'button', class: 'round-btn conv-reply-send', 'aria-label': t('cv_reply_send'), dataset: { replyKey: key },
+    }, icon('send', 16));
+    const err = el('p', { class: 'field-error conv-reply-error', id: `${id}-err`, 'aria-live': 'polite', hidden: true });
+
+    function paint() {
+      const r = checkReply(input.value);
+      const server = replyErr.get(key);
+      const refused = server && server.text === r.text ? server : null;
+      const saving = busy.has(key);
+      counter.textContent = `${r.count}/${REPLY_MAX}`;
+      counter.classList.toggle('over', r.count > REPLY_MAX);
+      counter.classList.toggle('ok', r.ok && !refused);
+      let msg = null;
+      if (r.error === 'contact' || r.error === 'word') msg = ruleMessage(r, REPLY_MAX);
+      else if (refused) msg = refused.msg;
+      else if (r.error === 'too_long') msg = t('cv_reply_long', { max: REPLY_MAX });
+      showError(err, msg);
+      input.classList.toggle('is-error', Boolean(msg));
+      input.setAttribute('aria-invalid', String(Boolean(msg)));
+      input.readOnly = saving;
+      send.setAttribute('aria-disabled', String(!r.ok || Boolean(refused) || saving));
+      send.classList.toggle('busy', saving);
+      return { r, refused };
+    }
+
+    function submit() {
+      if (busy.has(key)) return;
+      const { r, refused } = paint();
+      if (r.error === 'empty' || r.error === 'too_long') {
+        input.focus();
+        return;
+      }
+      if (refused) { // the same text the server just stopped: not sent (or recorded) twice
+        toast(t(refused.word ? 'lv_stopped_word' : 'lv_stopped'));
+        input.focus();
+        return;
+      }
+      sendReply(s, line, key, r.text);
+    }
+
+    input.addEventListener('input', () => {
+      replyDrafts.set(dk, input.value);
+      paint();
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
+        e.preventDefault();
+        submit();
+      } else if (e.key === 'Escape' && line.reply && editing.has(key)) {
+        e.preventDefault();
+        replyDrafts.delete(dk);
+        editing.delete(key);
+        renderTimeline();
+      }
+    });
+    send.addEventListener('mousedown', (e) => e.preventDefault()); // Send keeps the keyboard up
+    send.addEventListener('click', submit);
+    boxes.set(key, paint);
+    paint();
+    return el('div', { class: 'conv-reply-box', role: 'group', 'aria-labelledby': id },
+      el('div', { class: 'conv-reply-row' }, input, counter, send), err);
   }
 
   /** "Sophea replied 2 of 5" under my set; "You replied 2 of 5" (+ how replying works) under theirs. */
@@ -319,7 +404,7 @@ function mountConversation(root, base, initial, chat) {
     } else {
       text = done ? t('cv_you_replied_all', { total }) : t('cv_you_replied', { n: replied, total });
     }
-    const hint = !mine && !done && canReply(s) ? t('cv_hint') : null;
+    const hint = !mine && !done && canReply(s) ? t('cv_hint', { max: REPLY_MAX }) : null;
     return el('div', { class: ['conv-progress', done && 'ok'] },
       el('span', { class: 'conv-progress-line' }, done ? icon('check', 13) : null, el('span', {}, text)),
       hint ? el('span', { class: 'conv-hint' }, hint) : null);
@@ -333,7 +418,7 @@ function mountConversation(root, base, initial, chat) {
     const who = mine ? t('cv_you') : name();
     return [
       el('p', { class: 'conv-cap label' }, s.sentAt ? `${who} · ${dayLabel(s.sentAt)} ${fmtTime(s.sentAt)}` : who),
-      ...lines.map((line) => (mine ? myLine(line) : theirLine(s, line))),
+      ...lines.map((line) => (mine ? myLine(s, line) : theirLine(s, line))),
       progress(s, mine, replied, total),
     ].filter(Boolean);
   }
@@ -437,22 +522,32 @@ function mountConversation(root, base, initial, chat) {
   const foot = el('div', { class: 'chat-foot conv-foot' });
   let header = headerNode();
 
-  // Repaint in place; someone reading the newest (at the bottom) stays at the bottom, where it grew.
+  // Repaint in place; someone reading the newest (at the bottom) stays at the bottom, where it grew. A reply box
+  // that had the keyboard gets it back, with the caret where it was.
   function renderTimeline() {
     deferred = false;
     const top = scroller.scrollTop;
     const atEnd = scroller.scrollHeight - top - scroller.clientHeight < 64;
+    const a = typing() ? document.activeElement : null;
+    const focusKey = a?.dataset.replyKey ?? null;
+    const caret = a ? [a.selectionStart, a.selectionEnd] : null;
+    boxes.clear();
     timeline.replaceChildren(...timelineNodes());
     scroller.scrollTop = atEnd ? scroller.scrollHeight : top;
+    const again = focusKey ? [...timeline.querySelectorAll('input.conv-reply-input')].find((n) => n.dataset.replyKey === focusKey) : null;
+    if (again) {
+      again.focus({ preventScroll: true });
+      try { again.setSelectionRange(...caret); } catch { /* not a text input any more */ }
+    }
   }
 
-  // Never rebuild under a finger: paint when it lets go.
+  // Never rebuild under a finger, nor under a reply being typed: paint when it lets go.
   function renderSoon() {
-    if (pressing) deferred = true;
+    if (pressing || typing()) deferred = true;
     else renderTimeline();
   }
   const flush = () => setTimeout(() => {
-    if (alive && deferred && !pressing) renderTimeline();
+    if (alive && deferred && !pressing && !typing()) renderTimeline();
   }, 60);
   scroller.addEventListener('pointerdown', () => { pressing = true; }, true);
   const release = () => {
@@ -462,20 +557,30 @@ function mountConversation(root, base, initial, chat) {
   };
   window.addEventListener('pointerup', release, true);
   window.addEventListener('pointercancel', release, true);
+  // A reply box let go of the keyboard: whatever waited is painted now.
+  timeline.addEventListener('focusout', () => {
+    if (deferred) flush();
+  });
+
+  const replyInputOf = (key) => [...timeline.querySelectorAll('input.conv-reply-input')].find((n) => n.dataset.replyKey === key) || null;
 
   function startEdit(key) {
     editing.add(key);
     renderTimeline();
-    const line = timeline.querySelector(`[data-key="${key}"]`);
-    (line?.querySelector('.chip[aria-pressed="true"]') || line?.querySelector('.chip'))?.focus();
+    const input = replyInputOf(key);
+    if (!input) return;
+    input.focus();
+    input.select();
   }
 
-  /** After a tap: bring the next line waiting for a reply into view when it is off screen. */
-  function revealNext(key) {
+  /** After a reply: bring the next line waiting for one into view (and its box gets the keyboard if this one had it). */
+  function revealNext(key, keepTyping) {
     const lines = [...timeline.querySelectorAll('.conv-line.theirs')];
     const from = lines.findIndex((n) => n.dataset.key === key);
-    const next = lines.slice(from + 1).find((n) => n.querySelector('.conv-chips'));
+    const next = lines.slice(from + 1).find((n) => n.querySelector('.conv-reply-box'))
+      || lines.slice(0, Math.max(0, from)).find((n) => n.querySelector('.conv-reply-box'));
     if (!next) return;
+    if (keepTyping) next.querySelector('input.conv-reply-input')?.focus({ preventScroll: true });
     const box = next.getBoundingClientRect();
     const view = scroller.getBoundingClientRect();
     if (box.top >= view.top + 8 && box.bottom <= view.bottom - 8) return;
@@ -484,49 +589,64 @@ function mountConversation(root, base, initial, chat) {
   }
 
   function scrollToUnreplied() {
-    const node = timeline.querySelector('.conv-chips')?.closest('.conv-line');
+    const node = timeline.querySelector('.conv-reply-box')?.closest('.conv-line');
     if (node) node.scrollIntoView({ block: 'center' });
     return Boolean(node);
   }
 
-  // ------------------------------------------------ replies (one tap each, at Level 1 and Level 2)
+  // ------------------------------------------------ replies (a short typed one each, at Level 1 and Level 2)
 
-  function replyFailed(err) {
+  /** What the server said about a reply: the red line under its box (until the text changes), and a toast for a stop. */
+  function replyFailed(err, key, text) {
     if (!alive || redirected(err)) return;
     if (err.status === 409 || err.status === 404) {
       toast(err.code === 'other_blocked' ? t('cv_closed') : t('cv_moved'));
       poll(true);
+    } else if (err.code === 'contact_detail' || err.code === 'bad_word') {
+      const word = err.code === 'bad_word';
+      const hits = err.data?.hits;
+      const type = hits?.[0]?.type;
+      // Split down several replies: say so in plain words (the pieces are not all in this box).
+      const msg = !word && err.data?.split
+        ? t(`cv_split_${SPLIT_TYPES.includes(type) ? type : 'contact'}`)
+        : ruleMessage({ error: word ? 'word' : 'contact', hits }, REPLY_MAX);
+      replyErr.set(key, { text, msg, word });
+      toast(t(word ? 'lv_stopped_word' : 'lv_stopped'));
     } else if (err.status === 422) {
-      toast(t('cv_check'));
+      const reason = err.data?.reason;
+      replyErr.set(key, { text, msg: reason === 'too_long' ? t('cv_reply_long', { max: REPLY_MAX }) : reason === 'empty' ? t('cv_reply_empty') : t('cv_check') });
     } else {
       toast(errorText(err));
     }
   }
 
-  async function replyTap(s, line, answer, key) {
+  async function sendReply(s, line, key, text) {
     if (!alive || busy.has(key)) return;
-    if (line.reply?.key === answer) {
+    const dk = draftKey(key);
+    if (line.reply && replyText(line.reply) === text) { // unchanged: just close the box
+      replyDrafts.delete(dk);
       editing.delete(key);
-      renderSoon();
+      renderTimeline();
       return;
     }
+    const keepTyping = replyInputOf(key) === document.activeElement;
     busy.add(key);
     ver++;
-    // The tap shows at once; the chips wait for the server.
-    timeline.querySelectorAll(`[data-key="${key}"] .conv-chips .chip`).forEach((c) => {
-      c.setAttribute('aria-pressed', String(c.dataset.answer === answer));
-      c.disabled = true;
-    });
+    boxes.get(key)?.();
     try {
-      const r = await api.put(`${base}/replies`, { level: s.level, n: line.n, key: answer });
+      const r = await api.put(`${base}/replies`, { level: s.level, n: line.n, text });
       busy.delete(key);
       editing.delete(key);
+      replyErr.delete(key);
+      replyDrafts.delete(dk);
       apply(unwrap(r));
-      if (alive) revealNext(key);
+      if (!alive) return;
+      renderTimeline(); // now, even while the box still has the keyboard
+      revealNext(key, keepTyping);
     } catch (err) {
       busy.delete(key);
-      replyFailed(err);
-      if (alive) renderTimeline();
+      replyFailed(err, key, text);
+      if (alive) boxes.get(key)?.(); // the box stays as it is, keyboard and all
     }
   }
 
@@ -871,16 +991,27 @@ registerStrings({
     cv_chat_level: 'Level 3 · Chat',
     cv_you: 'You',
     cv_intro_1: 'Start with 5 short lines. {name} replies to each one, and can send you 5 too.',
-    cv_intro_2: 'Level 2 is open. 5 new lines each — 3 picked and 2 of your own. Replies are one tap again.',
+    cv_intro_2: 'Level 2 is open. 5 new lines each — 3 picked and 2 of your own. Replies are short again: {max} characters at most.',
     cv_waiting: 'Waiting',
     cv_they_replied: '{name} replied {n} of {total}',
     cv_they_replied_all: '{name} replied to all {total}',
     cv_they_none: 'Waiting for {name} to reply',
     cv_you_replied: 'You replied {n} of {total}',
     cv_you_replied_all: 'You replied to all {total}',
-    cv_hint: 'One tap each. You can change a reply until all 5 are done.',
+    cv_hint: 'A short reply to each, {max} characters at most. You can change one until all 5 are done.',
     cv_change_aria: 'Your reply: {text}. Tap to change it.',
     cv_check: 'Check this reply.',
+    cv_reply_ph: 'Your reply',
+    cv_reply_label: 'Your reply to line {n}',
+    cv_reply_send: 'Send reply',
+    cv_reply_long: 'Too long: {max} characters at most.',
+    cv_reply_empty: 'Type a short reply first.',
+    cv_split_phone: 'Not sent: read with your other replies, this makes a phone number.',
+    cv_split_email: 'Not sent: read with your other replies, this makes an email address.',
+    cv_split_handle: 'Not sent: read with your other replies, this makes a chat handle.',
+    cv_split_app: 'Not sent: read with your other replies, this names a chat app.',
+    cv_split_link: 'Not sent: read with your other replies, this makes a link.',
+    cv_split_contact: 'Not sent: read with your other replies, this makes a contact detail.',
     cv_no_translation: 'Translation not available yet.',
     cv_start_level: 'Start Level {n}',
     cv_send_your: 'Send your 5 to {name}',
@@ -922,16 +1053,27 @@ registerStrings({
     cv_chat_level: 'កម្រិត 3 · ជជែក',
     cv_you: 'អ្នក',
     cv_intro_1: 'ចាប់ផ្ដើមដោយឃ្លាខ្លីៗ 5។ {name} នឹងឆ្លើយតបឃ្លានីមួយៗ ហើយក៏អាចផ្ញើឃ្លា 5 មកអ្នកវិញដែរ។',
-    cv_intro_2: 'កម្រិត 2 បានបើកហើយ។ ម្នាក់ៗផ្ញើឃ្លាថ្មី 5 — ជ្រើស 3 និងសរសេរខ្លួនឯង 2។ ការឆ្លើយតបនៅតែចុចម្ដងដដែល។',
+    cv_intro_2: 'កម្រិត 2 បានបើកហើយ។ ម្នាក់ៗផ្ញើឃ្លាថ្មី 5 — ជ្រើស 3 និងសរសេរខ្លួនឯង 2។ ការឆ្លើយតបនៅតែខ្លីៗដដែល៖ យ៉ាងច្រើន {max} តួអក្សរ។',
     cv_waiting: 'កំពុងរង់ចាំ',
     cv_they_replied: '{name} បានឆ្លើយតប {n} ក្នុងចំណោម {total}',
     cv_they_replied_all: '{name} បានឆ្លើយតបទាំង {total}',
     cv_they_none: 'កំពុងរង់ចាំ {name} ឆ្លើយតប',
     cv_you_replied: 'អ្នកបានឆ្លើយតប {n} ក្នុងចំណោម {total}',
     cv_you_replied_all: 'អ្នកបានឆ្លើយតបទាំង {total}',
-    cv_hint: 'ចុចម្ដងសម្រាប់ឃ្លានីមួយៗ។ អ្នកអាចប្ដូរការឆ្លើយតបបាន រហូតដល់ឆ្លើយគ្រប់ទាំង 5។',
+    cv_hint: 'ឆ្លើយតបខ្លីៗសម្រាប់ឃ្លានីមួយៗ យ៉ាងច្រើន {max} តួអក្សរ។ អ្នកអាចប្ដូរការឆ្លើយតបបាន រហូតដល់ឆ្លើយគ្រប់ទាំង 5។',
     cv_change_aria: 'ការឆ្លើយតបរបស់អ្នក៖ {text}។ ចុចដើម្បីប្ដូរ។',
     cv_check: 'សូមពិនិត្យការឆ្លើយតបនេះ។',
+    cv_reply_ph: 'ការឆ្លើយតបរបស់អ្នក',
+    cv_reply_label: 'ការឆ្លើយតបរបស់អ្នកចំពោះឃ្លាទី {n}',
+    cv_reply_send: 'ផ្ញើការឆ្លើយតប',
+    cv_reply_long: 'វែងពេក៖ យ៉ាងច្រើន {max} តួអក្សរ។',
+    cv_reply_empty: 'សូមសរសេរការឆ្លើយតបខ្លីមួយជាមុនសិន។',
+    cv_split_phone: 'មិនបានផ្ញើទេ៖ បើអានជាមួយការឆ្លើយតបផ្សេងទៀតរបស់អ្នក វាក្លាយជាលេខទូរស័ព្ទ។',
+    cv_split_email: 'មិនបានផ្ញើទេ៖ បើអានជាមួយការឆ្លើយតបផ្សេងទៀតរបស់អ្នក វាក្លាយជាអាសយដ្ឋានអ៊ីមែល។',
+    cv_split_handle: 'មិនបានផ្ញើទេ៖ បើអានជាមួយការឆ្លើយតបផ្សេងទៀតរបស់អ្នក វាក្លាយជាឈ្មោះគណនីជជែក។',
+    cv_split_app: 'មិនបានផ្ញើទេ៖ បើអានជាមួយការឆ្លើយតបផ្សេងទៀតរបស់អ្នក វាក្លាយជាឈ្មោះកម្មវិធីជជែក។',
+    cv_split_link: 'មិនបានផ្ញើទេ៖ បើអានជាមួយការឆ្លើយតបផ្សេងទៀតរបស់អ្នក វាក្លាយជាតំណភ្ជាប់។',
+    cv_split_contact: 'មិនបានផ្ញើទេ៖ បើអានជាមួយការឆ្លើយតបផ្សេងទៀតរបស់អ្នក វាក្លាយជាព័ត៌មានទំនាក់ទំនង។',
     cv_no_translation: 'មិនទាន់មានការបកប្រែនៅឡើយទេ។',
     cv_start_level: 'ចាប់ផ្ដើមកម្រិត {n}',
     cv_send_your: 'ផ្ញើឃ្លា 5 របស់អ្នកទៅ {name}',
@@ -973,16 +1115,27 @@ registerStrings({
     cv_chat_level: '等级 3 · 聊天',
     cv_you: '你',
     cv_intro_1: '先发 5 句简短的话。{name} 会逐句回复，也可以给你发 5 句。',
-    cv_intro_2: '等级 2 已开启。各自再发 5 句新的话——选 3 句，自己写 2 句。回复还是点一下就好。',
+    cv_intro_2: '等级 2 已开启。各自再发 5 句新的话——选 3 句，自己写 2 句。回复还是简短的：最多 {max} 个字。',
     cv_waiting: '等待中',
     cv_they_replied: '{name} 已回复 {n}/{total}',
     cv_they_replied_all: '{name} 已回复全部 {total} 句',
     cv_they_none: '等待 {name} 回复',
     cv_you_replied: '你已回复 {n}/{total}',
     cv_you_replied_all: '你已回复全部 {total} 句',
-    cv_hint: '每句点一下即可。5 句全部回复之前，都可以修改。',
+    cv_hint: '每句简短回复，最多 {max} 个字。5 句全部回复之前，都可以修改。',
     cv_change_aria: '你的回复：{text}。点一下可以修改。',
     cv_check: '请检查这条回复。',
+    cv_reply_ph: '你的回复',
+    cv_reply_label: '你对第 {n} 句的回复',
+    cv_reply_send: '发送回复',
+    cv_reply_long: '太长了：最多 {max} 个字。',
+    cv_reply_empty: '请先写一个简短的回复。',
+    cv_split_phone: '未发送：和你的其他回复连起来读，就成了电话号码。',
+    cv_split_email: '未发送：和你的其他回复连起来读，就成了邮箱地址。',
+    cv_split_handle: '未发送：和你的其他回复连起来读，就成了聊天账号。',
+    cv_split_app: '未发送：和你的其他回复连起来读，就成了聊天软件的名字。',
+    cv_split_link: '未发送：和你的其他回复连起来读，就成了链接。',
+    cv_split_contact: '未发送：和你的其他回复连起来读，就成了联系方式。',
     cv_no_translation: '暂时还没有翻译。',
     cv_start_level: '开始等级 {n}',
     cv_send_your: '给 {name} 发你的 5 句',
@@ -1024,16 +1177,27 @@ registerStrings({
     cv_chat_level: '레벨 3 · 채팅',
     cv_you: '나',
     cv_intro_1: '짧은 한마디 5개로 시작해 보세요. {name}님이 하나씩 답장하고, {name}님도 5개를 보낼 수 있어요.',
-    cv_intro_2: '레벨 2가 열렸어요. 서로 새 한마디 5개씩 — 3개 고르고 2개 직접 써요. 답장은 이번에도 한 번 누르기예요.',
+    cv_intro_2: '레벨 2가 열렸어요. 서로 새 한마디 5개씩 — 3개 고르고 2개 직접 써요. 답장은 이번에도 짧게, {max}자까지예요.',
     cv_waiting: '기다리는 중',
     cv_they_replied: '{name}님이 {total}개 중 {n}개에 답장했어요',
     cv_they_replied_all: '{name}님이 {total}개 모두 답장했어요',
     cv_they_none: '{name}님의 답장을 기다리는 중',
     cv_you_replied: '{total}개 중 {n}개 답장했어요',
     cv_you_replied_all: '{total}개 모두 답장했어요',
-    cv_hint: '한마디마다 한 번만 누르세요. 5개 모두 답하기 전까지는 바꿀 수 있어요.',
+    cv_hint: '한마디마다 짧게 답장해요. {max}자까지예요. 5개 모두 답하기 전까지는 바꿀 수 있어요.',
     cv_change_aria: '내 답장: {text}. 눌러서 바꾸기.',
     cv_check: '이 답장을 확인해 주세요.',
+    cv_reply_ph: '내 답장',
+    cv_reply_label: '{n}번째 한마디에 대한 내 답장',
+    cv_reply_send: '답장 보내기',
+    cv_reply_long: '너무 길어요: {max}자까지예요.',
+    cv_reply_empty: '먼저 짧은 답장을 써 주세요.',
+    cv_split_phone: '보내지 않았어요: 다른 답장과 이어서 읽으면 전화번호가 돼요.',
+    cv_split_email: '보내지 않았어요: 다른 답장과 이어서 읽으면 이메일 주소가 돼요.',
+    cv_split_handle: '보내지 않았어요: 다른 답장과 이어서 읽으면 채팅 아이디가 돼요.',
+    cv_split_app: '보내지 않았어요: 다른 답장과 이어서 읽으면 채팅 앱 이름이 돼요.',
+    cv_split_link: '보내지 않았어요: 다른 답장과 이어서 읽으면 링크가 돼요.',
+    cv_split_contact: '보내지 않았어요: 다른 답장과 이어서 읽으면 연락처가 돼요.',
     cv_no_translation: '아직 번역이 없어요.',
     cv_start_level: '레벨 {n} 시작하기',
     cv_send_your: '{name}님에게 내 한마디 5개 보내기',
@@ -1075,16 +1239,27 @@ registerStrings({
     cv_chat_level: 'レベル3 · チャット',
     cv_you: 'あなた',
     cv_intro_1: 'まずは短いひとことを5つ。{name}さんがひとつずつ返信し、{name}さんからも5つ届きます。',
-    cv_intro_2: 'レベル2が開きました。お互いに新しいひとことを5つずつ——3つ選んで2つ書きます。返信は今回もワンタップです。',
+    cv_intro_2: 'レベル2が開きました。お互いに新しいひとことを5つずつ——3つ選んで2つ書きます。返信は今回も短く、{max}文字までです。',
     cv_waiting: '返信待ち',
     cv_they_replied: '{name}さんが{total}つ中{n}つに返信',
     cv_they_replied_all: '{name}さんが{total}つすべてに返信',
     cv_they_none: '{name}さんの返信を待っています',
     cv_you_replied: '{total}つ中{n}つに返信済み',
     cv_you_replied_all: '{total}つすべてに返信済み',
-    cv_hint: 'ひとことごとに1回タップ。5つすべて返すまでは変更できます。',
+    cv_hint: 'ひとことごとに短く返信。{max}文字までです。5つすべて返すまでは変更できます。',
     cv_change_aria: 'あなたの返信：{text}。タップして変更。',
     cv_check: 'この返信を確認してください。',
+    cv_reply_ph: 'あなたの返信',
+    cv_reply_label: 'ひとこと{n}へのあなたの返信',
+    cv_reply_send: '返信を送る',
+    cv_reply_long: '長すぎます：{max}文字までです。',
+    cv_reply_empty: 'まず短い返信を書いてください。',
+    cv_split_phone: '送信されませんでした：ほかの返信とつなげて読むと電話番号になります。',
+    cv_split_email: '送信されませんでした：ほかの返信とつなげて読むとメールアドレスになります。',
+    cv_split_handle: '送信されませんでした：ほかの返信とつなげて読むとチャットIDになります。',
+    cv_split_app: '送信されませんでした：ほかの返信とつなげて読むとチャットアプリ名になります。',
+    cv_split_link: '送信されませんでした：ほかの返信とつなげて読むとリンクになります。',
+    cv_split_contact: '送信されませんでした：ほかの返信とつなげて読むと連絡先になります。',
     cv_no_translation: '翻訳はまだありません。',
     cv_start_level: 'レベル{n}を始める',
     cv_send_your: '{name}さんに5つ送る',

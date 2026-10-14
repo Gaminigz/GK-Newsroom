@@ -34,7 +34,7 @@ export const canTalk = (user) => VERIFIED_WAYS.some((k) => user?.verified?.[k] =
 export const TALK_ROUTES = [
   ["POST", /^\/pairs$/], // start a conversation (the draft the 5 lines go into)
   ["POST", /^\/pairs\/(P-\d+)\/sets$/], // send my 5 lines
-  ["PUT", /^\/pairs\/(P-\d+)\/replies$/], // one tap reply to a line of theirs
+  ["PUT", /^\/pairs\/(P-\d+)\/replies$/], // a short typed reply to a line of theirs
   ["POST", /^\/pairs\/(P-\d+)\/answers$/], // all replies at once (the older screens)
   ["POST", /^\/pairs\/(P-\d+)\/decide$/], // after Level 2: open the chat / forget it
   ["POST", /^\/pairs\/(P-\d+)\/messages$/], // a Level 3 chat line

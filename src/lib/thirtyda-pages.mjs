@@ -251,7 +251,7 @@ export const PAGE_STRINGS = {
     home_remind: "30+DA is free — there is nothing to pay. We never ask for money, bank or card details. Never send money to someone you met online.",
     home_how_h: "How it works",
     home_l1_h: "Say hello",
-    home_l1: "A few easy questions. One tap to answer.",
+    home_l1: "A few easy questions. A short reply to each.",
     home_l2_h: "Go deeper",
     home_l2: "Then a few more — a couple you write yourself. Another photo opens.",
     home_l3_h: "Chat",
@@ -451,7 +451,7 @@ export const PAGE_STRINGS = {
     home_remind: "30+DA ឥតគិតថ្លៃ — គ្មានអ្វីត្រូវបង់ទេ។ យើងមិនដែលសុំលុយ ព័ត៌មានធនាគារ ឬកាតឡើយ។ កុំផ្ញើលុយទៅអ្នកដែលអ្នកស្គាល់តាមអនឡាញ។",
     home_how_h: "របៀបប្រើ",
     home_l1_h: "និយាយសួស្ដី",
-    home_l1: "សំណួរងាយៗមួយចំនួន។ ចុចតែម្ដងដើម្បីឆ្លើយ។",
+    home_l1: "សំណួរងាយៗមួយចំនួន។ ឆ្លើយតបខ្លីៗ។",
     home_l2_h: "ស្គាល់គ្នាឲ្យជ្រៅជាងនេះ",
     home_l2: "បន្ទាប់មក សំណួរមួយចំនួនទៀត ខ្លះអ្នកសរសេរដោយខ្លួនឯង។ រូបថតមួយទៀតបើក។",
     home_l3_h: "ជជែក",
@@ -651,7 +651,7 @@ export const PAGE_STRINGS = {
     home_remind: "30+DA 完全免费——|没有任何|需要付钱的地方。|我们|绝不会|向你要钱、|银行或|银行卡信息。|永远不要|给网上|认识的人|汇钱。",
     home_how_h: "怎么用",
     home_l1_h: "打个招呼",
-    home_l1: "几个|简单的问题，|点一下|就能回答。",
+    home_l1: "几个|简单的问题，|每个|简短|回复|就好。",
     home_l2_h: "再深入一点",
     home_l2: "接着|再来几个，|有的|由你|自己写。|还能|多看到|一张照片。",
     home_l3_h: "聊天",
@@ -851,7 +851,7 @@ export const PAGE_STRINGS = {
     home_remind: "30+DA는 무료예요 — 결제할 것이 없어요. 돈, 은행이나 카드 정보를 절대 묻지 않아요. 온라인에서 만난 사람에게 절대 돈을 보내지 마세요.",
     home_how_h: "이용 방법",
     home_l1_h: "인사하기",
-    home_l1: "쉬운 질문 몇 가지. 한 번 눌러 답해요.",
+    home_l1: "쉬운 질문 몇 가지. 짧게 한마디로 답해요.",
     home_l2_h: "조금 더 깊이",
     home_l2: "이어서 몇 가지 더, 그중 몇 개는 직접 써요. 사진이 한 장 더 열려요.",
     home_l3_h: "채팅",
@@ -1051,7 +1051,7 @@ export const PAGE_STRINGS = {
     home_remind: "30+DAは|無料です。|お支払いは|一切|ありません。|お金や|銀行・カードの|情報を|求めることは|決して|ありません。|ネットで|知り合った人に|お金を|送らないでください。",
     home_how_h: "使い方",
     home_l1_h: "あいさつ",
-    home_l1: "かんたんな|質問を|いくつか。|答えは|ワンタップ。",
+    home_l1: "かんたんな|質問を|いくつか。|返信は|ひとことで。",
     home_l2_h: "もう少し深く",
     home_l2: "続けて|もういくつか。|そのうち|いくつかは|自分で書く質問。|写真が|もう一枚|見られます。",
     home_l3_h: "チャット",
@@ -1519,7 +1519,7 @@ function homeHead(t, lang, title) {
  * (on the other 4 languages), the lead, Open 30+DA (/30da/), the ⚠️ Reminder (free; never money, bank or card details;
  * never send money), how it works in words, Support & Contact (email, Telegram, WhatsApp), the hashtags. Then the
  * teaser's strip (people-2 → 3 → 4 on one taut red thread) and the footer. True to the code:
- *   Say hello  a few questions, answered with one tap (shared/questions.js LEVEL_RULES[1], replyOptions)
+ *   Say hello  a few questions, each answered with a short reply (shared/questions.js LEVEL_RULES[1]; rules.js REPLY_MAX)
  *   Go deeper  a few more, a couple you write yourself (LEVEL_RULES[2]: 3 picked + 2 written); photo 2 opens
  *              (shared/rules.js PHOTO_SLOT_LEVELS)
  *   Chat       every line translated (src/lib/thirtyda-translate.mjs), real names; verify only to chat

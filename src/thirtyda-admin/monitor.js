@@ -64,6 +64,16 @@ function bubble(m) {
   return `<div class="bubble">${highlight(m.text, m.hit)}${en}</div>`;
 }
 
+// Levels 1–2 rows say which line they are: a line someone sent, or the reply to it — a short typed reply (1–10
+// characters, owner 2026-10-14; older ones were taps: Yes / No / Not really / Maybe). A stopped reply that was split
+// down several replies keeps the pieces one per line (the bubble keeps the line breaks).
+function rowLabel(m) {
+  const lv = m.level === 1 || m.level === 2 ? `L${m.level} · ` : '';
+  if (m.kind === 'question') return m.n ? `${lv}line ${m.n}` : `${lv}line`;
+  if (m.kind === 'answer') return m.n ? `${lv}reply to line ${m.n}` : `${lv}reply`;
+  return '';
+}
+
 const levelBars = (n) =>
   `<span class="level" aria-label="Level ${n}">${[1, 2, 3].map((i) => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}<span>L${n}</span></span>`;
 
@@ -194,7 +204,7 @@ function logHtml() {
       : '';
     // After Level 2: each person's choice (open the chat / forget it), shown as a note, not a message.
     return `<div class="msg ${m.flag ? 'flagged' : ''} ${m.kind === 'decision' ? 'decision' : ''}">
-      <div class="msg-meta"><b>${esc(m.fromName)}</b><time datetime="${m.at}">${ago(m.at)}</time></div>
+      <div class="msg-meta"><span><b>${esc(m.fromName)}</b>${rowLabel(m) ? ` <span class="tag row-tag">${esc(rowLabel(m))}</span>` : ''}</span><time datetime="${m.at}">${ago(m.at)}</time></div>
       ${bubble(m)}${note}
     </div>`;
   }).join('');

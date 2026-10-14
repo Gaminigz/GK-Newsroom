@@ -5,8 +5,9 @@
 // Level 2 works the same way. Level 3 is the direct chat, and everything before it stays as plain text.
 //
 // So Level 1 and Level 2 each have TWO directions: each person sends ONE set of 5 lines per level to the
-// other, in any order, and replies to the set they received line by line (one tap each, at both levels).
-// A level is done when both sets exist and both have all 5 replies. Level 2 opens after a wait.
+// other, in any order, and replies to the set they received line by line (a short typed reply each, 1–10
+// characters, at both levels — owner 2026-10-14; the taps before it still read back). A level is done when
+// both sets exist and both have all 5 replies. Level 2 opens after a wait.
 //
 // After Level 2 (owner 2026-10-13: "after these 10 answers the sender can activate Level 3 or forget it"):
 // each person chooses "Open the chat" or "Forget it". The chat (Level 3) opens as soon as BOTH chose to
@@ -108,6 +109,62 @@ export function levelComplete(mine, theirs) {
 export function withReply(answers, reply) {
   const list = (Array.isArray(answers) ? answers : []).filter((a) => a && a.n !== reply.n);
   return [...list, reply].sort((x, y) => x.n - y.n);
+}
+
+/** A stored reply that was typed (2026-10-14 on), not one of the old taps (key 'yes' / 'no' / 'not_really' / 'maybe' / 'ok'). */
+export const typedReply = (a) => Boolean(a && !a.key && typeof a.text === 'string' && a.text);
+
+const timeOf = (x) => Date.parse(x?.at ?? '') || 0;
+const byTime = (x, y) => timeOf(x) - timeOf(y) || (x.level ?? 0) - (y.level ?? 0) || (x.n ?? 0) - (y.n ?? 0);
+
+/**
+ * Everything one person wrote in a pair, oldest first: their written lines (in the sets they sent) and their typed
+ * replies (in the sets sent to them; a tap was not typed). `sets` as stored ({ level, from, to, sentAt,
+ * questions:[{ n, source, text }], answers:[{ n, key, text, at }] }). → [{ kind:'line'|'reply', level, n, text, at }]
+ */
+export function ownTexts(sets, me) {
+  const out = [];
+  for (const s of Array.isArray(sets) ? sets : []) {
+    if (!s) continue;
+    if (s.from === me) {
+      for (const q of s.questions || []) {
+        if (q?.source === 'written' && q.text) out.push({ kind: 'line', level: s.level, n: q.n, text: String(q.text), at: s.sentAt });
+      }
+    }
+    if (s.to === me) {
+      for (const a of s.answers || []) if (typedReply(a)) out.push({ kind: 'reply', level: s.level, n: a.n, text: a.text, at: a.at ?? s.sentAt });
+    }
+  }
+  return out.sort(byTime);
+}
+
+/**
+ * The orders a new reply is read in together with the rest of what the same person wrote in the pair (owner
+ * 2026-10-14: "can not write numbers like a phone or a TG handle … even if they write them vertically or
+ * horizontally"), for rules.js findSplitContactDetails:
+ *   1. down the screen: their typed replies line by line, Level 1 then Level 2, the new one in its line's place;
+ *   2. as typed: their written lines, replies and last chat lines, oldest first, the new one last.
+ * The reply it changes (same level and line) is left out of both. reply = { level, n, text }; chat = their recent
+ * chat lines [{ text, at }].
+ */
+export function replyOrders({ sets, me, reply, chat = [] }) {
+  const fresh = { kind: 'reply', level: Number(reply.level), n: Number(reply.n), text: reply.text, fresh: true };
+  const mine = ownTexts(sets, me).filter((x) => !(x.kind === 'reply' && x.level === fresh.level && x.n === fresh.n));
+  const down = [...mine.filter((x) => x.kind === 'reply'), fresh].sort((x, y) => x.level - y.level || x.n - y.n);
+  const typed = [...[...mine, ...(Array.isArray(chat) ? chat : []).filter((m) => m?.text)].sort(byTime), fresh];
+  const plain = (list) => list.map((x) => ({ text: x.text, fresh: Boolean(x.fresh) }));
+  return [plain(down), plain(typed)];
+}
+
+/**
+ * The written lines of a set about to be sent, read after everything the same person wrote in the pair before
+ * (their replies, their earlier lines, their last chat lines): a reply "012" and "887", then a line "766 …".
+ * written = the new set's lines in order (null for a picked line); each fresh item's id = its place in that list.
+ */
+export function writtenOrders({ sets, me, written, chat = [] }) {
+  const before = [...ownTexts(sets, me), ...(Array.isArray(chat) ? chat : []).filter((m) => m?.text)].sort(byTime);
+  const lines = (written || []).map((text, i) => (text ? { text, fresh: true, id: i } : null)).filter(Boolean);
+  return before.length && lines.length ? [[...before.map((x) => ({ text: x.text, fresh: false })), ...lines]] : [];
 }
 
 /** What I do next (the same in PairView.next and the conversation). */

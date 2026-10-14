@@ -208,7 +208,7 @@ async function overview() {
       const msg = chat?.messages.find((m) => m.flagId === f.id) ?? {};
       // The level the message was written at, not where the pair is now. A block, or a report on a profile or a photo,
       // is about the person, not a message: no level.
-      const aboutPerson = f.kind === "blocked" || (f.target && !String(f.target).startsWith("line:"));
+      const aboutPerson = f.kind === "blocked" || (f.target && !/^(?:line|reply):/.test(String(f.target)));
       const level = aboutPerson ? null : msg.level ?? f.level ?? chat?.level;
       const { key, photoId, ...rest } = f; // the open-flag key and the photo's id stay on the server
       return {

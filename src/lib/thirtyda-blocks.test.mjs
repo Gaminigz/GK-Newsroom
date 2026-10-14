@@ -138,20 +138,25 @@ test('reasons: the person report has all six, the chat report gained "underage";
   assert.ok(Object.isFrozen(PERSON_REPORT_REASONS) && Object.isFrozen(CHAT_REPORT_REASONS));
 });
 
-test('report targets: profile, photo 1–4, a line of a set; anything else is refused', () => {
+test('report targets: profile, photo 1–4, a line of a set, a typed reply to a line; anything else is refused', () => {
   assert.equal(reportTarget.profile(), 'profile');
   assert.equal(reportTarget.photo(2), 'photo:2');
   assert.equal(reportTarget.line('S-12', 3), 'line:S-12/3');
   assert.deepEqual(parseReportTarget('profile'), { kind: 'profile' });
   assert.deepEqual(parseReportTarget(reportTarget.photo(4)), { kind: 'photo', n: 4 });
   assert.deepEqual(parseReportTarget(reportTarget.line('S-12', 3)), { kind: 'line', setId: 'S-12', n: 3 });
+  // A reply they typed to line 3 of a set I sent them (typed replies, owner 2026-10-14).
+  assert.equal(reportTarget.reply('S-12', 3), 'reply:S-12/3');
+  assert.deepEqual(parseReportTarget(reportTarget.reply('S-12', 3)), { kind: 'reply', setId: 'S-12', n: 3 });
   for (const bad of ['', 'Profile', 'photo:0', 'photo:5', 'photo:12', 'photo:-1', 'photo:1x', 'line:S-1/0', 'line:S-1/10', 'line:P-1/2',
-    'line:S-/2', 'line:S-1/2/3', 'line:S-1', 'chat:M-1', ' profile', null, undefined, 3, {}, ['profile']]) {
+    'line:S-/2', 'line:S-1/2/3', 'line:S-1', 'chat:M-1', ' profile', null, undefined, 3, {}, ['profile'],
+    'reply:S-1/0', 'reply:S-1/10', 'reply:P-1/2', 'reply:S-1', 'replies:S-1/2', 'Reply:S-1/2']) {
     assert.equal(parseReportTarget(bad), null, String(bad));
   }
   assert.equal(targetLabel('profile'), 'Profile');
   assert.equal(targetLabel('photo:2'), 'Photo 2');
   assert.equal(targetLabel('line:S-9/4'), 'Line 4');
+  assert.equal(targetLabel('reply:S-9/4'), 'Reply to line 4');
   assert.equal(targetLabel('nope'), '');
 });
 

@@ -5,8 +5,9 @@
 const q = (key, en, km, zh, ko, ja) => ({ key, text: { en, km, zh, ko, ja } });
 
 // Level 2 (Gamini 2026-10-13): three lists of 5 short statements, one topic each — "Intentions", "Time of
-// Comfort", "Venue Vibe" (SYSTEM_TOPICS) — that the other person answers with one tap (Yes / No / Not really
-// / Maybe). Keys are the ones the owner's admin lists use. The open questions before them: RETIRED_QUESTIONS.
+// Comfort", "Venue Vibe" (SYSTEM_TOPICS) — that the other person answers with a short typed reply (1–10
+// characters, owner 2026-10-14; one tap before that). Keys are the ones the owner's admin lists use. The open
+// questions before them: RETIRED_QUESTIONS.
 const L2_LISTS = [
   // Intentions
   [
@@ -165,7 +166,11 @@ export const RETIRED_QUESTIONS = {
 // given + 2 text"). Level 2 sets sent earlier with pick 2 + write 3 keep their own lines and still read back.
 export const LEVEL_RULES = { 1: { pick: 4, write: 1 }, 2: { pick: 3, write: 2 } };
 
-// One tap per line, at Level 1 and Level 2 (Gamini 2026-10-13: "Level 2 replies are taps, like Level 1").
+// How a line is replied to, at Level 1 and Level 2 (owner 2026-10-14: "all questions answering method change to 10
+// characters max" — "so no more yes no not really maybe"): a short TYPED reply, 1–10 characters (shared/rules.js
+// REPLY_MAX, checkReply), the same for a picked line and a written one. The taps below are retired: they are kept
+// because replies already given with them are stored as these keys and still read back in every language
+// (answerText), and an older app's tap is taken as these words in the replier's language.
 export const L1_ANSWERS = [
   q('yes', 'Yes', 'បាទ/ចាស', '是的', '네', 'はい'),
   q('no', 'No', 'ទេ', '不是', '아니요', 'いいえ'),
@@ -174,8 +179,8 @@ export const L1_ANSWERS = [
 ];
 
 /**
- * The taps that reply to one line, at Level 1 and Level 2: a picked line gets Yes / No / Not really / Maybe,
- * the sender's own written line gets Yes / No only.
+ * The taps that replied to one line before typed replies (retired 2026-10-14; see above): a picked line had
+ * Yes / No / Not really / Maybe, the sender's own written line Yes / No only.
  */
 export function replyOptions(source) {
   return source === 'written' ? L1_ANSWERS.filter((a) => a.key === 'yes' || a.key === 'no') : L1_ANSWERS;
@@ -217,8 +222,8 @@ export function questionText(level, key, lang) {
   return found ? pickLang(found.text, lang) : null;
 }
 
-// Localized text of a Level 1 answer option, or null for an unknown key.
-// No longer offered (Gamini 2026-10-13), but answers already given with it still read back.
+// Localized text of an old tap reply (yes / no / not_really / maybe, and 'ok' — retired 2026-10-13), or null for an
+// unknown key. Nothing is tapped any more (typed replies, 2026-10-14), but replies stored as these keys read back.
 const RETIRED_L1_ANSWERS = [q('ok', 'OK', 'ធម្មតា', '还好', '괜찮아요', 'まあまあ')];
 
 export function answerText(key, lang) {
