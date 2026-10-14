@@ -128,6 +128,8 @@ p { margin: 0 0 10px; }
   font-size: 16px;
   line-height: 1.55;
 }
+/* The canvas behind the home page is navy too, so iOS overscroll (or any stray pixel) never shows the grey desk. */
+:root:has(> body.page-home) { background: var(--navy); }
 .page-home p, .page-home h1, .page-home h2, .page-home ul, .page-home ol, .page-home figure { margin: 0; }
 .page-home ul, .page-home ol { padding: 0; list-style: none; }
 .page-home a { color: inherit; overflow-wrap: normal; }
@@ -148,8 +150,12 @@ p { margin: 0 0 10px; }
 .page-home .hm-logo { grid-area: logo; font-size: 27px; line-height: 44px; font-weight: 900; font-stretch: 125%; letter-spacing: -0.01em; text-decoration: none; color: #fff; }
 .page-home .hm-stores-top { grid-area: stores; justify-self: end; }
 .page-home .langs { grid-area: flags; padding: 6px 0 8px; border-bottom: 0; }
-.page-home .langs a { min-height: 44px; color: #fff; }
+.page-home .langs a { min-height: 44px; min-width: 44px; justify-content: center; color: #fff; }
 .page-home .langs a[aria-current="true"] { background: #fff; color: var(--navy); }
+/* Under 380 px the row sits inside the page's 16 px gutters (288 px at 320): tighter links so all five fit. */
+@media (max-width: 379px) {
+  .page-home .langs a { padding: 0 2px; gap: 2px; }
+}
 @media (min-width: 900px) {
   .page-home .hm-top-in { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "logo flags stores"; column-gap: 24px; padding-top: 0; }
   .page-home .langs { justify-self: end; gap: 4px; padding: 12px 0; }
@@ -178,8 +184,13 @@ p { margin: 0 0 10px; }
 @media (min-width: 900px) {
   .page-home .hm-main { padding-top: 44px; padding-bottom: 88px; }
   .page-home .hm-cols { flex-direction: row; align-items: flex-start; justify-content: center; gap: 72px; }
-  .page-home .hm-left { flex: 0 0 380px; position: sticky; top: 24px; }
+  .page-home .hm-left { flex: 0 0 380px; }
   .page-home .hm-text { flex: 0 1 560px; padding-top: 8px; }
+}
+/* The card (676 px tall) stays in view while the words scroll — only on screens tall enough to hold all of it
+   (a 1366 × 768 laptop's window is ~657 px: there it scrolls with the page instead of being cut off). */
+@media (min-width: 900px) and (min-height: 740px) {
+  .page-home .hm-left { position: sticky; top: 24px; }
 }
 
 /* ---- The phone-shaped card: the photo fills it, the store icons top right, a navy fade at the bottom with the name,
@@ -273,6 +284,11 @@ p { margin: 0 0 10px; }
 .page-home .hm-fr-ph { position: relative; aspect-ratio: 768 / 1376; border-radius: 12px; overflow: hidden; background: var(--navy-2); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.1); }
 .page-home .hm-fr-ph img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .page-home .hm-fr figcaption { margin-top: 10px; font-size: 14px; line-height: 1.35; font-weight: 600; text-align: center; color: var(--on-dark-soft); text-wrap: balance; }
+/* Phones: a frame is only ~90–110 px wide, narrower than a Chinese / Japanese phrase at 14 px (すれ違わないで。), which
+   would then break inside the word and leave 。 alone. A little smaller, using half the grid gap, every phrase fits. */
+@media (max-width: 399px) {
+  .page-home:lang(zh) .hm-fr figcaption, .page-home:lang(ja) .hm-fr figcaption { margin-inline: -5px; font-size: 12px; line-height: 1.4; }
+}
 @media (min-width: 900px) {
   .page-home .hm-story { padding: 80px 0 88px; }
   .page-home .hm-string { font-size: 32px; }

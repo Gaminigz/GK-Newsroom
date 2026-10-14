@@ -257,6 +257,8 @@ test('the words: eyebrow, 💞 headline (h1), the Khmer line on the other 4 lang
     for (const n of [1, 2, 3]) assert.ok(how.includes(`<li><b>${homeText(t[`home_l${n}_h`])}</b> ${homeText(t[`home_l${n}`])}</li>`), `${lang}: level ${n}`);
     assert.ok(how.includes(`<p class="hm-how-fine">${homeText(t.home_verify)}</p>`), `${lang}: verify only to chat`);
   }
+  // Korean: "nothing to pay" (결제할 것이 없어요, as the app says it) — never 낼 돈이 없어요 ("I have no money to pay").
+  assert.ok(PAGE_STRINGS.ko.home_remind.includes('결제할 것이 없어요') && !PAGE_STRINGS.ko.home_remind.includes('낼 돈'), 'ko: nothing to pay');
   // "30+" never hangs alone on a line: a no-break space before it.
   assert.ok(homePage({ lang: 'en' }).includes('Safe and calm dating for 30+'));
   assert.ok(homePage({ lang: 'ja' }).includes('សម្រាប់វ័យ 30+'));
@@ -357,6 +359,14 @@ test('Chinese and Japanese break only between phrases: the "|" marks become <wbr
   const { block: css } = homeCss();
   assert.match(css, /\.page-home:lang\(zh\), \.page-home:lang\(ja\), \.page-home:lang\(ko\) \{ word-break: keep-all; line-break: strict; overflow-wrap: break-word; \}/);
   assert.match(css, /\.page-home \[lang="km"\] \{ word-break: normal;/, 'Khmer lines inside them break as Khmer');
+  // The strip's captions on phones: a frame is ~99 px wide at 320 px, so at 12 px every phrase (≤ 8 characters) fits
+  // whole — no word split, no 。 alone on a line.
+  assert.match(css, /@media \(max-width: 399px\) \{\s*\.page-home:lang\(zh\) \.hm-fr figcaption, \.page-home:lang\(ja\) \.hm-fr figcaption \{ margin-inline: -5px; font-size: 12px;/);
+  for (const lang of ['zh', 'ja']) {
+    for (const n of [2, 3, 4]) {
+      for (const phrase of PAGE_STRINGS[lang][`home_frame_${n}`].split('|')) assert.ok([...phrase].length <= 8, `${lang}.home_frame_${n}: "${phrase}" fits a narrow frame`);
+    }
+  }
 });
 
 test('photos: people-1 on the card, the sequence people-2 → 3 → 4 together in order on the strip; hero = the share picture; placeholders when missing', () => {
@@ -532,13 +542,20 @@ test('pages.css: the home page\'s rules are all under .page-home (the other page
   const selectors = [...noFrames.matchAll(/(?:^|[;{}])\s*([^{}@;\s][^{}]*?)\s*\{/g)].map((m) => m[1].trim()).filter(Boolean);
   assert.ok(selectors.length > 60, `found ${selectors.length} rules`);
   for (const list of selectors) {
-    for (const sel of list.split(',')) assert.match(sel.trim(), /^\.page-home\b/, `scoped: ${sel.trim()}`);
+    // …or the canvas behind the home page only (navy, so overscroll never shows the grey desk).
+    for (const sel of list.split(',')) assert.match(sel.trim(), /^(\.page-home\b|:root:has\(> body\.page-home\)$)/, `scoped: ${sel.trim()}`);
   }
   assert.ok(!/url\(/.test(block), 'no outside images: the placeholders are gradients');
   assert.match(block, /prefers-reduced-motion: reduce/);
   // PC like the template: the card left (it stays in view), the words right; phones: the card first.
   assert.match(block, /@media \(min-width: 900px\) \{\s*\.page-home \.hm-main \{[^}]*\}\s*\.page-home \.hm-cols \{ flex-direction: row;/);
-  assert.match(block, /\.page-home \.hm-left \{ flex: 0 0 380px; position: sticky;/);
+  assert.match(block, /\.page-home \.hm-left \{ flex: 0 0 380px; \}/);
+  // …sticky only when the screen is tall enough to hold the whole card (a 1366 × 768 laptop would cut its foot off).
+  assert.match(block, /@media \(min-width: 900px\) and \(min-height: 740px\) \{\s*\.page-home \.hm-left \{ position: sticky; top: 24px; \}/);
+  assert.equal((block.match(/position: sticky/g) || []).length, 1, 'sticky in that one place only');
+  assert.match(block, /:root:has\(> body\.page-home\) \{ background: var\(--navy\); \}/);
+  // The flag row inside the 16 px gutters fits 320 px phones (five links in 288 px): tighter links under 380 px.
+  assert.match(block, /@media \(max-width: 379px\) \{\s*\.page-home \.langs a \{ padding: 0 2px; gap: 2px; \}/);
   assert.match(block, /\.page-home \.hm-card \{[^}]*aspect-ratio: 9 \/ 16; border-radius: 24px; overflow: hidden;/);
   // Big enough to tap: the button, the pills, the store icons, the contact links, the footer links, the flags.
   const px = (sel, prop) => Number(block.match(new RegExp(`${sel.replace(/[.[\]()]/g, '\\$&')} \\{[^}]*\\b${prop}: (\\d+)px`))?.[1]);
@@ -547,7 +564,7 @@ test('pages.css: the home page\'s rules are all under .page-home (the other page
   assert.ok(px('.page-home .hm-store', 'width') >= 44 && px('.page-home .hm-store', 'height') >= 44, 'store icons');
   assert.ok(px('.page-home .hm-contact a', 'min-height') >= 44, 'contact links');
   assert.ok(px('.page-home .hm-foot-links a', 'min-height') >= 44 && px('.page-home .hm-foot-links a', 'min-width') >= 44, 'footer links');
-  assert.ok(px('.page-home .langs a', 'min-height') >= 44, 'flags');
+  assert.ok(px('.page-home .langs a', 'min-height') >= 44 && px('.page-home .langs a', 'min-width') >= 44, 'flags (tall and wide, even with the tighter padding under 380 px)');
   // The earlier pages keep their own rules (the flag row's narrow-phone rule is still the first of its kind).
   assert.ok(css.indexOf('@media (max-width: 379px)') < at);
 });
