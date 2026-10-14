@@ -13,7 +13,14 @@ import {
 } from './thirtyda-signin.mjs';
 import { saveFields, clearSettingsCache, FIELD_SETTINGS } from './thirtyda-settings.mjs';
 import { redactCall, makeTestFetch, TEST_FETCH_COLLECTION } from './thirtyda-test-fetch.mjs';
-import { tryResultPage, termsPage, privacyPage, deleteDataPage, PAGE_STRINGS } from './thirtyda-pages.mjs';
+import { tryResultPage, termsPage as termsHtml, privacyPage as privacyHtml, deleteDataPage as deleteDataHtml, PAGE_STRINGS } from './thirtyda-pages.mjs';
+import { khmerPlain } from '../thirtyda-app/shared/khmer.js';
+
+// The pages keep each Khmer phrase whole with invisible marks (shared/khmer.js khmerKeep): the words are
+// compared without them (the joiners themselves: thirtyda-pages.test.mjs).
+const termsPage = (opts) => khmerPlain(termsHtml(opts));
+const privacyPage = (opts) => khmerPlain(privacyHtml(opts));
+const deleteDataPage = (opts) => khmerPlain(deleteDataHtml(opts));
 
 const KEYS = { id: 'awq7e2etest1234ab', secret: 'Tk3xFAKEsecret0123456789abcdefZz' };
 const REDIRECT = 'https://ecom.ggmt.sg/30da/api/auth/tiktok/callback';

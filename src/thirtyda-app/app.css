@@ -132,6 +132,11 @@ a { color: inherit; -webkit-touch-callout: none; }
 :lang(km) .label, :lang(km) .mono { font-size: 11px; }
 :lang(km) body { line-height: 1.6; }
 :lang(km) .title, :lang(km) .display { line-height: 1.35; }
+/* Khmer breaks at the spaces between its phrases: shared/khmer.js joins the clusters inside each phrase (a browser
+   would split words by its own dictionary) and marks where a too-long phrase may break between two words. Last
+   resort, a piece wider than its whole box still wraps rather than run out of it (break-word, not anywhere: anywhere
+   lets a flex item shrink below a word, e.g. "បេះដូងរបស់អ្ន‖ក" on #/me). */
+html:lang(km), [lang="km"] { overflow-wrap: break-word; }
 /* Korean wraps between words, not between any two syllables; text in another language keeps its own rules. */
 :lang(ko) body { word-break: keep-all; overflow-wrap: break-word; }
 :lang(ko) [lang]:not(:lang(ko)) { word-break: normal; }

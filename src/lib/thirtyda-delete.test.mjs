@@ -610,7 +610,11 @@ test('POST /me/delete: rate-limited per profile', async () => {
 // ---------------------------------------------------------------- the public pages
 
 test('delete-data: in the app (My profile → Delete my account, instant) or by email (30 days), 5 languages; pages link back to #/me', async () => {
-  const { deleteDataPage, privacyPage, termsPage, PAGE_STRINGS } = await import('./thirtyda-pages.mjs');
+  const pages = await import('./thirtyda-pages.mjs');
+  const { khmerPlain } = await import('../thirtyda-app/shared/khmer.js');
+  // The words without the invisible marks that keep each Khmer phrase whole (shared/khmer.js).
+  const [deleteDataPage, privacyPage, termsPage] = [pages.deleteDataPage, pages.privacyPage, pages.termsPage].map((page) => (opts) => khmerPlain(page(opts)));
+  const { PAGE_STRINGS } = pages;
   const appWords = { en: ['My profile', 'Delete my account'], km: ['ប្រវត្តិរូបរបស់ខ្ញុំ', 'លុបគណនីរបស់ខ្ញុំ'], zh: ['我的资料', '删除我的账号'], ko: ['내 프로필', '내 계정 삭제'], ja: ['マイプロフィール', 'アカウントを削除'] };
   for (const lang of ['en', 'km', 'zh', 'ko', 'ja']) {
     const t = PAGE_STRINGS[lang];

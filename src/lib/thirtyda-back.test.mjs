@@ -8,7 +8,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { backPage, backPlatform, backHref, WEB_APP_PATH, PAGE_STRINGS, esc } from './thirtyda-pages.mjs';
+import { backPage as backHtml, backPlatform, backHref, WEB_APP_PATH, PAGE_STRINGS, esc } from './thirtyda-pages.mjs';
+import { khmerPlain } from '../thirtyda-app/shared/khmer.js';
+
+// The pages keep each Khmer phrase whole with invisible marks (shared/khmer.js khmerKeep): the words are
+// compared without them (the joiners themselves: thirtyda-pages.test.mjs).
+const backPage = (opts) => khmerPlain(backHtml(opts));
 import { handleThirtyDaApp } from './thirtyda-app.mjs';
 
 const LANGS = ['en', 'km', 'zh', 'ko', 'ja'];

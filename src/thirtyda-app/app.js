@@ -3,7 +3,7 @@
 // covers the app when the session is locked, after 30 s without a touch, and when the app is hidden; while
 // locked and hidden, "Remind me" only checks how many conversations wait (GET /me/pending).
 import {
-  state, api, bus, t, el, icon, go, modal, heartbeat, startRouter, setMe, registerStrings, actionLabel, pairRoute,
+  state, api, bus, t, el, icon, go, modal, heartbeat, startRouter, setMe, registerStrings, actionLabel, pairRoute, khmerKeep, khmerPlain,
 } from './core.js';
 import { startLock, bootLock, applyLockInfo, waitingPin, pinResetPending, leaveWithoutLock, keepReviewLang } from './lock.js';
 // The community rules' "I agree" (store policy, owner 2026-10-14): screens/rules.js, kept on the phone by terms.js.
@@ -127,7 +127,7 @@ function showNotices() {
     // Warnings have a fixed meaning, so they are shown in the reader's language.
     // A rejected photo (store policy, owner 2026-10-14): the same fixed words, in the reader's language.
     el('p', {}, notice.kind === 'warning' ? t(notice.rule === 'word' ? 'app_notice_warning_word' : 'app_notice_warning')
-      : notice.kind === 'photo' ? t('app_notice_photo') : notice.text || ''),
+      : notice.kind === 'photo' ? t('app_notice_photo') : khmerKeep(notice.text || '')),
     el('div', { class: 'dialog-actions' }, ok)), { dismissible: false, label: t('app_notice_title') });
 
   ok.addEventListener('click', async () => {
@@ -160,7 +160,7 @@ function notifyActions(actions) {
     // Only when the page is in the background; on screen the Nearby strip shows it.
     if (!allowed || !document.hidden) continue;
     try {
-      const n = new Notification('30+DA', { body: actionLabel(p), tag: `30da-${p.id}` });
+      const n = new Notification('30+DA', { body: khmerPlain(actionLabel(p)), tag: `30da-${p.id}` });
       n.onclick = () => {
         window.focus();
         go(pairRoute(p));
@@ -188,7 +188,7 @@ async function checkPending() {
   pendingSeen = count;
   if (known === null || count <= known) return;
   try {
-    const n = new Notification('30+DA', { body: t('app_pending_note'), tag: '30da-pending' });
+    const n = new Notification('30+DA', { body: khmerPlain(t('app_pending_note')), tag: '30da-pending' });
     n.onclick = () => {
       window.focus(); // the PIN screen first, then the app
       n.close();

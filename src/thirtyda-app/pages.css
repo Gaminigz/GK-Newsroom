@@ -114,6 +114,10 @@ p { margin: 0 0 10px; }
 :lang(km) h1, :lang(km) .doc-body h2 { line-height: 1.45; }
 :lang(km) .try-big { line-height: 1.4; }
 :lang(ko) .doc-body { word-break: keep-all; overflow-wrap: break-word; }
+/* Khmer breaks at the spaces between its phrases: src/thirtyda-app/shared/khmer.js joins the clusters inside each
+   phrase (a browser would split words by its own dictionary) and marks where a too-long phrase may break between two
+   words. Last resort, a piece wider than its whole box still wraps rather than run out of it. */
+html:lang(km), [lang="km"] { overflow-wrap: break-word; }
 
 /* ==========================================================================================================
    The home page (/30da/home, src/lib/thirtyda-pages.mjs homePage): laid out like the owner's template
@@ -143,7 +147,7 @@ p { margin: 0 0 10px; }
 .page-home .hm-wrap { width: 100%; max-width: 1080px; margin: 0 auto; padding: 0 var(--hm-gutter); }
 @media (min-width: 600px) { .page-home { --hm-gutter: 28px; } }
 /* Chinese / Japanese: never break inside a word — only between phrases (the page's <wbr>s) and after punctuation.
-   Korean keeps its words whole too. Khmer (its own lines on every page) breaks by its dictionary as usual. */
+   Korean keeps its words whole too. Khmer (its own lines on every page) breaks only between its phrases (khmerKeep). */
 .page-home:lang(zh), .page-home:lang(ja), .page-home:lang(ko) { word-break: keep-all; line-break: strict; overflow-wrap: break-word; }
 .page-home [lang="km"] { word-break: normal; line-break: auto; }
 

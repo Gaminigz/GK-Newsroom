@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
-  homePage, homeText, PAGE_STRINGS, OPERATOR, CONTACT_EMAIL, HOME_SLOTS, HOME_PEOPLE, HOME_HERO, HOME_PORTRAIT, HOME_SEQUENCE,
+  homePage, homeText, pageWords, PAGE_STRINGS, OPERATOR, CONTACT_EMAIL, HOME_SLOTS, HOME_PEOPLE, HOME_HERO, HOME_PORTRAIT, HOME_SEQUENCE,
   HOME_IMG_PATH, WEB_APP_PATH, HOME_URL, HOME_SHARE_IMG, SUPPORT_TELEGRAM, SUPPORT_WHATSAPP, HOME_TAGS, HOME_SIGNINS, PLAY_COLOURS,
 } from './thirtyda-pages.mjs';
 import {
@@ -228,7 +228,7 @@ test('the card: people-1 fills it, "30+DA App" + the tagline + two lines, and th
     const links = [...pills[2].matchAll(/<a class="(hm-pill[^"]*)" href="([^"]*)">([\s\S]*?)<\/a>/g)];
     assert.equal(links.length, 5, `${lang}: five pills`);
     assert.ok(links.every(([, , href]) => href === WEB_APP_PATH), `${lang}: every pill → /30da/ (the web app's sign-in)`);
-    assert.deepEqual(links.map(([, , , inner]) => shown(inner)), ['TikTok', 'Telegram', 'Google', 'Facebook', `👀 ${plain(t.home_guest)}`], `${lang}: the pills`);
+    assert.deepEqual(links.map(([, , , inner]) => shown(inner)), ['TikTok', 'Telegram', 'Google', 'Facebook', `👀 ${homeText(t.home_guest)}`], `${lang}: the pills`);
     assert.equal(links[4][1], 'hm-pill hm-pill-guest');
   }
   assert.equal(WEB_APP_PATH, '/30da/');
@@ -246,7 +246,7 @@ test('the words: eyebrow, red-string knot + headline (h1), the Khmer line on the
     const khmer = `<p class="hm-km" lang="km">${homeText(km.home_headline)}<span>${homeText(km.home_tagline)}</span></p>`;
     assert.equal(html.includes(khmer), lang !== 'km', `${lang}: the Khmer line`);
     assert.ok(html.includes(`<p class="hm-lead">${homeText(t.home_line)}`) && html.includes(`${homeText(t.home_lead)}</p>`), `${lang}: lead`);
-    assert.ok(html.includes(`<p class="hm-cta"><a class="hm-btn" href="/30da/">${t.app_open}<svg`), `${lang}: the big button`);
+    assert.ok(html.includes(`<p class="hm-cta"><a class="hm-btn" href="/30da/">${pageWords(lang).app_open}<svg`), `${lang}: the big button`);
     assert.equal((html.match(/class="hm-btn"/g) || []).length, 1, `${lang}: one big button`);
     // ⚠️ Reminder: free, never money / bank / card, never send money (+ the Khmer line on the other languages).
     const remind = block(html, '<div class="hm-remind" role="note">', 'div');
@@ -263,7 +263,7 @@ test('the words: eyebrow, red-string knot + headline (h1), the Khmer line on the
   assert.ok(PAGE_STRINGS.ko.home_remind.includes('결제할 것이 없어요') && !PAGE_STRINGS.ko.home_remind.includes('낼 돈'), 'ko: nothing to pay');
   // "30+" never hangs alone on a line: a no-break space before it.
   assert.ok(homePage({ lang: 'en' }).includes('Safe and calm dating for 30+'));
-  assert.ok(homePage({ lang: 'ja' }).includes('សម្រាប់វ័យ 30+'));
+  assert.ok(homePage({ lang: 'ja' }).includes(homeText('សម្រាប់វ័យ 30+')) && homeText('សម្រាប់វ័យ 30+').endsWith('យ 30+'));
 });
 
 test('Support & Contact (the template\'s three), the hashtags, the footer', () => {
@@ -288,9 +288,10 @@ test('Support & Contact (the template\'s three), the hashtags, the footer', () =
     // Footer: the template's small line, who runs it, the small pages in the same language.
     const foot = block(html, '<footer class="hm-foot">', 'footer');
     assert.ok(foot.includes('<p class="hm-foot-brand">30+DA · GK Newsroom · ggmt.sg</p>'), `${lang}: brand line`);
-    assert.ok(foot.includes(`<p class="hm-foot-run">${t.run_by} <b>${OPERATOR}</b></p>`), `${lang}: operator`);
+    const w = pageWords(lang); // as shown: Khmer phrases kept whole (shared/khmer.js)
+    assert.ok(foot.includes(`<p class="hm-foot-run">${w.run_by} <b>${OPERATOR}</b></p>`), `${lang}: operator`);
     assert.equal(OPERATOR, 'GGMT PTE. LTD.');
-    for (const [path, label] of [['privacy', t.priv_title], ['terms', t.home_terms], ['support', t.home_help], ['delete-data', t.del_title]]) {
+    for (const [path, label] of [['privacy', w.priv_title], ['terms', w.home_terms], ['support', w.home_help], ['delete-data', w.del_title]]) {
       assert.ok(foot.includes(`<a href="/30da/${path}?lang=${lang}">${label}</a>`), `${lang}: footer ${path}`);
     }
   }

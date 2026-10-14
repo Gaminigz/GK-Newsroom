@@ -19,7 +19,13 @@ import {
   deliverCode, channelOffer, channelOffered, channelKeyMark, noteChannelOutcome, isLastingFailure, LASTING_REASONS,
 } from './thirtyda-code-send.mjs';
 import { testFetchAllowed, redactCall, makeTestFetch, TEST_FETCH_COLLECTION } from './thirtyda-test-fetch.mjs';
-import { tryResultPage, privacyPage, deleteDataPage, esc, pickLang, requestLang, PAGE_STRINGS, POLICY_DATE, policyDate } from './thirtyda-pages.mjs';
+import { tryResultPage, privacyPage as privacyHtml, deleteDataPage as deleteDataHtml, esc, pickLang, requestLang, PAGE_STRINGS, POLICY_DATE, policyDate } from './thirtyda-pages.mjs';
+import { khmerPlain } from '../thirtyda-app/shared/khmer.js';
+
+// The pages keep each Khmer phrase whole with invisible marks (shared/khmer.js khmerKeep): the words are
+// compared without them (the joiners themselves: thirtyda-pages.test.mjs).
+const privacyPage = (opts) => khmerPlain(privacyHtml(opts));
+const deleteDataPage = (opts) => khmerPlain(deleteDataHtml(opts));
 
 const KEY_HEX = crypto.randomBytes(32).toString('hex');
 const G_KEYS = { id: '1234567890-abcdefghij.apps.googleusercontent.com', secret: 'GOCSPX-FAKEsecret0123456789_Ab12' };
@@ -713,7 +719,9 @@ import {
   APP_SCHEME, APP_PACKAGE, APP_TICKETS, APP_TICKET_TTL_MS, APP_COOKIE, APP_ERRORS, newBinder, appCookie, readAppCookie,
   createAppTicket, takeAppTicket, appReturnQuery, appSchemeUrl, appIntentUrl, appPlatformOf, platformOf,
 } from './thirtyda-signin.mjs';
-import { appReturnPage } from './thirtyda-pages.mjs';
+import { appReturnPage as appReturnHtml } from './thirtyda-pages.mjs';
+
+const appReturnPage = (opts) => khmerPlain(appReturnHtml(opts)); // the words without the Khmer marks (above)
 
 const PERSON = { provider: 'google', id: '109876543210987654321', email: 'nary@example.com', name: 'Nary Secret-Name' };
 

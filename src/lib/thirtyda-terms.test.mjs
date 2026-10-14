@@ -11,7 +11,13 @@ import {
 } from '../thirtyda-app/shared/terms.js';
 import { termsFree, termsView, termsDoc, saveTerms, TERMS_NEEDED_MESSAGE } from './thirtyda-terms.mjs';
 import { API_ROUTES, meView } from './thirtyda-app.mjs';
-import { termsPage, privacyPage, PAGE_STRINGS, TERMS_POINTS, policyDate } from './thirtyda-pages.mjs';
+import { termsPage as termsHtml, privacyPage as privacyHtml, PAGE_STRINGS, TERMS_POINTS, policyDate } from './thirtyda-pages.mjs';
+import { khmerPlain } from '../thirtyda-app/shared/khmer.js';
+
+// The pages keep each Khmer phrase whole with invisible marks (shared/khmer.js khmerKeep): the words are
+// compared without them (the joiners themselves: thirtyda-pages.test.mjs).
+const termsPage = (opts) => khmerPlain(termsHtml(opts));
+const privacyPage = (opts) => khmerPlain(privacyHtml(opts));
 
 const LANGS = ['en', 'km', 'zh', 'ko', 'ja'];
 const NOW = Date.parse('2026-10-20T08:00:00Z');

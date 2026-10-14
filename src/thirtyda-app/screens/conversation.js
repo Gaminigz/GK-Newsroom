@@ -20,7 +20,7 @@
 // choice with POST /decide.
 import {
   screen, el, icon, t, go, api, toast, modal, topBar, levelBar, countdown, errorText, registerStrings, heartbeat,
-  stageLevel, nextKind, answerText, reportTarget, REPLY_MAX, REPLY_RAW_MAX, checkReply,
+  stageLevel, nextKind, answerText, reportTarget, REPLY_MAX, REPLY_RAW_MAX, checkReply, khmerKeep,
 } from '../core.js';
 import { sendPanel, translateNote, redirected, myLang, enc, ruleMessage, showError } from './level-ask.js';
 import { mountChat, ensureStyles, partnerHeader, fmtTime, dayLabel } from './chat.js';
@@ -164,8 +164,10 @@ function mountConversation(root, base, initial, chat) {
   // The server says so per set (canReply); older answers are worked out the same way here.
   const canReply = (s) => !chatMode && !frozen() && !ended() && !s.completedAt && s.from !== 'me'
     && (typeof s.canReply === 'boolean' ? s.canReply : levelOf(s.level)?.state === 'open');
-  // A reply as words in my language: an old tap's option, or the words as typed.
-  const replyText = (r) => (r?.key ? answerText(r.key, myLang()) || r.text || '' : r?.original ?? r?.text ?? '');
+  // A reply as words in my language: an old tap's option, or the words as typed. Shown: a tap's words are ours (Khmer
+  // kept whole on a line, khmerKeep); typed words stay exactly as typed. replyRaw is what the reply box edits and compares.
+  const replyRaw = (r) => (r?.key ? answerText(r.key, myLang()) || r.text || '' : r?.original ?? r?.text ?? '');
+  const replyText = (r) => (r?.key ? khmerKeep(replyRaw(r)) : replyRaw(r));
   const draftKey = (key) => `${pairId}|${key}`;
   /** A reply box has the keyboard: timeline repaints wait until it lets go (the typing and the IME stay intact). */
   const typing = () => {
@@ -229,9 +231,9 @@ function mountConversation(root, base, initial, chat) {
   /** Topic (small) + the line. Their written lines: their words, then my language under them. */
   function lineParts(line, mineSide) {
     const parts = [];
-    if (line.topic) parts.push(el('span', { class: 'conv-topic' }, line.topic));
+    if (line.topic) parts.push(el('span', { class: 'conv-topic' }, khmerKeep(line.topic)));
     if (line.source !== 'written') {
-      parts.push(el('span', { class: 'orig' }, line.text ?? line.original ?? ''));
+      parts.push(el('span', { class: 'orig' }, khmerKeep(line.text ?? line.original ?? ''))); // the admin's words
       return parts;
     }
     const orig = line.original ?? line.text ?? '';
@@ -242,7 +244,7 @@ function mountConversation(root, base, initial, chat) {
     const tr = typeof line.translated === 'string' ? line.translated : line.text;
     const lang = line.originalLang || theirLang();
     parts.push(el('span', { class: 'orig', lang }, orig));
-    if (tr && !same(tr, orig)) parts.push(el('span', { class: 'trans', lang: myLang() }, tr));
+    if (tr && !same(tr, orig)) parts.push(el('span', { class: 'trans', lang: myLang() }, khmerKeep(tr))); // our translation
     else if (lang !== myLang() && line.translated !== true) parts.push(el('span', { class: 'trans-note' }, t('cv_no_translation')));
     return parts;
   }
@@ -256,7 +258,7 @@ function mountConversation(root, base, initial, chat) {
     if (r.key) return el('div', { class: 'bubble theirs conv-reply' }, el('span', { class: 'orig' }, replyText(r)));
     const orig = r.original ?? r.text ?? '';
     const tr = r.text && !same(r.text, orig) ? r.text : null;
-    const parts = () => [el('span', { class: 'orig', lang: theirLang() }, orig), tr ? el('span', { class: 'trans', lang: myLang() }, tr) : null];
+    const parts = () => [el('span', { class: 'orig', lang: theirLang() }, orig), tr ? el('span', { class: 'trans', lang: myLang() }, khmerKeep(tr)) : null];
     const bubble = el('div', { class: 'bubble theirs conv-reply' }, ...parts());
     if (s?.id) {
       reportable(bubble, reportTarget.reply(s.id, line.n), () => el('div', { class: 'bubble theirs report-quote' }, ...parts()));
@@ -323,7 +325,7 @@ function mountConversation(root, base, initial, chat) {
   function replyBox(s, line, key) {
     const id = lineId(key);
     const dk = draftKey(key);
-    const start = replyDrafts.has(dk) ? replyDrafts.get(dk) : line.reply ? replyText(line.reply) : '';
+    const start = replyDrafts.has(dk) ? replyDrafts.get(dk) : line.reply ? replyRaw(line.reply) : '';
     const input = el('input', {
       type: 'text', class: 'composer-input conv-reply-input', value: start, placeholder: t('cv_reply_ph'),
       'aria-label': t('cv_reply_label', { n: line.n }), 'aria-describedby': `${id}-count ${id}-err`,
@@ -625,7 +627,7 @@ function mountConversation(root, base, initial, chat) {
   async function sendReply(s, line, key, text) {
     if (!alive || busy.has(key)) return;
     const dk = draftKey(key);
-    if (line.reply && replyText(line.reply) === text) { // unchanged: just close the box
+    if (line.reply && replyRaw(line.reply) === text) { // unchanged: just close the box
       replyDrafts.delete(dk);
       editing.delete(key);
       renderTimeline();

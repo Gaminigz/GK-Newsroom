@@ -4,7 +4,7 @@
 import {
   screen, el, icon, t, go, api, toast, modal, state, setLang, setMe, topBar, heartPills, roleLabel, resizeImage,
   registerStrings, LANGS, LANG_NATIVE, LANG_FLAG, ROLES, PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, NAME_MAX, NAME_RAW_MAX,
-  checkRealName,
+  checkRealName, khmerKeep,
 } from '../core.js';
 import {
   phoneVerifier, blankPhone, verifiedPhoneModel, appNameProblem, watchNameInput, clipNameInput, birthYearSelect, truthNote,
@@ -494,7 +494,7 @@ screen('/me', async ({ root, query }) => {
     // Owner (2026-10-13): hearts (left) and where I am (right) at the top, not hidden at the bottom.
     el('div', { class: 'me-hearts-top' },
       el('div', { class: 'me-hearts-left' }, el('span', { class: 'label' }, t('me_hearts')), heartPills(me.hearts, 'lg')),
-      place ? el('span', { class: 'me-place' }, icon('pin', 14), el('span', {}, place)) : null),
+      place ? el('span', { class: 'me-place' }, icon('pin', 14), el('span', {}, khmerKeep(place))) : null),
     section(t('me_language'), el('div', { class: 'lang-grid' }, langBtns), el('p', { class: 'help' }, t('me_language_note'))),
     off(el('section', { class: 'section' },
       el('div', { class: 'section-head' }, el('span', { class: 'label ink' }, t('me_photos')), slotCount),

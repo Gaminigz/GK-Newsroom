@@ -5,6 +5,7 @@ import { ROLES } from './shared/questions.js';
 import { INPUT_AGE_HEADER } from './shared/pin.js';
 import { approxPoint } from './shared/visitor.js';
 import { termsCurrent } from './shared/terms.js';
+import { khmerKeep, khmerPlain, WORD_JOINER } from './shared/khmer.js';
 
 export * from './shared/rules.js';
 export * from './shared/questions.js';
@@ -13,6 +14,7 @@ export * from './shared/pin.js';
 export * from './shared/visitor.js';
 export * from './shared/safety.js';
 export * from './shared/terms.js';
+export * from './shared/khmer.js';
 
 const API_BASE = '/30da/api';
 const LANG_KEY = 'thirtyda_lang';
@@ -88,11 +90,28 @@ export function registerStrings(dict) {
   }
 }
 
-/** UI string in state.lang with {name} interpolation; falls back to English, then the key. */
+/**
+ * UI string in state.lang with {name} interpolation; falls back to English, then the key. Any Khmer in it (a Khmer
+ * page, or Khmer lines on another language's page) breaks at its spaces, a phrase too long for a line only between
+ * two whole words (khmerKeep). The values filled in go in as they are: a name or a typed line is never changed.
+ */
 export function t(key, vars) {
-  const s = strings[state.lang]?.[key] ?? strings.en?.[key] ?? key;
+  const s = khmerKeep(strings[state.lang]?.[key] ?? strings.en?.[key] ?? key);
   if (!vars) return s;
   return s.replace(/\{(\w+)\}/g, (m, k) => (vars[k] == null ? m : String(vars[k])));
+}
+
+// Copying text off a screen gives the words without the invisible marks khmerKeep put in (word joiners, zero-width
+// spaces). Not inside a box someone types in: what they type is theirs, exactly as typed.
+if (typeof document !== 'undefined') {
+  document.addEventListener('copy', (e) => {
+    const box = document.activeElement;
+    if (box && (box.tagName === 'INPUT' || box.tagName === 'TEXTAREA' || box.isContentEditable)) return;
+    const text = String(window.getSelection?.() ?? '');
+    if (!text.includes(WORD_JOINER) || !e.clipboardData) return;
+    e.clipboardData.setData('text/plain', khmerPlain(text));
+    e.preventDefault();
+  });
 }
 
 // ---------------------------------------------------------------- real use (the PIN lock)
@@ -665,7 +684,7 @@ export function morePhotosPrompt(openLevel) {
 /** ROLES entry text in the UI language. */
 export function roleLabel(key) {
   const r = ROLES.find((x) => x.key === key);
-  return r ? r.text?.[state.lang] || r.text?.en || r.key : '';
+  return r ? khmerKeep(r.text?.[state.lang] || r.text?.en || r.key) : '';
 }
 
 /** POST /me/heartbeat → state.actions / state.notices, then 'actions' + 'notices' events. */

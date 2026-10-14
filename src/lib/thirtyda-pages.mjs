@@ -31,6 +31,7 @@
  */
 import { LANGS, LANG_NATIVE, LANG_FLAG } from "../thirtyda-app/shared/rules.js";
 import { TERMS_VERSION } from "../thirtyda-app/shared/terms.js";
+import { khmerKeep, khmerPlain } from "../thirtyda-app/shared/khmer.js";
 import { APP_SCHEME, APP_PACKAGE } from "./thirtyda-signin.mjs";
 
 export const CONTACT_EMAIL = "gk.smart@ggmt.sg";
@@ -470,7 +471,7 @@ export const PAGE_STRINGS = {
     home_lives: "ជីវិតមមាញឹក វ័យ 30+។ ខ្សែក្រហមមានរួចហើយ។",
     home_frame_2: "ទីក្រុងដែលពោរពេញដោយមនុស្សមិនស្គាល់គ្នា។",
     home_frame_3: "មុខមួយស្រាប់តែច្បាស់ឡើង។",
-    home_frame_4: "លើកនេះ កុំដើរហួសគ្នាទៀត។",
+    home_frame_4: "លើកនេះ កុំដើរ\u200bហួសគ្នាទៀត។", // may break after កុំដើរ: the frame is ~90 px wide on a 320 px phone
     home_terms: "លក្ខខណ្ឌប្រើប្រាស់",
     home_help: "ជំនួយ",
     // The child-safety page (childSafetyPage).
@@ -1108,6 +1109,21 @@ export const PAGE_STRINGS = {
 
 const ok = (lang) => (LANGS.includes(lang) ? lang : "en");
 
+/**
+ * PAGE_STRINGS[lang] as the pages show them: each Khmer phrase kept whole on a line (khmerKeep, shared with the app:
+ * word joiners between the clusters inside a phrase, so a line breaks at the spaces between phrases — a phrase too long
+ * for a line only between two whole words — whatever the browser's own dictionary thinks). Worked out once per
+ * language. The page's <title>, description and share card stay plain (khmerPlain).
+ */
+const shownWords = new Map();
+export function pageWords(lang) {
+  const code = ok(lang);
+  if (!shownWords.has(code)) {
+    shownWords.set(code, Object.freeze(Object.fromEntries(Object.entries(PAGE_STRINGS[code]).map(([k, v]) => [k, khmerKeep(v)]))));
+  }
+  return shownWords.get(code);
+}
+
 const EN_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const KM_MONTHS = ["មករា", "កុម្ភៈ", "មីនា", "មេសា", "ឧសភា", "មិថុនា", "កក្កដា", "សីហា", "កញ្ញា", "តុលា", "វិច្ឆិកា", "ធ្នូ"];
 /** POLICY_DATE (or any YYYY-MM-DD) as each language writes it: 13 Oct 2026 · 13 តុលា 2026 · 2026 年 10 月 13 日 · 2026년 10월 13일 · 2026年10月13日. */
@@ -1147,6 +1163,8 @@ ${body}
 function page({ title, lang, inner, robots = "index", kind = "doc", script = null, description = null, head = "" }) {
   // A description (the home page): the search result's line and the card a shared link shows (Telegram, Facebook);
   // `head`: more of the home page's <head> (keywords, canonical, the share picture, JSON-LD — homeHead).
+  title = khmerPlain(title);
+  description = khmerPlain(description);
   const about = description ? `
   <meta name="description" content="${esc(description)}">
   <meta property="og:type" content="website">
@@ -1234,15 +1252,15 @@ export const PROCESSORS = Object.freeze([
  */
 export function privacyPage({ lang: want, from = null } = {}) {
   const lang = ok(want);
-  const t = PAGE_STRINGS[lang];
+  const t = pageWords(lang);
   const point = (k) => factLine(t, k);
   const service = ([name, k]) => {
-    const label = name ? `${name}${COLON[lang]}` : t[`${k}_k`];
+    const label = name ? khmerKeep(`${name}${COLON[lang]}`) : t[`${k}_k`];
     return `        <li><b>${label}</b> ${t[k]}${k === "proc_translate" ? ` (${TRANSLATE_HOST})` : ""}</li>`;
   };
   const list = (lines) => `      <ul class="facts">\n${lines.join("\n")}\n      </ul>`;
   const body = `      <h1>${t.priv_title}</h1>
-      <p class="doc-date">${fill(t.priv_date, { date: policyDate(lang) })}</p>
+      <p class="doc-date">${fill(t.priv_date, { date: khmerKeep(policyDate(lang)) })}</p>
       <p class="doc-lede">${t.priv_lede}</p>
       <p>${fill(t.priv_operator, { operator: `<b>${OPERATOR}</b>`, mail: mailLink })}</p>
 ${list([point("priv_keep"), point("priv_why"), `        <li>${t.priv_never}</li>`])}
@@ -1276,7 +1294,7 @@ ${backToApp(t, from)}`;
  */
 export function deleteDataPage({ lang: want } = {}) {
   const lang = ok(want);
-  const t = PAGE_STRINGS[lang];
+  const t = pageWords(lang);
   const mail = [fill(t.del_step1, { mail: deleteMailLink, subject: `<b>${DELETE_SUBJECT}</b>` }), t.del_step2, t.del_step3].join(" ");
   const body = `      <h1>${t.del_title}</h1>
       <p class="doc-lede">${t.del_lede}</p>
@@ -1314,10 +1332,10 @@ export const TERMS_POINTS = Object.freeze([
  */
 export function termsPage({ lang: want, from = null } = {}) {
   const lang = ok(want);
-  const t = PAGE_STRINGS[lang];
+  const t = pageWords(lang);
   const point = (k) => `        <li><b>${t[`${k}_k`]}</b> ${t[k]}</li>`;
   const body = `      <h1>${t.terms_title}</h1>
-      <p class="doc-date">${fill(t.priv_date, { date: policyDate(lang, TERMS_VERSION) })}</p>
+      <p class="doc-date">${fill(t.priv_date, { date: khmerKeep(policyDate(lang, TERMS_VERSION)) })}</p>
       <p class="doc-lede">${t.terms_lede}</p>
       <ul class="facts">
 ${TERMS_POINTS.map(point).join("\n")}
@@ -1343,7 +1361,7 @@ const supportTelegramLink = () => `<a href="${SUPPORT_TELEGRAM}" target="_blank"
  */
 export function supportPage({ lang: want } = {}) {
   const lang = ok(want);
-  const t = PAGE_STRINGS[lang];
+  const t = pageWords(lang);
   const body = `      <h1>${t.support_title}</h1>
       <p class="doc-lede">${t.support_lede}</p>
       <ul class="facts">
@@ -1379,7 +1397,7 @@ const childSafetyMailLink = `<a href="mailto:${CONTACT_EMAIL}?subject=${encodeUR
  */
 export function childSafetyPage({ lang: want } = {}) {
   const lang = ok(want);
-  const t = PAGE_STRINGS[lang];
+  const t = pageWords(lang);
   const point = (k) => `        <li><b>${t[`${k}_k`]}</b> ${fill(t[k], { mail: childSafetyMailLink })}</li>`;
   const body = `      <h1>${t.cs_title}</h1>
       <p class="doc-lede">${fill(t.cs_lede, { operator: `<b>${OPERATOR}</b>` })}</p>
@@ -1434,10 +1452,11 @@ const OG_LOCALE = { en: "en_US", km: "km_KH", zh: "zh_CN", ko: "ko_KR", ja: "ja_
 
 /**
  * zh / ja strings mark with "|" where a line may break (between phrases): <wbr> on the page (homeText), nothing anywhere
- * else (plain). On the page "30+" also stays on the line of the word before it (a no-break space), so it never hangs alone.
+ * else (plain). On the page "30+" also stays on the line of the word before it (a no-break space), so it never hangs alone,
+ * and each Khmer phrase stays whole (khmerKeep, never across a "|").
  */
-const plain = (s) => String(s).replaceAll("|", "");
-export const homeText = (s) => esc(s).replace(/ (?=30\+)/g, "\u00a0").replaceAll("|", "<wbr>");
+const plain = (s) => khmerPlain(String(s)).replaceAll("|", "");
+export const homeText = (s) => esc(String(s).split("|").map(khmerKeep).join("|")).replace(/ (?=30\+)/g, "\u00a0").replaceAll("|", "<wbr>");
 const say = homeText;
 
 const svg = (viewBox, inner) => `<svg viewBox="${viewBox}" aria-hidden="true" focusable="false">${inner}</svg>`;
@@ -1553,6 +1572,7 @@ export function homePage({ lang: want, photos = {}, inApp = null } = {}) {
   const stores = (where) => (inApp ? "" : storeRow(t, where));
   const lang = ok(want);
   const t = PAGE_STRINGS[lang];
+  const w = pageWords(lang); // the same words as shown in the page's own HTML (homeText / say does this for the rest)
   const km = PAGE_STRINGS.km;
   const q = `?lang=${lang}`;
   const cjk = lang === "zh" || lang === "ja";
@@ -1601,7 +1621,7 @@ export function homePage({ lang: want, photos = {}, inApp = null } = {}) {
       <p class="hm-eyebrow">30+DA · ${say(t.home_place)}</p>
       <h1 class="hm-h1"><svg class="hm-knot" viewBox="0 0 48 32" aria-hidden="true" focusable="false"><path d="M0 22C10 22 14 8 24 8c8 0 10 12 2 14s-6-10 4-10 12 6 18 4"/></svg> ${say(t.home_headline)}</h1>${khmerSub}
       <p class="hm-lead">${say(t.home_line)}${cjk ? "<wbr>" : " "}${say(t.home_lead)}</p>
-      <p class="hm-cta"><a class="hm-btn" href="${WEB_APP_PATH}">${t.app_open}${ARROW}</a></p>
+      <p class="hm-cta"><a class="hm-btn" href="${WEB_APP_PATH}">${w.app_open}${ARROW}</a></p>
       <div class="hm-remind" role="note">
         <p class="hm-remind-h"><span aria-hidden="true">⚠️</span> ${say(t.home_remind_h)}</p>
         <p class="hm-remind-text">${say(t.home_remind)}</p>${khmerRemind}
@@ -1642,12 +1662,12 @@ ${lives.map((slot) => `      <li>${photo(slot, "")}</li>`).join("\n")}
 <footer class="hm-foot">
   <div class="hm-wrap">
     <p class="hm-foot-brand">30+DA · GK Newsroom · ggmt.sg</p>
-    <p class="hm-foot-run">${t.run_by} <b>${OPERATOR}</b></p>
+    <p class="hm-foot-run">${w.run_by} <b>${OPERATOR}</b></p>
     <nav class="hm-foot-links" aria-label="30+DA">
-      <a href="/30da/privacy${q}">${t.priv_title}</a>
-      <a href="/30da/terms${q}">${t.home_terms}</a>
-      <a href="/30da/support${q}">${t.home_help}</a>
-      <a href="/30da/delete-data${q}">${t.del_title}</a>
+      <a href="/30da/privacy${q}">${w.priv_title}</a>
+      <a href="/30da/terms${q}">${w.home_terms}</a>
+      <a href="/30da/support${q}">${w.home_help}</a>
+      <a href="/30da/delete-data${q}">${w.del_title}</a>
     </nav>
   </div>
 </footer>`;
@@ -1711,7 +1731,7 @@ export function appReturnPage({ ok: done, provider = null, intentUrl, schemeUrl,
   const first = ok(want);
   const name = esc(NAMES[provider] ?? "30+DA");
   const column = (code) => {
-    const t = PAGE_STRINGS[code];
+    const t = pageWords(code);
     const body = `      <h1>${t.app_title}</h1>
       <p class="doc-lede">${done ? fill(t.app_ok, { name }) : t.app_bad}</p>
       <p class="doc-actions"><a class="doc-btn" data-app-open href="${esc(intentUrl)}">${t.app_open}</a></p>
@@ -1766,7 +1786,7 @@ export function backHref(platform, origin) {
 export function backPage({ href = WEB_APP_PATH, lang: want = "en" } = {}) {
   const first = ok(want);
   const column = (code) => {
-    const t = PAGE_STRINGS[code];
+    const t = pageWords(code);
     const body = `      <h1>${t.app_title}</h1>
       <p class="doc-lede">${t.back_lede}</p>
       <p class="doc-actions"><a class="doc-btn doc-btn-big" data-back-open href="${esc(href)}">${t.app_open}</a></p>

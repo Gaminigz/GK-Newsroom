@@ -2,7 +2,7 @@
 // and the 3-column grid of faces with heart pills.
 import {
   screen, el, icon, t, go, api, toast, modal, state, bus, store, avatar, heartPills, fmtKm, pairRoute, actionLabel,
-  heartbeat, updateLocation, locate, registerStrings, roleLabel,
+  heartbeat, updateLocation, locate, registerStrings, roleLabel, khmerKeep,
 } from '../core.js';
 import { profileFirst } from '../guest.js';
 import { verifyBanner } from './verify-chat.js';
@@ -111,7 +111,7 @@ screen('/nearby', ({ root }) => {
     gpsCard.replaceChildren(el('button', {
       type: 'button', class: ['gps-chip', locating && 'busy', last && !on && 'off'], disabled: locating,
       'aria-label': `${place} · ${t('nb_refresh')}`, on: { click: () => refreshGps(false) },
-    }, icon('pin', 15), el('span', { class: 'gps-place' }, place), icon('target', 15)));
+    }, icon('pin', 15), el('span', { class: 'gps-place' }, khmerKeep(place)), icon('target', 15)));
   }
 
   async function refreshGps(silent) {

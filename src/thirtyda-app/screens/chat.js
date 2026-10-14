@@ -6,7 +6,7 @@
 // stopped attempt for the admin.
 import {
   screen, el, icon, t, go, api, toast, modal, state, topBar, avatar, langPair, errorText,
-  registerStrings, checkChatMessage, CHAT_MIN, CHAT_MAX, SPEECH_LOCALE, PHOTO_MAX, CHAT_REPORT_REASONS,
+  registerStrings, checkChatMessage, CHAT_MIN, CHAT_MAX, SPEECH_LOCALE, PHOTO_MAX, CHAT_REPORT_REASONS, khmerKeep,
 } from '../core.js';
 // Inside the iOS / Android app a blocked microphone is the app's own setting, never "your browser settings" (Apple 4.2).
 import { permissionOff } from '../in-app.js';
@@ -416,7 +416,7 @@ export function mountChat(root, { pair, data, gate, history = null, header: head
   function bubbleText(m) {
     const parts = [el('span', { class: 'orig', lang: m.lang || null }, m.text)];
     if (m.translated && m.translated.trim() !== String(m.text).trim()) {
-      parts.push(el('span', { class: 'trans', lang: myLang }, m.translated));
+      parts.push(el('span', { class: 'trans', lang: myLang }, khmerKeep(m.translated))); // our translation; their own words stay as typed
     } else if (!m.translated && m.lang && m.lang !== myLang) {
       parts.push(el('span', { class: 'trans-note' }, t('chat_no_translation')));
     }

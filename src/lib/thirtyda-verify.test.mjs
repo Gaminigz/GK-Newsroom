@@ -11,7 +11,12 @@ import {
 } from './thirtyda-verify.mjs';
 import { API_ROUTES, meView } from './thirtyda-app.mjs';
 import { VERIFY_KEEP_MS, DEVICE_KEEP_MS } from '../thirtyda-app/shared/visitor.js';
-import { PAGE_STRINGS, privacyPage } from './thirtyda-pages.mjs';
+import { PAGE_STRINGS, privacyPage as privacyHtml } from './thirtyda-pages.mjs';
+import { khmerPlain } from '../thirtyda-app/shared/khmer.js';
+
+// The pages keep each Khmer phrase whole with invisible marks (shared/khmer.js khmerKeep): the words are
+// compared without them (the joiners themselves: thirtyda-pages.test.mjs).
+const privacyPage = (opts) => khmerPlain(privacyHtml(opts));
 
 // ---------------------------------------------------------------- who may talk
 

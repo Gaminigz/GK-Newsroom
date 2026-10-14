@@ -5,7 +5,7 @@
 // #/ask/:pairId/:level address redirects to the conversation.
 import {
   screen, el, icon, t, go, api, toast, state, langPair, heartbeat,
-  errorText, registerStrings, LEVEL_RULES, checkWrittenQuestion, dealSlots,
+  errorText, registerStrings, LEVEL_RULES, checkWrittenQuestion, dealSlots, khmerKeep,
 } from '../core.js';
 
 // Same limits as shared/rules.js (QUESTION_LIMITS / ANSWER_LIMITS are not exported there).
@@ -143,7 +143,7 @@ export function sendPanel({ pairId, level, bank, name, onSent, onReload, onMoved
   const pickRows = draft.picks.map((_, i) => {
     const face = el('span', {});
     // The admin's topic for this line, if any, sits small above the picked text.
-    const topic = titles[i] ? el('span', { class: 'label pick-topic', 'aria-hidden': 'true' }, titles[i]) : null;
+    const topic = titles[i] ? el('span', { class: 'label pick-topic', 'aria-hidden': 'true' }, khmerKeep(titles[i])) : null;
     const trigger = el('button', {
       type: 'button', class: 'select', 'aria-haspopup': 'listbox', 'aria-expanded': 'false', style: PICK_STYLE, on: { click: () => openPicker(i) },
     }, ...[el('span', { class: 'visually-hidden' }, `${slotTitle(i)}: `), topic, face].filter(Boolean));
@@ -189,7 +189,7 @@ export function sendPanel({ pairId, level, bank, name, onSent, onReload, onMoved
               pickRows[i].trigger.focus();
             },
           },
-        }, el('span', {}, q.text), selected ? icon('check', 18) : null);
+        }, el('span', {}, khmerKeep(q.text)), selected ? icon('check', 18) : null);
       }));
     pickRows[i].trigger.after(panel);
     pickRows[i].trigger.setAttribute('aria-expanded', 'true');
@@ -231,7 +231,7 @@ export function sendPanel({ pairId, level, bank, name, onSent, onReload, onMoved
   function paint() {
     const results = checks();
     pickRows.forEach((row, i) => {
-      row.face.textContent = textOf(i, draft.picks[i]);
+      row.face.textContent = khmerKeep(textOf(i, draft.picks[i])); // the admin's words, shown (Khmer kept whole)
       const changed = draft.changed.has(i);
       row.trigger.classList.toggle('is-updated', changed);
       row.note.hidden = !changed;

@@ -13,7 +13,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  PAGE_STRINGS, OPERATOR, CONTACT_EMAIL, privacyPage, deleteDataPage, supportPage, childSafetyPage, PRIVACY_DATA,
+  PAGE_STRINGS, OPERATOR, CONTACT_EMAIL, privacyPage as privacyHtml, deleteDataPage as deleteDataHtml, supportPage as supportHtml,
+  childSafetyPage as childSafetyHtml, termsPage as termsHtml, homePage, backPage, appReturnPage, pageWords, PRIVACY_DATA,
   PRIVACY_SEES, PRIVACY_CHOICES, PROCESSORS, TRANSLATE_HOST, CHILD_SAFETY_POINTS, CHILD_SAFETY_SUBJECT, SUPPORT_TELEGRAM,
   SUPPORT_TELEGRAM_NAME,
 } from './thirtyda-pages.mjs';
@@ -23,8 +24,15 @@ import { COVERAGE, FLAGS } from './thirtyda-delete.mjs';
 import { SUPPORT_CHATS } from './thirtyda-support.mjs';
 import { DEVICE_KEEP_MS, VERIFY_KEEP_MS } from '../thirtyda-app/shared/visitor.js';
 import { PERSON_REPORT_REASONS, CHAT_REPORT_REASONS } from '../thirtyda-app/shared/safety.js';
+import { khmerKeep, khmerPlain, WORD_JOINER } from '../thirtyda-app/shared/khmer.js';
 
 const LANGS = ['en', 'km', 'zh', 'ko', 'ja'];
+// The pages keep each Khmer phrase whole with invisible marks (shared/khmer.js khmerKeep): the words are
+// compared without them (the joiners themselves: the Khmer test at the end).
+const privacyPage = (opts) => khmerPlain(privacyHtml(opts));
+const deleteDataPage = (opts) => khmerPlain(deleteDataHtml(opts));
+const supportPage = (opts) => khmerPlain(supportHtml(opts));
+const childSafetyPage = (opts) => khmerPlain(childSafetyHtml(opts));
 const shown = (html) => html.replace(/<(head|nav)[\s\S]*?<\/\1>/g, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 const flagsOf = (html) => html.match(/<nav class="langs"[\s\S]*?<\/nav>/)?.[0] || '';
 const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8');
@@ -267,4 +275,33 @@ test('app.css: members\' photos cannot be saved with a long press (iOS) or dragg
   const rule = css.match(/\nimg \{[^}]*-webkit-touch-callout: none;[^}]*\}/)?.[0] || '';
   assert.ok(rule, 'img { -webkit-touch-callout: none }');
   assert.match(rule, /-webkit-user-drag: none/);
+});
+
+test('Khmer on the pages: every phrase kept whole (a word joiner between its clusters), so a line breaks only at a space; <head> plain', () => {
+  const pages = {
+    privacy: privacyHtml, terms: termsHtml, 'delete-data': deleteDataHtml, support: supportHtml, 'child-safety': childSafetyHtml,
+    home: homePage, back: backPage,
+    'app-return': (o) => appReturnPage({ ...o, ok: true, provider: 'google', intentUrl: 'intent://auth#Intent;end', schemeUrl: 'sg.ggmt.thirtyda://auth' }),
+  };
+  for (const [name, build] of Object.entries(pages)) {
+    for (const lang of LANGS) {
+      const html = build({ lang });
+      const head = html.match(/<head>[\s\S]*?<\/head>/)[0];
+      assert.ok(!head.includes(WORD_JOINER), `${name} ${lang}: the title, description and share card stay plain`);
+      // Every Khmer run between two tags is already what khmerKeep makes of it (the flag row and the hashtags aside:
+      // one-word links, and a hashtag must copy as typed).
+      const body = html.slice(html.indexOf('<body')).replace(/<nav class="langs"[\s\S]*?<\/nav>/g, '').replace(/<p class="hm-tags">[\s\S]*?<\/p>/, '');
+      const texts = [...body.matchAll(/>([^<]+)</g)].map((m) => m[1]).filter((x) => /[ក-៿]/.test(x));
+      if (lang === 'km') assert.ok(texts.length >= 3 && body.includes(WORD_JOINER), `${name}: Khmer, kept whole`);
+      for (const x of texts) assert.equal(khmerKeep(x), x, `${name} ${lang}: "${khmerPlain(x).slice(0, 40)}" kept whole`);
+    }
+  }
+  // The words themselves never change: pageWords is PAGE_STRINGS with joiners only.
+  for (const lang of LANGS) {
+    for (const [k, v] of Object.entries(PAGE_STRINGS[lang])) {
+      assert.equal(pageWords(lang)[k], khmerKeep(v), `${lang}.${k}`);
+      assert.equal(khmerPlain(pageWords(lang)[k]), khmerPlain(v), `${lang}.${k}: the same words`);
+    }
+  }
+  assert.equal(pageWords('en').priv_title, PAGE_STRINGS.en.priv_title, 'no Khmer: the very same string');
 });
