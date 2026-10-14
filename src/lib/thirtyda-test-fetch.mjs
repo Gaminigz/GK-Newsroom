@@ -8,7 +8,8 @@
  *
  * When ON, a request to one of the provider addresses below (Google / Facebook / TikTok sign-in — TikTok's token
  * POST and user/info GET on open.tiktokapis.com; its authorize step is a browser redirect, which the e2e reads off
- * the 302 like Google's — Telegram Gateway, WhatsApp through graph.facebook.com) is answered from the dev DB collection `thirtyda_test_fetch` IF the e2e
+ * the 302 like Google's — Telegram Gateway, WhatsApp through graph.facebook.com, Sign in with Apple on appleid.apple.com:
+ * its keys, /auth/token and /auth/revoke) is answered from the dev DB collection `thirtyda_test_fetch` IF the e2e
  * left an answer there for it:
  *   { _id: "<METHOD> <origin + path, no query>", reply: { status, json, delayMs?, fail?: 'timeout' | 'network' }, calls: [...] }
  * and the request is noted in `calls` (the last 20) — redacted: a secret, a code or a token only as its last 4,
@@ -31,11 +32,17 @@
 export const TEST_FETCH_COLLECTION = "thirtyda_test_fetch";
 // nominatim.openstreetmap.org: the meeting place search (src/lib/thirtyda-places.mjs), so the dev server can show a fixed
 // list instead of asking OpenStreetMap (the area names of src/lib/thirtyda-geo.mjs use the plain fetch, unchanged).
-const HOSTS = new Set(["oauth2.googleapis.com", "openidconnect.googleapis.com", "graph.facebook.com", "gatewayapi.telegram.org", "open.tiktokapis.com", "nominatim.openstreetmap.org"]);
+const HOSTS = new Set([
+  "oauth2.googleapis.com", "openidconnect.googleapis.com", "graph.facebook.com", "gatewayapi.telegram.org", "open.tiktokapis.com",
+  "nominatim.openstreetmap.org",
+  // Sign in with Apple (src/lib/thirtyda-apple.mjs): its public keys (GET /auth/keys), the token exchange and the revoke.
+  "appleid.apple.com",
+]);
 const BOT_HOST = "api.telegram.org";
 /** The fake bot's doc in thirtyda_test_fetch (see above). */
 export const FAKE_BOT_DOC = "telegram-bot";
-const SECRET_KEYS = new Set(["client_secret", "code", "access_token", "refresh_token", "id_token", "code_verifier"]);
+// "token": Apple's revoke sends the refresh token under that name.
+const SECRET_KEYS = new Set(["client_secret", "code", "access_token", "refresh_token", "id_token", "code_verifier", "token"]);
 
 /** The one switch: an explicit flag, a dev database, and not the live server. */
 export function testFetchAllowed(env = process.env) {

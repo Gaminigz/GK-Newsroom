@@ -35,6 +35,7 @@ const SAMPLES = [
   ['GET', '/auth/methods', false], ['POST', '/auth/send-code', false], ['POST', '/auth/verify-code', false],
   ['POST', '/auth/verify-social', false], ['POST', '/auth/telegram/start', false], ['GET', '/auth/telegram/status', false],
   ['POST', '/auth/app/begin', false], ['GET', '/auth/app', false],
+  ['GET', '/auth/apple/nonce', false], ['POST', '/auth/apple', false], // Sign in with Apple (the iPhone app)
   ['POST', '/auth/review/check', false], ['POST', '/auth/review/verify', false], ['POST', '/auth/review/pin', false], // App review sign-in
   ['POST', '/auth/signout', false], ['POST', '/profile', false], ['GET', '/me', false], ['PATCH', '/me', false],
   ['POST', '/me/terms', false], // "I agree" to the community rules (store policy, owner 2026-10-14)
@@ -258,7 +259,7 @@ test('meView: phoneVia (owner only, only for a verified number) and the sign-ins
   const v = meView({ ...base, phoneVia: 'whatsapp' });
   assert.equal(v.phoneVia, 'whatsapp');
   assert.deepEqual(v.signins, { google: true, facebook: false, tiktok: true });
-  assert.deepEqual(v.verified, { phone: true, gmail: true, facebook: false, tiktok: true });
+  assert.deepEqual(v.verified, { phone: true, gmail: true, facebook: false, tiktok: true, apple: false });
   const json = JSON.stringify(v);
   for (const secret of ['google-sub-123', 'tt-open-456', 'dara@example.com']) assert.equal(json.includes(secret), false, secret);
   assert.equal('signin' in v, false);

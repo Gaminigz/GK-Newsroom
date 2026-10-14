@@ -68,8 +68,11 @@ function fakeFetch(reply) {
 
 // ---------- settings: several fields in one sealed box ----------
 
-test('fields settings: whatsapp / google / facebook (+ the Telegram bot), each with its secret marked', () => {
-  assert.deepEqual(Object.keys(FIELD_SETTINGS).sort(), ['facebook', 'google', 'telegram_bot', 'tiktok', 'whatsapp']);
+test('fields settings: whatsapp / google / facebook (+ the Telegram bot, Sign in with Apple\'s key), each with its secret marked', () => {
+  assert.deepEqual(Object.keys(FIELD_SETTINGS).sort(), ['apple', 'facebook', 'google', 'telegram_bot', 'tiktok', 'whatsapp']);
+  assert.equal(FIELD_SETTINGS.apple.privateKey.secret, true, 'the .p8 private key: sealed, shown as its last 4 only');
+  assert.ok(!FIELD_SETTINGS.apple.teamId.secret && !FIELD_SETTINGS.apple.keyId.secret, 'Team ID and Key ID are not secret');
+  assert.ok(!FIELD_SETTINGS.apple.privateKey.hidden);
   assert.equal(FIELD_SETTINGS.telegram_bot.token.secret, true);
   assert.ok(FIELD_SETTINGS.telegram_bot.hookSecret.secret && FIELD_SETTINGS.telegram_bot.hookSecret.hidden, 'the webhook secret is never shown');
   assert.equal(FIELD_SETTINGS.whatsapp.token.secret, true);

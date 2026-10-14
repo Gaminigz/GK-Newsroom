@@ -1,12 +1,12 @@
 /**
  * 30+DA settings the super admin enters on the web (the admin "Code" page, /30da/admin/connections) —
- * the Telegram Gateway API token, the free Telegram bot's key, the WhatsApp Cloud API keys, and the Google / Facebook
- * sign-in keys.
+ * the Telegram Gateway API token, the free Telegram bot's key, the WhatsApp Cloud API keys, the Google / Facebook / TikTok
+ * sign-in keys, and the Sign in with Apple key (Team ID, Key ID, the .p8 private key).
  *
  * Mongo `thirtyda_settings`, one doc per setting:
  *   { _id:'telegram', kind:'secret', box:{ v:1, alg:'aes-256-gcm', iv, tag, data }, last4,
  *     updatedAt, updatedBy, lastSend?:{ ok, reason, detail, at } }
- *   { _id:'whatsapp'|'google'|'facebook'|'telegram_bot', kind:'fields', box (sealed JSON of ALL the fields), last4, masks:{ <secret field>: last4 },
+ *   { _id:'whatsapp'|'google'|'facebook'|'tiktok'|'apple'|'telegram_bot', kind:'fields', box (sealed JSON of ALL the fields), last4, masks:{ <secret field>: last4 },
  *     updatedAt, updatedBy, lastSend? }
  * A "fields" setting (FIELD_SETTINGS) keeps every field in the one sealed box; the fields marked secret are
  * only ever shown as their last 4 characters, the others (a phone number ID, a template name, an app ID)
@@ -40,6 +40,9 @@ export const FIELD_SETTINGS = {
   google: { clientId: {}, clientSecret: { secret: true } },
   facebook: { appId: {}, appSecret: { secret: true } },
   tiktok: { clientKey: {}, clientSecret: { secret: true } },
+  // Sign in with Apple (src/lib/thirtyda-apple.mjs): the .p8 key that signs the client secret for token revoke on delete.
+  // The private key is kept as its base64 body (no armour), so its last 4 characters mean something.
+  apple: { teamId: {}, keyId: {}, privateKey: { secret: true } },
 };
 export const SETTING_NAMES = [...SECRET_NAMES, ...Object.keys(FIELD_SETTINGS)];
 const CACHE_MS = 30e3;

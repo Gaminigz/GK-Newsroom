@@ -38,6 +38,14 @@ function fakeDb() {
         find(q) { return { async toArray() { return all(q).map((x) => structuredClone(x)); } }; },
         async insertOne(doc) { const _id = doc._id ?? crypto.randomUUID(); docs.set(_id, structuredClone({ ...doc, _id })); return { insertedId: _id }; },
         async deleteOne(q) { const x = all(q)[0]; if (x) docs.delete(x._id); return { deletedCount: x ? 1 : 0 }; },
+        // The Code page's settings (Sign in with Apple's key below): a save replaces, a try notes its outcome.
+        async replaceOne(q, doc, opts = {}) { const x = all(q)[0]; if (!x && !opts.upsert) return { matchedCount: 0 }; docs.set(doc._id ?? x._id, structuredClone(doc)); return { matchedCount: x ? 1 : 0 }; },
+        async updateOne(q, u) {
+          const x = [...docs.values()].find((y) => y._id === q._id && (!q.box?.$exists || y.box));
+          if (!x) return { matchedCount: 0 };
+          Object.assign(x, structuredClone(u.$set || {}));
+          return { matchedCount: 1 };
+        },
       });
     }
     return cols.get(name);
@@ -187,4 +195,88 @@ test('Users list: a red Delete next to Block / Unblock on every row, through the
   const r = await admin('GET', '/30da/admin/delete-profile.js', { cookie: null });
   assert.equal(r.status, 200);
   assert.match(r.headers['Content-Type'], /^text\/javascript/);
+});
+
+// ---------------------------------------------------------------- the Code page, tower 10: Sign in with Apple's key
+
+/** An Apple-style .p8 (PKCS #8, EC P-256). */
+function p8() {
+  const pem = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).privateKey.export({ format: 'pem', type: 'pkcs8' });
+  return { pem, body: pem.replace(/-----[A-Z ]+-----/g, '').replace(/\s+/g, '') };
+}
+async function withSecretKey(fn) {
+  const { clearSettingsCache } = await import('./thirtyda-settings.mjs');
+  const prev = process.env.THIRTYDA_SECRET_KEY;
+  process.env.THIRTYDA_SECRET_KEY = crypto.randomBytes(32).toString('hex');
+  clearSettingsCache();
+  try {
+    return await fn();
+  } finally {
+    if (prev === undefined) delete process.env.THIRTYDA_SECRET_KEY; else process.env.THIRTYDA_SECRET_KEY = prev;
+    clearSettingsCache();
+  }
+}
+const appleOf = (data) => data.connections.find((c) => c.id === 'apple');
+
+test('Code page, Apple: the sign-in works with no key (said so); Save checks the boxes, keeps the .p8 sealed, shows only its last 4', async () => withSecretKey(async () => {
+  const C = '/30da/admin/api/connections';
+  let r = await admin('GET', C);
+  assert.equal(r.status, 200);
+  let apple = appleOf(r.json());
+  assert.equal(apple.signinWorks, true, 'Sign in with Apple needs no key');
+  assert.equal(apple.set, false);
+  assert.equal(apple.live, false, 'Live only once a key passes Try');
+  assert.equal(apple.bundleId, 'sg.ggmt.thirtyda');
+  assert.equal(apple.teamIdDefault, '4KX4774V2U');
+  // "Try the key" with nothing saved: says what to do, calls nobody.
+  r = await admin('POST', `${C}/apple/try`, { headers: JSON_HEADERS, body: {} });
+  assert.equal(r.status, 400);
+  assert.equal(r.json().reason, 'no_key');
+  assert.match(r.json().error, /Save the Team ID, Key ID and private key first/);
+  // Bad boxes: plain words, the box named, nothing saved.
+  const key = p8();
+  for (const [body, field] of [[{ teamId: 'nope', keyId: 'ABC123DEFG', privateKey: key.pem }, 'teamId'], [{ teamId: '4KX4774V2U', keyId: 'x', privateKey: key.pem }, 'keyId'],
+    [{ teamId: '4KX4774V2U', keyId: 'ABC123DEFG', privateKey: 'not a key' }, 'privateKey'], [{ teamId: '4KX4774V2U', keyId: 'ABC123DEFG' }, 'privateKey']]) {
+    r = await admin('PUT', `${C}/apple`, { headers: JSON_HEADERS, body });
+    assert.equal(r.status, 422, JSON.stringify(body).slice(0, 60));
+    assert.equal(r.json().field, field);
+  }
+  assert.equal(d.docs('thirtyda_settings').length, 0);
+  // Saved: sealed; the page gets the Team ID, the Key ID and the key's last 4 — never the key.
+  r = await admin('PUT', `${C}/apple`, { headers: JSON_HEADERS, body: { teamId: '4kx4774v2u', keyId: 'abc123defg', privateKey: key.pem } });
+  assert.equal(r.status, 200, r.body);
+  apple = appleOf(r.json());
+  assert.equal(apple.set, true);
+  assert.deepEqual(apple.fields, { teamId: '4KX4774V2U', keyId: 'ABC123DEFG' });
+  assert.deepEqual(apple.masks, { privateKey: key.body.slice(-4) });
+  assert.equal(apple.keyOk, true);
+  assert.equal(apple.live, false, 'saved, not tried');
+  const everything = JSON.stringify([r.body, d.docs('thirtyda_settings'), d.docs('thirtyda_audit')]);
+  assert.equal(everything.includes(key.body.slice(0, 40)), false, 'the key never in an answer, the settings (sealed) or the audit');
+  const saved = d.docs('thirtyda_audit').find((a) => a.action === 'connection_save' && a.connection === 'apple');
+  assert.deepEqual(saved.masks, { privateKey: key.body.slice(-4) });
+  // An empty key box keeps the saved key (a new Key ID alone).
+  r = await admin('PUT', `${C}/apple`, { headers: JSON_HEADERS, body: { teamId: '4KX4774V2U', keyId: 'ZZZ999YYYY', privateKey: '' } });
+  assert.equal(r.status, 200);
+  assert.deepEqual(appleOf(r.json()).masks, { privateKey: key.body.slice(-4) });
+  assert.equal(appleOf(r.json()).fields.keyId, 'ZZZ999YYYY');
+  // Remove: gone; the sign-in still works.
+  r = await admin('DELETE', `${C}/apple`, { headers: JSON_HEADERS, body: {} });
+  assert.equal(r.status, 200);
+  assert.equal(appleOf(r.json()).set, false);
+  assert.equal(appleOf(r.json()).signinWorks, true);
+}));
+
+test('Code page, Apple: the tower draws the key card (not "Later"), says the sign-in works without the key, and tries the key', () => {
+  const js = readFileSync(new URL('../thirtyda-admin/connections.js', import.meta.url), 'utf8');
+  assert.match(js, /function appleTower\(byId, data\) \{\n  return byId\.apple \? appleCard\(byId\.apple, data\) : laterTower\('apple'\);/);
+  assert.match(js, /Sign-in works; add the key for token revoke on delete\./);
+  assert.match(js, /call\('POST', `\$\{API\}\/apple\/try`, \{\}\)/);
+  assert.match(js, /key: 'teamId', label: 'Team ID'[^\n]*fallback: '4KX4774V2U'/);
+  assert.match(js, /key: 'privateKey', label: 'Private key \(\.p8\)', secret: true/);
+  assert.match(js, /if \(c\.live\) return \{ pill: 'live', text: 'Live' \};/);
+  assert.ok(js.includes("apple: () => 'Remove the Apple key?"), 'Remove has its own words');
+  // The tower keeps its place: tenth, after YouTube.
+  const order = [...js.slice(js.indexOf('const TOWERS = ['), js.indexOf('const towerNumber')).matchAll(/(?:signinTower|laterOne)\('([a-z-]+)'|key: '([a-z-]+)'/g)].map((m) => m[1] || m[2]);
+  assert.deepEqual(order, ['tiktok', 'telegram-bot', 'telegram-gateway', 'facebook', 'google', 'whatsapp', 'wechat', 'alipay', 'youtube', 'apple']);
 });

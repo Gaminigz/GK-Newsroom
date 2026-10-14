@@ -741,6 +741,9 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 .ways { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 4px; margin-bottom: 2px; }
 /* Create profile: all 5 on one row, still one row on a 360–390 px phone (in every language). */
 .ways.with-signin { grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr)); gap: 2px; }
+/* The iPhone app: Sign in with Apple first, so six on the row — every button a little smaller, all the same size. */
+.ways.six .way-dot, .ways.six .way-mark { width: 46px; height: 46px; }
+.ways.six .way-name { font-size: 11.5px; }
 .way {
   position: relative;
   display: flex;

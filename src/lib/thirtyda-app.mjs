@@ -47,6 +47,10 @@
  * cookie of that web view + { url }), its sign-in sheet (own cookies) goes to the provider and the callback signs nobody
  * in there — it hands a one-time ticket to the app (iOS: 302 sg.ggmt.thirtyda://auth?t=<t>; Android: a page with an
  * intent:// link), and the web view finishes it at GET /30da/api/auth/app?t=<t> only with the same binder (appClaim).
+ * Sign in with Apple (owner 2026-10-14, src/lib/thirtyda-apple.mjs), the iPhone app only: GET /auth/apple/nonce → { nonce }
+ * (+ a binder cookie of this web view), the app's own Apple sheet, then POST /auth/apple { identityToken, nonce, … } →
+ * { ok, next }: the token checked, then exactly what the Google callback does (finishSignin's rules), and `next` is where
+ * the Google callback would have sent the person (the app loads it).
  *
  * The PIN lock (owner 2026-10-13, src/lib/thirtyda-pin.mjs): a 4-digit PIN locks the app. A profile's session
  * is open only after a sign-in or the PIN, and only while the person really uses the app (2 minutes without
@@ -123,8 +127,12 @@ import {
   createSigninState, takeSigninState, stateCookie, readStateCookie, adminSessionAlive, signinPerson, callbackError,
   signinUserFilter, planSignin, pkcePair,
   stateHash, APP_TICKETS, APP_ERRORS, platformOf, newBinder, appCookie, readAppCookie, createAppTicket, takeAppTicket, appReturnQuery,
-  appSchemeUrl, appIntentUrl, publicOrigin, appPlatformOf,
+  appSchemeUrl, appIntentUrl, publicOrigin, appPlatformOf, ACCOUNT_PROVIDERS, KEEP_NAME,
 } from "./thirtyda-signin.mjs";
+import {
+  APPLE_NONCES, newAppleBinder, createAppleNonce, takeAppleNonce, appleNonceCookie, readAppleNonceCookie, nonceHash, verifyAppleToken,
+  applePerson, appleKeys, exchangeAppleCode, sealAppleRefresh,
+} from "./thirtyda-apple.mjs";
 import { noteSecretUse } from "./thirtyda-settings.mjs";
 import { outboundFetch } from "./thirtyda-test-fetch.mjs";
 import {
@@ -248,12 +256,14 @@ export async function ensureThirtyDaIndexes(d) {
     d.collection(C.users).createIndex({ location: "2dsphere" }),
     d.collection(C.users).createIndex({ phone: 1 }, { unique: true, sparse: true }),
     d.collection(C.users).createIndex({ photos: 1 }),
-    // One profile per Google / Facebook account (only profiles that signed in with one carry it).
-    ...SIGNIN_PROVIDERS.map((p) => d.collection(C.users).createIndex(
+    // One profile per Google / Facebook / TikTok / Apple account (only profiles that signed in with one carry it).
+    ...ACCOUNT_PROVIDERS.map((p) => d.collection(C.users).createIndex(
       { [`signin.${p}.id`]: 1 }, { unique: true, partialFilterExpression: { [`signin.${p}.id`]: { $exists: true } } })),
     d.collection(SIGNIN_STATES).createIndex({ expires: 1 }, { expireAfterSeconds: 0 }),
     // The native apps' one-time sign-in tickets (2 minutes, single use — src/lib/thirtyda-signin.mjs).
     d.collection(APP_TICKETS).createIndex({ expires: 1 }, { expireAfterSeconds: 0 }),
+    // Sign in with Apple's nonces (10 minutes, single use — src/lib/thirtyda-apple.mjs).
+    d.collection(APPLE_NONCES).createIndex({ expires: 1 }, { expireAfterSeconds: 0 }),
     // Telegram bot checks: gone 30 minutes after they expire; found by browser (status) and by Telegram user (the bot).
     d.collection(TG_CHECKS).createIndex({ purgeAt: 1 }, { expireAfterSeconds: 0 }),
     d.collection(TG_CHECKS).createIndex({ browser: 1, created: -1 }),
@@ -453,9 +463,14 @@ async function startSession(ctx, fields) {
     phoneVerified: Boolean(session?.phoneVerified),
     // How this browser proved its phone (kept until Create profile puts it on the profile as phoneVia).
     ...(phoneViaOf(session?.phoneVia) ? { phoneVia: session.phoneVia } : {}),
-    verified: { gmail: Boolean(session?.verified?.gmail), facebook: Boolean(session?.verified?.facebook), tiktok: Boolean(session?.verified?.tiktok) },
+    verified: {
+      gmail: Boolean(session?.verified?.gmail), facebook: Boolean(session?.verified?.facebook), tiktok: Boolean(session?.verified?.tiktok),
+      ...(session?.verified?.apple ? { apple: true } : {}),
+    },
     // The Google / Facebook account(s) this browser proved, kept until Create profile puts them on the profile.
     ...(session?.signin ? { signin: session.signin } : {}),
+    // Apple's sealed refresh token (only with the admin's Apple key), waiting like the account for Create profile.
+    ...(session?.appleRefresh ? { appleRefresh: session.appleRefresh } : {}),
     ...fields,
     ...freshSigninFields(now),
     created: new Date(now),
@@ -464,6 +479,8 @@ async function startSession(ctx, fields) {
   // A session the App review code made stays marked when it is renewed for the same profile ("Stop being a review
   // account" ends every such session).
   if (session?.reviewSignin && doc.userId && doc.userId === session.userId) doc.reviewSignin = true;
+  // A session of a profile never carries a pending Apple token (Create profile put it on the profile, or it was another's).
+  if (doc.userId) delete doc.appleRefresh;
   await d.collection(C.sessions).insertOne(doc);
   if (old) await d.collection(C.sessions).deleteOne({ _id: old._id });
   if (doc.userId) await d.collection(C.users).updateOne({ _id: doc.userId }, { $set: { pinTries: 0 } });
@@ -507,10 +524,13 @@ export function meView(u) {
     phoneUnverified: u.phone ? null : u.phoneUnverified ?? null,
     // Set once (sign-up, or once on #/me for profiles made before the rule); only ever shown to its owner.
     birthYear: Number.isInteger(u.birthYear) ? u.birthYear : null,
-    verified: { phone: Boolean(u.verified?.phone), gmail: Boolean(u.verified?.gmail), facebook: Boolean(u.verified?.facebook), tiktok: Boolean(u.verified?.tiktok) },
+    verified: {
+      phone: Boolean(u.verified?.phone), gmail: Boolean(u.verified?.gmail), facebook: Boolean(u.verified?.facebook), tiktok: Boolean(u.verified?.tiktok),
+      apple: Boolean(u.verified?.apple),
+    },
     // Which way last proved the phone ('telegram' | 'whatsapp' | 'sms'; null = not known: verified before it was kept).
     phoneVia: u.verified?.phone && u.phone ? phoneViaOf(u.phoneVia) : null,
-    // The Google / Facebook / TikTok accounts on this profile — booleans only, never the ids.
+    // The Google / Facebook / TikTok (/ Apple) accounts on this profile — booleans only, never the ids.
     signins: signinsOf(u),
     // Slot-aligned: photos[i] is slot i+1's url, or null for an empty slot (trailing empty slots left out).
     photos: slotUrls(u),
@@ -1091,7 +1111,9 @@ async function signinReady(d, provider) {
 
 /**
  * GET /auth/methods → which of the phone step's buttons work right now:
- *   { code: { telegram, whatsapp }, signin: { google, facebook, tiktok }, signinTest: { google, facebook, tiktok } } (booleans).
+ *   { code: { telegram, whatsapp }, signin: { google, facebook, tiktok, apple }, signinTest: { google, facebook, tiktok, apple } }
+ *   (booleans). Apple is always on: its sign-in needs no admin keys (Apple's public keys check the token); the app shows
+ *   it only inside the iPhone app.
  * A code channel works when it is OFFERED (live and a test code went through since its keys were saved, and no
  * lasting failure since — channelOffer), or (test mode only) while no channel is set up at all — the same rule
  * send-code applies. Google / Facebook work once their keys are saved (the real sign-in: the app goes to
@@ -1116,6 +1138,9 @@ async function authMethods(ctx) {
     signin[provider] = real || DEV_AUTH;
     signinTest[provider] = !real && DEV_AUTH;
   }
+  // Sign in with Apple (src/lib/thirtyda-apple.mjs): no test stand-in, never "Coming soon" — the iPhone app's own sheet.
+  signin.apple = true;
+  signinTest.apple = false;
   // App review (src/lib/thirtyda-review.mjs): while the admin's "Review sign-in" is ON the phone step asks
   // POST /auth/review/check for the number typed before it starts any way.
   const review = (await reviewSwitch(d).catch(() => ({ on: false }))).on;
@@ -1577,7 +1602,8 @@ async function telegramStatus(ctx) {
 
 async function verifySocial(ctx) {
   const { d, body, me } = ctx;
-  const key = VERIFIED_KEY[body.provider];
+  // Test mode's instant sign-in is for the browser sign-ins only (Apple always checks a real token).
+  const key = SIGNIN_PROVIDERS.includes(body.provider) ? VERIFIED_KEY[body.provider] : null;
   if (!key) throw invalid("Choose Google, Facebook or TikTok.", { field: "provider" });
   if (!DEV_AUTH) throw fail(503, "oauth_unavailable", "Google, Facebook and TikTok sign-in are not available yet.");
   if (isReview(me)) throw reviewFixed();
@@ -1599,12 +1625,20 @@ async function signout(ctx) {
 const SIGNIN_STARTS = 30; // sign-ins started per address per 15 minutes (loose, like send-code: NAT)
 const SIGNIN_RETURNS = 30; // returns from Google / Facebook per address per 15 minutes
 
-/** What a session proved with Google / Facebook, as kept on a new profile: { google?: { id, email? }, facebook?: … } | null. */
+/**
+ * What a session proved with Google / Facebook / TikTok / Apple, as kept on a new profile: { google?: { id, email? },
+ * facebook?: …, apple?: { id, email?, name? } } | null (Apple's name: KEEP_NAME).
+ */
 function signinOf(session) {
   const out = {};
-  for (const p of SIGNIN_PROVIDERS) {
+  for (const p of ACCOUNT_PROVIDERS) {
     const s = session?.signin?.[p];
-    if (s?.id && session?.verified?.[VERIFIED_KEY[p]]) out[p] = { id: String(s.id), ...(s.email ? { email: String(s.email) } : {}) };
+    if (s?.id && session?.verified?.[VERIFIED_KEY[p]]) {
+      out[p] = {
+        id: String(s.id), ...(s.email ? { email: String(s.email) } : {}),
+        ...(KEEP_NAME.includes(p) && typeof s.name === "string" && s.name ? { name: s.name } : {}),
+      };
+    }
   }
   return Object.keys(out).length ? out : null;
 }
@@ -1715,7 +1749,18 @@ async function signinCallback(req, res, url, d, provider) {
  * to where the person goes next. `clear`: cookies cleared on the way (the web callback's state cookie).
  */
 async function finishSignin(req, res, d, provider, person, { to = null, clear = [] } = {}) {
-  const back = async (reason) => redirectTo(res, await signinBack(d, req, provider, reason, to), setCookies(clear));
+  const out = await signinOutcome(req, d, provider, person, { to });
+  redirectTo(res, out.location, setCookies(clear, out.cookie));
+}
+
+/**
+ * What a good sign-in does with THIS request's session, and where the person goes next: { location, cookie } (cookie: the
+ * new session's, or null). The Google / Facebook / TikTok callback and the apps' claim redirect there (finishSignin); Sign
+ * in with Apple answers it as JSON for the app to load (appleSignin). `extra`: what the provider adds — Apple's sealed
+ * refresh token ({ user: { appleRefresh }, session: { appleRefresh } }, see completeSignin).
+ */
+async function signinOutcome(req, d, provider, person, { to = null, extra = null } = {}) {
+  const back = async (reason) => ({ location: await signinBack(d, req, provider, reason, to), cookie: null });
   const ctx = { d, req, headers: {}, session: await loadSession(d, req) };
   ctx.me = ctx.session?.userId ? await d.collection(C.users).findOne({ _id: ctx.session.userId }) : null;
   // Coming back to a LOCKED phone: the sign-in starts from nothing (it never attaches to the locked profile).
@@ -1735,11 +1780,13 @@ async function finishSignin(req, res, d, provider, person, { to = null, clear = 
   // (#/verified); an account that already has another profile is refused there (nothing changes, no switch).
   // #/me (owner 2026-10-13): the same attach-never-switch for any profile, and back to #/me.
   const attaching = Boolean(ctx.me && (to || !canTalk(ctx.me)));
-  const { existing, inUse, refused: notAdded } = await completeSignin(ctx, provider, person, { attachOnly: attaching });
-  if (inUse) return redirectTo(res, verifyBackPath(provider, { reason: "in_use", to }), setCookies(clear));
+  const { existing, inUse, refused: notAdded } = await completeSignin(ctx, provider, person, { attachOnly: attaching, extra });
+  if (inUse) return { location: verifyBackPath(provider, { reason: "in_use", to }), cookie: null };
   if (notAdded) return back(notAdded);
-  redirectTo(res, attaching ? verifyBackPath(provider, { ok: true, to }) : existing ? `${BASE}/#/nearby` : `${BASE}/#/create?signin=${provider}&ok=1`,
-    setCookies(clear, ctx.headers["Set-Cookie"]));
+  return {
+    location: attaching ? verifyBackPath(provider, { ok: true, to }) : existing ? `${BASE}/#/nearby` : `${BASE}/#/create?signin=${provider}&ok=1`,
+    cookie: ctx.headers["Set-Cookie"] ?? null,
+  };
 }
 
 /** The Android return page: no inline script at all; its one script (the auto-try) and its styles are our own files. */
@@ -1853,6 +1900,92 @@ async function appClaim(ctx) {
   }
 }
 
+// ---------------------------------------------------------------- Sign in with Apple (owner 2026-10-14, the iPhone app)
+
+/** A refused Apple token → what the app says (the Google way back's words): a slow or reused one 'expired', else 'failed'. */
+const APPLE_BACK = { expired: "expired", nonce: "expired" };
+
+/**
+ * GET /auth/apple/nonce → { nonce }: a fresh raw nonce for Sign in with Apple (src/lib/thirtyda-apple.mjs) — only its
+ * SHA-256 is kept (10 minutes, single use), bound to THIS web view's binder cookie (thirtyda_apple, HttpOnly,
+ * Path=/30da/api/auth/apple; an existing binder is kept, so two taps both stay good). The app hands sha256(nonce) to Apple,
+ * which writes it into the identity token. SIGNIN_STARTS per address per 15 minutes (429 too_many).
+ */
+async function appleNonce(ctx) {
+  const { d, req } = ctx;
+  if (overLimit(ipSigninStarts, clientIp(req), SIGNIN_STARTS)) throw fail(429, "too_many", "Too many tries. Wait 15 minutes.");
+  const binder = readAppleNonceCookie(req) ?? newAppleBinder();
+  const nonce = await createAppleNonce(d, binder);
+  ctx.headers["Set-Cookie"] = appleNonceCookie(req, binder);
+  return { nonce };
+}
+
+/**
+ * POST /auth/apple { identityToken, authorizationCode?, nonce, givenName?, familyName?, to?: 'me' } — Sign in with Apple
+ * from the iPhone app's own sheet. The app's page only (a same-host Origin: the router refuses another site's). In order:
+ * SIGNIN_RETURNS per address (429 too_many); the nonce used up (single use, 10 minutes, this web view's binder: else
+ * 401 expired); the identity token checked (Apple's keys, iss, aud sg.ggmt.thirtyda, exp with 60 s skew, token.nonce =
+ * sha256(nonce): else 401 expired | apple_refused); the refresh token — only with the admin's key, best effort, never in
+ * the way (appleRefreshExtra); then exactly what the Google callback does (signinOutcome: the PIN lock rules, to=me
+ * attaches and never switches, "Verify to chat", an App review account refuses it, the profile keeps the Apple id + the
+ * verified email + the name when Apple gave one). → { ok, next }: where the Google callback would have redirected
+ * (#/nearby, #/create?signin=apple&ok=1, #/verified… or #/me…), for the app to load (ok false: that way back says why not). A refusal → { error, message, back }
+ * (back: where the Google callback sends that reason). The app's `email` is not used: the token's own counts.
+ */
+async function appleSignin(ctx) {
+  const { d, req, body } = ctx;
+  const to = ATTACH_FROM.includes(body.to) ? body.to : null;
+  const refuse = async (status, error, message, reason) => fail(status, error, message, {
+    back: await signinBack(d, req, "apple", reason, to).catch(() => backToPhoneStep("apple", reason)),
+  });
+  if (!req.headers.origin) throw await refuse(403, "bad_origin", "Requests must come from the 30+DA app.", "failed");
+  if (overLimit(ipSigninReturns, clientIp(req), SIGNIN_RETURNS)) throw await refuse(429, "too_many", "Too many tries. Wait 15 minutes.", "too_many");
+  const nonce = typeof body.nonce === "string" ? body.nonce : "";
+  const token = typeof body.identityToken === "string" ? body.identityToken : "";
+  if (!token) throw await refuse(422, "invalid", "No Apple sign-in came back.", "failed");
+  // Used up first, whatever happens next: an identity token counts once, and only in the web view that asked for it.
+  if (!(await takeAppleNonce(d, nonce, readAppleNonceCookie(req)))) throw await refuse(401, "expired", "That took too long. Try again.", "expired");
+  const fetchImpl = outboundFetch();
+  const checked = await verifyAppleToken(token, { nonce: nonceHash(nonce), fetchImpl });
+  if (!checked.ok) {
+    console.warn(`[30da signin] apple: the identity token was refused (${checked.reason})`);
+    const reason = APPLE_BACK[checked.reason] ?? "failed";
+    throw await refuse(401, reason === "expired" ? "expired" : "apple_refused", "Sign in with Apple did not work. Try again.", reason);
+  }
+  const person = applePerson(checked.claims, { givenName: body.givenName, familyName: body.familyName });
+  const extra = await appleRefreshExtra(d, person, body.authorizationCode, fetchImpl);
+  const out = await signinOutcome(req, d, "apple", person, { to, extra });
+  if (out.cookie) ctx.headers["Set-Cookie"] = out.cookie;
+  // ok: false when the way back carries a reason (in_use, review, a locked phone's 'expired'): the app loads it all the same.
+  return { ok: !/[?&]error=/.test(out.location), next: out.location };
+}
+
+/**
+ * Apple's refresh token for "Delete my account" to revoke (5.1.1(v)): only with the admin's key saved (the Code page) and
+ * an authorization code from the app. Exchanged at Apple, SEALED for this Apple id, kept on the profile (or on the new
+ * session until Create profile). Best effort: anything wrong → null and the sign-in goes on. The admin's card hears of a
+ * good exchange and of a key Apple refuses (never of a used or slow code). → completeSignin's `extra`, or null.
+ */
+async function appleRefreshExtra(d, person, code, fetchImpl) {
+  if (typeof code !== "string" || !code) return null;
+  const keys = await appleKeys(d).catch(() => null);
+  if (!keys) return null;
+  const r = await exchangeAppleCode(keys, code, { sub: person.id, fetchImpl });
+  if (r.ok || r.reason === "bad_key") {
+    await noteSecretUse(d, "apple", { ok: r.ok, reason: r.ok ? null : r.reason, detail: r.ok ? null : r.detail, kind: "signin" }).catch(() => {});
+  }
+  if (!r.ok) {
+    console.warn(`[30da signin] apple: no refresh token (${r.reason}${r.detail ? `, Apple said ${r.detail}` : ""}); the sign-in goes on`);
+    return null;
+  }
+  try {
+    const box = sealAppleRefresh(r.refreshToken, person.id);
+    return { user: { appleRefresh: box }, session: { appleRefresh: box } };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Where a sign-in that did not work goes back to: the phone step, or — for a session of a profile with no verified
  * way yet (the "Verify to chat" sheet started it) — #/verified, which puts the person back where they were (after
@@ -1873,10 +2006,12 @@ async function signinBack(d, req, provider, reason, to = null) {
  *   a signed-in profile already linked to ANOTHER account of this provider → this browser switches to the new
  *   account (a clean session, onto Create profile); the profile's own link is never replaced;
  *   anyone else → a fresh session marked verified for the provider, which lands on Create profile; the profile
- *   made there keeps the provider id (+ email when given). Never the provider's tokens.
+ *   made there keeps the provider id (+ email when given). Never the provider's tokens — except Apple's refresh token,
+ *   SEALED (`extra`: { user: fields set on the profile signed in / attached to, session: fields of a new session }), so a
+ *   deleted account can revoke it (src/lib/thirtyda-apple.mjs).
  * → { existing } (true: a profile is signed in), or { inUse } (see above: nothing was done).
  */
-async function completeSignin(ctx, provider, person, { attachOnly = false } = {}) {
+async function completeSignin(ctx, provider, person, { attachOnly = false, extra = null } = {}) {
   const users = ctx.d.collection(C.users);
   const user = await users.findOne(signinUserFilter(provider, person.id));
   // "Verify to chat" (and any sign-in started on #/me: attachOnly): the profile never switches to (or merges with)
@@ -1886,7 +2021,13 @@ async function completeSignin(ctx, provider, person, { attachOnly = false } = {}
   // An App review account is signed into ONLY by the review code, and adds no Google / Facebook / TikTok account
   // (that would be a way in that ignores the switch and outlives "Stop being a review account").
   if (isReview(user) || (isReview(ctx.me) && !user)) return { existing: false, refused: "review" };
-  let plan = planSignin({ provider, person, user, me: ctx.me, session: ctx.session });
+  /** The plan with what the provider adds: on the profile (returning / attach), or on the new session (new). */
+  const withExtra = (p) => (!extra ? p : {
+    ...p,
+    ...(p.userSet ? { userSet: { ...p.userSet, ...(extra.user || {}) } } : {}),
+    ...(p.kind === "new" ? { session: { ...p.session, ...(extra.session || {}) } } : {}),
+  });
+  let plan = withExtra(planSignin({ provider, person, user, me: ctx.me, session: ctx.session }));
   // #/me: the profile already has ANOTHER account of this provider — never replaced, never a switch.
   if (attachOnly && plan.switched) return { existing: false, refused: "failed" };
   if (plan.kind === "attach") {
@@ -1896,7 +2037,7 @@ async function completeSignin(ctx, provider, person, { attachOnly = false } = {}
       // Raced: look again (the profile may have been linked meanwhile) and plan from what is there now.
       const [again, me] = await Promise.all([users.findOne(signinUserFilter(provider, person.id)), users.findOne({ _id: plan.userId })]);
       if (otherOwner(again)) return { existing: false, inUse: true };
-      plan = planSignin({ provider, person, user: again, me, session: ctx.session });
+      plan = withExtra(planSignin({ provider, person, user: again, me, session: ctx.session }));
       if (plan.kind === "attach") throw new Error("the profile changed during the sign-in");
       if (plan.userSet) await users.updateOne({ _id: plan.userId }, { $set: plan.userSet });
     }
@@ -1973,11 +2114,12 @@ async function handleSignin(req, res, url, provider, step) {
 async function createProfile(ctx) {
   const { d, body, session, me } = ctx;
   if (me) throw fail(409, "profile_exists", "You already have a profile.");
-  const proved = Boolean(session && (session.phoneVerified || session.verified?.gmail || session.verified?.facebook || session.verified?.tiktok));
+  const proved = Boolean(session && (session.phoneVerified || session.verified?.gmail || session.verified?.facebook || session.verified?.tiktok
+    || session.verified?.apple));
   const unverified = !proved && body.unverified === true;
   if (!proved && !unverified) {
     if (!session) throw fail(401, "signed_out", "Please sign in.");
-    throw fail(403, "not_verified", "Verify your phone, Google, Facebook or TikTok first.");
+    throw fail(403, "not_verified", "Verify your phone, Google, Facebook, TikTok or Apple first.");
   }
   const name = checkName(body.name);
   const birthYear = checkBirth(body.birthYear);
@@ -2051,9 +2193,14 @@ async function createProfile(ctx) {
     ...(phone ? { phone } : {}),
     ...(phone && phoneViaOf(session.phoneVia) ? { phoneVia: session.phoneVia } : {}),
     ...(typedPhone ? { phoneUnverified: typedPhone } : {}),
-    verified: { phone: Boolean(phone), gmail: Boolean(session?.verified?.gmail), facebook: Boolean(session?.verified?.facebook), tiktok: Boolean(session?.verified?.tiktok) },
+    verified: {
+      phone: Boolean(phone), gmail: Boolean(session?.verified?.gmail), facebook: Boolean(session?.verified?.facebook), tiktok: Boolean(session?.verified?.tiktok),
+      ...(session?.verified?.apple ? { apple: true } : {}),
+    },
     // The Google / Facebook account this browser signed in with: its id (+ email when given), never a token.
     ...(signinOf(session) ? { signin: signinOf(session) } : {}),
+    // Sign in with Apple's refresh token, SEALED (only with the admin's key): "Delete my account" revokes it.
+    ...(session?.appleRefresh && signinOf(session)?.apple ? { appleRefresh: session.appleRefresh } : {}),
     photos: [photoId],
     // Photo 1 waits for the team's approval; until then only its owner sees it (src/lib/thirtyda-photo-review.mjs).
     ...newProfileReview(new Date(madeAt).toISOString()),
@@ -2080,7 +2227,7 @@ async function createProfile(ctx) {
     await deletePhoto(photoId);
     await giveBack();
     if (err?.code === 11000 && /signin\./.test(JSON.stringify(err.keyPattern ?? err.message ?? ""))) {
-      throw fail(409, "signin_in_use", "This Google, Facebook or TikTok account already has a profile. Sign in with it again.");
+      throw fail(409, "signin_in_use", "This Google, Facebook, TikTok or Apple account already has a profile. Sign in with it again.");
     }
     if (err?.code === 11000) throw fail(409, "phone_in_use", "This phone number already has a profile.");
     throw err;
@@ -2089,9 +2236,10 @@ async function createProfile(ctx) {
   if (unverified) {
     await startSession(ctx, { userId: id, phone: null, phoneVerified: false, verified: { gmail: false, facebook: false, tiktok: false } });
   }
-  // The new profile starts open: its maker is the one holding the phone (a pending session may be old).
+  // The new profile starts open: its maker is the one holding the phone (a pending session may be old). Apple's sealed
+  // token now lives on the profile only.
   await d.collection(C.sessions).updateOne(
-    { _id: ctx.session._id }, { $set: { userId: id, pinOk: true, activeAt: new Date(), pinTries: 0 }, $unset: { pinResetUntil: "" } },
+    { _id: ctx.session._id }, { $set: { userId: id, pinOk: true, activeAt: new Date(), pinTries: 0 }, $unset: { pinResetUntil: "", appleRefresh: "" } },
   );
   return { user: meView(user), lock: lockInfo() };
 }
@@ -2110,6 +2258,8 @@ async function getMe(ctx) {
       session: {
         phone: session.phone ?? null, phoneVerified: Boolean(session.phoneVerified),
         phoneVia: session.phoneVerified ? phoneViaOf(session.phoneVia) : null, verified: session.verified ?? { gmail: false, facebook: false },
+        // Sign in with Apple gave the person's name (only the first time): Create profile offers it as the real name.
+        ...(session.verified?.apple && typeof session.signin?.apple?.name === "string" ? { name: session.signin.apple.name } : {}),
       },
       lock: lockInfo(),
     };
@@ -2550,7 +2700,10 @@ async function person(ctx) {
       km: kmBetween(me, u, Boolean(view)),
       area: u.area ?? "",
       hearts: heartsOf(u),
-      verified: { phone: Boolean(u.verified?.phone), gmail: Boolean(u.verified?.gmail), facebook: Boolean(u.verified?.facebook), tiktok: Boolean(u.verified?.tiktok) },
+      verified: {
+        phone: Boolean(u.verified?.phone), gmail: Boolean(u.verified?.gmail), facebook: Boolean(u.verified?.facebook), tiktok: Boolean(u.verified?.tiktok),
+        apple: Boolean(u.verified?.apple),
+      },
       photo,
       photos,
       lockedPhotos,
@@ -3624,6 +3777,10 @@ const ROUTES = [
   // provider's address), then claims what the sheet did (a redirect, never JSON; the web callback's own lock rules).
   ["POST", /^\/auth\/app\/begin$/, appBegin, { auth: "none", blockedOk: true }],
   ["GET", /^\/auth\/app$/, appClaim, { auth: "none", blockedOk: true }],
+  // Sign in with Apple (src/lib/thirtyda-apple.mjs), the iPhone app: a nonce for this web view, then the token → { next }
+  // (finished like the Google callback; its own lock rules, so 'signin' while locked).
+  ["GET", /^\/auth\/apple\/nonce$/, appleNonce, { auth: "none", blockedOk: true }],
+  ["POST", /^\/auth\/apple$/, appleSignin, { auth: "none", blockedOk: true }],
   ["POST", /^\/auth\/signout$/, signout, { auth: "none", blockedOk: true }],
   // auth "none": no session at all may make an unverified profile ({ unverified: true }, see createProfile).
   ["POST", /^\/profile$/, createProfile, { auth: "none" }],
@@ -3710,7 +3867,7 @@ async function handleApi(req, res, url, sub) {
     }
     // "Needed to chat" (owner 2026-10-13): talking to someone waits for one verified way (src/lib/thirtyda-verify.mjs).
     if (ctx.me && talksToSomeone(req.method, sub) && !canTalk(ctx.me)) {
-      throw fail(403, "verify_needed", "Verify your phone, Google, Facebook or TikTok to chat.");
+      throw fail(403, "verify_needed", "Verify your phone, Google, Facebook, TikTok or Apple to chat.");
     }
     ctx.body = req.method === "GET" ? {} : await readBody(req);
 

@@ -53,12 +53,24 @@
 import crypto from "node:crypto";
 import { readFields } from "./thirtyda-settings.mjs";
 
+/** The sign-ins that go through the browser (start → the provider → callback; the apps' sheet: /auth/app/begin). */
 export const SIGNIN_PROVIDERS = ["google", "facebook", "tiktok"];
+/**
+ * Every account a profile can keep (signin.<provider>.id, one profile per account): the browser sign-ins above + Sign in
+ * with Apple (owner 2026-10-14, src/lib/thirtyda-apple.mjs) — the iPhone app's own sheet, a token checked on POST
+ * /auth/apple, no browser round trip and no admin keys needed to sign in.
+ */
+export const ACCOUNT_PROVIDERS = [...SIGNIN_PROVIDERS, "apple"];
 export const SIGNIN_NAMES = { google: "Google", facebook: "Facebook", tiktok: "TikTok" };
 /** The sign-in is built: with its keys saved a button works (test mode without keys keeps its instant test sign-in). */
 export const SIGNIN_WIRED = { google: true, facebook: true, tiktok: true };
 /** Where a provider's sign-in is marked on the user / session (`verified.gmail` is older than Google sign-in). */
-export const VERIFIED_KEY = { google: "gmail", facebook: "facebook", tiktok: "tiktok" };
+export const VERIFIED_KEY = { google: "gmail", facebook: "facebook", tiktok: "tiktok", apple: "apple" };
+/**
+ * Accounts whose name is kept with the link (signin.<provider>.name): Apple gives the name only the very first time,
+ * never again, so it is kept when given (Create profile offers it as the real name). Every other provider: id + email only.
+ */
+export const KEEP_NAME = ["apple"];
 /** The two saved boxes of each sign-in: [the public ID, the secret] (FIELD_SETTINGS in src/lib/thirtyda-settings.mjs). */
 export const KEY_FIELDS = { google: ["clientId", "clientSecret"], facebook: ["appId", "appSecret"], tiktok: ["clientKey", "clientSecret"] };
 
@@ -651,7 +663,7 @@ export function callbackError(provider, params) {
 
 // ---- what a good sign-in does (pure; src/lib/thirtyda-app.mjs completeSignin carries it out)
 
-/** The Mongo filter for the profile that signed in with this Google / Facebook / TikTok account before. */
+/** The Mongo filter for the profile that signed in with this Google / Facebook / TikTok / Apple account before. */
 export const signinUserFilter = (provider, id) => ({ [`signin.${provider}.id`]: String(id) });
 
 /**
@@ -667,21 +679,27 @@ export const signinUserFilter = (provider, id) => ({ [`signin.${provider}.id`]: 
  *   anyone else                                          → kind 'new': a fresh session marked verified for the
  *                                                          provider (+ the id to keep), which lands on Create profile
  * → { kind, switched?, userId?, userSet?, session } — `session` = the fields for the new session token. Only the
- *   provider id (+ email when given) is ever kept; no token, no name.
+ *   provider id (+ email when given) is ever kept; no token, no name (Apple's name excepted: KEEP_NAME).
  */
 export function planSignin({ provider, person, user = null, me = null, session = null }) {
   const key = VERIFIED_KEY[provider];
   if (!key || !person?.id) throw new Error("No such sign-in.");
-  const link = { id: String(person.id), ...(person.email ? { email: person.email } : {}) };
-  // TikTok (added later) shows up only once proved, so the older { gmail, facebook } shape stays as it was.
+  // Apple's name (KEEP_NAME): given only the first time, so kept with the link when it comes.
+  const name = KEEP_NAME.includes(provider) && typeof person.name === "string" && person.name ? person.name : null;
+  const link = { id: String(person.id), ...(person.email ? { email: person.email } : {}), ...(name ? { name } : {}) };
+  // TikTok and Apple (added later) show up only once proved, so the older { gmail, facebook } shape stays as it was.
   const proved = (u) => ({
-    gmail: Boolean(u?.verified?.gmail), facebook: Boolean(u?.verified?.facebook), ...(u?.verified?.tiktok ? { tiktok: true } : {}), [key]: true,
+    gmail: Boolean(u?.verified?.gmail), facebook: Boolean(u?.verified?.facebook), ...(u?.verified?.tiktok ? { tiktok: true } : {}),
+    ...(u?.verified?.apple ? { apple: true } : {}), [key]: true,
   });
   if (user) {
     return {
       kind: "returning",
       userId: user._id,
-      userSet: { [`verified.${key}`]: true, ...(person.email ? { [`signin.${provider}.email`]: person.email } : {}) },
+      userSet: {
+        [`verified.${key}`]: true, ...(person.email ? { [`signin.${provider}.email`]: person.email } : {}),
+        ...(name ? { [`signin.${provider}.name`]: name } : {}),
+      },
       session: { userId: user._id, phone: user.phone ?? null, phoneVerified: Boolean(user.phone && user.verified?.phone), verified: proved(user) },
     };
   }

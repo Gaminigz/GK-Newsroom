@@ -1,6 +1,7 @@
 // Screen 2 · Create profile — face photo, app name (shown, max 7 characters) + birth year (ages 30+ only)
-// on one row, real name (not shown), I am, You are, and a phone (or Google / Facebook / TikTok) to verify — which is
-// only needed to chat (owner 2026-10-13): Next works once the fields are filled. Then location, then Nearby.
+// on one row, real name (not shown), I am, You are, and a phone (or Google / Facebook / TikTok — and Apple, inside the
+// iPhone app only) to verify — which is only needed to chat (owner 2026-10-13): Next works once the fields are filled.
+// Then location, then Nearby.
 import {
   screen, el, icon, t, go, api, toast, modal, state, setLang, setMe, registerStrings,
   resizeImage, updateLocation, roleLabel, LANGS, LANG_CODES, LANG_NATIVE, LANG_FLAG, ROLES, charCount,
@@ -12,7 +13,7 @@ import { takeAfterCreate } from '../guest.js';
 // The community rules' "I agree" that waits on this phone goes with the sign-in / the new profile (terms.js).
 import { termsBody } from '../terms.js';
 // In the 30+DA app a sign-in runs in the app's own sheet (Google refuses web views): shell.js.
-import { shellAuth, shellSignIn, onAppReturn, deviceId } from '../shell.js';
+import { shellAuth, shellSignIn, onAppReturn, deviceId, shellApple, shellAppleSignIn } from '../shell.js';
 // A tap on a photo circle / tile asks "Take a selfie" (front camera) or "Choose from photos" (owner 2026-10-14).
 import { photoSource } from '../photo-source.js';
 
@@ -239,10 +240,13 @@ export function verifiedPhoneModel(phone, model = blankPhone(), via = null) {
   });
 }
 
-// The ways in: two bring the code (Telegram, WhatsApp), three sign in (Facebook, Google, TikTok); waysRow sets the order.
+// The ways in: two bring the code (Telegram, WhatsApp), three sign in (Facebook, Google, TikTok) — four inside the iPhone
+// app, where Sign in with Apple comes first (owner 2026-10-14, Apple 4.8: shellApple); waysRow sets the order.
 // Brand names stay in Latin letters in every language.
 const CODE_CHANNELS = [['telegram', 'Telegram'], ['whatsapp', 'WhatsApp']];
-const SIGN_INS = [['facebook', 'facebook', 'Facebook'], ['google', 'gmail', 'Google'], ['tiktok', 'tiktok', 'TikTok']]; // [provider, verified key, name]
+const SIGN_INS = [['facebook', 'facebook', 'Facebook'], ['google', 'gmail', 'Google'], ['tiktok', 'tiktok', 'TikTok'], ['apple', 'apple', 'Apple']]; // [provider, verified key, name]
+/** Sign in with Apple is shown only inside the 30+DA iPhone app (shell.js shellApple: never the website, never Android). */
+const appleHere = () => Boolean(shellApple());
 const channelName = (key) => CODE_CHANNELS.find((c) => c[0] === key)?.[1] ?? key;
 const otherChannel = (key) => CODE_CHANNELS.find((c) => c[0] !== key)[0];
 let verifierSeq = 0;
@@ -268,7 +272,19 @@ const BRAND_SVG = {
     + '<g fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round">'
     + '<path d="M13.2 5.8v9.3"/><circle cx="10.5" cy="15.2" r="2.7"/><path d="M13.2 5.8c.4 2 1.9 3.3 4 3.5"/>'
     + '</g>',
+  // Sign in with Apple (Apple's logo-only button: a black circle, the white Apple logo, centred).
+  apple: '<circle cx="12" cy="12" r="12" fill="#000"/>'
+    + '<path fill="#fff" transform="translate(5.55 5.1) scale(0.56)" d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.57-2.987 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.572-2.27 1.206-2.98.804-.94 2.142-1.64 3.248-1.68.03.13.05.28.05.43zm4.565 15.71c-.03.07-.463 1.58-1.518 3.12-.945 1.34-1.94 2.71-3.43 2.71-1.517 0-1.9-.88-3.63-.88-1.698 0-2.302.91-3.67.91-1.377 0-2.332-1.26-3.428-2.8-1.287-1.82-2.257-4.63-2.257-7.28 0-4.28 2.79-6.55 5.532-6.55 1.406 0 2.576.9 3.457.9.84 0 2.147-.95 3.734-.95.633 0 2.91.06 4.404 2.21-.114.07-2.628 1.53-2.628 4.63 0 3.7 3.24 5.01 3.434 5.02z"/>',
 };
+
+// Sign in with Apple's button reads "Apple" under the logo; screen readers hear Apple's own words for it.
+registerStrings({
+  en: { cp_apple_aria: 'Sign in with Apple' },
+  km: { cp_apple_aria: 'ចូលដោយប្រើ Apple' },
+  zh: { cp_apple_aria: '通过 Apple 登录' },
+  ko: { cp_apple_aria: 'Apple로 로그인' },
+  ja: { cp_apple_aria: 'Appleでサインイン' },
+});
 function brandMark(key) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   for (const [k, v] of Object.entries({ viewBox: '0 0 24 24', width: '52', height: '52', 'aria-hidden': 'true', focusable: 'false', class: 'way-mark' })) svg.setAttribute(k, v);
@@ -292,8 +308,8 @@ async function loadMethods() {
   }
 }
 
-/** true only when GET /auth/methods said Google or Facebook sign-in works (unknown → false). */
-export const signinWorks = (m) => SIGN_INS.some(([provider]) => m?.signin?.[provider] === true);
+/** true only when GET /auth/methods said Google or Facebook sign-in works (unknown → false). Apple counts only where it shows. */
+export const signinWorks = (m) => SIGN_INS.some(([provider]) => (provider !== 'apple' || appleHere()) && m?.signin?.[provider] === true);
 
 // What the user typed → E.164-ish ("+855" + digits, leading zeros dropped), or null when too short.
 function fullPhone(model) {
@@ -541,10 +557,12 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     if (model.tg) endTelegram();
     signingIn = provider;
     render();
-    if (methods?.signinTest?.[provider] !== true) {
+    if (provider === 'apple' || methods?.signinTest?.[provider] !== true) {
       // The real sign-in: the whole page goes to Google / Facebook and comes back to this step.
       try { signin?.beforeLeave?.(); } catch { /* keeping the draft is a nicety */ }
       const to = signin?.to === 'me' ? 'me' : null;
+      // Sign in with Apple (the iPhone app only): Apple's own sheet, then the page loads the way back like Google's.
+      if (provider === 'apple') return signInByApple(to);
       // In the 30+DA app: the app's own sign-in sheet; when it signs in, the app loads the way back itself.
       if (shellAuth()) return signInByApp(provider, to);
       location.assign(`/30da/api/auth/${provider}/start${to ? '?to=me' : ''}`);
@@ -580,6 +598,26 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
       setTimeout(() => { if (alive && signingIn === provider) { signingIn = null; render(); } }, 10e3);
       return;
     }
+    backFromSheet({ touched: how === 'cancelled' });
+    if (how === 'failed' && error.hidden) showError(t('err_generic'));
+    if (!alive) return;
+    signingIn = null;
+    render();
+  }
+
+  /**
+   * Sign in with Apple in the iPhone app (shell.js shellAppleSignIn): the nonce, Apple's sheet, POST /auth/apple, then the
+   * page loads where the server says — exactly like the way back from Google. Closed (cancelled) → nothing changed, the
+   * button is free again; a refusal from the server → the page went where Google's would have ('left').
+   */
+  async function signInByApple(to) {
+    let how = 'failed';
+    try {
+      how = await shellAppleSignIn(api, to);
+    } catch (err) {
+      showError(err?.status === 0 ? t('err_network') : err?.status === 429 ? t('cp_too_many') : t('err_generic'));
+    }
+    if (how === 'done' || how === 'left') return; // the page is loading the way back
     backFromSheet({ touched: how === 'cancelled' });
     if (how === 'failed' && error.hidden) showError(t('err_generic'));
     if (!alive) return;
@@ -922,12 +960,12 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
   }
 
   /** One round button: brand mark, name under it, "Coming soon" under that while it does not work. */
-  function wayButton({ key, name, on, pressed = null, done = false, busy = false, click }) {
+  function wayButton({ key, name, on, pressed = null, done = false, busy = false, click, label = null }) {
     return el('button', {
       type: 'button', class: ['way', !on && 'is-off', done && 'is-done', busy && 'is-busy'],
       'aria-pressed': pressed == null ? null : String(pressed),
       'aria-disabled': on ? null : 'true',
-      'aria-label': [name, done ? t('cp_verified') : null, on ? null : t('cp_soon')].filter(Boolean).join(' · '),
+      'aria-label': [label || name, done ? t('cp_verified') : null, on ? null : t('cp_soon')].filter(Boolean).join(' · '),
       on: { click },
     },
     el('span', { class: 'way-dot' }, brandMark(key),
@@ -948,18 +986,21 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     });
     const signinBtn = ([provider, key, name]) => wayButton({
       key: provider, name, on: signinOn(provider), done: Boolean(proved[key]), busy: signingIn === provider,
-      click: () => signIn(provider, key, name),
+      click: () => signIn(provider, key, name), label: provider === 'apple' ? t('cp_apple_aria') : null,
     });
     const code = Object.fromEntries(CODE_CHANNELS.map((c) => [c[0], c]));
     const sign = Object.fromEntries(SIGN_INS.map((s) => [s[0], s]));
     // Owner's order (2026-10-13): TikTok, Telegram, Google, Facebook, WhatsApp — Create profile, the sheet and #/me.
+    // Inside the iPhone app Sign in with Apple comes FIRST, the same size as the others (owner 2026-10-14, Apple 4.8);
+    // never on the website or Android (appleHere).
     // Without sign-ins (no `signin` given): the two code apps.
     // Owner (2026-10-13): hide WhatsApp while it does not work (it comes back by itself once its test code goes through).
     const shown = (c) => c[0] !== 'whatsapp' || codeOn('whatsapp');
     const row = signin
-      ? [signinBtn(sign.tiktok), codeBtn(code.telegram), signinBtn(sign.google), signinBtn(sign.facebook), shown(code.whatsapp) ? codeBtn(code.whatsapp) : null].filter(Boolean)
+      ? [appleHere() ? signinBtn(sign.apple) : null, signinBtn(sign.tiktok), codeBtn(code.telegram), signinBtn(sign.google), signinBtn(sign.facebook),
+        shown(code.whatsapp) ? codeBtn(code.whatsapp) : null].filter(Boolean)
       : CODE_CHANNELS.filter(shown).map(codeBtn);
-    return el('div', { class: ['ways', signin && 'with-signin'], role: 'group', 'aria-label': t('cp_ways'), style: { '--cols': String(row.length) } }, row);
+    return el('div', { class: ['ways', signin && 'with-signin', row.length > 5 && 'six'], role: 'group', 'aria-label': t('cp_ways'), style: { '--cols': String(row.length) } }, row);
   }
 
   function render() {
@@ -1142,7 +1183,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
 // ---------------------------------------------------------------- screen
 
 const blankDraft = () => ({
-  photo: null, name: '', birthYear: '', realName: '', gender: '', role: '', phone: blankPhone(), verified: { gmail: false, facebook: false, tiktok: false },
+  photo: null, name: '', birthYear: '', realName: '', gender: '', role: '', phone: blankPhone(), verified: { gmail: false, facebook: false, tiktok: false, apple: false },
   extraPhotos: [null, null, null], // photos 2–4 (optional), uploaded right after the profile is made
 });
 // Survives a language switch (which re-renders this screen) but not a reload — except the trip to Google /
@@ -1187,7 +1228,7 @@ function takeStashedDraft() {
   if (str(saved.phone, 20) && !draft.phone.verified) draft.phone.phone = str(saved.phone, 20);
 }
 
-const SIGNIN_NAMES = { google: 'Google', facebook: 'Facebook', tiktok: 'TikTok' };
+const SIGNIN_NAMES = { google: 'Google', facebook: 'Facebook', tiktok: 'TikTok', apple: 'Apple' };
 const SIGNIN_ERRORS = ['cancelled', 'expired', 'unavailable', 'failed', 'too_many', 'review'];
 const SIGNIN_ERROR_ICON = { cancelled: 'question', expired: 'clock', too_many: 'clock', unavailable: 'refresh', failed: 'refresh', review: 'flag' };
 
@@ -1249,7 +1290,10 @@ screen('/create', ({ root, query }) => {
     draft.verified.gmail ||= Boolean(pending.verified.gmail);
     draft.verified.facebook ||= Boolean(pending.verified.facebook);
     draft.verified.tiktok ||= Boolean(pending.verified.tiktok);
+    draft.verified.apple ||= Boolean(pending.verified.apple);
   }
+  // Sign in with Apple gave a name (only the first time): it fills the real name box, which stays editable.
+  if (pending?.verified?.apple && typeof pending.name === 'string' && !draft.realName.trim()) draft.realName = pending.name.slice(0, 60);
   let saving = false;
   // Google / Facebook known to work (GET /auth/methods, via the phone step): only then do the notes name them.
   let signinOk = false;
@@ -1476,7 +1520,8 @@ screen('/create', ({ root, query }) => {
     && draft.gender && draft.role);
   // "Verify to chat" (owner 2026-10-13): Next works as soon as the fields are filled — verifying is only needed to
   // chat. Verified here → the profile is made as before; not → { unverified: true } (screens/verify-chat.js asks later).
-  const verifiedHere = () => Boolean(draft.phone.verified || draft.verified.gmail || draft.verified.facebook || draft.verified.tiktok);
+  const verifiedHere = () => Boolean(draft.phone.verified || draft.verified.gmail || draft.verified.facebook || draft.verified.tiktok
+    || draft.verified.apple);
   const ready = () => fieldsReady();
   function update() {
     const ok = ready();
@@ -1557,7 +1602,7 @@ screen('/create', ({ root, query }) => {
     } else if (err.code === 'not_verified' || err.status === 401) {
       // The session expired: what it proved is gone, so verify again.
       Object.assign(draft.phone, blankPhone(), { phone: draft.phone.phone, cc: draft.phone.cc });
-      draft.verified = { gmail: false, facebook: false, tiktok: false };
+      draft.verified = { gmail: false, facebook: false, tiktok: false, apple: false };
       state.pending = null;
       toast(t(signinOk ? 'cp_verify_again' : 'cp_verify_again_phone'));
       go('/create', { replace: true });

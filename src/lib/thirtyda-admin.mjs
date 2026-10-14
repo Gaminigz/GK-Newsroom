@@ -27,7 +27,11 @@
  *   PUT  /30da/admin/api/connections/google          { clientId, clientSecret? }   (empty secret = keep the saved one)
  *   PUT  /30da/admin/api/connections/facebook        { appId, appSecret? }
  *   PUT  /30da/admin/api/connections/tiktok          { clientKey, clientSecret? }
- *   DELETE /30da/admin/api/connections/:id           remove what is saved for telegram | whatsapp | google | facebook | tiktok
+ *   PUT  /30da/admin/api/connections/apple           { teamId, keyId, privateKey? } Sign in with Apple's key (the .p8; empty =
+ *        keep the saved one) — for the token revoke on delete; the sign-in itself needs no key (src/lib/thirtyda-apple.mjs)
+ *   POST /30da/admin/api/connections/apple/try       the ES256 client secret + a made-up code at Apple's /auth/token:
+ *        invalid_grant = the key works (the tower goes Live), invalid_client = a wrong key → { ok, reason?, detail?, view }
+ *   DELETE /30da/admin/api/connections/:id           remove what is saved for telegram | whatsapp | google | facebook | tiktok | apple
  *   POST /30da/admin/api/connections/telegram|whatsapp/test   { phone } → a real code to that phone, or why not.
  *        A test that goes through turns the channel on in the app (src/lib/thirtyda-code-send.mjs channelOffer);
  *        the answer carries the page's fresh data (`view`) so the card can say so at once.
@@ -83,7 +87,7 @@ import {
 } from "./thirtyda-questions.mjs";
 import { LEVEL_RULES } from "../thirtyda-app/shared/questions.js";
 import {
-  keyReady, saveSecret, removeSecret, secretStatus, saveFields, readFields, fieldsStatus, SettingsError,
+  keyReady, saveSecret, removeSecret, secretStatus, saveFields, readFields, fieldsStatus, SettingsError, noteSecretUse,
 } from "./thirtyda-settings.mjs";
 import {
   checkTelegramToken, checkWhatsAppFields, channelLive, channelOffer, deliverCode, testCodesAllowed, CODE_TTL_S,
@@ -93,6 +97,7 @@ import {
   pkcePair,
 } from "./thirtyda-signin.mjs";
 import { outboundFetch } from "./thirtyda-test-fetch.mjs";
+import { APPLE, checkAppleFields, appleKeys, tryAppleKey } from "./thirtyda-apple.mjs";
 import { botView, saveBot, tryBot, removeBot, windowLimiter } from "./thirtyda-telegram-bot.mjs";
 import {
   listSupportChats, supportThread, sendSupportReply, supportUnread, describeBot, SUPPORT_TEXT_MAX,
@@ -404,7 +409,7 @@ async function connectionsView(d, req) {
   const envToken = String(process.env.THIRTYDA_TG_TOKEN ?? "").trim();
   const { readable, lastSend, ...view } = tg;
   const devAuth = process.env.THIRTYDA_DEV_AUTH === "1";
-  const [wa, google, facebook, tiktok] = await Promise.all(["whatsapp", "google", "facebook", "tiktok"].map((n) => fieldsStatus(d, n)));
+  const [wa, google, facebook, tiktok, apple] = await Promise.all(["whatsapp", "google", "facebook", "tiktok", "apple"].map((n) => fieldsStatus(d, n)));
   const [tgOffer, waOffer] = await Promise.all(["telegram", "whatsapp"].map((c) => channelOffer(d, c)));
   // Whether the app offers the channel: only once a test code went through (and no lasting failure since).
   const offer = ({ offered, state, reason, detail, at }) => ({ offered, offer: { state, reason, detail, at } });
@@ -450,6 +455,18 @@ async function connectionsView(d, req) {
       signin("google", "Google sign-in", google),
       signin("facebook", "Facebook sign-in", facebook),
       signin("tiktok", "TikTok sign-in", tiktok),
+      // Sign in with Apple (tower 10, src/lib/thirtyda-apple.mjs): the sign-in works on the iPhone app without any key
+      // (signinWorks); the key (Team ID, Key ID, the .p8) lets "Delete my account" revoke Apple's token. Live = the key
+      // is saved, readable and its last use (Try, or a real sign-in's token exchange) went through.
+      {
+        id: "apple", name: "Sign in with Apple", kind: "apple", ...apple,
+        signinWorks: true,
+        keyOk: Boolean(await appleKeys(d).catch(() => null)),
+        live: Boolean(apple.set && apple.readable && apple.lastSend?.ok),
+        bundleId: APPLE.bundleId,
+        teamIdDefault: APPLE.teamId,
+        tryUrl: `${BASE}/api/connections/apple/try`,
+      },
     ],
   };
 }
@@ -460,8 +477,9 @@ const FIELD_CHECKS = {
   google: (input, current) => checkSigninFields("google", input, current),
   facebook: (input, current) => checkSigninFields("facebook", input, current),
   tiktok: (input, current) => checkSigninFields("tiktok", input, current),
+  apple: (input, current) => checkAppleFields(input, current),
 };
-const CONNECTION_NAMES = { telegram: "Telegram", whatsapp: "WhatsApp", google: "Google", facebook: "Facebook", tiktok: "TikTok" };
+const CONNECTION_NAMES = { telegram: "Telegram", whatsapp: "WhatsApp", google: "Google", facebook: "Facebook", tiktok: "TikTok", apple: "Apple" };
 const TESTABLE = ["telegram", "whatsapp"];
 
 /** One level as the Questions page edits it. */
@@ -541,6 +559,37 @@ async function telegramBotRoute(req, res, isTry) {
   return json(res, 200, await connectionsView(d, req));
 }
 
+/** What "Try the key" says when Apple did not take it (plain words; never the key, the secret or the code). */
+const APPLE_TRY_WORDS = {
+  no_key: "Save the Team ID, Key ID and private key first, then try them.",
+  bad_key: "Apple refused the key (invalid_client). Check the Key ID and Team ID, and that the key has Sign in with Apple set up for sg.ggmt.thirtyda.",
+  provider_error: "Apple had a problem on its side. Try again in a few minutes.",
+  timeout: "Apple did not answer in time. Try again.",
+  network: "Apple could not be reached. Try again.",
+  other: "Apple gave an answer we did not expect. Try again, or make a new key.",
+};
+
+/**
+ * POST /api/connections/apple/try — Sign in with Apple's key on the Code page: the ES256 client secret and a made-up code
+ * at Apple's /auth/token (src/lib/thirtyda-apple.mjs tryAppleKey). invalid_grant = Apple accepted the key and refused only
+ * the code: the key works and the tower is Live (the outcome goes on the card: noteSecretUse kind 'try'). Never the key,
+ * the client secret or the code in the answer or the audit. → { ok, reason?, error?, detail?, view }.
+ */
+async function appleTryRoute(req, res) {
+  req.resume();
+  if (testLimited(req)) return json(res, 429, { error: `That is ${MAX_TESTS} tries in 15 minutes. Try again later.` });
+  const d = await db();
+  const keys = await appleKeys(d).catch(() => null);
+  const r = keys ? await tryAppleKey(keys, { fetchImpl: outboundFetch() }) : { ok: false, reason: "no_key", detail: null };
+  if (keys) await noteSecretUse(d, "apple", { ok: r.ok, reason: r.ok ? null : r.reason, detail: r.ok ? null : r.detail, kind: "try" }).catch(() => {});
+  await audit(req, "connection_test", { connection: "apple", ok: r.ok, ...(r.ok ? {} : { reason: r.reason }) });
+  const view = await connectionsView(d, req);
+  if (!r.ok) {
+    return json(res, r.reason === "no_key" ? 400 : 422, { ok: false, reason: r.reason, error: APPLE_TRY_WORDS[r.reason] || APPLE_TRY_WORDS.other, detail: r.detail ?? null, view });
+  }
+  return json(res, 200, { ok: true, view });
+}
+
 /**
  * Block a person: the monitor's Block, and Reject + block on the Photos page. → { alreadyBlocked }
  * Blocking settles every open flag this user raised; undo reopens exactly those. A flag
@@ -587,9 +636,11 @@ async function deleteUserRoute(req, res, id) {
   const d = await db();
   const u = await d.collection("thirtyda_users").findOne({ _id: id }, { projection: { _id: 1 } });
   if (!u) return json(res, 404, { error: "There is no such profile (it may be deleted already).", reason: "not_found" });
-  await (testHooks.deleteAccount ?? deleteAccount)(d, id);
-  await audit(req, "delete_user", { user: id });
-  return json(res, 200, { ...(await overview()), deleted: id });
+  const r = await (testHooks.deleteAccount ?? deleteAccount)(d, id);
+  // Sign in with Apple: whether the profile's Apple token was revoked too (only for a profile that had one).
+  const appleRevoke = r?.apple ?? null;
+  await audit(req, "delete_user", { user: id, ...(appleRevoke ? { appleRevoke } : {}) });
+  return json(res, 200, { ...(await overview()), deleted: id, ...(appleRevoke ? { appleRevoke } : {}) });
 }
 
 /** Everything the App review page shows: the review accounts, the notes, and the "Create demo account" panel. */
@@ -848,6 +899,9 @@ export async function handleThirtyDaAdmin(req, res, url) {
   }
 
   if (req.method === "GET" && sub === "/api/connections") return json(res, 200, await connectionsView(await db(), req));
+
+  // Sign in with Apple's key: "Try the key" (Save / Remove are the generic PUT / DELETE below).
+  if (req.method === "POST" && sub === "/api/connections/apple/try") return appleTryRoute(req, res);
 
   // The free Telegram bot: PUT { token } (Save) · POST …/try · DELETE (Remove).
   m = sub.match(/^\/api\/connections\/telegram-bot(\/try)?$/);

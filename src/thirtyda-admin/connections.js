@@ -1,6 +1,7 @@
 // 30+DA super admin · Code — the sign-in and messaging hub (owner 2026-10-14): ten towers left to right, in the owner's
 // order (1 TikTok, 2 Telegram Bot, 3 Telegram Gateway, 4 Facebook, 5 Google, 6 WhatsApp, 7 WeChat, 8 Alipay, 9 YouTube,
-// 10 Apple; 7–10 are "Later" placeholders), each with the keys it needs. A strip at the top jumps to a tower; ‹ ›, the
+// 10 Apple; 7–9 are "Later" placeholders), each with the keys it needs. Tower 10 is Sign in with Apple (owner
+// 2026-10-14): the sign-in needs no key; its key (Team ID, Key ID, the .p8) lets a deleted account end its Apple link. A strip at the top jumps to a tower; ‹ ›, the
 // arrow keys and the slider move along; the last tower is remembered in this browser. Later all our apps use this hub.
 // Telegram and WhatsApp send the sign-in code: offered in the app only once a test code went through since the
 // keys were saved, and stopped again by a lasting failure (no balance, bad token, template). Google, Facebook and
@@ -72,7 +73,7 @@ async function call(method, path, body) {
 
 // ---------- helpers ----------
 const when = (iso) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const NAMES = { telegram: 'Telegram', 'telegram-bot': 'Telegram bot', whatsapp: 'WhatsApp', google: 'Google', facebook: 'Facebook', tiktok: 'TikTok' };
+const NAMES = { telegram: 'Telegram', 'telegram-bot': 'Telegram bot', whatsapp: 'WhatsApp', google: 'Google', facebook: 'Facebook', tiktok: 'TikTok', apple: 'Apple' };
 const REASON_WORDS = {
   not_on_telegram: 'number not on Telegram',
   not_on_whatsapp: 'number not on WhatsApp',
@@ -577,6 +578,30 @@ const FIELD_CARDS = {
       { key: 'clientSecret', label: 'Client secret', secret: true, placeholder: 'Paste the Client secret', help: ['Same page, next to the Client key.'] },
     ],
   },
+  // Sign in with Apple (tower 10): not a signinCard — no redirect, no web sign-in; see appleCard.
+  apple: {
+    title: 'Sign in with Apple',
+    sub: 'On the iPhone app · ends the Apple link when an account is deleted',
+    what: 'key',
+    // Apple's own menu names, in quotes, so they can be found in the developer portal.
+    steps: [
+      ['Open ', link('https://developer.apple.com/account/resources/identifiers/list', 'developer.apple.com'), ' → Certificates, Identifiers & Profiles → Identifiers → sg.ggmt.thirtyda: “Sign In with Apple” is ticked (the iPhone app already uses it).'],
+      ['Keys → the + button → name it 30+DA Sign in with Apple → tick “Sign in with Apple” → Configure → Primary App ID sg.ggmt.thirtyda → Save → Continue → Register.'],
+      ['Download the key (a .p8 file). Apple lets you download it only ONCE: keep it somewhere safe. The page shows its Key ID.'],
+      ['Open the .p8 file in TextEdit, copy all of it into “Private key” here, the Key ID into “Key ID”; the Team ID is already filled in. Press Save, then “Try the key”.'],
+    ],
+    fields: [
+      {
+        key: 'teamId', label: 'Team ID', placeholder: '10 letters and digits', fallback: '4KX4774V2U',
+        help: ['Top right of the Apple developer portal (yours: 4KX4774V2U).'],
+      },
+      { key: 'keyId', label: 'Key ID', placeholder: '10 letters and digits', help: ['On the key’s page (Keys → your key).'] },
+      {
+        key: 'privateKey', label: 'Private key (.p8)', secret: true, placeholder: 'Paste all of the .p8 file',
+        help: ['From -----BEGIN PRIVATE KEY----- to -----END PRIVATE KEY-----. Saved locked; only its last 4 characters show again.'],
+      },
+    ],
+  },
 };
 
 /** The boxes + Save / Remove of one card. The plain boxes start filled with what is saved. */
@@ -655,7 +680,9 @@ function fieldsForm(c, data) {
         const now = r.data.connections.find((x) => x.id === c.id);
         toast(c.id === 'whatsapp'
           ? `WhatsApp keys saved · token ends …${now.masks?.token}. Send a test code to check them.`
-          : `${NAMES[c.id]} keys saved · secret ends …${now.last4}. Press Try sign-in to check them.`);
+          : c.id === 'apple' ? `Apple key saved · key ends …${now.masks?.privateKey}. Press “Try the key” to check it.`
+            : `${NAMES[c.id]} keys saved · secret ends …${now.last4}. Press Try sign-in to check them.`);
+        if (c.id === 'apple') $('apple-try')?.focus();
         if (c.id === 'whatsapp') $('wa-phone')?.focus();
       },
     },
@@ -835,6 +862,7 @@ const REMOVE_TEXT = {
   google: () => 'Remove the Google keys?\n\nThe Google button in the app goes back to “Coming soon”, and nobody can sign in with Google until keys are saved again.',
   facebook: () => 'Remove the Facebook keys?\n\nThe Facebook button in the app goes back to “Coming soon”, and nobody can sign in with Facebook until keys are saved again.',
   tiktok: () => 'Remove the TikTok keys?\n\nThe TikTok button in the app goes back to “Coming soon”, and nobody can sign in with TikTok until keys are saved again.',
+  apple: () => 'Remove the Apple key?\n\nSign in with Apple keeps working on the iPhone app. Only the Apple link of a deleted account is no longer ended at Apple until a key is saved again.',
 };
 async function removeConnection(id) {
   if (!confirm(REMOVE_TEXT[id](state.data?.devAuth))) return;
@@ -842,10 +870,10 @@ async function removeConnection(id) {
   if (!r.ok) return toast(r.data.error || 'Could not remove it.');
   state.test[id] = null;
   render(r.data, { fresh: id });
-  toast(id === 'telegram' ? 'Telegram token removed.' : id === 'telegram-bot' ? 'Telegram bot removed.' : `${NAMES[id]} keys removed.`);
+  toast(id === 'telegram' ? 'Telegram token removed.' : id === 'telegram-bot' ? 'Telegram bot removed.' : id === 'apple' ? 'Apple key removed.' : `${NAMES[id]} keys removed.`);
 }
 
-// ---------- the "Later" towers (7–10): not built yet ----------
+// ---------- the "Later" towers (7–9): not built yet (10, Apple, only while the server sends no apple connection) ----------
 
 const LATER_PILL = { pill: 'later', text: 'Later' };
 /** What each "Later" tower will be for, in one line. */
@@ -864,24 +892,129 @@ function laterTower(key) {
     h('p', { class: 'cx-later-line', text: l.line }));
 }
 
-// ---------- tower 10 · Apple — STEP G fills this ----------
-// Sign in with Apple is not built yet, so tower 10 is a "Later" placeholder. The tower keeps its place, its strip
-// button and its number whatever it draws. It already turns into the sign-in card (signinCard / signinStatus, like
-// TikTok, Facebook and Google) once BOTH are there: the server sends an `apple` connection AND FIELD_CARDS.apple
-// exists. Until then — or if the server has no apple yet — it stays "Later", so the page never sticks on "Loading…".
-// For the real card STEP G must add, beside FIELD_CARDS.apple (title, sub, what, steps, redirectHelp, fields):
-//   NAMES.apple       — 'Apple': the app line, Try sign-in, the save toast and the data-deletion row print it
-//   REMOVE_TEXT.apple — the Remove confirm (without it Remove throws "REMOVE_TEXT[id] is not a function")
-//   ONLY_YOU.apple    — what "Keys work" adds (who can sign in before Apple lets everyone)
-//   in signinCard: `where` / `termsWhere` Apple wording (without it the privacy row says “in Meta …”),
-//   and SETUP_FIX.not_live if Apple has a "not live yet" step (otherwise it falls back to Meta wording).
-// If the Apple card is not signinCard-shaped, replace the two bodies below instead and keep the byId.apple guard.
+// ---------- tower 10 · Apple: Sign in with Apple (STEP G, owner 2026-10-14) ----------
+// The sign-in itself needs no key: the iPhone app shows "Apple" first in its row of ways (never the website, never
+// Android), Apple's own sheet signs the person in, and the server checks Apple's token with Apple's public keys. The key —
+// Team ID, Key ID and the .p8 private key, saved locked (the key shows only its last 4) — lets the server swap the app's
+// one-time code for Apple's refresh token, so "Delete my account" can revoke it (Apple 5.1.1(v)). "Try the key" signs a
+// 5-minute client secret and asks Apple's token endpoint with a made-up code: invalid_grant = Apple took the key (Live);
+// invalid_client = a wrong key. The bundle id sg.ggmt.thirtyda is fixed. Not signinCard-shaped (no redirect address,
+// no web sign-in), so it has its own card; it stays "Later" only if the server sends no apple connection (an older server).
+
+/** Apple's reasons in plain words (the server's tryAppleKey / exchangeAppleCode). */
+const APPLE_REASON_WORDS = {
+  bad_key: 'Apple refused the key (invalid_client)',
+  bad_code: 'a used or old sign-in code',
+  provider_error: 'a problem on Apple’s side',
+  timeout: 'no answer in time',
+  network: 'could not connect',
+  no_key: 'no key saved',
+  other: 'an answer we did not expect',
+};
+
+function appleKeyStatus(c) {
+  if (c.set && !c.readable) return { pill: 'warn', text: 'Needs attention' };
+  if (c.live) return { pill: 'live', text: 'Live' };
+  if (c.set && c.lastSend && !c.lastSend.ok) return { pill: 'warn', text: c.lastSend.kind === 'try' ? 'Last try failed' : 'Needs attention' };
+  if (c.set) return { pill: 'saved', text: 'Saved · not tried' };
+  return { pill: 'off', text: 'Not set' };
+}
+
+function appleKeyLine(c) {
+  if (c.set && !c.readable) return unreadableLine(c, 'key');
+  if (!c.set) return [h('b', { text: 'Not set' }), ' · the sign-in works without it'];
+  const f = c.fields || {};
+  return [h('b', { text: 'Set' }), ' · Key ID ', h('code', { class: 'cx-mono', text: f.keyId || '–' }),
+    ' · Team ID ', h('code', { class: 'cx-mono', text: f.teamId || '–' }),
+    ' · key ends ', h('code', { class: 'cx-mono', text: `…${c.masks?.privateKey || ''}` }),
+    ` · saved ${when(c.updatedAt)} · ${c.updatedBy || 'superadmin'}`];
+}
+
+function appleAppLine(c) {
+  const s = c.lastSend;
+  if (c.live) return [h('b', { text: 'Sign-in works, and so does the key. ' }), 'Deleting an account in the app also ends its Sign in with Apple at Apple.'];
+  if (c.set && c.readable && s && !s.ok) {
+    return [h('b', { class: 'cx-bad', text: `Sign-in works; the key did not (${APPLE_REASON_WORDS[s.reason] || s.reason}).` }),
+      ' Check the Key ID, the Team ID and the key, then press “Try the key”.'];
+  }
+  if (c.set && c.readable) return [h('b', { text: 'Sign-in works. ' }), 'Press “Try the key” to check the key.'];
+  if (c.set) return 'Sign-in works. The key cannot be read on this server: paste and save it again.';
+  return [h('b', { text: 'Sign-in works; add the key for token revoke on delete.' }), ' The Apple button shows only in the iPhone app, first in the row.'];
+}
+
+function lastAppleLine(c) {
+  const s = c.lastSend;
+  if (!s) return null;
+  const label = s.kind === 'try' ? 'Last try' : 'Last sign-in';
+  if (s.ok) return row(label, h('span', { class: 'cx-ok', text: `Worked ${when(s.at)}` }));
+  return row(label, h('span', { class: 'cx-bad', text: `Did not work ${when(s.at)}` }), ` · ${APPLE_REASON_WORDS[s.reason] || s.reason}`,
+    s.detail ? h('span', { class: 'cx-fine', text: ` · Apple said: ${s.detail}` }) : null);
+}
+
+/** "Try the key": a client secret signed with the key and a made-up code at Apple. Nothing is signed in, nobody changes. */
+function appleTry(c) {
+  const r = state.test.apple;
+  const trying = Boolean(r?.trying);
+  const ready = c.set && c.readable;
+  const btn = h('button', {
+    type: 'button', class: 'btn cx-test-btn cx-try-btn', id: 'apple-try', disabled: trying || !ready,
+    on: {
+      click: async () => {
+        if (state.test.apple?.trying) return;
+        state.test.apple = { trying: true };
+        render(state.data);
+        const x = await call('POST', `${API}/apple/try`, {});
+        const { view, ...result } = x.data;
+        state.test.apple = { ...result, ok: x.ok };
+        render(view?.connections ? view : state.data);
+        $('apple-try')?.focus();
+      },
+    },
+  }, trying ? 'Trying…' : 'Try the key');
+  let result = null;
+  if (r && !r.trying && r.ok) {
+    result = h('div', { class: 'cx-result ok' },
+      h('p', {}, h('b', { text: 'Works ✓ ' }), 'Apple accepted the key: it refused only the made-up code (invalid_grant), as it should.'),
+      h('p', { class: 'cx-fine' }, 'From now on, deleting an account in the app also ends its Sign in with Apple.'));
+  } else if (r && !r.trying) {
+    result = h('div', { class: 'cx-result bad' },
+      h('p', {}, h('b', { text: 'Did not work. ' }), r.error || 'Something went wrong.'),
+      r.detail ? h('p', { class: 'cx-fine' }, `Apple said: ${r.detail}`) : null);
+  }
+  return h('div', { class: 'cx-try' },
+    h('h3', { text: 'Try the key' }),
+    h('p', { class: 'cx-help' }, ready
+      ? 'Signs a 5-minute client secret with the key and asks Apple with a made-up code. Nobody is signed in or changed.'
+      : 'Save the key first, then try it here.'),
+    btn,
+    result);
+}
+
+function appleCard(c, data) {
+  const card = FIELD_CARDS.apple;
+  // The status pill (appleKeyStatus) sits on the tower's top line.
+  return h('section', { class: 'panel cx-card cx-signin', 'aria-labelledby': 'cx-apple' },
+    h('div', { class: 'cx-head' }, logo('apple'),
+      h('div', { class: 'cx-title' }, h('h2', { id: 'cx-apple', text: card.title }), h('p', { class: 'cx-sub', text: card.sub }))),
+    h('dl', { class: 'cx-status' },
+      row('Key', ...appleKeyLine(c)),
+      row('Bundle ID', h('code', { class: 'cx-mono', text: c.bundleId || 'sg.ggmt.thirtyda' }), ' · the iPhone app (fixed)'),
+      row('In the app', appleAppLine(c)),
+      lastAppleLine(c)),
+    h('div', { class: 'cx-signin-body' },
+      h('div', { class: 'cx-where' },
+        h('p', { class: 'cx-help' }, h('b', { text: 'How to get the key:' })),
+        h('ol', { class: 'cx-steps' }, card.steps.map((step) => h('li', {}, ...step)))),
+      fieldsForm(c, data),
+      appleTry(c)));
+}
+
 function appleTower(byId, data) {
-  return byId.apple && FIELD_CARDS.apple ? signinCard(byId.apple, data) : laterTower('apple');
+  return byId.apple ? appleCard(byId.apple, data) : laterTower('apple');
 }
 
 function appleStatus(byId) {
-  return byId.apple && FIELD_CARDS.apple ? signinStatus(byId.apple) : LATER_PILL;
+  return byId.apple ? appleKeyStatus(byId.apple) : LATER_PILL;
 }
 
 // ---------- the hub: ten towers left to right ----------

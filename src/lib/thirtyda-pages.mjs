@@ -115,6 +115,8 @@ export const PAGE_STRINGS = {
     priv_phone: "to verify you and sign you in. Others never see it.",
     priv_social_k: "From Google, Facebook or TikTok:",
     priv_social: "we keep only your account number and email.",
+    priv_apple_k: "From Apple (iPhone app):",
+    priv_apple: "your Apple account number, the email Apple gives (it may be a private relay address), your name if Apple shares it, and a locked key used only to end the Apple link when you delete your account.",
     priv_loc_k: "Location:",
     priv_loc: "rounded to about 1 km and moved a little at random, to show distances. Others see only a distance and an area name.",
     priv_lines_k: "Lines and chat:",
@@ -322,6 +324,8 @@ export const PAGE_STRINGS = {
     priv_phone: "ដើម្បីផ្ទៀងផ្ទាត់ និងឲ្យអ្នកចូលបាន។ អ្នកដទៃមិនដែលឃើញទេ។",
     priv_social_k: "ពី Google, Facebook ឬ TikTok៖",
     priv_social: "យើងរក្សាទុកតែលេខគណនី និងអ៊ីមែលរបស់អ្នកប៉ុណ្ណោះ។",
+    priv_apple_k: "ពី Apple (កម្មវិធី iPhone)៖",
+    priv_apple: "លេខគណនី Apple របស់អ្នក អ៊ីមែលដែល Apple ផ្ដល់ឲ្យយើង (អាចជាអាសយដ្ឋានបញ្ជូនបន្តឯកជន) ឈ្មោះរបស់អ្នក ប្រសិនបើ Apple ចែករំលែក និងកូដដែលចាក់សោមួយ ដែលប្រើតែដើម្បីផ្ដាច់ការភ្ជាប់ជាមួយ Apple នៅពេលអ្នកលុបគណនី។",
     priv_loc_k: "ទីតាំង៖",
     priv_loc: "បង្គត់ប្រហែល 1 គីឡូម៉ែត្រ ហើយផ្លាស់ទីបន្តិចដោយចៃដន្យ ដើម្បីបង្ហាញចម្ងាយ។ អ្នកដទៃឃើញតែចម្ងាយ និងឈ្មោះតំបន់ប៉ុណ្ណោះ។",
     priv_lines_k: "ឃ្លា និងការជជែក៖",
@@ -524,6 +528,8 @@ export const PAGE_STRINGS = {
     priv_phone: "用来验证你并让你登录。别人永远看不到。",
     priv_social_k: "来自 Google、Facebook 或 TikTok：",
     priv_social: "我们只保存你的账号编号和邮箱。",
+    priv_apple_k: "来自 Apple（iPhone 应用）：",
+    priv_apple: "你的 Apple 账号编号、Apple 提供给我们的邮箱（可能是私密转发地址）、Apple 分享时的姓名，以及一个加密保存的令牌——只在你删除账号时用来解除与 Apple 的关联。",
     priv_loc_k: "位置：",
     priv_loc: "精确到约 1 公里，并随机偏移一点，用来显示距离。别人只能看到距离和区域名称。",
     priv_lines_k: "简短的话和聊天：",
@@ -726,6 +732,8 @@ export const PAGE_STRINGS = {
     priv_phone: "인증과 로그인을 위해서예요. 다른 사람은 볼 수 없어요.",
     priv_social_k: "Google·Facebook·TikTok에서:",
     priv_social: "계정 번호와 이메일만 보관해요.",
+    priv_apple_k: "Apple에서(iPhone 앱):",
+    priv_apple: "Apple 계정 번호, Apple이 알려 주는 이메일(비공개 전달 주소일 수 있어요), Apple이 알려 줄 때의 이름, 그리고 계정을 삭제할 때 Apple 연결을 끊는 데만 쓰는 잠긴 토큰을 보관해요.",
     priv_loc_k: "위치:",
     priv_loc: "약 1km 단위로 반올림하고 무작위로 조금 옮겨서, 거리를 보여 줄 때만 써요. 다른 사람은 거리와 지역 이름만 봐요.",
     priv_lines_k: "한마디와 채팅:",
@@ -928,6 +936,8 @@ export const PAGE_STRINGS = {
     priv_phone: "本人確認とログインのため。ほかの人には見えません。",
     priv_social_k: "Google・Facebook・TikTok から：",
     priv_social: "アカウント番号とメールアドレスだけを保存します。",
+    priv_apple_k: "Apple から（iPhone アプリ）：",
+    priv_apple: "Apple アカウント番号、Apple から届くメールアドレス（非公開のリレーアドレスの場合があります）、Apple が共有した場合はお名前、そしてアカウント削除時に Apple との連携を解除するためだけに使う、鍵をかけたトークンを保存します。",
     priv_loc_k: "位置：",
     priv_loc: "約1kmに丸め、さらに少しランダムにずらして、距離の表示に使います。ほかの人に見えるのは距離と地域名だけです。",
     priv_lines_k: "ひとこととチャット：",
@@ -1182,7 +1192,7 @@ const factLine = (t, k, rest = "") => `        <li><b>${t[`${k}_k`]}</b> ${t[k]}
 
 /** The privacy policy's "what we keep and why", one point each, in page order (each a `<key>_k` + `<key>` pair). */
 export const PRIVACY_DATA = Object.freeze([
-  "priv_profile", "priv_real", "priv_birth", "priv_phone", "priv_social", "priv_loc", "priv_lines", "priv_meet", "priv_safety",
+  "priv_profile", "priv_real", "priv_birth", "priv_phone", "priv_social", "priv_apple", "priv_loc", "priv_lines", "priv_meet", "priv_safety",
   "priv_support", "priv_pin",
 ]);
 /** "Who sees what": guests, members, our team (moderators may read conversations). */

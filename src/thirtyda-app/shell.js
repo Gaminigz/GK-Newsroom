@@ -3,6 +3,9 @@
 // (ThirtyDaShell.openAuth: iOS ASWebAuthenticationSession, Android Chrome Custom Tab). The server half, and why only
 // this web view can finish what its sheet started, is in src/lib/thirtyda-signin.mjs (POST /auth/app/begin, then the
 // app itself loads /30da/api/auth/app?… when the sheet is done). No UI of its own: create-profile.js uses it.
+// Sign in with Apple (owner 2026-10-14): the iPhone app only (ThirtyDaShell.signInWithApple, Apple's own sheet) —
+// GET /auth/apple/nonce, the sheet, POST /auth/apple (src/lib/thirtyda-apple.mjs), then the page loads where the server
+// says, exactly like the way back from Google.
 import { deviceIdOk } from './shared/visitor.js';
 
 /** 'ios' | 'android' inside the app — its user agent ends "30DA-iOS/<v>" | "30DA-Android/<v>", or Capacitor says so — else null. */
@@ -46,6 +49,88 @@ export async function shellSignIn(api, provider, to = null) {
   } catch {
     return 'failed';
   }
+}
+
+/**
+ * Sign in with Apple's plugin, or null. ONLY inside the 30+DA iPhone app (its user agent / Capacitor says iOS) and only
+ * when the app has the plugin method: never on the website, never on Android (Apple's sign-in is the iPhone app's own).
+ */
+export function shellApple() {
+  const plugin = window.Capacitor?.Plugins?.ThirtyDaShell;
+  return shellPlatform() === 'ios' && typeof plugin?.signInWithApple === 'function' ? plugin : null;
+}
+
+/** SHA-256 of `text` as 64 hex digits (Apple puts the hash of the server's nonce into the identity token). */
+export async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(text)));
+  return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** 16 random bytes as hex (the plugin's `state`, checked when it comes back). */
+function randomHex() {
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Load `next` (a /30da/ address the server gave) afresh, like the redirect at the end of a Google sign-in: the new session
+ * is read from the start. Only ever this site's /30da/; a hash-only change still reloads (replaceState, then reload).
+ */
+export function loadFresh(next) {
+  let url;
+  try { url = new URL(String(next || ''), location.href); } catch { url = null; }
+  if (!url || url.origin !== location.origin || !url.pathname.startsWith('/30da/')) url = new URL('/30da/', location.href);
+  if (url.pathname === location.pathname && url.search === location.search) {
+    try { history.replaceState(history.state, '', url.href); } catch { location.hash = url.hash; }
+    location.reload();
+  } else {
+    location.assign(url.href);
+  }
+}
+
+/**
+ * Sign in with Apple in the iPhone app: GET /auth/apple/nonce, the app's Apple sheet with sha256(nonce) (+ a state it
+ * checks), POST /auth/apple with what came back (the name only the first time), then the page loads where the server
+ * says (loadFresh) — signed in exactly like the way back from Google. → 'done' (loading the way back), 'cancelled'
+ * (closed: nothing changed), 'failed' (no plugin, the sheet or the token did not work) or 'left' (the server refused
+ * and the page went where the Google sign-in would have gone for that reason). A network error is thrown, like any api call.
+ */
+export async function shellAppleSignIn(api, to = null) {
+  const plugin = shellApple();
+  if (!plugin) return 'failed';
+  const { nonce } = await api.get('/auth/apple/nonce', { redirect: false });
+  if (typeof nonce !== 'string' || !nonce) return 'failed';
+  let hashed;
+  let state;
+  try {
+    hashed = await sha256Hex(nonce);
+    state = randomHex();
+  } catch {
+    return 'failed'; // no Web Crypto here
+  }
+  let out;
+  try {
+    out = await plugin.signInWithApple({ nonce: hashed, state });
+  } catch (err) {
+    return /cancel/i.test(String(err?.code ?? err?.message ?? err ?? '')) ? 'cancelled' : 'failed';
+  }
+  if (!out || out.cancelled) return 'cancelled';
+  if (typeof out.identityToken !== 'string' || !out.identityToken || (out.state != null && out.state !== state)) return 'failed';
+  const str = (v) => (typeof v === 'string' && v ? v : undefined);
+  let r;
+  try {
+    r = await api.post('/auth/apple', {
+      identityToken: out.identityToken, authorizationCode: str(out.authorizationCode), nonce,
+      givenName: str(out.givenName), familyName: str(out.familyName), email: str(out.email), ...(to ? { to } : {}),
+    }, { redirect: false });
+  } catch (err) {
+    if (typeof err?.data?.back === 'string' && err.data.back.startsWith('/30da/')) {
+      loadFresh(err.data.back);
+      return 'left';
+    }
+    throw err;
+  }
+  loadFresh(typeof r?.next === 'string' ? r.next : '/30da/');
+  return 'done';
 }
 
 /**

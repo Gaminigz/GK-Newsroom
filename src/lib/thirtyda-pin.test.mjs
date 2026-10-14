@@ -211,6 +211,8 @@ const SAMPLES = [
   ['GET', '/auth/telegram/status', 'signin'],
   ['POST', '/auth/app/begin', 'signin'], // the native apps: begin a sign-in for the app's sheet
   ['GET', '/auth/app', 'signin'], // …and claim it (the web callback's own lock rule)
+  ['GET', '/auth/apple/nonce', 'open'], // Sign in with Apple: a nonce for this web view (signs nobody in)
+  ['POST', '/auth/apple', 'signin'], // …the Apple token signs in (the web callback's own lock rule)
   ['POST', '/auth/review/check', 'open'], // App review: does this number use the review code (yes / no only)
   ['POST', '/auth/review/verify', 'signin'], // …the review code signs in like a code (as if signed out)
   ['POST', '/auth/review/pin', 'signin'], // …or "App review": the review account's PIN alone signs in (as if signed out)

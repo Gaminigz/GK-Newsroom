@@ -61,6 +61,7 @@ const SAMPLES = [
   // App review sign-in (src/lib/thirtyda-review.mjs): like the other sign-in routes, open before any profile agrees.
   ['POST', '/auth/review/check', true], ['POST', '/auth/review/verify', true], ['POST', '/auth/review/pin', true],
   ['POST', '/auth/app/begin', true], ['GET', '/auth/app', true], ['POST', '/auth/signout', true], ['POST', '/profile', true],
+  ['GET', '/auth/apple/nonce', true], ['POST', '/auth/apple', true], // Sign in with Apple: a sign-in route, like the rest
   ['GET', '/me', true], ['POST', '/me/lock', true], ['POST', '/me/pin/forgot', true], ['POST', '/guest/nearby', true],
   ['POST', '/guest/report', true], // a guest's report on a card (no profile: the gate is for profiles only)
   ['GET', `/photos/${'a'.repeat(32)}`, true],
@@ -83,6 +84,7 @@ const SAMPLES = [
 const NO_PROFILE = new Set(['GET /auth/methods', 'POST /auth/send-code', 'POST /auth/verify-code', 'POST /auth/verify-social',
   'POST /auth/review/check', 'POST /auth/review/verify', 'POST /auth/review/pin',
   'POST /auth/telegram/start', 'GET /auth/telegram/status', 'POST /auth/app/begin', 'GET /auth/app', 'POST /auth/signout',
+  'GET /auth/apple/nonce', 'POST /auth/apple',
   'POST /profile', 'GET /me', 'POST /me/lock', 'POST /me/pin/forgot', 'POST /guest/nearby', 'POST /guest/report',
   `GET /photos/${'a'.repeat(32)}`]);
 

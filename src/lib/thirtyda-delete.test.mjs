@@ -797,3 +797,85 @@ test('POST /me/delete on a demo account: the same checks and answer, THAT sessio
   assert.deepEqual(Object.keys(lines[0]).filter((k) => k !== '_id').sort(), ['action', 'at', 'userId'], 'ids only');
   assert.equal(d.docs(AUDIT).some((x) => x.action === 'account_deleted'), false);
 });
+
+// ---------------------------------------------------------------- Sign in with Apple: the token revoked (Apple 5.1.1(v))
+
+const A_APPLE = '001234.fakeann0a1b2c3d4e5f6.0800';
+const APPLE_BOX = { v: 1, alg: 'aes-256-gcm', iv: 'aXY=', tag: 'dGFn', data: 'U0VBTEVELUFQUExFLVRPS0VO' };
+
+/** Ann signed in with Apple too: her Apple id, her relay email, and Apple's refresh token (sealed: only with the admin's key). */
+async function appleWorld() {
+  const w = await world();
+  await w.d.collection(USERS).updateOne({ _id: A }, {
+    $set: {
+      'signin.apple': { id: A_APPLE, email: 'ann.fake@privaterelay.appleid.com', name: 'Ann Apple' }, 'verified.apple': true, appleRefresh: APPLE_BOX,
+    },
+  });
+  await w.d.collection(SESSIONS).insertOne({ _id: 's-pending-apple', userId: null, phone: null, signin: { apple: { id: A_APPLE } }, appleRefresh: APPLE_BOX });
+  return w;
+}
+
+test('deleteAccount: a Sign in with Apple token is revoked at Apple (her Apple id + the sealed token), and the result says so', async () => {
+  const { d, photos } = await appleWorld();
+  const asked = [];
+  const r = await deleteAccount(d, A, {
+    now: Date.parse('2026-10-14T10:00:00Z'), deletePhoto: photos.deletePhoto, revokeApple: async (db, apple) => { asked.push(apple); return 'revoked'; },
+  });
+  assert.equal(r.apple, 'revoked');
+  assert.deepEqual(asked, [{ sub: A_APPLE, box: APPLE_BOX }], 'revoked once, with her Apple id and her sealed token');
+  const raw = JSON.stringify(d.dump());
+  for (const x of [A_APPLE, 'privaterelay', 'Ann Apple', APPLE_BOX.data]) assert.equal(raw.includes(x), false, `no ${x} left anywhere`);
+  assert.equal(d.docs(SESSIONS).some((s) => s._id === 's-pending-apple'), false, 'her pending Apple sign-in went too');
+  assert.deepEqual(traces(d), []);
+  // A profile without an Apple token: nothing asked, nothing said (the result is as before).
+  const plain = await world();
+  const none = [];
+  const r2 = await deleteAccount(plain.d, A, { deletePhoto: plain.photos.deletePhoto, revokeApple: async (db, a) => { none.push(a); return 'revoked'; } });
+  assert.deepEqual(none, []);
+  assert.equal('apple' in r2, false);
+});
+
+test('deleteAccount: the Apple revoke is best effort — Apple refusing, throwing or no key never stops the delete', async () => {
+  for (const revokeApple of [async () => 'failed', async () => { throw new Error('Apple is down'); }, async () => 'no_key']) {
+    const { d, photos } = await appleWorld();
+    const r = await deleteAccount(d, A, { deletePhoto: photos.deletePhoto, revokeApple });
+    assert.equal(r.ok, true);
+    assert.ok(['failed', 'no_key'].includes(r.apple), r.apple);
+    assert.equal(d.docs(USERS).some((u) => u._id === A), false, 'the profile is gone all the same');
+    assert.deepEqual(traces(d), []);
+  }
+});
+
+test('a crash half way: the sealed Apple token waits in `deleting.apple` (off the profile), and the finishing run revokes it', async () => {
+  const { d, photos } = await appleWorld();
+  let crash = true;
+  const boom = async (id) => {
+    if (crash) throw new Error('the server went down');
+    return photos.deletePhoto(id);
+  };
+  const asked = [];
+  const revokeApple = async (db, apple) => { asked.push(apple); return 'revoked'; };
+  const t0 = Date.parse('2026-10-14T10:00:00Z');
+  await assert.rejects(deleteAccount(d, A, { now: t0, deletePhoto: boom, revokeApple }), /went down/);
+  const half = d.docs(USERS).find((u) => u._id === A);
+  assert.equal(half.appleRefresh, undefined, 'no token on the half-deleted profile');
+  assert.equal(half.signin, undefined, 'no Apple link: a sign-in with Apple cannot find it');
+  assert.deepEqual(half.deleting.apple, { sub: A_APPLE, box: APPLE_BOX });
+  assert.equal(await d.collection(USERS).findOne({ 'signin.apple.id': A_APPLE }), null);
+  crash = false;
+  const r = await deleteAccount(d, A, { now: t0 + RESUME_AFTER_MS + 1, deletePhoto: photos.deletePhoto, revokeApple });
+  assert.equal(r.apple, 'revoked');
+  assert.equal(asked.length, 2, 'asked again by the finishing run (Apple takes a second revoke of the same token)');
+  assert.equal(d.docs(USERS).some((u) => u._id === A), false);
+  assert.equal(JSON.stringify(d.dump()).includes(APPLE_BOX.data), false);
+});
+
+test('POST /me/delete: the answer says the Apple token was revoked (only for a profile that had one)', async () => {
+  const { d, photos } = await appleWorld();
+  const calls = [];
+  const c = await d.collection(USERS).findOne({ _id: C });
+  assert.deepEqual(await deleteMe(routeCtx(d, c), { ...deps(calls, photos), revokeApple: async () => 'revoked' }), { ok: true, deleted: true });
+  const me = await d.collection(USERS).findOne({ _id: A });
+  const out = await deleteMe(routeCtx(d, me, { pin: '2580' }), { ...deps(calls, photos), revokeApple: async () => 'revoked' });
+  assert.deepEqual(out, { ok: true, deleted: true, appleRevoke: 'revoked' });
+});

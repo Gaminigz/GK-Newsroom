@@ -13,6 +13,9 @@
  *
  * What goes, at once (deleteAccount — the order matters, see there):
  *   the profile (thirtyda_users), every photo (thirtyda-photos.mjs: GridFS bucket thirtyda_photos or the local files),
+ *   its Sign in with Apple: the sealed refresh token (users.appleRefresh, only with the admin's Apple key) is REVOKED at
+ *   Apple while the rest goes (Apple 5.1.1(v); src/lib/thirtyda-apple.mjs revokeAppleFor) — best effort, 5 s, never in the
+ *   way of the delete; the result says how it went (deleteAccount → apple: 'revoked' | 'failed' | 'no_key' | 'unreadable'),
  *   every session (thirtyda_user_sessions; also a pending sign-in that carries its verified number or its Google /
  *   Facebook / TikTok account), the sign-in links + phone + phoneUnverified + phoneVia + the PIN (with the profile),
  *   codes for its verified number (thirtyda_otps), Telegram bot checks and links for it (thirtyda_tg_checks,
@@ -43,7 +46,8 @@
  */
 
 import { deletePhoto as deleteStoredPhoto, isPhotoId } from "./thirtyda-photos.mjs";
-import { SIGNIN_PROVIDERS, APP_TICKETS, SIGNIN_STATES } from "./thirtyda-signin.mjs";
+import { ACCOUNT_PROVIDERS, APP_TICKETS, SIGNIN_STATES } from "./thirtyda-signin.mjs";
+import { APPLE_NONCES, appleRevokeOf, revokeAppleFor } from "./thirtyda-apple.mjs";
 import { TG_CHECKS, TG_LINKS, windowLimiter } from "./thirtyda-telegram-bot.mjs";
 import { SUPPORT, SUPPORT_CHATS } from "./thirtyda-support.mjs";
 import { SIGNUP_LIMITS, SIGNUP_DEVICES, neverVerifiedFilter, verifyByFrom } from "./thirtyda-verify.mjs";
@@ -82,6 +86,7 @@ export const COVERAGE = {
   [SUPPORT_CHATS]: "the link to the profile: dropped (the Telegram thread stays for the team)",
   [BLOCKS]: "every block by it or of it: deleted (nobody is left to hide from; its flags keep the minimal record)",
   [SIGNIN_STATES]: null, // a 10-minute state carries no profile; a 'to: me' one that comes back later is a plain new sign-in
+  [APPLE_NONCES]: null, // Sign in with Apple's 10-minute nonces: two hashes, no profile
   [SIGNUP_LIMITS]: null, // per address and day (hashed), no profile
   [SIGNUP_DEVICES]: null, // per phone (a one-way hash of its id), no link to any profile; gone after 30 days
   thirtyda_review_devices: null, // App review phones (a one-way hash of the id), no link to any profile; gone when review sign-in goes OFF
@@ -93,7 +98,7 @@ export const COVERAGE = {
 };
 
 /** Names that look like collections but are cookies / browser storage keys. */
-export const NOT_COLLECTIONS = ["thirtyda_s", "thirtyda_oauth", "thirtyda_app", "thirtyda_tg", "thirtyda_admin", "thirtyda_lang", "thirtyda_km", "thirtyda_show"];
+export const NOT_COLLECTIONS = ["thirtyda_s", "thirtyda_oauth", "thirtyda_app", "thirtyda_apple", "thirtyda_tg", "thirtyda_admin", "thirtyda_lang", "thirtyda_km", "thirtyda_show"];
 
 export const DELETE_PER_IP = 20; // per address per 15 minutes (loose: many phones behind one NAT address)
 export const DELETE_PER_PROFILE = 10; // per profile per 15 minutes (each wrong PIN counts as a lock-screen try anyway)
@@ -116,7 +121,7 @@ const uniq = (list) => [...new Set(list.filter(Boolean))];
 export function handlesOf(user) {
   const was = user?.deleting ?? {};
   const signins = [...(Array.isArray(was.signins) ? was.signins : [])];
-  for (const provider of SIGNIN_PROVIDERS) {
+  for (const provider of ACCOUNT_PROVIDERS) {
     const id = user?.signin?.[provider]?.id;
     if (id) signins.push({ provider, id: String(id) });
   }
@@ -125,7 +130,7 @@ export function handlesOf(user) {
     phones: uniq([...(Array.isArray(was.phones) ? was.phones : []), user?.phone].map((p) => (p ? String(p) : null))),
     signins: signins.filter((s) => {
       const key = `${s?.provider}:${s?.id}`;
-      if (!SIGNIN_PROVIDERS.includes(s?.provider) || !s.id || seen.has(key)) return false;
+      if (!ACCOUNT_PROVIDERS.includes(s?.provider) || !s.id || seen.has(key)) return false;
       seen.add(key);
       return true;
     }).map(({ provider, id }) => ({ provider, id: String(id) })),
@@ -138,20 +143,24 @@ export const mergeHandles = (a, b) => handlesOf({ deleting: { phones: [...a.phon
 
 /**
  * The first write (one atomic update): the profile is marked `deleting` with every handle written down, and stripped
- * of every way in — no phone, no Google / Facebook / TikTok link, no PIN — so from here on no sign-in can find it. It is
- * also hidden at once (blocked, no location): nobody sees it on Nearby or its profile, and its conversations are frozen
- * until they are ended a moment later. A session it still has meets only "blocked" (no use of a half-deleted account).
+ * of every way in — no phone, no Google / Facebook / TikTok / Apple link, no PIN — so from here on no sign-in can find it.
+ * It is also hidden at once (blocked, no location): nobody sees it on Nearby or its profile, and its conversations are
+ * frozen until they are ended a moment later. A session it still has meets only "blocked" (no use of a half-deleted
+ * account). Its Sign in with Apple token (sealed) moves into `deleting.apple` with its Apple id, so a delete that stops
+ * half way can still revoke it; it goes with the profile.
  */
 export function claimUpdate(user, handles, at) {
+  const apple = appleRevokeOf(user);
   return {
     $set: {
-      deleting: { at: user?.deleting?.at ?? at, ...handles },
+      deleting: { at: user?.deleting?.at ?? at, ...handles, ...(apple ? { apple } : {}) },
       blocked: true,
       location: null,
-      verified: { phone: false, gmail: false, facebook: false, tiktok: false },
+      verified: { phone: false, gmail: false, facebook: false, tiktok: false, apple: false },
     },
     $unset: {
       phone: "", phoneUnverified: "", phoneVia: "", signin: "", pinHash: "", pinAt: "", pinTries: "", locOffset: "", locMoves: "", locAt: "",
+      appleRefresh: "",
     },
   };
 }
@@ -305,15 +314,20 @@ async function cleanUp(d, userId, h, at, { deletePhoto, ownSessions }) {
  *   2. everything else (cleanUp): pending sign-ins, codes, Telegram, tickets, conversations, sets, chat lines, flags,
  *      support, photos — but not the profile's own sessions yet: if this stops half way, the person's own retry (the
  *      route skips the PIN once `deleting` is set) finishes it; so does finishDeletesInBackground within ~2 minutes;
+ *      meanwhile its Sign in with Apple token is revoked at Apple (revokeApple, best effort: an error or a slow Apple
+ *      never stops the delete — at most REVOKE_TIMEOUT_MS, 5 s);
  *   3. the audit line (once: an upsert);
  *   4. its own sessions (the person is signed out), then the profile itself;
  *   5. cleanUp again, with anything a request already in flight added meanwhile (a session, a number, a photo, a line).
- * → { ok, already } (already: there was no such profile — done before, or never there).
+ * → { ok, already, done, apple? } (already: there was no such profile — done before, or never there; apple: how the Apple
+ * revoke went — 'revoked' | 'failed' | 'no_key' | 'unreadable' — only when the profile had a Sign in with Apple token).
  * onlyIf: the claim (step 1) happens only while the profile still matches it — the 48-hour sweep's "still never
  * verified", so a person who verifies at that very moment keeps the profile (→ { ok: false, skipped: true }, nothing
  * changed). action: the audit line's action ('account_deleted'; the sweep's 'unverified_expired').
  */
-export async function deleteAccount(d, userId, { now = Date.now(), deletePhoto = deleteStoredPhoto, onlyIf = null, action = "account_deleted" } = {}) {
+export async function deleteAccount(d, userId, {
+  now = Date.now(), deletePhoto = deleteStoredPhoto, onlyIf = null, action = "account_deleted", revokeApple = revokeAppleFor,
+} = {}) {
   const at = new Date(now).toISOString();
   const users = d.collection(USERS);
   const user = await users.findOne({ _id: userId });
@@ -332,7 +346,11 @@ export async function deleteAccount(d, userId, { now = Date.now(), deletePhoto =
   }
   const claimed = await users.updateOne({ _id: userId, ...(onlyIf || {}) }, claimUpdate(user, handles, new Date(now)));
   if (onlyIf && !claimed?.matchedCount) return { ok: false, skipped: true };
+  // Sign in with Apple (5.1.1(v)): its token revoked at Apple while the rest is cleaned up — never in the delete's way.
+  const apple = appleRevokeOf(user);
+  const revoking = apple ? Promise.resolve().then(() => revokeApple(d, apple)).catch(() => "failed") : null;
   const done = await cleanUp(d, userId, handles, at, { deletePhoto, ownSessions: false });
+  const appleResult = revoking ? await revoking : null;
   await d.collection(AUDIT).updateOne(
     { action, userId }, { $setOnInsert: { at: new Date(now) } }, { upsert: true },
   );
@@ -343,7 +361,7 @@ export async function deleteAccount(d, userId, { now = Date.now(), deletePhoto =
   const last = await users.findOneAndDelete({ _id: userId });
   const after = await cleanUp(d, userId, last ? mergeHandles(handles, handlesOf(last)) : handles, at, { deletePhoto, ownSessions: true });
   done.sessions += after.sessions;
-  return { ok: true, already: false, done };
+  return { ok: true, already: false, done, ...(appleResult ? { apple: appleResult } : {}) };
 }
 
 /**
@@ -464,7 +482,7 @@ const limits = windowLimiter(15 * 60e3);
  * router: fail(status, code, message, extra) makes its API errors, checkPinTry(ctx, pin) is the lock screen's own PIN
  * check (no try limit; 429 only for scripts), signedOutCookie(req) the cleared session cookie.
  */
-export async function deleteMe(ctx, { fail, checkPinTry, signedOutCookie, deletePhoto = deleteStoredPhoto, now = Date.now(), demo = false }) {
+export async function deleteMe(ctx, { fail, checkPinTry, signedOutCookie, deletePhoto = deleteStoredPhoto, now = Date.now(), demo = false, revokeApple = null }) {
   const { d, req, me, body } = ctx;
   if (!req.headers.origin) throw fail(403, "bad_origin", "Requests must come from the 30+DA app.");
   if (limits.over(`ip:${clientIp(req)}`, DELETE_PER_IP, now) || limits.over(`user:${me._id}`, DELETE_PER_PROFILE, now)) {
@@ -483,10 +501,11 @@ export async function deleteMe(ctx, { fail, checkPinTry, signedOutCookie, delete
   await resumeDeletions(d, { now, deletePhoto }).catch((err) => {
     console.error("[30da delete] resume:", err instanceof Error ? err.message : err);
   });
-  await deleteAccount(d, me._id, { now, deletePhoto });
+  const r = await deleteAccount(d, me._id, { now, deletePhoto, ...(revokeApple ? { revokeApple } : {}) });
   ctx.session = null;
   ctx.headers["Set-Cookie"] = signedOutCookie(req);
-  return { ok: true, deleted: true };
+  // Sign in with Apple: whether its token was revoked at Apple too (only for a profile that had one).
+  return { ok: true, deleted: true, ...(r?.apple ? { appleRevoke: r.apple } : {}) };
 }
 
 /**

@@ -1,7 +1,8 @@
 // "Verify to chat" (owner 2026-10-13). A profile can be made without verifying (Create profile → Nearby at once);
 // talking to someone needs one verified way. When the server answers a call 403 verify_needed (src/lib/thirtyda-verify.mjs),
 // core.js asks this module: a small sheet opens with the same 5 round buttons as Create profile (TikTok · Telegram ·
-// Google · Facebook · WhatsApp) and the number box (phoneVerifier from create-profile.js). A good verify ATTACHES to
+// Google · Facebook · WhatsApp; inside the iPhone app Sign in with Apple first) and the number box (phoneVerifier from
+// create-profile.js). A good verify ATTACHES to
 // this profile; then the sheet closes and the same call goes again, so the person carries on where they were. A
 // number or account that already has another profile is said plainly in the sheet (never a switch, never a merge).
 // Google / Facebook / TikTok leave the page: the route is kept in this tab and #/verified brings the person back.
@@ -16,7 +17,7 @@ import { leaveWithoutLock } from '../lock.js';
 const RETURN_KEY = '30da_vc_return'; // where the person was when they left for Google / Facebook / TikTok
 const RETURN_MS = 15 * 60e3;
 const NOT_BACK_TO = new Set(['/verified', '/create', '/opening', '/pin', '/blocked']);
-const SIGNIN_NAMES = { google: 'Google', facebook: 'Facebook', tiktok: 'TikTok' };
+const SIGNIN_NAMES = { google: 'Google', facebook: 'Facebook', tiktok: 'TikTok', apple: 'Apple' };
 const BACK_ERRORS = ['cancelled', 'expired', 'unavailable', 'failed', 'too_many', 'in_use', 'review'];
 const ERROR_ICON = { cancelled: 'question', expired: 'clock', too_many: 'clock', unavailable: 'refresh', failed: 'refresh', in_use: 'flag', review: 'flag' };
 
@@ -93,7 +94,10 @@ export function verifyChatSheet({ notice = null } = {}) {
   verifier = phoneVerifier(kept.model, {
     onVerified: (r) => verified(r?.user),
     signin: {
-      verified: () => ({ gmail: Boolean(state.me?.verified?.gmail), facebook: Boolean(state.me?.verified?.facebook), tiktok: Boolean(state.me?.verified?.tiktok) }),
+      verified: () => ({
+        gmail: Boolean(state.me?.verified?.gmail), facebook: Boolean(state.me?.verified?.facebook), tiktok: Boolean(state.me?.verified?.tiktok),
+        apple: Boolean(state.me?.verified?.apple),
+      }),
       onVerified: () => verified(null), // test mode's instant sign-in: already on this profile
       beforeLeave: () => { keepReturn(); leaveWithoutLock(); }, // the trip to Google / Facebook / TikTok
     },
@@ -123,7 +127,7 @@ bus.addEventListener('unlocked', () => {
   if (!reopen) return;
   reopen = false;
   const me = state.me;
-  if (me && !me.blocked && !['phone', 'gmail', 'facebook', 'tiktok'].some((k) => me.verified?.[k])) verifyChatSheet();
+  if (me && !me.blocked && !canChat(me)) verifyChatSheet();
 });
 
 // ---------------------------------------------------------------- "Verify within 48 hours to keep your profile"

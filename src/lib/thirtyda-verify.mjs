@@ -146,8 +146,8 @@ export function verifyByOf(user) {
 }
 
 /**
- * The Mongo filter for a profile that never verified: no verified way, no verified number, no Google / Facebook / TikTok
- * account kept, made since profiles carry createdAt (every unverified one does). Belt and braces: an older profile that
+ * The Mongo filter for a profile that never verified: no verified way, no verified number, no Google / Facebook / TikTok /
+ * Apple account kept, made since profiles carry createdAt (every unverified one does). Belt and braces: an older profile that
  * proved a number before `verified` was kept never matches.
  */
 export const neverVerifiedFilter = () => ({
@@ -194,7 +194,8 @@ export function withPhoneVia(update = {}, via = null) {
   return out;
 }
 
-/** The sign-ins ON a profile (an account id is kept for it), as booleans — never the ids. */
+/** The sign-ins ON a profile (an account id is kept for it), as booleans — never the ids. Apple (iPhone app only) once it is there. */
 export const signinsOf = (u) => ({
   google: Boolean(u?.signin?.google?.id), facebook: Boolean(u?.signin?.facebook?.id), tiktok: Boolean(u?.signin?.tiktok?.id),
+  ...(u?.signin?.apple?.id ? { apple: true } : {}),
 });

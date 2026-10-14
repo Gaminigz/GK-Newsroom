@@ -51,7 +51,7 @@ function slotsOf(me) {
   };
 }
 
-const SIGNIN_NAMES = { google: 'Google', facebook: 'Facebook', tiktok: 'TikTok' };
+const SIGNIN_NAMES = { google: 'Google', facebook: 'Facebook', tiktok: 'TikTok', apple: 'Apple' };
 const BACK_ERRORS = ['cancelled', 'expired', 'unavailable', 'failed', 'too_many', 'in_use', 'review'];
 const BACK_ICON = { cancelled: 'question', expired: 'clock', too_many: 'clock', unavailable: 'refresh', failed: 'refresh', in_use: 'flag', review: 'flag' };
 
@@ -412,6 +412,7 @@ screen('/me', async ({ root, query }) => {
         to: 'me',
         verified: () => ({
           gmail: Boolean(v.gmail || ins.google), facebook: Boolean(v.facebook || ins.facebook), tiktok: Boolean(v.tiktok || ins.tiktok),
+          apple: Boolean(v.apple || ins.apple), // Sign in with Apple (its button only inside the iPhone app)
         }),
         // Test mode's instant sign-in: already on this profile — a fresh copy, drawn again.
         onVerified: async () => {
