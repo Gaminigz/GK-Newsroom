@@ -5,6 +5,7 @@
 // routes' sign-in / Origin gates. In-memory Mongo stand-in: no database, no network, no real key.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync as readSource } from 'node:fs';
 import crypto from 'node:crypto';
 
 process.env.THIRTYDA_SECRET_KEY ||= crypto.randomBytes(32).toString('hex');
@@ -216,6 +217,32 @@ test('switch: off until the admin turns it on; read from the database every time
   assert.equal((await reviewSwitch(d)).on, true);
   assert.equal((await setReviewSwitch(d, 'yes')).on, false, 'only a real true turns it on');
   assert.equal(d.docs(SETTINGS_COLLECTION).find((x) => x._id === REVIEW_SWITCH).on, false);
+});
+
+test('switch OFF ends every review sign-in session (code or PIN-only); ON ends none; other sessions stay', async () => {
+  const d = await world();
+  const sessions = d.collection('thirtyda_user_sessions');
+  await sessions.insertOne({ _id: 'S-review', userId: 'U-10001', reviewSignin: true });
+  await sessions.insertOne({ _id: 'S-real', userId: 'U-10003' });
+  assert.equal((await setReviewSwitch(d, true)).sessionsEnded, 0);
+  assert.equal(d.docs('thirtyda_user_sessions').length, 2);
+  assert.equal((await setReviewSwitch(d, false)).sessionsEnded, 1);
+  assert.deepEqual(d.docs('thirtyda_user_sessions').map((x) => x._id), ['S-real']);
+});
+
+test('the App review link sits under "Set your PIN" only, never on a signed-in profile\'s lock screen', () => {
+  const lockJs = readSource(new URL('../thirtyda-app/lock.js', import.meta.url), 'utf8');
+  const enter = lockJs.slice(lockJs.indexOf('function enterBody('), lockJs.indexOf('function reviewShown('));
+  assert.ok(enter.length > 0 && !enter.includes('reviewLink()'), 'not on the lock');
+  assert.match(readSource(new URL('../thirtyda-app/screens/pin.js', import.meta.url), 'utf8'), /reviewLink\(\)/);
+});
+
+test('a signed-in review account keeps its PIN, profile and photos and is not deleted from the app (409 review_account)', () => {
+  const app = readSource(new URL('./thirtyda-app.mjs', import.meta.url), 'utf8');
+  const body = (name) => app.slice(app.indexOf(`async function ${name}(`), app.indexOf('\n}\n', app.indexOf(`async function ${name}(`)));
+  for (const f of ['patchMe', 'addPhoto', 'putPhoto', 'removePhoto', 'setPin']) assert.match(body(f), /isReview\((ctx\.)?me\)[^\n]*throw reviewKept\(\)/, f);
+  assert.match(app, /\/\^\\\/me\\\/delete\$\/, \(ctx\) => isReview\(ctx\.me\) \? Promise\.reject\(reviewKept\(\)\)/);
+  assert.match(body('reviewPin'), /ctx\.lockedSession\?\.userId/, 'a locked real profile is never swapped for a demo one');
 });
 
 test('code: 6 digits, kept sealed (never in plain in the database), a new one replaces it and its wrong-try count', async () => {
@@ -564,9 +591,9 @@ test('page: review accounts with number + PIN + their conversations, and the not
   ]);
   assert.deepEqual(v.accounts[0].talks, [{ pairId: 'P-1', with: 'U-10002', withName: 'Sophea', stage: 'l3_open', level: 3 }], 'only the talk with the other review account');
   for (const want of ['Dara', '+855 10 000 1122', 'PIN 1122', 'Sophea', '+855 10 000 3344', 'PIN 3344', `Review code (for every demo account): ${code}`,
-    'Sign in (no phone number, no code):', '1. Open the app and pick a language.',
-    '2. On the PIN screen ("Set your PIN") tap "App review" at the bottom.', '3. Type 1122 for Dara or 3344 for Sophea.',
-    '4. You are signed in: Nearby shows the other demo account, and your conversation with it is open (Level 3 chat).',
+    'Sign in (no phone number, no code):', '1. Open the app and pick a language.', '2. Read the community rules and tap "I agree".',
+    '3. On the PIN screen ("Set your PIN") tap "App review" at the bottom.', '4. Type 1122 for Dara or 3344 for Sophea.',
+    '5. You are signed in: Nearby shows the other demo account, and your conversation with it is open (Level 3 chat).',
     'unlock it with the same PIN (1122 / 3344)', 'Second way (not needed)', 'tap Telegram', 'enter the review code',
     'The demo accounts stay in Phnom Penh, Cambodia: allowing location on your device does not move them.']) {
     assert.ok(v.notes.includes(want), want);

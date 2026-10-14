@@ -14,6 +14,7 @@ import {
   activity, checkNewPin, pinDigits, PIN_LENGTH, PIN_TRIES, IDLE_COVER_MS, LOCK_IDLE_MS, INPUT_AGE_HEADER, inputAge,
 } from './core.js';
 import { onAppReturn } from './shell.js';
+import { termsBody } from './terms.js';
 
 // ---------------------------------------------------------------- what waits on this phone
 
@@ -371,14 +372,15 @@ function enterBody() {
   return pinFrame(el('div', { class: 'pin-body' },
     el('h1', { class: 'pin-title', id: 'pin-title' }, t('pin_enter_title')),
     el('p', { class: 'pin-text' }, t('pin_enter_text')),
-    pad.node, err.node), [forgot, reviewLink()]);
+    pad.node, err.node), forgot);
 }
 
 // ---------------------------------------------------------------- "App review" (owner 2026-10-14)
 
-// Store reviewers sign in with the demo account's PIN ONLY ("it's just 1122 3344"): a quiet "App review" link under
-// the PIN screens a visitor sees first (#/pin and the lock), shown ONLY while GET /auth/methods says review:true (the
-// admin's "Review sign-in" switch). Never a global PIN match: the server compares review accounts' PINs only
+// Store reviewers sign in with the demo account's PIN ONLY: a quiet "App review" link under "Set your PIN" (#/pin, which
+// app.js shows only while there is no profile; never on the lock of a signed-in profile, where it would swap a real
+// person's profile for a demo one), shown ONLY while GET /auth/methods says review:true (the admin's "Review sign-in"
+// switch). Never a global PIN match: the server compares review accounts' PINs only
 // (POST /auth/review/pin, src/lib/thirtyda-review.mjs), so a real person's own 1122 never lands in a demo account.
 let reviewOn = null; // { at, value } — GET /auth/methods, kept a minute
 async function reviewShown() {
@@ -416,7 +418,7 @@ function reviewSheet() {
     pad.setBusy(true);
     err.show('');
     try {
-      const r = await api.post('/auth/review/pin', { pin }, { redirect: false });
+      const r = await api.post('/auth/review/pin', { pin, ...termsBody() }, { redirect: false });
       clearPinFlags(); // the demo account keeps its own PIN: nothing waits on this phone any more
       sheet.close();
       if (lock.covered) opened(r);

@@ -1300,6 +1300,12 @@ async function signInWithPhone(ctx, phone, { newPin = null, newPinHash = null, v
 const phoneInUse = () => fail(409, "phone_in_use", "This phone number already has a profile.");
 /** A signed-in App review account adds / changes no way in (number, Google, Facebook, TikTok): the admin sets its number. */
 const reviewFixed = () => fail(409, "review_account", "This is a demo account: its number and sign-ins cannot be changed.");
+/**
+ * A signed-in App review account also keeps its PIN, profile and photos and is never deleted from the app (PATCH /me
+ * except a language-only change, POST /me/pin, the /me/photos routes, POST /me/delete): its PIN is in the review
+ * notes, so whoever signs in with it must not lock the store reviewers out. Only the admin changes or deletes it.
+ */
+const reviewKept = () => fail(409, "review_account", "This is a demo account: it cannot be changed or deleted.");
 
 // ---------------------------------------------------------------- App review sign-in (owner 2026-10-14, src/lib/thirtyda-review.mjs)
 
@@ -1389,6 +1395,12 @@ async function reviewPin(ctx) {
   const { d, body, req, me } = ctx;
   if (!(await reviewSwitch(d).catch(() => ({ on: false }))).on) throw fail(404, "not_found", "No such endpoint.");
   if (me) throw fail(409, "signed_in", "This phone is signed in. Sign out first.");
+  // A LOCKED real profile on this phone (applyLock cleared ctx.me for this sign-in route) is never swapped for a demo
+  // account: the right way back in is that profile's own PIN.
+  const lockedId = ctx.lockedSession?.userId;
+  if (lockedId && !isReview(await d.collection(C.users).findOne({ _id: lockedId }))) {
+    throw fail(409, "signed_in", "This phone is signed in. Sign out first.");
+  }
   const now = Date.now();
   const ip = clientIp(req);
   const guesses = inWindowFor(ipGuesses, ip, now);
@@ -1409,6 +1421,9 @@ async function reviewPin(ctx) {
   }
   const k = guesses.indexOf(now); // a right PIN does not count
   if (k >= 0) guesses.splice(k, 1);
+  // The "I agree" made on this phone before the sign-in (like signInWithPhone): straight to Nearby, not #/rules.
+  const agreement = readAgreement(body.terms);
+  if (agreement) user = { ...user, terms: await saveTerms(d.collection(C.users), user, agreement) };
   await startSession(ctx, {
     userId: user._id, phone: user.phone, phoneVerified: true, phoneVia: null, reviewSignin: true,
     verified: { gmail: false, facebook: false, tiktok: false },
@@ -2027,6 +2042,7 @@ async function getMe(ctx) {
 
 async function patchMe(ctx) {
   const { d, body, me } = ctx;
+  if (isReview(me) && Object.keys(body ?? {}).some((k) => k !== "lang")) throw reviewKept();
   const set = {};
   // A bad word in either name is recorded for the admin (a `stopped` flag) before the 422.
   if (body.name !== undefined) set.name = await nameOrStop(ctx, "name", body.name, checkName);
@@ -2112,6 +2128,7 @@ export function trimPhotoSlots(users, id) {
  */
 async function addPhoto(ctx) {
   const { d, body } = ctx;
+  if (isReview(ctx.me)) throw reviewKept();
   const users = d.collection(C.users);
   let me = await syncLevel(d, ctx.me);
   await ensurePhotoArray(users, me);
@@ -2139,6 +2156,7 @@ async function addPhoto(ctx) {
  */
 async function putPhoto(ctx) {
   const { d, body, params } = ctx;
+  if (isReview(ctx.me)) throw reviewKept();
   const users = d.collection(C.users);
   const me = await syncLevel(d, ctx.me);
   await ensurePhotoArray(users, me);
@@ -2167,6 +2185,7 @@ async function putPhoto(ctx) {
  */
 async function removePhoto(ctx) {
   const { d, me, params } = ctx;
+  if (isReview(me)) throw reviewKept();
   const users = d.collection(C.users);
   const index = Number(params[0]);
   const photos = slotsOf(me);
@@ -3299,6 +3318,7 @@ async function setPin(ctx) {
     if (plan.refuse.code === "locked") throw lockedError(me);
     throw fail(plan.refuse.status, plan.refuse.code, "Type your old PIN first.", { field: "old" });
   }
+  if (isReview(me)) throw reviewKept(); // its PIN is in the review notes: only the admin changes it
   if (plan.kind === "old") {
     const old = pinDigits(body.old);
     if (old.length !== PIN_LENGTH) throw invalid("Type your old 4-digit PIN.", { field: "old" });
@@ -3401,7 +3421,7 @@ const ROUTES = [
   ["POST", /^\/me\/pin\/forgot$/, forgotPin, { auth: "none", blockedOk: true }],
   // "Delete my account" (src/lib/thirtyda-delete.mjs): unlocked only (not a whileLocked route), the PIN checked like the
   // lock screen's; blockedOk only so a delete that stopped half way can finish (a blocked profile is refused there).
-  ["POST", /^\/me\/delete$/, (ctx) => deleteMe(ctx, { fail, checkPinTry, signedOutCookie: (req) => cookieFor(req, "", 0) }), { blockedOk: true }],
+  ["POST", /^\/me\/delete$/, (ctx) => isReview(ctx.me) ? Promise.reject(reviewKept()) : deleteMe(ctx, { fail, checkPinTry, signedOutCookie: (req) => cookieFor(req, "", 0) }), { blockedOk: true }],
   ["POST", /^\/notices\/([\w-]{1,64})\/seen$/, noticeSeen],
   // auth "none": a guest (no profile yet) sees photo 1 only, as on the cards of POST /guest/nearby.
   ["GET", /^\/photos\/([a-f0-9]{32})$/, getPhoto, { auth: "none" }],

@@ -120,7 +120,7 @@ export function profileRow(u) {
 
 /** "1122 / 3344": the review accounts' PINs. */
 const pinList = (accounts) => accounts.map((a) => a.pin).filter(Boolean).join(" / ") || "shown above";
-/** "1122 for Dara or 3344 for Sophea" (step 3 of the notes). */
+/** "<PIN> for Dara or <PIN> for Sophea" (step 4 of the notes). */
 const pinFor = (accounts) => accounts.filter((a) => a.pin).map((a) => `${a.pin} for ${a.name}`).join(" or ") || "the demo account's PIN shown above";
 
 /**
@@ -133,9 +133,10 @@ export function reviewNotes({ accounts, code }) {
   lines.push(
     "Sign in (no phone number, no code):",
     "1. Open the app and pick a language.",
-    "2. On the PIN screen (\"Set your PIN\") tap \"App review\" at the bottom.",
-    `3. Type ${pinFor(accounts)}.`,
-    "4. You are signed in: Nearby shows the other demo account, and your conversation with it is open (Level 3 chat). To report a message, tap it in the chat.",
+    "2. Read the community rules and tap \"I agree\".",
+    "3. On the PIN screen (\"Set your PIN\") tap \"App review\" at the bottom.",
+    `4. Type ${pinFor(accounts)}.`,
+    "5. You are signed in: Nearby shows the other demo account, and your conversation with it is open (Level 3 chat). To report a message, tap it in the chat.",
     `When the app locks itself (30 seconds without a touch), unlock it with the same PIN (${pinList(accounts)}).`,
     "",
   );
@@ -164,11 +165,17 @@ export async function reviewSwitch(d) {
   return { on: doc?.on === true, updatedAt: iso(doc?.updatedAt) };
 }
 
+/**
+ * Turning it OFF also ends every session a review sign-in started (reviewSignin: the code or the PIN-only way), so
+ * nobody who signed in as a demo account during the review window stays in it afterwards. → { on, updatedAt,
+ * sessionsEnded }.
+ */
 export async function setReviewSwitch(d, on, { by = "superadmin" } = {}) {
   await d.collection(SETTINGS_COLLECTION).updateOne(
     { _id: REVIEW_SWITCH }, { $set: { on: on === true, updatedAt: new Date(), updatedBy: by } }, { upsert: true },
   );
-  return reviewSwitch(d);
+  const ended = on === true ? null : await d.collection(SESSIONS).deleteMany({ reviewSignin: true });
+  return { ...(await reviewSwitch(d)), sessionsEnded: ended?.deletedCount ?? 0 };
 }
 
 /**

@@ -600,8 +600,8 @@ async function reviewRoute(req, res, m) {
   try {
     if (m[1] === "switch") {
       if (typeof v.on !== "boolean") return json(res, 400, { error: "Send { on: true | false }." });
-      await setReviewSwitch(d, v.on);
-      await audit(req, "review_switch", { on: v.on });
+      const r = await setReviewSwitch(d, v.on);
+      await audit(req, "review_switch", { on: v.on, sessionsEnded: r.sessionsEnded });
     } else if (m[1] === "code") {
       await newReviewCode(d);
       await audit(req, "review_code_new");
