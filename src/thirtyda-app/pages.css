@@ -108,3 +108,308 @@ p { margin: 0 0 10px; }
 :lang(km) h1 { line-height: 1.45; }
 :lang(km) .try-big { line-height: 1.4; }
 :lang(ko) .doc-body { word-break: keep-all; overflow-wrap: break-word; }
+
+/* ==========================================================================================================
+   The home page (/30da/home, src/lib/thirtyda-pages.mjs homePage): a landing page in the same family — navy,
+   Archivo, the app's wordmark — with warm accents (the app's orange hearts) and the 3 levels drawn as a path.
+   Everything is under .page-home, so the other pages do not change. Phones first (360 / 390), wide from 900 px.
+   ========================================================================================================== */
+.page-home {
+  --warm: #ffb02e;
+  --coral: #ff6b4a;
+  --warm-ink: #8a4b00;
+  --warm-soft: #fff5e3;
+  --coral-soft: #ffeee8;
+  --navy-2: #13285a;
+  --navy-3: #1d3a7a;
+  --on-dark-muted: #c3cbe0;
+  --on-dark-soft: #d8def0;
+  --hm-gutter: 16px;
+  background: var(--page);
+  font-size: 17px;
+  line-height: 1.55;
+}
+.page-home p, .page-home h1, .page-home h2, .page-home h3, .page-home ul, .page-home ol, .page-home figure { margin: 0; }
+.page-home ul, .page-home ol { padding: 0; list-style: none; }
+.page-home a { overflow-wrap: normal; }
+.page-home .hm-i { display: block; flex: none; }
+.page-home .hm-wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding: 0 var(--hm-gutter); }
+@media (min-width: 600px) { .page-home { --hm-gutter: 28px; } }
+
+/* ---- Top: the flag row and the hero on one navy field with warm light. */
+.page-home .hm-top {
+  position: relative; overflow: hidden; color: #fff;
+  background:
+    radial-gradient(60% 50% at 90% 8%, rgb(255 107 74 / 0.3), transparent 70%),
+    radial-gradient(55% 45% at 0% 100%, rgb(59 111 224 / 0.2), transparent 70%),
+    linear-gradient(165deg, var(--navy-2) 0%, var(--navy) 62%);
+}
+.page-home .hm-bar { display: flex; justify-content: center; }
+.page-home .langs { flex: 1 1 auto; max-width: 440px; padding: 10px 0; border-bottom: 0; }
+.page-home .langs a { color: #fff; }
+.page-home .langs a[aria-current="true"] { background: #fff; color: var(--navy); }
+@media (min-width: 900px) {
+  .page-home .hm-bar { justify-content: flex-end; }
+  .page-home .langs { flex: 0 1 auto; gap: 6px; padding-top: 14px; }
+}
+
+.page-home .hm-hero { display: grid; gap: 30px; padding-top: 22px; padding-bottom: 44px; }
+@media (min-width: 900px) {
+  .page-home .hm-hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr); align-items: center; gap: 56px; padding-top: 36px; padding-bottom: 80px; }
+}
+.page-home .hm-mark {
+  display: flex; overflow: hidden; padding-bottom: 4px;
+  font-weight: 900; font-stretch: 125%; letter-spacing: -0.02em; line-height: 1;
+  font-size: min(92px, calc((100vw - 2 * var(--hm-gutter)) / 4.7));
+}
+.page-home .hm-mark > span { display: inline-block; animation: hm-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: 150ms; }
+.page-home .hm-mark > span:nth-child(2) { animation-delay: 240ms; }
+.page-home .hm-mark > span:nth-child(3) { animation-delay: 330ms; color: var(--warm); }
+.page-home .hm-mark > span:nth-child(4) { animation-delay: 420ms; }
+.page-home .hm-mark > span:nth-child(5) { animation-delay: 510ms; }
+.page-home .hm-rule { display: block; max-width: 340px; height: 4px; margin-top: 14px; border-radius: 2px; overflow: hidden; background: rgb(255 255 255 / 0.16); }
+.page-home .hm-rule > span {
+  display: block; height: 100%; background: linear-gradient(90deg, var(--warm), var(--coral));
+  transform-origin: left center; animation: hm-fill 0.8s cubic-bezier(0.6, 0, 0.2, 1) 0.9s both;
+}
+@keyframes hm-rise { from { transform: translateY(75%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes hm-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+.page-home .hm-h1 { margin-top: 22px; font-size: 30px; line-height: 1.12; font-weight: 800; font-stretch: 108%; letter-spacing: -0.01em; overflow-wrap: break-word; }
+.page-home .hm-head { margin-top: 12px; font-size: 20px; line-height: 1.35; font-weight: 700; color: var(--warm); }
+@media (min-width: 900px) {
+  .page-home .hm-h1 { font-size: 46px; }
+  .page-home .hm-head { font-size: 24px; }
+}
+.page-home .hm-cta { margin-top: 28px; }
+.page-home .hm-btn {
+  display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; max-width: 420px; min-height: 66px;
+  padding: 12px 24px; border-radius: 16px; text-decoration: none; text-align: center;
+  font-size: 23px; font-weight: 800; font-stretch: 108%; color: var(--navy);
+  background: linear-gradient(135deg, #ffc556 0%, var(--warm) 38%, var(--coral) 100%);
+  box-shadow: 0 14px 34px rgb(255 107 74 / 0.38), inset 0 1px 0 rgb(255 255 255 / 0.45);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.page-home .hm-btn:hover { transform: translateY(-2px); box-shadow: 0 18px 40px rgb(255 107 74 / 0.48), inset 0 1px 0 rgb(255 255 255 / 0.45); }
+.page-home .hm-btn:active { transform: translateY(0); }
+.page-home .hm-btn:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+.page-home .hm-free { margin-top: 14px; font-size: 16px; font-weight: 600; color: var(--on-dark-muted); }
+
+/* The hero photo (16:9) — or, until it is there, the soft placeholder. */
+.page-home .hm-hero-photo {
+  position: relative; aspect-ratio: 16 / 9; border-radius: 20px; overflow: hidden; container-type: inline-size;
+  box-shadow: 0 30px 70px rgb(0 0 0 / 0.38), 0 0 0 1px rgb(255 255 255 / 0.1);
+}
+.page-home .hm-hero-photo img, .page-home .hm-hero-photo picture, .page-home .hm-strip img, .page-home .hm-strip picture {
+  display: block; width: 100%; height: 100%; object-fit: cover;
+}
+.page-home .hm-ph {
+  position: relative; display: grid; place-items: center; width: 100%; height: 100%; overflow: hidden;
+  /* A warm sunset into navy: amber, coral, rose, then the app's blue (never brown). */
+  background:
+    radial-gradient(60% 70% at 12% 10%, rgb(255 255 255 / 0.3), transparent 60%),
+    linear-gradient(135deg, #ffc556 0%, #ff8a4c 30%, #e0566a 58%, #4a3f8f 82%, var(--navy-3) 100%);
+}
+.page-home .hm-ph::before, .page-home .hm-ph::after {
+  content: ""; position: absolute; border-radius: 50%; border: 1.5px solid rgb(255 255 255 / 0.22);
+}
+.page-home .hm-ph::before { width: 78%; aspect-ratio: 1; left: -22%; bottom: -46%; }
+.page-home .hm-ph::after { width: 52%; aspect-ratio: 1; right: -12%; top: -24%; border-color: rgb(255 255 255 / 0.16); }
+.page-home .hm-ph-mark {
+  position: relative; font-weight: 900; font-stretch: 125%; letter-spacing: -0.02em; line-height: 1;
+  color: rgb(255 255 255 / 0.4); font-size: 56px; font-size: 17cqi;
+}
+
+/* ---- Sections. */
+.page-home .hm-sec { padding: 56px 0; }
+@media (min-width: 900px) { .page-home .hm-sec { padding: 84px 0; } }
+.page-home h2 { font-size: 30px; line-height: 1.12; font-weight: 900; font-stretch: 112%; letter-spacing: -0.01em; }
+.page-home h2::before {
+  content: ""; display: block; width: 44px; height: 5px; margin-bottom: 16px; border-radius: 3px;
+  background: linear-gradient(90deg, var(--warm), var(--coral));
+}
+@media (min-width: 900px) { .page-home h2 { font-size: 42px; } }
+.page-home .hm-ico {
+  display: grid; place-items: center; flex: none; width: 52px; height: 52px; border-radius: 16px; color: var(--navy);
+  background: linear-gradient(135deg, #ffc556, var(--warm) 45%, var(--coral));
+}
+
+/* What it is: three one-line points. */
+.page-home .hm-what { padding-bottom: 36px; }
+.page-home .hm-points { display: grid; gap: 12px; margin-top: 24px; }
+.page-home .hm-points li {
+  display: flex; align-items: center; gap: 16px; padding: 16px 18px; border-radius: 18px;
+  background: var(--desk); font-size: 18px; line-height: 1.4; font-weight: 600;
+}
+@media (min-width: 900px) {
+  .page-home .hm-points { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 32px; }
+  .page-home .hm-points li { flex-direction: column; align-items: flex-start; gap: 18px; padding: 26px 24px; font-size: 20px; }
+}
+
+/* The people strip: 6 portrait tiles, staggered. */
+.page-home .hm-people { padding: 4px 0 28px; }
+.page-home .hm-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding-bottom: 18px; }
+.page-home .hm-strip > li { aspect-ratio: 4 / 5; border-radius: 18px; overflow: hidden; box-shadow: 0 12px 30px rgb(11 28 63 / 0.14); }
+.page-home .hm-strip > li:nth-child(3n + 2) { transform: translateY(18px); }
+.page-home .hm-strip > li:nth-child(odd) .hm-ph {
+  background:
+    radial-gradient(80% 70% at 25% 18%, rgb(255 255 255 / 0.3), transparent 60%),
+    linear-gradient(160deg, #ffc556, var(--warm) 40%, var(--coral));
+}
+.page-home .hm-strip > li:nth-child(even) .hm-ph {
+  background:
+    radial-gradient(80% 70% at 25% 18%, rgb(255 255 255 / 0.2), transparent 60%),
+    linear-gradient(160deg, #2f55a8, var(--navy-3) 45%, var(--navy));
+}
+.page-home .hm-strip .hm-ph-mark { font-size: 20px; font-size: 22cqi; color: rgb(255 255 255 / 0.4); }
+.page-home .hm-strip > li { container-type: inline-size; }
+@media (min-width: 900px) {
+  .page-home .hm-strip { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; padding-bottom: 30px; }
+  .page-home .hm-strip > li:nth-child(3n + 2) { transform: none; }
+  .page-home .hm-strip > li:nth-child(even) { transform: translateY(30px); }
+}
+
+/* How it works: three small start steps, then the 3 levels as a path. */
+.page-home .hm-how { background: linear-gradient(180deg, var(--page) 0%, #f1f4f9 18%, #f1f4f9 100%); }
+.page-home .hm-steps { display: grid; gap: 10px; margin-top: 24px; counter-reset: none; }
+.page-home .hm-steps li {
+  display: flex; align-items: flex-start; gap: 14px; padding: 14px 16px; border-radius: 16px;
+  background: var(--page); box-shadow: 0 0 0 1px var(--line-soft); font-size: 17px; line-height: 1.45; font-weight: 600;
+}
+.page-home .hm-n {
+  display: grid; place-items: center; flex: none; width: 34px; height: 34px; margin-top: -3px; border-radius: 50%;
+  background: var(--navy); color: #fff; font-size: 16px; font-weight: 800;
+}
+@media (min-width: 900px) {
+  .page-home .hm-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 32px; }
+  .page-home .hm-steps li { padding: 18px 20px; }
+}
+
+.page-home .hm-levels-h { margin-top: 44px; font-size: 24px; line-height: 1.2; font-weight: 900; font-stretch: 112%; }
+@media (min-width: 900px) { .page-home .hm-levels-h { margin-top: 64px; font-size: 30px; } }
+.page-home .hm-path { position: relative; display: grid; gap: 34px; margin-top: 22px; }
+.page-home .hm-lv {
+  position: relative; display: flex; flex-direction: column; padding: 20px 20px 22px; border-radius: 22px;
+  background: var(--page); box-shadow: 0 0 0 1px var(--line-soft), 0 16px 40px rgb(11 28 63 / 0.08);
+}
+.page-home .hm-lv1 { background: linear-gradient(160deg, var(--warm-soft), var(--page) 70%); box-shadow: 0 0 0 2px #ffd796, 0 16px 40px rgb(255 176 46 / 0.18); }
+.page-home .hm-lv2 { background: linear-gradient(160deg, var(--coral-soft), var(--page) 70%); box-shadow: 0 0 0 2px #ffc2b0, 0 16px 40px rgb(255 107 74 / 0.18); }
+.page-home .hm-lv3 { color: #fff; background: linear-gradient(150deg, var(--navy-3), var(--navy) 75%); box-shadow: 0 20px 50px rgb(11 28 63 / 0.35); }
+/* The joins: a short warm line and a chevron between two levels (down on phones, across when wide). */
+.page-home .hm-lv + .hm-lv::before {
+  content: ""; position: absolute; left: 50%; top: -30px; width: 3px; height: 22px; margin-left: -1.5px; border-radius: 2px;
+  background: linear-gradient(var(--warm), var(--coral));
+}
+.page-home .hm-lv + .hm-lv::after {
+  content: ""; position: absolute; left: 50%; top: -14px; width: 11px; height: 11px; margin-left: -6px;
+  border-right: 3px solid var(--coral); border-bottom: 3px solid var(--coral); transform: rotate(45deg);
+}
+@media (min-width: 900px) {
+  .page-home .hm-path { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; margin-top: 28px; }
+  .page-home .hm-lv { padding: 26px 26px 28px; }
+  .page-home .hm-lv + .hm-lv::before { left: -32px; top: 50%; width: 22px; height: 3px; margin: -1.5px 0 0; background: linear-gradient(90deg, var(--warm), var(--coral)); }
+  .page-home .hm-lv + .hm-lv::after { left: -17px; top: 50%; margin: -6px 0 0; transform: rotate(-45deg); }
+}
+.page-home .hm-lv-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.page-home .hm-lv-tag {
+  display: inline-flex; align-items: center; min-height: 30px; padding: 0 14px; border-radius: 999px;
+  background: var(--navy); color: #fff; font-size: 15px; font-weight: 800; white-space: nowrap;
+}
+.page-home .hm-lv3 .hm-lv-tag { background: #fff; color: var(--navy); }
+.page-home .hm-lvbar { display: flex; gap: 4px; }
+.page-home .hm-lvbar > span { width: 22px; height: 6px; border-radius: 3px; background: rgb(11 28 63 / 0.14); }
+.page-home .hm-lvbar > span.on { background: linear-gradient(90deg, var(--warm), var(--coral)); }
+.page-home .hm-lv3 .hm-lvbar > span { background: rgb(255 255 255 / 0.25); }
+.page-home .hm-lv3 .hm-lvbar > span.on { background: linear-gradient(90deg, var(--warm), var(--coral)); }
+.page-home .hm-lv-big { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; margin-top: 14px; }
+.page-home .hm-lv-num {
+  font-size: 68px; line-height: 1; font-weight: 900; font-stretch: 125%; letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--warm), var(--coral)); -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.page-home .hm-lv-plus { margin: 0 0.08em; font-weight: 700; opacity: 0.75; }
+.page-home .hm-lv-unit { font-size: 17px; font-weight: 700; color: var(--muted); }
+.page-home .hm-lv-chat {
+  align-self: center; display: grid; place-items: center; width: 68px; height: 68px; border-radius: 20px; color: var(--navy);
+  background: linear-gradient(135deg, #ffc556, var(--warm) 45%, var(--coral));
+}
+.page-home .hm-lv-word { align-self: center; font-size: 44px; line-height: 1.1; font-weight: 900; font-stretch: 115%; color: #fff; }
+.page-home .hm-lv-text { margin: 14px 0 16px; font-size: 17px; line-height: 1.5; }
+.page-home .hm-lv3 .hm-lv-text { color: var(--on-dark-soft); }
+.page-home .hm-lv-gets {
+  display: inline-flex; align-self: flex-start; align-items: center; gap: 8px; margin-top: auto; padding: 7px 14px 7px 10px;
+  border-radius: 999px; background: var(--page); box-shadow: 0 0 0 1px var(--line-soft); font-size: 15px; font-weight: 700;
+}
+.page-home .hm-lv1 .hm-lv-gets .hm-i { color: var(--warm-ink); }
+.page-home .hm-lv2 .hm-lv-gets .hm-i { color: #c23d1a; }
+.page-home .hm-lv3 .hm-lv-gets { background: rgb(255 255 255 / 0.1); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.22); color: #fff; }
+.page-home .hm-lv3 .hm-lv-gets .hm-i { color: var(--warm); }
+.page-home .hm-verify {
+  display: flex; align-items: flex-start; gap: 14px; margin-top: 30px; padding: 18px 20px; border-radius: 18px;
+  background: var(--page); border: 1.5px dashed var(--line); font-size: 17px; line-height: 1.5;
+}
+.page-home .hm-verify .hm-i { color: var(--green); margin-top: 1px; }
+
+/* Safe and calm: the promise, on navy. */
+.page-home .hm-safe {
+  color: #fff;
+  background:
+    radial-gradient(50% 60% at 100% 0%, rgb(59 111 224 / 0.28), transparent 70%),
+    linear-gradient(170deg, var(--navy-2), var(--navy) 70%);
+}
+.page-home .hm-safe-list { display: grid; gap: 12px; margin-top: 26px; }
+.page-home .hm-safe-list li {
+  display: flex; align-items: center; gap: 16px; padding: 16px 18px; border-radius: 18px;
+  background: rgb(255 255 255 / 0.07); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.12);
+  font-size: 18px; line-height: 1.45; font-weight: 600;
+}
+.page-home .hm-age { font-size: 18px; font-weight: 900; font-stretch: 115%; letter-spacing: -0.01em; }
+@media (min-width: 900px) {
+  .page-home .hm-safe-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 34px; }
+  .page-home .hm-safe-list li { padding: 22px 24px; font-size: 19px; }
+}
+
+/* Get the app: not in the stores yet (plain words), the web app now. */
+.page-home .hm-get { text-align: center; }
+.page-home .hm-get h2::before { margin-left: auto; margin-right: auto; }
+.page-home .hm-soon .hm-i { flex: none; }
+.page-home .hm-soon {
+  display: inline-flex; align-items: center; gap: 10px; margin-top: 22px; padding: 12px 18px; border-radius: 16px;
+  background: var(--warm-soft); color: var(--warm-ink); font-size: 17px; font-weight: 700; text-align: left;
+}
+.page-home .hm-cta2 { display: flex; justify-content: center; margin-top: 22px; }
+.page-home .hm-btn2 {
+  display: inline-flex; align-items: center; justify-content: center; gap: 12px; width: 100%; max-width: 420px; min-height: 60px;
+  padding: 10px 22px; border-radius: 16px; border: 2px solid var(--navy); color: var(--navy); text-decoration: none;
+  font-size: 19px; font-weight: 800; transition: background-color 0.15s ease, color 0.15s ease;
+}
+.page-home .hm-btn2:hover { background: var(--navy); color: #fff; }
+
+/* Footer: who runs it, the email, the small pages. */
+.page-home .hm-foot { padding: 30px 0 calc(34px + env(safe-area-inset-bottom)); background: #071330; color: var(--on-dark-muted); font-size: 15px; }
+.page-home .hm-foot a { color: #fff; font-weight: 600; }
+.page-home .hm-foot b { color: #fff; font-weight: 800; }
+.page-home .hm-foot-run { line-height: 1.6; overflow-wrap: anywhere; }
+.page-home .hm-foot-run a { display: inline-block; padding: 10px 0; }
+.page-home .hm-foot-links { display: flex; flex-wrap: wrap; gap: 4px 20px; margin-top: 14px; }
+.page-home .hm-foot-links a { display: inline-flex; align-items: center; min-height: 44px; }
+
+/* Khmer / CJK: Khmer needs more line height and a smaller big line; Korean keeps words whole. */
+.page-home:lang(km) { line-height: 1.7; }
+.page-home:lang(km) .hm-h1 { font-size: 25px; line-height: 1.55; }
+.page-home:lang(km) .hm-head { font-size: 19px; line-height: 1.6; }
+.page-home:lang(km) h2 { font-size: 26px; line-height: 1.5; }
+.page-home:lang(km) .hm-levels-h { line-height: 1.5; }
+.page-home:lang(km) .hm-lv-word { font-size: 34px; line-height: 1.5; }
+.page-home:lang(km) .hm-btn { font-size: 21px; }
+.page-home:lang(km) .hm-points li, .page-home:lang(km) .hm-steps li, .page-home:lang(km) .hm-lv-text,
+.page-home:lang(km) .hm-verify, .page-home:lang(km) .hm-safe-list li, .page-home:lang(km) .hm-soon { line-height: 1.75; }
+@media (min-width: 900px) {
+  .page-home:lang(km) .hm-h1 { font-size: 36px; }
+  .page-home:lang(km) h2 { font-size: 34px; }
+}
+.page-home:lang(ko) { word-break: keep-all; overflow-wrap: break-word; }
+
+@media (prefers-reduced-motion: reduce) {
+  .page-home .hm-mark > span, .page-home .hm-rule > span { animation: none; }
+  .page-home .hm-btn, .page-home .hm-btn2 { transition: none; }
+}

@@ -61,6 +61,8 @@
  * Public pages Google / Facebook / TikTok ask for: GET /30da/privacy, GET /30da/delete-data, GET /30da/terms
  * (src/lib/thirtyda-pages.mjs). GET /30da/back: where GKVerify's big "⬅️ Back to 30+DA" Telegram button lands —
  * opens the app on an iPhone / Android phone (by User-Agent), else the web app; always 200 (sendBackPage).
+ * GET /30da/home (and /30da/home/): the public home page — what 30+DA is, how it works, the way in (the web app);
+ * its photos at GET /30da/home/img/<name>.jpg|webp (src/lib/thirtyda-home.mjs).
  *
  * "Delete my account" (owner 2026-10-13, src/lib/thirtyda-delete.mjs): POST /me/delete { pin? } (unlocked only, the PIN
  * checked by checkPinTry) deletes everything of the person at once and clears the cookie; every conversation with them
@@ -96,7 +98,9 @@ import {
 } from "./thirtyda-pin.mjs";
 import {
   privacyPage, deleteDataPage, termsPage, supportPage, tryResultPage, appReturnPage, requestLang, backPage, backPlatform, backHref,
+  homePage,
 } from "./thirtyda-pages.mjs";
+import { homePhotos, sendHomeImage, HOME_IMG_RE } from "./thirtyda-home.mjs";
 import {
   canTalk, talksToSomeone, SIGNUP_LIMITS, claimSignup, releaseSignup, verifyBackPath, ATTACH_FROM, phoneViaOf, withPhoneVia, signinsOf,
 } from "./thirtyda-verify.mjs";
@@ -3003,6 +3007,12 @@ export async function handleThirtyDaApp(req, res, url) {
     if (path === `${BASE}/support`) return sendPage(req, res, 200, supportPage({ lang: requestLang(req, url) }), docHeaders);
     // GKVerify's big "⬅️ Back to 30+DA" button (the Telegram bot): back into the app, else the web app.
     if (path === `${BASE}/back`) return sendBackPage(req, res, url);
+    // The home page: what 30+DA is, how it works, and the way in. Its photos: only the slots whose file is there.
+    if (path === `${BASE}/home` || path === `${BASE}/home/`) {
+      return sendPage(req, res, 200, homePage({ lang: requestLang(req, url), photos: homePhotos() }), docHeaders);
+    }
+    const hm = path.match(HOME_IMG_RE);
+    if (hm) return sendHomeImage(req, res, hm[1], hm[2], { headers: BASE_HEADERS });
     // The client loads its modules relative to /30da/, so the bare path gets a slash.
     if (path === BASE) {
       res.writeHead(302, { ...BASE_HEADERS, Location: `${BASE}/${url.search}` }).end();
