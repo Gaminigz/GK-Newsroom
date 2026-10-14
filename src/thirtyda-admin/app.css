@@ -353,6 +353,14 @@ mark.hit { background: none; color: var(--red); font-weight: 800; }
 }
 .toast .link { color: #fff; }
 
+/* The admin's own dialog (delete-profile.js: Users → Delete, App review → Remove), in the App review form's style. */
+.ad-dialog { border: 0; border-radius: 10px; padding: 20px; width: min(420px, calc(100vw - 32px)); box-shadow: 0 20px 60px rgba(11, 28, 63, 0.25); color: var(--ink); }
+.ad-dialog::backdrop { background: rgba(11, 28, 63, 0.35); }
+.ad-dialog h2 { margin: 0 0 8px; font-size: 17px; font-weight: 900; }
+.ad-dialog-text { margin: 0 0 16px; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.ad-dialog-actions { display: flex; justify-content: flex-end; align-items: center; gap: 16px; }
+.ad-dialog-danger { height: 36px; padding: 0 20px; }
+
 /* ---------- Questions (what people pick from when they ask) ---------- */
 .link[disabled] { opacity: 0.4; cursor: default; }
 .label.ink { color: var(--ink); }

@@ -10,7 +10,7 @@ import crypto from 'node:crypto';
 process.env.THIRTYDA_SECRET_KEY ||= crypto.randomBytes(32).toString('hex');
 
 const {
-  REVIEW, REVIEW_MAX, REVIEW_DEFAULTS, REVIEW_CODE, REVIEW_SWITCH, REVIEW_WRONG_MAX, isReview, sameWorld, worldFilter, pairsInWorld,
+  REVIEW, REVIEW_MAX, REVIEW_DEFAULTS, REVIEW_SPOTS, REVIEW_PLACE, reviewSpotFor, REVIEW_CODE, REVIEW_SWITCH, REVIEW_WRONG_MAX, isReview, sameWorld, worldFilter, pairsInWorld,
   maskTail, spacedPhone, waysOf, profileRow, reviewNotes, reviewSwitch, setReviewSwitch, newReviewCode, reviewCodeView, sameCode,
   tryCounter, reviewAccountFor, checkReviewCode, makeReviewAccount, stopReviewAccount, reviewPinOf, reviewView, ReviewError,
 } = await import('./thirtyda-review.mjs');
@@ -304,7 +304,9 @@ test('Use as review account: mock number verified (phoneVia review), the PIN set
   assert.ok(!JSON.stringify(u).includes('"1122"'), 'never in plain on the profile');
   for (const k of ['photos', 'birthYear', 'level', 'name', 'signin', 'createdAt']) assert.deepEqual(u[k], before[k], `${k} untouched`);
   assert.deepEqual(d.docs('thirtyda_pairs').map((p) => p.stage), ['l3_open', 'l1'], 'conversations untouched');
-  assert.deepEqual(u.reviewWas, { phone: '+85512345678', verifiedPhone: true, phoneVia: 'telegram', pinHash: PIN_HASH_OLD, pinAt: before.pinAt });
+  assert.deepEqual(u.reviewWas, {
+    phone: '+85512345678', verifiedPhone: true, phoneVia: 'telegram', pinHash: PIN_HASH_OLD, pinAt: before.pinAt, location: null, area: '', city: '',
+  });
   // Saved again with another PIN: still the first reviewWas.
   const again = await makeReviewAccount(d, 'U-10001', { phone: '+855100001122', pin: '4826' });
   assert.equal(await verifyPin('4826', again.pinHash), true);
@@ -366,6 +368,73 @@ test('Stop being a review account: its own number, phoneVia and PIN come back; r
   assert.equal(so.verified.phone, false);
 });
 
+// ---------------------------------------------------------------- a pinned Phnom Penh location
+
+test('the owner\'s two review accounts: Dara +855 10 000 1122 / 1122, Sophea +855 10 000 3344 / 3344', () => {
+  assert.deepEqual(REVIEW_DEFAULTS, [{ phone: '+855100001122', pin: '1122' }, { phone: '+855100003344', pin: '3344' }]);
+});
+
+test('location: a review account is pinned on a Phnom Penh spot (area Phnom Penh), ~1.2 km from the other; Stop puts its own back', async () => {
+  const { haversineKm } = await import('./thirtyda-geo.mjs');
+  const round3 = (n) => Math.round(n * 1000) / 1000;
+  assert.equal(REVIEW_SPOTS.length, REVIEW_MAX, 'a spot for every review account');
+  for (const [lng, lat] of REVIEW_SPOTS) {
+    assert.ok(lng === round3(lng) && lat === round3(lat), 'rounded like the app rounds (3 decimals)');
+    assert.ok(lng > 104.88 && lng < 104.95 && lat > 11.53 && lat < 11.59, `central Phnom Penh: ${lng},${lat}`);
+  }
+  assert.deepEqual(REVIEW_PLACE, { area: 'Phnom Penh', city: 'Phnom Penh' });
+  const d = await world();
+  const users = d.collection('thirtyda_users');
+  const abroad = { type: 'Point', coordinates: [103.851, 1.29] };
+  await users.updateOne({ _id: 'U-10001' }, { $set: { location: abroad, area: 'Downtown Core', city: 'Singapore' } });
+  const dara = await makeReviewAccount(d, 'U-10001', REVIEW_DEFAULTS[0]);
+  const sophea = await makeReviewAccount(d, 'U-10002', REVIEW_DEFAULTS[1]);
+  assert.deepEqual(dara.location, { type: 'Point', coordinates: REVIEW_SPOTS[0] });
+  assert.deepEqual(sophea.location, { type: 'Point', coordinates: REVIEW_SPOTS[1] }, 'the next free spot');
+  for (const u of [dara, sophea]) assert.deepEqual([u.area, u.city], ['Phnom Penh', 'Phnom Penh']);
+  const km = haversineKm(dara.location.coordinates, sophea.location.coordinates);
+  assert.equal(Math.round(km * 10) / 10, 1.2, `Nearby shows them 1.2 km apart (${km})`);
+  for (let i = 0; i < REVIEW_SPOTS.length; i++) {
+    for (let j = i + 1; j < REVIEW_SPOTS.length; j++) {
+      const k = haversineKm(REVIEW_SPOTS[i], REVIEW_SPOTS[j]);
+      assert.ok(k > 0.5 && k < 3, `spots ${i} and ${j}: small and sensible (${k} km)`);
+    }
+  }
+  assert.deepEqual(dara.reviewWas.location, abroad, 'its own location is kept for Stop');
+  assert.equal(dara.reviewWas.area, 'Downtown Core');
+  // Saved again (another PIN): it keeps its own spot, never the other's.
+  const again = await makeReviewAccount(d, 'U-10001', { phone: DARA_PHONE, pin: '9182' });
+  assert.deepEqual(again.location.coordinates, REVIEW_SPOTS[0]);
+  assert.deepEqual(again.reviewWas.location, abroad, 'still the first one');
+  // A review account standing somewhere else (made before the pin) is put on a free spot when saved again.
+  await users.updateOne({ _id: 'U-10002' }, { $set: { location: abroad } });
+  assert.deepEqual(await reviewSpotFor(d, await users.findOne({ _id: 'U-10002' })), REVIEW_SPOTS[1]);
+  await users.updateOne({ _id: 'U-10002' }, { $set: { location: { type: 'Point', coordinates: REVIEW_SPOTS[0] } } });
+  assert.deepEqual(await reviewSpotFor(d, await users.findOne({ _id: 'U-10002' })), REVIEW_SPOTS[1], 'never the spot another review account has');
+  // Stop: its own location and area come back; one with none has none again (the app's next fix sets it).
+  const back = (await stopReviewAccount(d, 'U-10001')).user;
+  assert.deepEqual([back.location, back.area, back.city], [abroad, 'Downtown Core', 'Singapore']);
+  const so = (await stopReviewAccount(d, 'U-10002')).user;
+  assert.deepEqual([so.location, so.area, so.city], [null, '', '']);
+});
+
+test('location: the app\'s POST /me/location answers OK and moves nothing for a review account (any later update)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('./thirtyda-app.mjs', import.meta.url), 'utf8');
+  const i = src.indexOf('async function setLocation(');
+  const body = src.slice(i, src.indexOf('\n}\n', i));
+  const pinned = body.indexOf('if (isReview(me)) {');
+  assert.ok(pinned > 0 && pinned < body.indexOf('location: { type: "Point"'), 'answered before any location write');
+  assert.match(body, /if \(isReview\(me\)\) \{\n\s+await users\.updateOne\(\{ _id: me\._id \}, \{ \$set: \{ lastSeenAt: new Date\(now\) \} \}\);\n\s+return \{ area: me\.area \?\? "", city: me\.city \?\? "", moved: false \};\n\s+\}/,
+    'only lastSeenAt; the answer is its pinned area');
+  // Made a review account while a move was in flight: the move's writes require "not a review account".
+  assert.match(body, /\{ _id: me\._id, demo: \{ \$ne: REVIEW \}, \$or: \[\{ locAt: null \}/, 'the claimed move');
+  assert.match(body, /const at = \{ _id: me\._id, demo: \{ \$ne: REVIEW \}, "location\.coordinates": point \};/, 'its area (now and later)');
+  // No other route writes a location (create profile starts with none; the delete clears it).
+  const writes = [...src.matchAll(/location: \{ type: "Point"/g)].length;
+  assert.equal(writes, 1, 'setLocation is the one place a point is written');
+});
+
 // ---------------------------------------------------------------- the admin page's data
 
 test('page: real numbers masked to the last 3 digits, mock numbers in full, never an email', async () => {
@@ -384,7 +453,7 @@ test('page: real numbers masked to the last 3 digits, mock numbers in full, neve
     id: 'U-10001', name: 'Dara', created: '2026-10-01T00:00:00.000Z', level: 3, photos: 3, photoMax: 4, birthYear: 1985,
     ways: { phone: '•••••••••678', google: true, facebook: false, tiktok: false }, review: false, blocked: false,
   });
-  assert.equal(v.profiles.find((p) => p.id === 'U-10002').ways.phone, '+855 10 000 2244', 'a mock number is not real: shown in full');
+  assert.equal(v.profiles.find((p) => p.id === 'U-10002').ways.phone, '+855 10 000 3344', 'a mock number is not real: shown in full');
   assert.deepEqual(waysOf({ verified: { phone: true } }).phone, null, 'no number: nothing');
   assert.equal(waysOf({ demo: REVIEW, phoneVia: 'telegram', phone: '+85512345678', verified: { phone: true } }).phone, '•••••••••678',
     'a review account whose number the admin did not set: masked like any real number');
@@ -402,12 +471,13 @@ test('page: review accounts with number + PIN + their conversations, and the not
   assert.equal(v.code.code, code);
   assert.deepEqual(v.counts, { profiles: 4, review: 2, real: 2 });
   assert.deepEqual(v.accounts.map((a) => [a.id, a.phone, a.pin, a.photos, a.birthYear, a.level]), [
-    ['U-10001', '+855100001122', '1122', 3, 1985, 3], ['U-10002', '+855100002244', '2244', 4, 1988, 3],
+    ['U-10001', '+855100001122', '1122', 3, 1985, 3], ['U-10002', '+855100003344', '3344', 4, 1988, 3],
   ]);
   assert.deepEqual(v.accounts[0].talks, [{ pairId: 'P-1', with: 'U-10002', withName: 'Sophea', stage: 'l3_open', level: 3 }], 'only the talk with the other review account');
-  for (const want of ['Dara', '+855 10 000 1122', 'PIN 1122', 'Sophea', '+855 10 000 2244', 'PIN 2244', `Review code (for every demo account): ${code}`,
+  for (const want of ['Dara', '+855 10 000 1122', 'PIN 1122', 'Sophea', '+855 10 000 3344', 'PIN 3344', `Review code (for every demo account): ${code}`,
     'pick a language', 'Set any 4-digit PIN (used only until you sign in)', 'tap Telegram', 'Enter the review code',
-    "From then on the app unlocks with the demo account's PIN (1122 / 2244), not the one from step 2."]) {
+    'The demo accounts stay in Phnom Penh, Cambodia: allowing location on your device does not move them.',
+    "From then on the app unlocks with the demo account's PIN (1122 / 3344), not the one from step 2."]) {
     assert.ok(v.notes.includes(want), want);
   }
   assert.ok(!v.notes.includes('12345678'), 'never a real number');
@@ -431,7 +501,7 @@ async function admin(method, path, headers = {}, body = undefined) {
 }
 const JSON_HEADERS = { 'content-type': 'application/json', origin: 'https://ecom.ggmt.sg' };
 const WRITES = ['/30da/admin/api/review/switch', '/30da/admin/api/review/code', '/30da/admin/api/review/accounts/U-10001',
-  '/30da/admin/api/review/accounts/U-10001/stop', '/30da/admin/api/review/profiles/U-10001/remove'];
+  '/30da/admin/api/review/accounts/U-10001/stop', '/30da/admin/api/users/U-10001/delete'];
 
 test('admin routes: another site, a non-JSON body or no admin session are refused (before any database)', async () => {
   for (const path of WRITES) {
@@ -461,5 +531,9 @@ test('admin page: in the sidebar of every admin page; the Code page itself is un
   }
   const js = readFileSync(new URL('../thirtyda-admin/review.js', import.meta.url), 'utf8');
   assert.ok(!/innerHTML/.test(js), 'everything from the server goes on the page as text');
-  assert.match(js, /confirm\(`Remove \$\{p\.name/, 'Remove asks first, naming the profile');
+  // "Remove" is the admin's one delete path: the shared dialog + POST /api/users/:id/delete (thirtyda-admin.test.mjs).
+  assert.match(js, /window\.thirtydaDeleteProfile\(\{ id: p\.id, name: p\.name \}\)/, 'Remove asks first in the admin dialog, naming the profile');
+  assert.ok(!js.includes('profiles/${p.id}/remove'), 'no second delete route');
+  const html = readFileSync(new URL('../thirtyda-admin/review.html', import.meta.url), 'utf8');
+  assert.match(html, /<script src="\/30da\/admin\/delete-profile\.js" defer><\/script>/);
 });

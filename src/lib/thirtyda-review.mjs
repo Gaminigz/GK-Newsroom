@@ -1,5 +1,5 @@
 /**
- * 30+DA App review accounts (owner 2026-10-14: "for the test user log in 1122 and 2244"). Apple (2.1, a demo account)
+ * 30+DA App review accounts (owner 2026-10-14: Dara PIN 1122 and Sophea PIN 3344). Apple (2.1, a demo account)
  * and Google Play ("App access") need a way in that needs nothing outside the app: their reviewers install fresh, with
  * no Telegram. Nothing here is hidden — the admin page "App review" (/30da/admin/review) shows and switches all of it.
  *
@@ -8,6 +8,10 @@
  *     like the app's own PIN; the PIN itself is also kept SEALED on the profile, reviewPinBox, so the page can show it
  *     in the review notes). Photos, birth year, level and conversations stay exactly as they are. "Stop being a review
  *     account" puts the profile's own number / PIN back (reviewWas) and ends the sessions the review code made.
+ *   - A PINNED Phnom Penh location: a review account is put on a fixed point in central Phnom Penh (REVIEW_SPOTS, area
+ *     "Phnom Penh") and keeps it — POST /me/location answers OK but changes nothing for it (src/lib/thirtyda-app.mjs
+ *     setLocation), so a store reviewer abroad tapping "Allow" never moves the demo. The spots are about 1.2 km apart,
+ *     so the two demo accounts see each other at a small, sensible distance. Stop puts its own location back.
  *   - Two worlds: review profiles see ONLY review profiles; real people (and guests) never see them — Nearby, guest
  *     cards, a profile, photos, conversations (lists, the heartbeat's actions, the pending count) — and neither side can
  *     open or start a conversation with the other (the server checks, see sameWorld). Pairs between two review profiles
@@ -32,7 +36,14 @@ import { PHOTO_MAX } from "../thirtyda-app/shared/rules.js";
 export const REVIEW = "review"; // users.demo
 export const REVIEW_MAX = 4; // review accounts at most
 /** What the admin form offers for the 1st / 2nd review account (owner 2026-10-14). */
-export const REVIEW_DEFAULTS = [{ phone: "+855100001122", pin: "1122" }, { phone: "+855100002244", pin: "2244" }];
+export const REVIEW_DEFAULTS = [{ phone: "+855100001122", pin: "1122" }, { phone: "+855100003344", pin: "3344" }];
+/**
+ * Where review accounts stay (owner 2026-10-14): fixed points in central Phnom Penh, [lng, lat] rounded to 3 decimals
+ * like every point the app stores. The 1st and 2nd are about 1.2 km apart (Nearby: "1.2 km"); each review account
+ * takes the first spot no other review account has.
+ */
+export const REVIEW_SPOTS = [[104.921, 11.562], [104.93, 11.556], [104.915, 11.552], [104.926, 11.548]];
+export const REVIEW_PLACE = { area: "Phnom Penh", city: "Phnom Penh" };
 export const REVIEW_CODE = "review_code"; // the sealed code (thirtyda_settings, a SECRET_NAMES entry)
 export const REVIEW_SWITCH = "review_signin"; // { on, updatedAt, updatedBy } in thirtyda_settings
 export const REVIEW_TRIES = 5; // wrong review codes per number per 15 minutes
@@ -106,7 +117,7 @@ export function profileRow(u) {
   };
 }
 
-/** "1122 / 2244": the review accounts' PINs, for step 4 of the notes. */
+/** "1122 / 3344": the review accounts' PINs, for step 4 of the notes. */
 const pinList = (accounts) => accounts.map((a) => a.pin).filter(Boolean).join(" / ") || "shown above";
 
 /**
@@ -130,6 +141,7 @@ export function reviewNotes({ accounts, code }) {
   if (accounts.length > 1) {
     lines.push(`The demo accounts see only each other${accounts.some((a) => a.talks?.length) ? " and already have a conversation with each other" : ""}.`);
   }
+  if (accounts.length) lines.push("The demo accounts stay in Phnom Penh, Cambodia: allowing location on your device does not move them.");
   lines.push("Please keep the demo accounts: to try Delete my account, make a new profile (no sign-in needed) and delete that one.");
   return lines.join("\n");
 }
@@ -250,11 +262,26 @@ export function reviewPinOf(u) {
   }
 }
 
+const spotKey = (c) => (Array.isArray(c) ? `${c[0]},${c[1]}` : "");
+
+/**
+ * The pinned spot of review account `u`: the one it already stands on (when no other review account has it), else the
+ * first spot no other review account has. → [lng, lat] (a copy).
+ */
+export async function reviewSpotFor(d, u) {
+  const others = await d.collection(USERS).find({ demo: REVIEW, _id: { $ne: u._id } }, { projection: { location: 1 } }).toArray();
+  const taken = new Set(others.map((o) => spotKey(o.location?.coordinates)));
+  const own = REVIEW_SPOTS.find((s) => spotKey(s) === spotKey(u.location?.coordinates));
+  const spot = own && !taken.has(spotKey(own)) ? own : REVIEW_SPOTS.find((s) => !taken.has(spotKey(s))) ?? REVIEW_SPOTS[0];
+  return [...spot];
+}
+
 /**
  * "Use as review account" (or save it again with another number / PIN): `phone` already normalised by the caller
  * (the app's normalizePhone). Refuses: no such profile (404), blocked / being deleted (409), REVIEW_MAX reached (409),
  * a number another profile has (409 phone_in_use), a PIN the app would not take (422), no lock key (503).
- * The profile's own number / PIN / phoneVia are kept the first time (reviewWas) for "Stop being a review account".
+ * The profile's own number / PIN / phoneVia / location are kept the first time (reviewWas) for "Stop being a review
+ * account". Its location is pinned to a Phnom Penh spot (reviewSpotFor) every time it is saved.
  */
 export async function makeReviewAccount(d, id, { phone, pin }, { now = Date.now() } = {}) {
   const users = d.collection(USERS);
@@ -275,12 +302,15 @@ export async function makeReviewAccount(d, id, { phone, pin }, { now = Date.now(
   const set = {
     demo: REVIEW, phone, "verified.phone": true, phoneVia: "review", pinHash: await hashPin(c.pin), pinAt: at, pinTries: 0,
     reviewPinBox: sealSecret(c.pin, settingsKey(), pinAad(id)),
+    // Pinned in Phnom Penh: the app's POST /me/location changes nothing for a review account (setLocation).
+    location: { type: "Point", coordinates: await reviewSpotFor(d, u) }, area: REVIEW_PLACE.area, city: REVIEW_PLACE.city,
   };
   // The first time only: when (the notes' order) and what to put back on "Stop being a review account".
   if (!isReview(u)) {
     set.reviewAt = at;
     set.reviewWas = {
       phone: u.phone ?? null, verifiedPhone: Boolean(u.verified?.phone), phoneVia: u.phoneVia ?? null, pinHash: u.pinHash ?? null, pinAt: u.pinAt ?? null,
+      location: u.location ?? null, area: u.area ?? "", city: u.city ?? "",
     };
   }
   try {
@@ -294,7 +324,8 @@ export async function makeReviewAccount(d, id, { phone, pin }, { now = Date.now(
 
 /**
  * "Stop being a review account": the mark and the mock number go; the profile's own number comes back (unless another
- * profile has taken it meanwhile), its own phoneVia and PIN too (none → the app asks for a new PIN). Every session
+ * profile has taken it meanwhile), its own phoneVia and PIN too (none → the app asks for a new PIN), and its own location
+ * (none → none: the app's next fix sets it; POST /me/location works for it again). Every session
  * the review code made for it ends (reviewSignin, kept when such a session is renewed), and so does any other session
  * of it started since it became a review account: a reviewer's phone never keeps a real profile. Its sessions from
  * before (the owner's own phone) stay.
@@ -317,6 +348,7 @@ export async function stopReviewAccount(d, id) {
   }
   if (was.pinHash) Object.assign(set, { pinHash: was.pinHash, pinAt: was.pinAt ?? new Date() });
   else Object.assign(unset, { pinHash: "", pinAt: "" });
+  if ("location" in was) Object.assign(set, { location: was.location ?? null, area: was.area ?? "", city: was.city ?? "" });
   await users.updateOne({ _id: id, demo: REVIEW }, { $set: set, $unset: unset });
   const since = u.reviewAt ? new Date(u.reviewAt) : null;
   const ended = await d.collection(SESSIONS).deleteMany({

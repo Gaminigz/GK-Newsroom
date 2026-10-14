@@ -9,6 +9,9 @@
  *   GET  /30da/admin/api/overview         counts, users, open flags
  *   GET  /30da/admin/api/chat?flag=|user= one full conversation
  *   POST /30da/admin/api/users/:id/block|unblock   { flagId?, undo? }
+ *   POST /30da/admin/api/users/:id/delete  { confirm: id } the whole account, for good — the app's own full delete
+ *        (src/lib/thirtyda-delete.mjs deleteAccount). The one delete path: Users → Delete and App review → Remove.
+ *        → the overview (counts + users); 400 confirm ≠ id, 404 no such profile. Audited with the id only.
  *   POST /30da/admin/api/flags/:id/warn|dismiss
  *   GET  /30da/admin/api/questions        both levels: [{ id:'L1', slots:[[{key,text:{en,km,zh,ko,ja}}×5]×4], titles, … }]
  *   PUT  /30da/admin/api/questions/L1|L2  { slots, titles?, updatedAt? } → saved level | 422 { problems } | 409 changed
@@ -44,8 +47,8 @@
  *   POST /30da/admin/api/review/code          New code (6 digits, sealed)
  *   POST /30da/admin/api/review/accounts/:id  { phone, pin } "Use as review account" (or save it again)
  *   POST /30da/admin/api/review/accounts/:id/stop   "Stop being a review account"
- *   POST /30da/admin/api/review/profiles/:id/remove { confirm: id } "Remove": the whole account (thirtyda-delete.mjs deleteAccount)
  *        Every answer is the page's fresh data. Audited with ids only (never a number, a PIN or the code).
+ *        "Remove" on that page is POST /30da/admin/api/users/:id/delete (above): one delete path.
  *
  * Secrets (src/lib/thirtyda-settings.mjs) are sealed with THIRTYDA_SECRET_KEY and never sent back:
  * only { set, last4, updatedAt, updatedBy }. The audit log never carries them either.
@@ -112,9 +115,18 @@ const SECURITY_HEADERS = {
     "default-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-ancestors 'none'",
 };
 
+// Unit tests only (src/lib/thirtyda-admin.test.mjs): an in-memory database and a stand-in for the delete. Unset in the
+// server, where the admin always uses getDb() and the app's own deleteAccount.
+const testHooks = { db: null, deleteAccount: null };
+export function setAdminTestHooks({ db: d = null, deleteAccount: del = null } = {}) {
+  testHooks.db = d;
+  testHooks.deleteAccount = del;
+}
+
 // ---------- db ----------
 let ready = null;
 async function db() {
+  if (testHooks.db) return testHooks.db;
   const d = await getDb();
   if (!ready) {
     ready = d.collection("thirtyda_admin_sessions")
@@ -493,6 +505,29 @@ async function telegramBotRoute(req, res, isTry) {
 }
 
 /**
+ * POST /api/users/:id/delete { confirm: id } (signed in, same-origin JSON: checked before this): the whole account, for
+ * good, through the app's own full delete (deleteAccount: profile, photos, messages, sessions, sign-in links, codes).
+ * The one delete path of the admin: Users → Delete (monitor.js) and App review → Remove (review.js) both call it.
+ * The confirm must be the id itself; an unknown id → 404. → the overview (the row is gone, the counts are fresh).
+ * Audited with the id only.
+ */
+async function deleteUserRoute(req, res, id) {
+  if (writeLimited(req)) {
+    req.resume();
+    return json(res, 429, { error: "Too many changes. Try again in a few minutes." });
+  }
+  const body = await readJsonBody(req, 1e4);
+  if (body.tooLarge || body.bad) return json(res, 400, { error: "Send JSON." });
+  if (body.value.confirm !== id) return json(res, 400, { error: `Confirm with the profile's id (${id}).`, reason: "confirm" });
+  const d = await db();
+  const u = await d.collection("thirtyda_users").findOne({ _id: id }, { projection: { _id: 1 } });
+  if (!u) return json(res, 404, { error: "There is no such profile (it may be deleted already).", reason: "not_found" });
+  await (testHooks.deleteAccount ?? deleteAccount)(d, id);
+  await audit(req, "delete_user", { user: id });
+  return json(res, 200, { ...(await overview()), deleted: id });
+}
+
+/**
  * The App review page's writes (signed in, same-origin JSON: checked before this). Every answer is the page's fresh
  * data; refusals are { error } in plain words. The audit carries ids and on/off only.
  */
@@ -520,13 +555,6 @@ async function reviewRoute(req, res, m) {
       const phone = normalizePhone(v.phone);
       await makeReviewAccount(d, m[2], { phone, pin: typeof v.pin === "string" || typeof v.pin === "number" ? String(v.pin) : "" });
       await audit(req, "review_account_save", { user: m[2] });
-    } else {
-      const id = m[4];
-      if (v.confirm !== id) return json(res, 400, { error: `Confirm with the profile's id (${id}).` });
-      const u = await d.collection("thirtyda_users").findOne({ _id: id }, { projection: { _id: 1 } });
-      if (!u) return json(res, 404, { error: "There is no such profile (it may be removed already)." });
-      await deleteAccount(d, id);
-      await audit(req, "review_profile_remove", { user: id });
     }
   } catch (err) {
     if (err instanceof ReviewError) return json(res, err.status, { error: err.message, reason: err.code });
@@ -542,7 +570,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
   const path = url.pathname.replace(/\/+$/, "") || "/";
   const sub = path.slice(BASE.length) || "/";
 
-  const asset = sub.match(/^\/(app\.css|signin\.js|monitor\.js|questions\.js|connections\.js|support\.js|support\.css|support-badge\.js|review\.js|review\.css)$/);
+  const asset = sub.match(/^\/(app\.css|signin\.js|monitor\.js|questions\.js|connections\.js|support\.js|support\.css|support-badge\.js|review\.js|review\.css|delete-profile\.js)$/);
   if (req.method === "GET" && asset) return serveFile(res, asset[1]);
 
   if (req.method !== "GET" && req.method !== "HEAD" && sub.startsWith("/api/")) {
@@ -818,8 +846,11 @@ export async function handleThirtyDaAdmin(req, res, url) {
 
   // App review (src/lib/thirtyda-review.mjs): demo accounts for the App Store / Google Play reviewers.
   if (req.method === "GET" && sub === "/api/review") return json(res, 200, await reviewView(await db()));
-  m = sub.match(/^\/api\/review\/(switch|code|accounts\/(U-\d+)(\/stop)?|profiles\/(U-\d+)\/remove)$/);
+  m = sub.match(/^\/api\/review\/(switch|code|accounts\/(U-\d+)(\/stop)?)$/);
   if (req.method === "POST" && m) return reviewRoute(req, res, m);
+
+  m = sub.match(/^\/api\/users\/(U-\d+)\/delete$/);
+  if (req.method === "POST" && m) return deleteUserRoute(req, res, m[1]);
 
   m = sub.match(/^\/api\/users\/(U-\d+)\/(block|unblock)$/);
   if (req.method === "POST" && m) {

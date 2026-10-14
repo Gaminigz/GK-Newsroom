@@ -211,9 +211,14 @@ async function stop(a) {
   await act(`accounts/${a.id}/stop`, {}, `${a.name} is a normal profile again.`).catch(() => {});
 }
 
+// "Remove": the admin's one delete path (delete-profile.js: its dialog + POST /30da/admin/api/users/:id/delete), then
+// this page's fresh data.
 async function remove(p) {
-  if (!confirm(`Remove ${p.name || 'this profile'} (${p.id})?\n\nThis deletes the whole account at once: profile, photos, conversations and sign-ins. It cannot be undone.`)) return;
-  await act(`profiles/${p.id}/remove`, { confirm: p.id }, `${p.name || p.id} is removed.`).catch(() => {});
+  if (busy) return;
+  const done = await window.thirtydaDeleteProfile({ id: p.id, name: p.name });
+  if (!done) return;
+  await load();
+  toast(`${p.name || p.id} is deleted.`);
 }
 
 // ---------- the switch, the code, copy ----------

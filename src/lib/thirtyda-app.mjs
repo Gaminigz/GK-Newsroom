@@ -113,7 +113,7 @@ import {
 } from "./thirtyda-verify.mjs";
 import { deleteMe, finishDeletesInBackground } from "./thirtyda-delete.mjs";
 import {
-  REVIEW_TRIES, isReview, sameWorld, worldFilter, pairsInWorld, reviewSwitch, reviewAccountFor, checkReviewCode, tryCounter,
+  REVIEW, REVIEW_TRIES, isReview, sameWorld, worldFilter, pairsInWorld, reviewSwitch, reviewAccountFor, checkReviewCode, tryCounter,
 } from "./thirtyda-review.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
@@ -1968,6 +1968,9 @@ function randomOffsetKm() {
  * is between offset points: moving your own point around to trilaterate someone finds their
  * offset point, never their door. Moves are also limited (one per 2 minutes, 30 a day); a move
  * inside the limit is ignored and the current area comes back.
+ * An App review account keeps its pinned Phnom Penh spot (src/lib/thirtyda-review.mjs): the answer is OK and its
+ * area, nothing is written but lastSeenAt — a store reviewer abroad tapping "Allow" never moves the demo. Every
+ * location write below also requires "not a review account", so a profile made one meanwhile is never moved either.
  */
 async function setLocation(ctx) {
   const { d, body, me } = ctx;
@@ -1978,6 +1981,10 @@ async function setLocation(ctx) {
   }
   const users = d.collection(C.users);
   const now = Date.now();
+  if (isReview(me)) {
+    await users.updateOne({ _id: me._id }, { $set: { lastSeenAt: new Date(now) } });
+    return { area: me.area ?? "", city: me.city ?? "", moved: false };
+  }
   const offset = Array.isArray(me.locOffset) ? me.locOffset : randomOffsetKm();
   const kmLng = 1 / (111.32 * Math.max(0.05, Math.cos((lat * Math.PI) / 180)));
   const point = [
@@ -1993,7 +2000,7 @@ async function setLocation(ctx) {
   }
   // Claim the move atomically: parallel requests cannot squeeze several moves into one slot.
   const claimed = await users.updateOne(
-    { _id: me._id, $or: [{ locAt: null }, { locAt: { $lte: new Date(now - LOC_MOVE_MS) } }, { location: null }] },
+    { _id: me._id, demo: { $ne: REVIEW }, $or: [{ locAt: null }, { locAt: { $lte: new Date(now - LOC_MOVE_MS) } }, { location: null }] },
     {
       $set: { location: { type: "Point", coordinates: point }, locOffset: offset, locAt: new Date(now), lastSeenAt: new Date(now) },
       $push: { locMoves: { $each: [new Date(now)], $slice: -LOC_DAY_MAX } },
@@ -2004,7 +2011,7 @@ async function setLocation(ctx) {
     return stay;
   }
   // The area name comes from the real fix (it is what the person expects to read), only to street-block level.
-  const at = { _id: me._id, "location.coordinates": point };
+  const at = { _id: me._id, demo: { $ne: REVIEW }, "location.coordinates": point };
   const { area, city, later } = await areaFor(round3(lat), round3(lng));
   await users.updateOne(at, { $set: { area, city } });
   later?.then((real) => real && users.updateOne(at, { $set: { area: real.area, city: real.city } })).catch(() => {});

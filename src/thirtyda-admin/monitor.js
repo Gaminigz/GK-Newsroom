@@ -131,6 +131,7 @@ function renderUsers() {
         ${u.blocked
           ? `<button type="button" class="link" data-unblock="${esc(u.id)}">Unblock</button>`
           : `<button type="button" class="link danger" data-block="${esc(u.id)}">Block</button>`}
+        <button type="button" class="link danger" data-delete="${esc(u.id)}">Delete</button>
       </span></td>
     </tr>`;
   }).join('');
@@ -218,6 +219,16 @@ document.addEventListener('click', async (e) => {
     // Undo would lift a block that was already there before this click, so it is only offered for a new one.
     if (r.alreadyBlocked) toast(`${name(ds.block)} was already blocked. The flag is closed.`);
     else toast(`${name(ds.block)} is blocked.`, () => act(`/30da/admin/api/users/${ds.block}/unblock`, { undo: true }));
+  } else if (ds.delete) {
+    // The admin's delete dialog + the one delete route (delete-profile.js): the answer is the fresh overview.
+    const id = ds.delete;
+    const who = name(id);
+    const data = await window.thirtydaDeleteProfile({ id, name: view.data.users.find((u) => u.id === id)?.name });
+    if (!data) return;
+    view.data = data;
+    if (view.chatFor?.user === id) { view.chatFor = null; view.chat = null; }
+    render();
+    toast(`${who} is deleted.`);
   } else if (ds.unblock) {
     await act(`/30da/admin/api/users/${ds.unblock}/unblock`);
     toast(`${name(ds.unblock)} is unblocked.`);
