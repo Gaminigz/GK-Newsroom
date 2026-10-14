@@ -21,6 +21,10 @@
  * lastSend). Reads decrypt once and keep the value in memory for CACHE_MS; a save or a removal clears it at
  * once (the admin and the app run in one process), and the short TTL bounds how stale another instance is.
  *
+ * Bearer tokens other machines send US (the GK API Hub, tower 11 · Wan: src/lib/thirtyda-hub-wan.mjs) are not sealed
+ * but hashed (TOKEN_SETTINGS): { _id:'wan_client'|'wan_worker', kind:'token', hash (SHA-256 hex), last4, madeAt, madeBy }.
+ * The token itself is shown once, in the answer that made it, and is kept nowhere.
+ *
  * Pure apart from the `d` (Mongo Db) handed in, so the unit tests run without a database.
  */
 
@@ -323,4 +327,73 @@ export async function saveFields(d, name, values, { by = "superadmin", rawKey } 
   clearSettingsCache(name);
   warned.delete(name);
   return fieldsView(name, doc, all);
+}
+
+// ---------- hashed bearer tokens (the GK API Hub: tower 11 · Wan) ----------
+
+/**
+ * Tokens other machines send us as `Authorization: Bearer …` (src/lib/thirtyda-hub-wan.mjs): the CLIENT token (Yai Media
+ * Director) and the WORKER token (the M5). setting name → the token's prefix, so a pasted token says what it is.
+ * Only the token's SHA-256, its last 4 characters and when it was made are kept: nothing to open, so no
+ * THIRTYDA_SECRET_KEY is needed, and a leaked database gives no token. Never cached: a revoke stops it at once everywhere.
+ */
+export const TOKEN_SETTINGS = { wan_client: "wanc_", wan_worker: "wanw_" };
+const TOKEN_BODY_RE = /^[A-Za-z0-9_-]{43}$/; // 32 random bytes, base64url without padding
+
+const checkTokenName = (name) => checkName(name, Object.keys(TOKEN_SETTINGS));
+
+/** The SHA-256 (hex) a token is kept as. */
+export const tokenHash = (plain) => crypto.createHash("sha256").update(String(plain), "utf8").digest("hex");
+
+/** What a client may see of a token: never the token, never its hash. */
+export function tokenView(doc) {
+  const set = Boolean(doc?.hash);
+  return {
+    set,
+    last4: set ? doc.last4 ?? null : null,
+    madeAt: set ? iso(doc.madeAt) : null,
+    madeBy: set ? doc.madeBy ?? null : null,
+  };
+}
+
+/** The admin's view of token `name` (tokenView). */
+export async function tokenStatus(d, name) {
+  checkTokenName(name);
+  return tokenView(await d.collection(SETTINGS_COLLECTION).findOne({ _id: name }));
+}
+
+/**
+ * A new random token for `name` (32 bytes, base64url, behind its prefix); it replaces the one before, which stops
+ * working at once. → { token, view }: the ONLY time the token itself is handed out — the caller shows it once.
+ */
+export async function makeToken(d, name, { by = "superadmin" } = {}) {
+  checkTokenName(name);
+  const token = `${TOKEN_SETTINGS[name]}${crypto.randomBytes(32).toString("base64url")}`;
+  const doc = { _id: name, kind: "token", hash: tokenHash(token), last4: lastFour(token), madeAt: new Date(), madeBy: by };
+  await d.collection(SETTINGS_COLLECTION).replaceOne({ _id: name }, doc, { upsert: true });
+  return { token, view: tokenView(doc) };
+}
+
+/** Revoke token `name`. → the view of nothing and whether one was there. */
+export async function removeToken(d, name) {
+  checkTokenName(name);
+  const r = await d.collection(SETTINGS_COLLECTION).deleteOne({ _id: name });
+  return { ...tokenView(null), removed: r.deletedCount > 0 };
+}
+
+/**
+ * Is `plain` the current token `name`? → { hash } when it is, else null. A token that does not even look like one (its
+ * prefix, 43 base64url characters) is turned away without a database read; otherwise the two SHA-256 digests are compared
+ * with timingSafeEqual.
+ */
+export async function checkToken(d, name, plain) {
+  checkTokenName(name);
+  const s = String(plain ?? "");
+  const prefix = TOKEN_SETTINGS[name];
+  if (!s.startsWith(prefix) || !TOKEN_BODY_RE.test(s.slice(prefix.length))) return null;
+  const doc = await d.collection(SETTINGS_COLLECTION).findOne({ _id: name });
+  if (!doc?.hash) return null;
+  const want = Buffer.from(String(doc.hash), "hex");
+  const got = Buffer.from(tokenHash(s), "hex");
+  return want.length === got.length && crypto.timingSafeEqual(want, got) ? { hash: doc.hash } : null;
 }

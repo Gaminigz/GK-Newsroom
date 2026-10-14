@@ -32,6 +32,14 @@
  *   POST /30da/admin/api/connections/apple/try       the ES256 client secret + a made-up code at Apple's /auth/token:
  *        invalid_grant = the key works (the tower goes Live), invalid_client = a wrong key → { ok, reason?, detail?, view }
  *   DELETE /30da/admin/api/connections/:id           remove what is saved for telegram | whatsapp | google | facebook | tiktok | apple
+ *   Tower 11 · Wan (the GK API Hub: image to video on the M5 for Yai Media Director, src/lib/thirtyda-hub-wan.mjs) — the
+ *   page's data carries a `wan` block (status, the M5's last claim, the queue, the tokens' last 4 + made-at, options, jobs):
+ *   POST /30da/admin/api/connections/wan/tokens/client|worker   New token: the old one stops at once → { token, kind, view }.
+ *        The ONLY answer that carries a token (shown once on the page); kept as its SHA-256 + last 4. Audited with the last 4.
+ *   DELETE /30da/admin/api/connections/wan/tokens/client|worker Revoke
+ *   PUT  /30da/admin/api/connections/wan/options     { enabled?, sizes?: { '480p', '720p' }, maxSeconds? } → the page's data | 422
+ *   POST /30da/admin/api/connections/wan/try         queue a test render of the home picture (source 'try', the same caps)
+ *   GET  /30da/admin/api/connections/wan/clips/:id   a Try's clip for the tower's player (byte ranges), never a client's
  *   POST /30da/admin/api/connections/telegram|whatsapp/test   { phone } → a real code to that phone, or why not.
  *        A test that goes through turns the channel on in the app (src/lib/thirtyda-code-send.mjs channelOffer);
  *        the answer carries the page's fresh data (`view`) so the card can say so at once.
@@ -115,6 +123,7 @@ import { resolveUpdate, reopenUpdate } from "./thirtyda-blocks.mjs";
 import { targetLabel } from "../thirtyda-app/shared/safety.js";
 import { BAD_WORD_REASONS } from "../thirtyda-app/shared/bad-words.js";
 import { readPhoto, isPhotoId, deletePhoto } from "./thirtyda-photos.mjs";
+import { wanAdminView, newWanToken, revokeWanToken, saveWanOptions, queueWanTry, wanTryClip, sendClip } from "./thirtyda-hub-wan.mjs";
 import {
   pendingQueue, pendingOwner, reviewTarget, approvePhoto, rejectPhoto, photoNotice,
 } from "./thirtyda-photo-review.mjs";
@@ -472,6 +481,12 @@ async function connectionsView(d, req) {
         tryUrl: `${BASE}/api/connections/apple/try`,
       },
     ],
+    // Tower 11 · Wan (the GK API Hub, src/lib/thirtyda-hub-wan.mjs): never a token or a token's hash, only their last 4.
+    // A Wan failure never takes the other ten towers down: the page then draws without tower 11 (`wan` null).
+    wan: await wanAdminView(d, req).catch((err) => {
+      console.error("[30da admin] wan:", err instanceof Error ? err.message : err);
+      return null;
+    }),
   };
 }
 
@@ -592,6 +607,61 @@ async function appleTryRoute(req, res) {
     return json(res, r.reason === "no_key" ? 400 : 422, { ok: false, reason: r.reason, error: APPLE_TRY_WORDS[r.reason] || APPLE_TRY_WORDS.other, detail: r.detail ?? null, view });
   }
   return json(res, 200, { ok: true, view });
+}
+
+/**
+ * Tower 11 · Wan on the Code page (signed in; writes are same-origin JSON: checked before this). m[1] = what, m[2] = the
+ * token's kind, m[3] = a job id.
+ *   POST tokens/:kind → { token, kind, view }: the token in full this once (never again, never in the audit: its last 4).
+ *   DELETE tokens/:kind → the page's data. PUT options → the page's data | 422 { error, field }.
+ *   POST try → { ok, job_id, view } | the cap that stopped it { ok:false, error, reason, view }.
+ *   GET clips/:id → the Try's clip (byte ranges, for the <video>); 404 for anything else.
+ */
+async function wanRoute(req, res, m) {
+  const d = await db();
+  if (m[3]) {
+    if (req.method !== "GET") return send(res, 404, "Not found", { "Content-Type": "text/plain" });
+    const clip = await wanTryClip(d, m[3]);
+    if (!clip) return send(res, 404, "Not found", { "Content-Type": "text/plain" });
+    return sendClip(req, res, clip.buf, clip.type, SECURITY_HEADERS);
+  }
+  const what = m[2] ? "token" : m[1];
+  const allowed = { token: ["POST", "DELETE"], options: ["PUT"], try: ["POST"] }[what];
+  if (!allowed.includes(req.method)) {
+    req.resume();
+    return json(res, 404, { error: "Not found." });
+  }
+  if (what === "try") {
+    req.resume();
+    if (testLimited(req)) return json(res, 429, { error: `That is ${MAX_TESTS} tries in 15 minutes. Try again later.` });
+    const r = await queueWanTry(d);
+    await audit(req, "wan_try", { ok: r.ok, ...(r.ok ? { job: r.job_id } : { reason: r.reason }) });
+    const view = await connectionsView(d, req);
+    if (!r.ok) return json(res, r.status, { ok: false, error: r.error, reason: r.reason, view });
+    return json(res, 200, { ok: true, job_id: r.job_id, view });
+  }
+  if (writeLimited(req)) {
+    req.resume();
+    return json(res, 429, { error: "Too many changes. Try again in a few minutes." });
+  }
+  if (what === "token") {
+    req.resume();
+    if (req.method === "DELETE") {
+      const r = await revokeWanToken(d, m[2]);
+      await audit(req, "wan_token_revoke", { kind: m[2], removed: r.removed });
+      return json(res, 200, await connectionsView(d, req));
+    }
+    const { token, view: made } = await newWanToken(d, m[2], { by: "superadmin" });
+    await audit(req, "wan_token_new", { kind: m[2], last4: made.last4 });
+    return json(res, 200, { token, kind: m[2], view: await connectionsView(d, req) });
+  }
+  const body = await readJsonBody(req, 1e4);
+  if (body.tooLarge) return json(res, 413, { error: "That is far too long to save." });
+  if (body.bad) return json(res, 400, { error: "Send the options as JSON." });
+  const r = await saveWanOptions(d, body.value, { by: "superadmin" });
+  if (!r.ok) return json(res, 422, { error: r.error, field: r.field });
+  await audit(req, "wan_options", { enabled: r.options.enabled, sizes: r.options.sizes, maxSeconds: r.options.maxSeconds });
+  return json(res, 200, await connectionsView(d, req));
 }
 
 /**
@@ -903,6 +973,10 @@ export async function handleThirtyDaAdmin(req, res, url) {
   }
 
   if (req.method === "GET" && sub === "/api/connections") return json(res, 200, await connectionsView(await db(), req));
+
+  // Tower 11 · Wan: tokens, options, Try, and the Try's clip (src/lib/thirtyda-hub-wan.mjs).
+  m = sub.match(/^\/api\/connections\/wan\/(tokens\/(client|worker)|options|try|clips\/([a-f0-9]{32}))$/);
+  if (m) return wanRoute(req, res, m);
 
   // Sign in with Apple's key: "Try the key" (Save / Remove are the generic PUT / DELETE below).
   if (req.method === "POST" && sub === "/api/connections/apple/try") return appleTryRoute(req, res);

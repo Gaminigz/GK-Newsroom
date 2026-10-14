@@ -38,6 +38,7 @@ import { handleAssociations } from "../lib/garment-associations.mjs";
 import { handleApp } from "../lib/app.mjs";
 import { handleThirtyDaAdmin } from "../lib/thirtyda-admin.mjs";
 import { handleThirtyDaApp } from "../lib/thirtyda-app.mjs";
+import { handleThirtyDaHub } from "../lib/thirtyda-hub-wan.mjs";
 import { getSpiceAudio, listSpiceEpisodes } from "../lib/spice-podcast.ts";
 import { getGovAudio, listGovEpisodes } from "../lib/gov-podcast.ts";
 import { SPICES } from "../data/spices.ts";
@@ -1309,6 +1310,13 @@ const server = http.createServer(async (req, res) => {
     // 30+DA super admin web (code-only sign-in, users & chat monitor).
     if (path === "/30da/admin" || path.startsWith("/30da/admin/")) {
       await handleThirtyDaAdmin(req, res, url);
+      return;
+    }
+
+    // GK API Hub (tower 11 · Wan, image to video on the M5): server to server with bearer tokens. Its own branch, ahead
+    // of the app, so the 30+DA app's router and its PIN / verify / terms guards never see these routes.
+    if (path === "/30da/hub" || path.startsWith("/30da/hub/")) {
+      await handleThirtyDaHub(req, res, url);
       return;
     }
 

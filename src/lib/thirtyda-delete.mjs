@@ -95,6 +95,10 @@ export const COVERAGE = {
   thirtyda_settings: null, // the admin's sealed keys
   thirtyda_admin_sessions: null, // the admin's sessions
   thirtyda_test_fetch: null, // the dev DB's stand-in answers for the e2e
+  // The GK API Hub, tower 11 · Wan (src/lib/thirtyda-hub-wan.mjs): renders for Yai Media Director, tied to no 30+DA profile.
+  // A picture goes when its render is done or failed, a clip 48 h after done, the record 30 days after.
+  thirtyda_hub_wan_jobs: null,
+  thirtyda_hub_wan: null, // their GridFS bucket (the pictures and clips)
 };
 
 /** Names that look like collections but are cookies / browser storage keys. */

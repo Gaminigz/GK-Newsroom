@@ -1,7 +1,10 @@
-// 30+DA super admin · Code — the sign-in and messaging hub (owner 2026-10-14): ten towers left to right, in the owner's
-// order (1 TikTok, 2 Telegram Bot, 3 Telegram Gateway, 4 Facebook, 5 Google, 6 WhatsApp, 7 WeChat, 8 Alipay, 9 YouTube,
-// 10 Apple; 7–9 are "Later" placeholders), each with the keys it needs. Tower 10 is Sign in with Apple (owner
-// 2026-10-14): the sign-in needs no key; its key (Team ID, Key ID, the .p8) lets a deleted account end its Apple link. A strip at the top jumps to a tower; ‹ ›, the
+// 30+DA super admin · Code — the sign-in and messaging hub, the GK API Hub (owner 2026-10-14): eleven towers left to right,
+// in the owner's order (1 TikTok, 2 Telegram Bot, 3 Telegram Gateway, 4 Facebook, 5 Google, 6 WhatsApp, 7 WeChat, 8 Alipay,
+// 9 YouTube, 10 Apple, 11 Wan; 7–9 are "Later" placeholders), each with the keys it needs. Tower 10 is Sign in with Apple
+// (owner 2026-10-14): the sign-in needs no key; its key (Team ID, Key ID, the .p8) lets a deleted account end its Apple
+// link. Tower 11 is Wan (owner 2026-10-14): image to video on our M5 for Yai Media Director — a client token and a worker
+// token (each shown once, then only its last 4), On / Off, the sizes and seconds allowed, and a Try that plays its clip
+// here (src/lib/thirtyda-hub-wan.mjs). A strip at the top jumps to a tower; ‹ ›, the
 // arrow keys and the slider move along; the last tower is remembered in this browser. Later all our apps use this hub.
 // Telegram and WhatsApp send the sign-in code: offered in the app only once a test code went through since the
 // keys were saved, and stopped again by a lasting failure (no balance, bad token, template). Google, Facebook and
@@ -15,7 +18,8 @@
 const API = '/30da/admin/api/connections';
 const $ = (id) => document.getElementById(id);
 
-const state = { data: null, busy: false, test: {}, testPhone: {} };
+// wanReveal: a Wan token just made { kind, token } — this page's memory only, until "Done" (never stored, never sent back).
+const state = { data: null, busy: false, test: {}, testPhone: {}, wanReveal: null, wanBusy: null, wanTrying: false, wanTryError: null };
 
 // ---------- dom ----------
 function h(tag, attrs = {}, ...kids) {
@@ -43,6 +47,8 @@ const LOGOS = {
   wechat: '<path d="M10 4.2c-4 0-7.2 2.6-7.2 5.9 0 1.9 1 3.5 2.6 4.6l-.6 2.2 2.6-1.3c.8.2 1.7.4 2.6.4" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M15.6 9.6c3.1 0 5.6 2.1 5.6 4.6 0 1.4-.8 2.7-2 3.6l.5 1.8-2.1-1c-.6.2-1.3.3-2 .3-3.1 0-5.6-2.1-5.6-4.7s2.5-4.6 5.6-4.6Z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><circle cx="7.4" cy="8.6" r=".95" fill="currentColor"/><circle cx="11.6" cy="8.6" r=".95" fill="currentColor"/><circle cx="13.7" cy="13.6" r=".8" fill="currentColor"/><circle cx="17.5" cy="13.6" r=".8" fill="currentColor"/>',
   alipay: '<rect x="3" y="3" width="18" height="18" rx="4.5" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M7 8.2h10M12 5.6v4.8M7.6 11.6h8.6c-1 3.6-4 6.3-8.4 7.2M10 11.8c1.4 3.2 4.1 5.6 7.6 6.6" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
   youtube: '<rect x="2.6" y="5.6" width="18.8" height="12.8" rx="4" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M10.2 9.2v5.6l4.8-2.8-4.8-2.8Z" fill="currentColor"/>',
+  // Wan (tower 11): a video camera with a play mark, our own drawing.
+  wan: '<rect x="2.8" y="5.6" width="13" height="12.8" rx="2.6" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="m15.8 10.4 5.2-3v9.2l-5.2-3" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="M7.6 9.4v5.2l4.3-2.6-4.3-2.6Z" fill="currentColor"/>',
   apple: '<path d="M12 8.1c-1.1-.9-3.6-1.4-5.1.5-1.6 2-1.1 5.8.6 8.4 1 1.5 2 2.6 3.1 2.5.9-.1 1.1-.6 2.1-.6 1 0 1.3.5 2.1.6 1.2.1 2.2-1.1 3.1-2.5.6-.9 1-1.8 1.2-2.4-1.7-.8-2.5-3.3-1.1-5 .3-.4.6-.7 1-.9-1.5-1.9-4-1.7-5.2-.6Z" fill="currentColor"/><path d="M12.1 7.3c-.1-1.6 1.2-3.2 2.8-3.3.2 1.7-1.2 3.3-2.8 3.3Z" fill="currentColor"/>',
 };
 function logo(id) {
@@ -73,7 +79,7 @@ async function call(method, path, body) {
 
 // ---------- helpers ----------
 const when = (iso) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const NAMES = { telegram: 'Telegram', 'telegram-bot': 'Telegram bot', whatsapp: 'WhatsApp', google: 'Google', facebook: 'Facebook', tiktok: 'TikTok', apple: 'Apple' };
+const NAMES = { telegram: 'Telegram', 'telegram-bot': 'Telegram bot', whatsapp: 'WhatsApp', google: 'Google', facebook: 'Facebook', tiktok: 'TikTok', apple: 'Apple', wan: 'Wan' };
 const REASON_WORDS = {
   not_on_telegram: 'number not on Telegram',
   not_on_whatsapp: 'number not on WhatsApp',
@@ -796,16 +802,16 @@ function tryBlock(c) {
       : h('button', { type: 'button', class: 'btn cx-test-btn cx-try-btn', disabled: true }, `Try ${name} sign-in`));
 }
 
-function copyButton(text) {
+function copyButton(text, done = 'Address copied.', id = null) {
   return h('button', {
-    type: 'button', class: 'btn cx-copy-btn',
+    type: 'button', class: 'btn cx-copy-btn', id,
     on: {
       click: async () => {
         try {
           await navigator.clipboard.writeText(text);
-          toast('Address copied.');
+          toast(done);
         } catch {
-          toast('Select the address and copy it.');
+          toast(done === 'Address copied.' ? 'Select the address and copy it.' : 'Select it and copy it.');
         }
       },
     },
@@ -1017,7 +1023,330 @@ function appleStatus(byId) {
   return byId.apple ? appleKeyStatus(byId.apple) : LATER_PILL;
 }
 
-// ---------- the hub: ten towers left to right ----------
+// ---------- tower 11 · Wan: image to video on our M5, for Yai Media Director (the GK API Hub, owner 2026-10-14) ----------
+// Wan 2.2 runs in ComfyUI on the owner's M5 laptop. The hub never calls the M5: the M5's worker calls out (claim, progress,
+// done, fail) with the WORKER token; Yai Media Director sends a picture + a prompt with the CLIENT token and fetches the
+// clip (src/lib/thirtyda-hub-wan.mjs, contract v1). A token shows in full ONCE, right after New token (kept only in this
+// page's memory until "Done"); after that only its last 4. The server sends a `wan` block next to the connections.
+
+const WAN_PILLS = {
+  not_set: { pill: 'off', text: 'Not set' },
+  off: { pill: 'off', text: 'Off' },
+  waiting: { pill: 'wait', text: 'Waiting for the M5' },
+  live: { pill: 'live', text: 'Live' },
+};
+const wanPill = (w) => WAN_PILLS[w?.status] || WAN_PILLS.not_set;
+
+const WAN_TOKEN_WORDS = {
+  client: {
+    label: 'Client token', who: 'Yai Media Director',
+    help: 'Goes in Yai Media Director as Authorization: Bearer <token>. It can send renders and fetch clips.',
+    renew: 'Make a new client token?\n\nThe one Yai Media Director uses now stops working at once: paste the new one there.',
+    revoke: 'Revoke the client token?\n\nYai Media Director cannot send renders or fetch clips until a new token is made.',
+  },
+  worker: {
+    label: 'Worker token', who: 'the M5',
+    help: 'Goes in the M5 worker’s settings. It can only take renders and send clips back.',
+    renew: 'Make a new worker token?\n\nThe M5 worker stops at once until the new token is in its settings.',
+    revoke: 'Revoke the worker token?\n\nThe M5 cannot take renders until a new token is made; renders wait in the queue.',
+  },
+};
+
+/** "40 s", "3 min", "5 h", "2 days". */
+function ago(s) {
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return `${Math.round(s / 60)} min`;
+  if (s < 48 * 3600) return `${Math.round(s / 3600)} h`;
+  return `${Math.round(s / 86400)} days`;
+}
+const megabytes = (n) => `${(n / (1024 * 1024)).toFixed(n < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+
+function wanWorkerLine(w) {
+  if (!w.worker) {
+    return [h('b', { text: 'Not seen yet' }), w.tokens.worker.set
+      ? ' · start the worker on the M5 with the worker token.' : ' · make a worker token, then start the worker on the M5.'];
+  }
+  const { name, seenAgoS, info = {} } = w.worker;
+  const live = seenAgoS * 1000 <= 2 * 60e3;
+  const about = [info.gpu, info.comfy_version ? `ComfyUI ${info.comfy_version}` : null].filter(Boolean).join(' · ');
+  return [h('b', { class: live ? 'cx-ok' : null, text: `${name || 'M5'} seen ${ago(seenAgoS)} ago` }), about ? ` · ${about}` : '',
+    live ? '' : ' · asleep or away: renders wait here until it calls in again.'];
+}
+
+function wanQueueLine(w) {
+  const q = w.queue;
+  return `${q.pending} waiting · ${q.running} rendering · ${q.clips} ${q.clips === 1 ? 'clip' : 'clips'} kept · ${megabytes(q.storedBytes)} of ${megabytes(q.storageMax)}`;
+}
+
+function wanAppLine(w) {
+  if (w.status === 'not_set') return 'Make a client token for Yai Media Director and a worker token for the M5.';
+  if (w.status === 'off') return [h('b', { class: 'cx-bad', text: 'Off: ' }), 'Yai Media Director gets “tower_off” until you turn it on. Renders already queued still go to the M5.'];
+  if (w.status === 'live') return 'Working: the M5 takes renders as they come in.';
+  return 'On. Renders from Yai Media Director wait in the queue until the M5 calls in.';
+}
+
+async function makeWanToken(kind, replacing) {
+  if (state.wanBusy) return;
+  if (replacing && !confirm(WAN_TOKEN_WORDS[kind].renew)) return;
+  state.wanBusy = kind;
+  render(state.data);
+  const r = await call('POST', `${API}/wan/tokens/${kind}`, {});
+  state.wanBusy = null;
+  if (!r.ok) {
+    render(state.data);
+    return toast(r.data.error || 'Could not make the token.');
+  }
+  // Shown once: kept in this page's memory only, until "Done, I copied it".
+  state.wanReveal = { kind, token: r.data.token };
+  render(r.data.view?.connections ? r.data.view : state.data);
+  $(`wan-copy-${kind}`)?.focus();
+}
+
+async function revokeWanToken(kind) {
+  if (!confirm(WAN_TOKEN_WORDS[kind].revoke)) return;
+  const r = await call('DELETE', `${API}/wan/tokens/${kind}`, {});
+  if (!r.ok) return toast(r.data.error || 'Could not revoke it.');
+  if (state.wanReveal?.kind === kind) state.wanReveal = null;
+  render(r.data);
+  toast(`${WAN_TOKEN_WORDS[kind].label} revoked.`);
+}
+
+/** The new token, in full, this once. */
+function wanReveal(kind) {
+  const r = state.wanReveal;
+  if (!r || r.kind !== kind) return null;
+  return h('div', { class: 'cx-result ok cx-reveal' },
+    h('p', {}, h('b', { text: 'Shown once. ' }), 'Copy it now: after this only its last 4 characters show. A token made before it has stopped working.'),
+    h('div', { class: 'cx-copy-row' }, h('code', { class: 'cx-mono cx-address', text: r.token }), copyButton(r.token, 'Token copied.', `wan-copy-${kind}`)),
+    h('button', {
+      type: 'button', class: 'link',
+      on: { click: () => { state.wanReveal = null; render(state.data); } },
+    }, 'Done, I copied it'));
+}
+
+function wanTokenRow(w, kind) {
+  const t = w.tokens[kind];
+  const words = WAN_TOKEN_WORDS[kind];
+  const busy = state.wanBusy === kind;
+  const make = h('button', {
+    type: 'button', class: 'btn cx-test-btn', id: `wan-new-${kind}`, disabled: Boolean(state.wanBusy),
+    on: { click: () => makeWanToken(kind, t.set) },
+  }, busy ? 'Making…' : t.set ? 'New token' : 'Make token');
+  const revoke = t.set ? h('button', { type: 'button', class: 'link cx-remove', on: { click: () => revokeWanToken(kind) } }, 'Revoke') : null;
+  return h('div', { class: 'cx-token' },
+    h('p', { class: 'cx-token-line' }, h('b', { text: `${words.label} · ${words.who}` }), ' · ',
+      t.set ? ['ends ', h('code', { class: 'cx-mono', text: `…${t.last4}` }), ` · made ${when(t.madeAt)}`] : h('span', { class: 'cx-bad', text: 'not set' })),
+    h('p', { class: 'cx-help' }, words.help),
+    wanReveal(kind),
+    h('div', { class: 'cx-actions' }, make, revoke));
+}
+
+async function saveWanOptions(body, err) {
+  if (state.busy) return;
+  state.busy = true;
+  const r = await call('PUT', `${API}/wan/options`, body);
+  state.busy = false;
+  if (!r.ok) {
+    if (err) {
+      err.textContent = r.data.error || 'Could not save.';
+      err.hidden = false;
+    } else toast(r.data.error || 'Could not save.');
+    return;
+  }
+  render(r.data, { fresh: 'wan' });
+  const o = r.data.wan?.options;
+  toast('enabled' in body ? `Wan tower ${o?.enabled ? 'on' : 'off'}.` : 'Wan options saved.');
+}
+
+/** On / Off (at once), the sizes allowed and the most seconds (Save). */
+function wanOptionsBlock(w) {
+  const o = w.options;
+  const err = h('p', { class: 'cx-err', id: 'wan-opt-err', role: 'alert', hidden: true });
+  const box = (s) => h('input', { type: 'checkbox', id: `wan-size-${s}`, checked: Boolean(o.sizes[s]), 'data-draft': 'wan' });
+  const sizes = Object.fromEntries(o.sizesAll.map((s) => [s, box(s)]));
+  const secs = h('input', {
+    class: 'input cx-mono cx-secs', type: 'number', id: 'wan-max-seconds', min: '1', max: String(o.secondsMax), step: '1',
+    inputmode: 'numeric', value: String(o.maxSeconds), 'data-draft': 'wan', 'aria-describedby': 'wan-opt-err',
+  });
+  for (const input of [...Object.values(sizes), secs]) input.addEventListener('input', () => { err.hidden = true; });
+  const power = h('button', {
+    type: 'button', class: 'btn cx-test-btn', id: 'wan-power', 'aria-pressed': String(o.enabled),
+    on: { click: () => saveWanOptions({ enabled: !o.enabled }) },
+  }, o.enabled ? 'Turn off' : 'Turn on');
+  const sizeWords = { '480p': '480p', '720p': '720p — the M5’s 32 GB runs out of memory at 720p' };
+  const form = h('form', {
+    class: 'cx-form', novalidate: true,
+    on: {
+      submit: (e) => {
+        e.preventDefault();
+        const maxSeconds = Number(secs.value);
+        if (!Number.isInteger(maxSeconds) || maxSeconds < 1 || maxSeconds > o.secondsMax) {
+          err.textContent = `The most seconds is a whole number from 1 to ${o.secondsMax}.`;
+          err.hidden = false;
+          return secs.focus();
+        }
+        saveWanOptions({ sizes: Object.fromEntries(Object.entries(sizes).map(([s, input]) => [s, input.checked])), maxSeconds }, err);
+      },
+    },
+  },
+  h('fieldset', { class: 'cx-sizes' },
+    h('legend', { class: 'label', text: 'Sizes Yai may ask for' }),
+    o.sizesAll.map((s) => h('label', { class: 'cx-check-label', for: `wan-size-${s}` }, sizes[s], h('span', { text: sizeWords[s] || s })))),
+  h('label', { class: 'field cx-secs-label', for: 'wan-max-seconds' }, h('span', { class: 'label', text: 'Most seconds per clip' })),
+  secs,
+  err,
+  h('div', { class: 'cx-actions' }, h('button', { type: 'submit', class: 'btn-primary cx-save' }, 'Save')));
+  return h('div', { class: 'cx-try' },
+    h('h3', { text: 'Tower' }),
+    h('div', { class: 'cx-power' },
+      h('p', { class: 'cx-help' }, h('b', { text: o.enabled ? 'On. ' : 'Off. ' }),
+        o.enabled ? 'Yai Media Director can send renders.' : 'Renders from Yai Media Director are refused (“tower_off”).'),
+      power),
+    form);
+}
+
+const WAN_JOB_WORDS = { pending: 'Waiting', running: 'Rendering', done: 'Done', failed: 'Failed' };
+const WAN_ERROR_WORDS = { worker_lost: 'the M5 went away twice', storage_full: 'the hub was full', input_lost: 'the picture was lost' };
+
+async function tryWan() {
+  if (state.wanTrying) return;
+  state.wanTrying = true;
+  state.wanTryError = null;
+  render(state.data);
+  const r = await call('POST', `${API}/wan/try`, {});
+  state.wanTrying = false;
+  const data = r.data.view?.connections ? r.data.view : state.data;
+  // The answer's own Wan block is not news: a "Not queued" stays until the tower changes after it (noteWan).
+  noteWan(data.wan);
+  state.wanTryError = r.ok ? null : r.data.error || 'Could not queue the try.';
+  render(data);
+  $('wan-try')?.focus();
+}
+
+/** Try: a short render of the home picture; its status, and the clip when it is done. */
+function wanTryBlock(w) {
+  const t = w.lastTry;
+  const working = t && (t.status === 'pending' || t.status === 'running');
+  const ready = w.options.enabled;
+  const btn = h('button', {
+    type: 'button', class: 'btn cx-test-btn cx-try-btn', id: 'wan-try', disabled: state.wanTrying || working || !ready,
+    on: { click: tryWan },
+  }, state.wanTrying ? 'Queueing…' : 'Try a render');
+  // A press that was refused shows next to the last Try's own status, never in place of it.
+  const refused = state.wanTryError
+    ? h('div', { class: 'cx-result bad' }, h('p', {}, h('b', { text: 'Not queued. ' }), state.wanTryError)) : null;
+  const again = wanAsk.stopped ? h('p', { class: 'cx-fine' }, 'Nothing new for 10 minutes, so this page stopped asking. ',
+    h('button', { type: 'button', class: 'link', id: 'wan-check', on: { click: checkWanAgain } }, 'Check again')) : null;
+  let result = null;
+  if (t?.status === 'pending') {
+    result = h('div', { class: 'cx-result' }, h('p', {}, h('b', { text: 'Waiting for the M5. ' }), `Queued ${when(t.createdAt)} · ${t.size}, ${t.seconds} s.`), again);
+  } else if (t?.status === 'running') {
+    result = h('div', { class: 'cx-result' }, h('p', {}, h('b', { text: `Rendering ${Math.round((t.progress || 0) * 100)} %. ` }), `${t.size}, ${t.seconds} s.`), again);
+  } else if (t?.status === 'done') {
+    const media = !t.clipUrl ? null : t.clipType === 'image/webp'
+      ? h('img', { class: 'cx-video', src: t.clipUrl, alt: 'The Try clip' })
+      : h('video', { class: 'cx-video', src: t.clipUrl, controls: true, muted: true, loop: true, playsinline: true, preload: 'metadata' });
+    result = h('div', { class: 'cx-result ok' },
+      h('p', {}, h('b', { text: 'Done ✓ ' }), `${t.size}, ${t.seconds} s · ${when(t.finishedAt)}.`),
+      media || h('p', { class: 'cx-fine' }, 'The clip was deleted 48 hours after it was made.'));
+  } else if (t?.status === 'failed') {
+    result = h('div', { class: 'cx-result bad' }, h('p', {}, h('b', { text: 'Failed. ' }), WAN_ERROR_WORDS[t.error] || t.error || 'The M5 could not make it.'));
+  }
+  return h('div', { class: 'cx-try' },
+    h('h3', { text: 'Try' }),
+    h('p', { class: 'cx-help' }, ready
+      ? 'Queues a short render of the 30+DA home picture (the same caps as Yai). The M5 takes it on its next claim; this tower shows the clip here.'
+      : 'Turn the tower on first, then try it here.'),
+    btn,
+    refused,
+    result);
+}
+
+/** The last 8 renders: what, from where, when; never a prompt or a picture. */
+function wanJobsBlock(w) {
+  if (!w.jobs?.length) return null;
+  return h('div', { class: 'cx-try' },
+    h('h3', { text: 'Last renders' }),
+    h('ol', { class: 'cx-jobs' }, w.jobs.map((j) => h('li', {},
+      h('span', { class: `cx-job ${j.status}`, text: j.status === 'running' ? `${WAN_JOB_WORDS.running} ${Math.round((j.progress || 0) * 100)} %` : WAN_JOB_WORDS[j.status] || j.status }),
+      ` ${j.source === 'try' ? 'Try' : 'Yai'} · ${j.size} · ${j.seconds} s · ${j.aspect} · ${when(j.createdAt)}`,
+      j.finishedAt ? ` → ${when(j.finishedAt)}` : '',
+      j.error ? h('span', { class: 'cx-bad', text: ` · ${WAN_ERROR_WORDS[j.error] || j.error}` }) : null))));
+}
+
+function wanCard(w) {
+  // The status pill (wanPill) sits on the tower's top line.
+  return h('section', { class: 'panel cx-card cx-signin', 'aria-labelledby': 'cx-wan' },
+    h('div', { class: 'cx-head' }, logo('wan'),
+      h('div', { class: 'cx-title' }, h('h2', { id: 'cx-wan', text: 'Wan' }), h('p', { class: 'cx-sub', text: 'Image to video on our M5 · for Yai Media Director' }))),
+    h('dl', { class: 'cx-status' },
+      row('M5', ...wanWorkerLine(w)),
+      row('Queue', wanQueueLine(w)),
+      row('In Yai', wanAppLine(w))),
+    h('div', { class: 'cx-signin-body' },
+      h('div', { class: 'cx-try' }, h('h3', { text: 'Tokens' }), wanTokenRow(w, 'client'), wanTokenRow(w, 'worker')),
+      wanOptionsBlock(w),
+      wanTryBlock(w),
+      wanJobsBlock(w),
+      addressRow('Endpoint', `for developers: Yai Media Director and the M5 worker follow contract ${w.contract || 'v1'}; every call and answer is listed at the top of src/lib/thirtyda-hub-wan.mjs. Tokens go in Authorization: Bearer.`, w.endpoint)));
+}
+
+/**
+ * While a Try waits or renders, the page asks again every 5 seconds. Only the Wan tower is re-drawn (renderWan), and only
+ * when its status, queue or jobs changed: the other ten towers (what is typed there, an error, a shown secret) are never
+ * touched, and a box being typed in inside the Wan tower holds the asking. Nothing new for 10 minutes (the M5 asleep)
+ * stops it — no polling for hours, no sign-in bounce from an idle tab — and "Check again" asks once more.
+ */
+const WAN_ASK_MS = 5000;
+const WAN_ASK_FOR_MS = 10 * 60e3;
+const wanAsk = { timer: 0, shape: '', since: 0, stopped: false };
+/** What the asking compares (not seenAgoS: it moves every time). */
+const wanShape = (w) => JSON.stringify(w ? [w.status, w.queue, w.lastTry, w.jobs] : null);
+
+/** Before every draw: a Wan block that changed starts the 10 minutes again, and clears a Try's "Not queued" message. */
+function noteWan(w) {
+  const shape = wanShape(w);
+  if (shape === wanAsk.shape) return;
+  Object.assign(wanAsk, { shape, since: Date.now(), stopped: false });
+  state.wanTryError = null;
+}
+
+/** A box inside the Wan tower has the focus (being typed in). */
+function wanEditing() {
+  const el = document.activeElement;
+  return Boolean(el?.matches?.('input, select, textarea') && el.closest('#tower-wan'));
+}
+
+/** After every draw: ask again in 5 s while the latest Try waits or renders (and the asking has not stopped). */
+function pollWan(data) {
+  clearTimeout(wanAsk.timer);
+  const t = data?.wan?.lastTry;
+  if (!t || (t.status !== 'pending' && t.status !== 'running') || wanAsk.stopped) return;
+  wanAsk.timer = setTimeout(askWan, WAN_ASK_MS);
+}
+
+async function askWan() {
+  if (state.busy || document.hidden || wanEditing()) return pollWan(state.data);
+  let r;
+  try {
+    r = await call('GET', API);
+  } catch {
+    return; // signed out: call() already moved on
+  }
+  if (!r.ok) return pollWan(state.data);
+  if (wanShape(r.data.wan) !== wanAsk.shape) return renderWan(r.data);
+  if (Date.now() - wanAsk.since < WAN_ASK_FOR_MS) return pollWan(state.data);
+  wanAsk.stopped = true; // nothing new for 10 minutes: the Try shows "Check again"
+  return renderWan(state.data);
+}
+
+/** "Check again": the next answer counts as news (a fresh 10 minutes), whatever it says. */
+function checkWanAgain() {
+  wanAsk.shape = '';
+  return askWan();
+}
+
+// ---------- the hub: eleven towers left to right ----------
 
 /** A sign-in tower (TikTok, Facebook, Google): its keys card, its pill from signinStatus. */
 const signinTower = (id, name) => ({
@@ -1028,8 +1357,8 @@ const laterOne = (key, name, kind) => ({ key, name, kind, status: () => LATER_PI
 
 /**
  * The towers, left to right, in the owner's order (2026-10-14). key → the tower's id (tower-<key>) and what this
- * browser remembers; name → the strip at the top; kind → the tower's top line; has → drawn only when the server sent
- * its connection; status → its pill (and the dot in the strip); draw → its card.
+ * browser remembers; name → the strip at the top; kind → the tower's top line; has(byId, data) → drawn only when the
+ * server sent its connection (Wan: its `wan` block); status(byId, data) → its pill (and the dot in the strip); draw → its card.
  */
 const TOWERS = [
   signinTower('tiktok', 'TikTok'),
@@ -1051,6 +1380,10 @@ const TOWERS = [
   laterOne('alipay', 'Alipay', 'Payments'),
   laterOne('youtube', 'YouTube', 'Sign-in'),
   { key: 'apple', name: 'Apple', kind: 'Sign-in', status: appleStatus, draw: appleTower },
+  {
+    key: 'wan', name: 'Wan', kind: 'Video', has: (byId, data) => Boolean(data?.wan),
+    status: (byId, data) => wanPill(data.wan), draw: (byId, data) => wanCard(data.wan),
+  },
 ];
 const towerNumber = (t) => TOWERS.indexOf(t) + 1;
 
@@ -1205,7 +1538,7 @@ function endSlide() {
   const els = towerEls();
   const off = (el) => Math.abs(Math.min(startOf(el), row.scrollWidth - row.clientWidth) - row.scrollLeft);
   // A tie goes to the later tower: at the right end on a wide screen the last few all sit at the furthest scroll,
-  // and the slider's end means the last tower (10), not the first of them.
+  // and the slider's end means the last tower (11), not the first of them.
   let best = 0;
   els.forEach((el, i) => { if (off(el) <= off(els[best])) best = i; });
   go(best, { page: false });
@@ -1244,12 +1577,13 @@ function wireHub() {
   slider.addEventListener('change', endSlide);
   slider.addEventListener('pointerup', endSlide);
   slider.addEventListener('blur', endSlide);
-  // ← → step tower by tower, except while typing in a box (there they move the cursor).
+  // ← → step tower by tower, except while typing in a box (there they move the cursor) or on a player (the Try clip:
+  // there they seek).
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !hub.shown.length) return;
     const el = e.target instanceof Element ? e.target : document.body;
-    if (el !== slider && el.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+    if (el !== slider && el.closest('input, textarea, select, video, audio, [contenteditable]:not([contenteditable="false"])')) return;
     e.preventDefault();
     const focus = el.closest('#hub-strip') ? 'chip' : el.closest('#hub-bar') ? null : 'tower';
     go(hub.current + (e.key === 'ArrowRight' ? 1 : -1), { focus });
@@ -1265,7 +1599,7 @@ wireHub();
 /** The line at the top right: what is live, what needs a look, what waits, over all the towers. */
 function headline(data) {
   const byId = Object.fromEntries(data.connections.map((c) => [c.id, c]));
-  const all = TOWERS.filter((t) => !t.has || t.has(byId)).map((t) => ({ name: t.name, st: t.status(byId) }));
+  const all = TOWERS.filter((t) => !t.has || t.has(byId, data)).map((t) => ({ name: t.name, st: t.status(byId, data) }));
   const named = (test) => all.filter(({ st }) => test(st)).map(({ name }) => name);
   const parts = [];
   const attention = named((st) => st.text === 'Needs attention');
@@ -1275,6 +1609,9 @@ function headline(data) {
   // Stopped / Last try failed, each with its own words.
   const warns = [...new Set(all.filter(({ st }) => st.pill === 'warn' && st.text !== 'Needs attention').map(({ st }) => st.text))];
   for (const text of warns) parts.push(`${text}: ${named((st) => st.pill === 'warn' && st.text === text).join(' + ')}`);
+  // Wan, on but its M5 not seen for 2 minutes.
+  const waiting = named((st) => st.pill === 'wait');
+  if (waiting.length) parts.push(`Waiting for the M5: ${waiting.join(' + ')}`);
   const toTry = named((st) => st.pill === 'saved');
   if (toTry.length) parts.push(`Saved, not tried: ${toTry.join(' + ')}`);
   if (!live.length) parts.push(data.testCodes ? 'Test codes · nothing live yet' : 'Nothing live yet');
@@ -1285,11 +1622,12 @@ function headline(data) {
 
 /** Re-draw every tower. What was typed but not saved stays (except on the card just saved / removed: `fresh`). */
 function render(data, { fresh = null } = {}) {
+  noteWan(data.wan);
   state.data = data;
   const focused = document.activeElement?.id;
   const drafts = {};
   for (const input of document.querySelectorAll('[data-draft]')) {
-    if (input.dataset.draft !== fresh && input.id) drafts[input.id] = input.value;
+    if (input.dataset.draft !== fresh && input.id) drafts[input.id] = input.type === 'checkbox' ? input.checked : input.value;
   }
   const byId = Object.fromEntries(data.connections.map((c) => [c.id, c]));
   $('key-banner').hidden = data.keyReady;
@@ -1302,11 +1640,15 @@ function render(data, { fresh = null } = {}) {
   // The towers, left to right, and the strip's buttons; the row stays where it was.
   const row = $('cards');
   const left = row.scrollLeft;
-  hub.shown = TOWERS.filter((t) => !t.has || t.has(byId));
-  const statuses = hub.shown.map((t) => t.status(byId));
+  hub.shown = TOWERS.filter((t) => !t.has || t.has(byId, data));
+  const statuses = hub.shown.map((t) => t.status(byId, data));
   row.replaceChildren(...hub.shown.map((t, i) => tower(t, statuses[i], byId, data)));
   $('hub-strip').replaceChildren(...hub.shown.map((t, i) => chip(t, i, statuses[i])));
-  for (const [id, value] of Object.entries(drafts)) if ($(id)) $(id).value = value;
+  for (const [id, value] of Object.entries(drafts)) {
+    if (!$(id)) continue;
+    if (typeof value === 'boolean') $(id).checked = value;
+    else $(id).value = value;
+  }
   if (hub.restore !== undefined) {
     // The first draw: back to the tower worked on last time.
     const i = hub.shown.findIndex((t) => t.key === hub.restore);
@@ -1318,6 +1660,38 @@ function render(data, { fresh = null } = {}) {
     syncHub();
   }
   if (focused && $(focused) && !$(focused).disabled) $(focused).focus();
+  pollWan(data);
+}
+
+/**
+ * The Try poll's draw: the Wan tower, its strip button and the top line only. The other ten towers are left exactly as
+ * they are (their data too: only `wan` is taken from the answer). What was typed in the Wan tower stays.
+ */
+function renderWan(data) {
+  const i = hub.shown.findIndex((t) => t.key === 'wan');
+  const old = $('tower-wan');
+  if (i < 0 || !old || !data.wan || !state.data) return render(data);
+  noteWan(data.wan);
+  state.data = { ...state.data, wan: data.wan };
+  const focused = old.contains(document.activeElement) ? document.activeElement.id : null;
+  const drafts = {};
+  for (const input of old.querySelectorAll('[data-draft]')) {
+    if (input.id) drafts[input.id] = input.type === 'checkbox' ? input.checked : input.value;
+  }
+  const byId = Object.fromEntries(state.data.connections.map((c) => [c.id, c]));
+  const t = hub.shown[i];
+  const st = t.status(byId, state.data);
+  old.replaceWith(tower(t, st, byId, state.data));
+  $('hub-strip').children[i]?.replaceWith(chip(t, i, st));
+  for (const [id, value] of Object.entries(drafts)) {
+    if (!$(id)) continue;
+    if (typeof value === 'boolean') $(id).checked = value;
+    else $(id).value = value;
+  }
+  $('state').textContent = headline(state.data);
+  paintHub(false);
+  if (focused && $(focused) && !$(focused).disabled) $(focused).focus({ preventScroll: true });
+  pollWan(state.data);
 }
 
 $('signout').addEventListener('click', async () => {

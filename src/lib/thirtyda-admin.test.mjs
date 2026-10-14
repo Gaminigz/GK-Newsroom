@@ -20,7 +20,10 @@ function matches(doc, q) {
     if (cond && typeof cond === 'object' && !(cond instanceof Date) && Object.keys(cond).some((x) => x.startsWith('$'))) {
       for (const [op, want] of Object.entries(cond)) {
         if (op === '$gt' && !(v != null && val(v) > val(want))) return false;
-        if (op === '$ne' && val(v) === val(want)) return false;
+        if (op === '$lt' && !(v != null && val(v) < val(want))) return false;
+        if (op === '$lte' && !(v != null && val(v) <= val(want))) return false;
+        if (op === '$ne' && (want === null ? v == null : val(v) === val(want))) return false; // { $ne: null }: set, not null or missing
+        if (op === '$in' && !want.some((w) => val(w) === val(v))) return false;
       }
     } else if (val(v) !== val(cond)) return false;
   }
@@ -35,7 +38,18 @@ function fakeDb() {
       cols.set(name, {
         docs,
         async findOne(q) { const x = all(q)[0]; return x ? structuredClone(x) : null; },
-        find(q) { return { async toArray() { return all(q).map((x) => structuredClone(x)); } }; },
+        // The Code page's tower 11 (Wan) lists its last jobs: sort + limit, and counts.
+        find(q) {
+          let rows = all(q);
+          const cursor = {
+            sort(by) { const [[k, dir]] = Object.entries(by); rows = [...rows].sort((a, b) => (val(a[k]) > val(b[k]) ? dir : -dir)); return cursor; },
+            limit(n) { rows = rows.slice(0, n); return cursor; },
+            async toArray() { return rows.map((x) => structuredClone(x)); },
+          };
+          return cursor;
+        },
+        async countDocuments(q) { return all(q).length; },
+        async deleteMany(q) { const xs = all(q); for (const x of xs) docs.delete(x._id); return { deletedCount: xs.length }; },
         async insertOne(doc) { const _id = doc._id ?? crypto.randomUUID(); docs.set(_id, structuredClone({ ...doc, _id })); return { insertedId: _id }; },
         async deleteOne(q) { const x = all(q)[0]; if (x) docs.delete(x._id); return { deletedCount: x ? 1 : 0 }; },
         // The Code page's settings (Sign in with Apple's key below): a save replaces, a try notes its outcome.
@@ -296,7 +310,20 @@ test('Code page, Apple: the tower draws the key card (not "Later"), says the sig
   assert.match(js, /key: 'privateKey', label: 'Private key \(\.p8\)', secret: true/);
   assert.match(js, /if \(c\.live\) return \{ pill: 'live', text: 'Live' \};/);
   assert.ok(js.includes("apple: () => 'Remove the Apple key?"), 'Remove has its own words');
-  // The tower keeps its place: tenth, after YouTube.
+  // The tower keeps its place: tenth, after YouTube (Wan, tower 11, comes after it).
   const order = [...js.slice(js.indexOf('const TOWERS = ['), js.indexOf('const towerNumber')).matchAll(/(?:signinTower|laterOne)\('([a-z-]+)'|key: '([a-z-]+)'/g)].map((m) => m[1] || m[2]);
-  assert.deepEqual(order, ['tiktok', 'telegram-bot', 'telegram-gateway', 'facebook', 'google', 'whatsapp', 'wechat', 'alipay', 'youtube', 'apple']);
+  assert.deepEqual(order, ['tiktok', 'telegram-bot', 'telegram-gateway', 'facebook', 'google', 'whatsapp', 'wechat', 'alipay', 'youtube', 'apple', 'wan']);
+});
+
+test('Code page, Wan: "clips kept" counts the done jobs that still have their clip ({ $ne: null }), not the swept ones', async () => {
+  const jobs = d.collection('thirtyda_hub_wan_jobs');
+  const at = new Date();
+  for (const [i, clip] of [[1, { key: 'k1', bytes: 10, type: 'video/mp4' }], [2, { key: 'k2', bytes: 10, type: 'video/mp4' }], [3, null]]) {
+    await jobs.insertOne({ _id: String(i).repeat(32), status: 'done', source: 'client', client: 'x', clip, bytes: 0, createdAt: at });
+  }
+  const r = await admin('GET', '/30da/admin/api/connections');
+  assert.equal(r.status, 200, r.body);
+  assert.equal(r.json().wan.queue.clips, 2);
+  // The fake itself, as Mongo: { $ne: null } keeps set values, drops null and missing.
+  assert.deepEqual((await jobs.find({ clip: { $ne: null } }).toArray()).map((j) => j._id).sort(), ['1'.repeat(32), '2'.repeat(32)]);
 });
