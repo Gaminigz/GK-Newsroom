@@ -9,7 +9,7 @@ import { LANGS } from './rules.js';
 import {
   PP_OFFSET_MS, MEET_MAX_DAYS, PLACE_NAME_MAX, PLACE_ADDRESS_MAX, MEET_PER_PAIR_HOUR, ppParts, ppDateValue, ppTimeValue,
   ppInstant, checkMeetTime, checkPlace, cleanLine, cutLine, mapsUrl, placeTexts, placeLine, meetActionCheck, meetsLastHour,
-  openMeet, meetView, meetStatusKey, meetChoices,
+  openMeet, meetView, meetStatusKey, meetChoices, KH_BOX, inCambodia, samePlace, keptPlace,
 } from './meet.js';
 
 const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8');
@@ -75,6 +75,26 @@ test('place: a name of 2–80 characters, a short address, the point both or nei
   assert.equal(cutLine('😀'.repeat(5), 3), '😀😀😀', 'whole characters');
   assert.deepEqual(placeTexts({ name: 'Cafe', address: null }), ['Cafe', null]);
   assert.equal(placeLine({ name: 'Brown Coffee', address: 'Toul Kork' }), 'Brown Coffee · Toul Kork');
+});
+
+test('what is kept of a sent place: address and point only for a place the server knows; never a point outside Cambodia', () => {
+  const brown = { name: 'Brown Coffee TK', address: 'Russian Federation Blvd, Toul Kork', lat: 11.5728, lng: 104.8999 };
+  assert.deepEqual(keptPlace(brown, true), brown);
+  assert.deepEqual(keptPlace(brown, false), { name: 'Brown Coffee TK', address: null, lat: null, lng: null }, 'typed: the name alone');
+  assert.deepEqual(keptPlace({ ...brown, lat: 1.29, lng: 103.85 }, true), { ...brown, lat: null, lng: null }, 'Singapore: no point');
+  assert.equal(keptPlace(null, true), null);
+  assert.equal(inCambodia(11.5728, 104.8999), true);
+  assert.equal(inCambodia(13.36, 103.86), true, 'Siem Reap');
+  assert.equal(inCambodia(10.6, 104.17), true, 'Kampot');
+  for (const [lat, lng] of [[1.29, 103.85], [13.75, 100.5], [null, null], ['11.5', '104.9'], [NaN, 104.9]]) {
+    assert.equal(inCambodia(lat, lng), false, `${lat},${lng}`);
+  }
+  assert.ok(KH_BOX.minLat < 11.56 && KH_BOX.maxLat > 11.56 && KH_BOX.minLng < 104.93 && KH_BOX.maxLng > 104.93);
+  assert.equal(samePlace(brown, { ...brown }), true);
+  assert.equal(samePlace(brown, { ...brown, lat: 11.48 }), false);
+  assert.equal(samePlace(brown, { ...brown, address: null }), false);
+  assert.equal(samePlace({ name: 'Cafe', address: null, lat: null, lng: null }, { name: 'Cafe' }), true, 'missing = null');
+  assert.equal(samePlace(brown, null), false);
 });
 
 test('the Google Maps link: the point when there is one, else the name (no key, opens the app or the site)', () => {
@@ -187,11 +207,27 @@ test('the card opens Google Maps outside the app; no Google script anywhere (the
   assert.match(src, /const PP_ZONE = 'Asia\/Phnom_Penh'/);
 });
 
+test('the place search asks only on Enter or the Search button, never as you type (the Nominatim usage policy)', () => {
+  const src = read('../screens/meet.js');
+  const sheet = src.slice(src.indexOf('export function openMeetSheet('), src.indexOf('// ---------------------------------------------------------------- the card'));
+  const onInput = sheet.slice(sheet.indexOf("query.addEventListener('input'"), sheet.indexOf("query.addEventListener('keydown'"));
+  assert.ok(onInput.length > 0);
+  assert.doesNotMatch(onInput, /search\(|runSearch|setTimeout/, 'typing never searches');
+  assert.doesNotMatch(src, /SEARCH_DELAY_MS|setTimeout\(\(\) => search/);
+  assert.match(sheet, /class: 'btn btn-secondary meet-q-go', disabled: true, on: \{ click: runSearch \}/, 'the Search button');
+  assert.match(sheet, /if \(e\.key !== 'Enter' \|\| e\.isComposing \|\| e\.keyCode === 229\) return;\n {4}e\.preventDefault\(\); \/\/ Enter searches now\n {4}runSearch\(\);/);
+  assert.match(sheet, /const place = chosen\?\.ref \? \{ \.\.\.v\.place\.place, ref: chosen\.ref \} : v\.place\.place;/, 'a suggestion goes back with its ref');
+});
+
 test('the chat: the calendar button sits left of the mic, meetings draw their own card and update in place', () => {
   const chat = read('../screens/chat.js');
   assert.match(chat, /import \{ meetButton, meetRow, isMeet, meetChangedAt \} from '\.\/meet\.js';/);
   assert.match(chat, /el\('div', \{ class: 'composer' \}, meetBtn, mic, input, sendBtn\)/);
-  assert.match(chat, /if \(isMeet\(m\)\) return meetRow\(m, meetCtx\);/);
+  assert.match(chat, /if \(isMeet\(m\)\) \{\n {6}\/\/ [^\n]+\n {6}const meetR = meetRow\(m, meetCtx\);\n {6}if \(reported\.has\(m\.id\)\) markReported\(meetR\);/);
+  assert.match(chat, /report: \(quote\) => openReport\(quote\)/, 'their card reports through the chat\'s own sheet');
+  const meet = read('../screens/meet.js');
+  assert.match(meet, /if \(!cur\.mine && ctx\.report\) \{/, 'only their card has Report');
+  assert.match(meet, /ctx\.report\(\{ id: cur\.id, text: quote \}\)/);
   assert.match(chat, /rows\.get\(m\.id\)\?\.update\?\.\(known\)/);
   assert.match(chat, /lastAt = Math\.max\(lastAt, ms\(m\.at\), isMeet\(m\) \? meetChangedAt\(m\) : 0\);/);
 });

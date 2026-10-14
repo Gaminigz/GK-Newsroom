@@ -19,7 +19,7 @@ const GRID = 0.002; // degrees ≈ 220 m at Phnom Penh's latitude
 const CACHE_MAX = 5000;
 const FALLBACK = { area: "Phnom Penh", city: "Phnom Penh" };
 
-const QUEUE_WAIT = 2; // lookups ahead of us before we stop waiting in line
+const QUEUE_WAIT = 2; // lookups ahead of us (ours, or the meeting place searches in the same queue) before we stop waiting
 const QUEUE_MAX = 30; // lookups queued at all; past this new ones are dropped
 const NEAREST_KM = 3; // a cached area this close stands in while the real one is looked up
 
@@ -99,7 +99,8 @@ function nearestCached(lat, lng) {
 export async function areaFor(lat, lng) {
   const key = keyOf(lat, lng);
   if (cache.has(key)) return { ...cache.get(key), later: null };
-  const busy = pending >= QUEUE_WAIT && !inflight.has(key);
+  // The queue is shared with the meeting place search (src/lib/thirtyda-places.mjs): count its waiting searches too.
+  const busy = Math.max(pending, throttled.waiting()) >= QUEUE_WAIT && !inflight.has(key);
   const p = lookup(lat, lng, key);
   if (p && !busy) return { ...((await p) ?? FALLBACK), later: null };
   return { ...nearestCached(lat, lng), later: p };

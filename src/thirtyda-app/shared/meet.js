@@ -26,8 +26,14 @@ export const MEET_ACTIONS = Object.freeze(['accept', 'decline', 'cancel']);
 /** Suggestions (stopped tries count too) one person may make in one conversation per hour, and in all per day. */
 export const MEET_PER_PAIR_HOUR = 6;
 export const MEET_PER_DAY = 20;
-/** Place searches per person per minute (the box searches as you type, a little after the last key). */
-export const PLACE_SEARCHES_PER_MINUTE = 20;
+/**
+ * Place searches per person per minute. The box searches only when asked (Enter or the Search button), never as you
+ * type: OpenStreetMap's Nominatim usage policy forbids auto-complete searches (src/lib/thirtyda-places.mjs).
+ */
+export const PLACE_SEARCHES_PER_MINUTE = 10;
+
+/** Cambodia, roughly (lat / lng): a map point outside it is not kept, and a search centre outside it is Phnom Penh. */
+export const KH_BOX = Object.freeze({ minLat: 9.5, maxLat: 14.8, minLng: 102.2, maxLng: 107.8 });
 
 const pad2 = (n) => String(n).padStart(2, '0');
 
@@ -127,6 +133,31 @@ export function checkPlace(raw) {
     lng = round6(raw.lng);
   }
   return { ok: true, place: { name, address: address || null, lat, lng } };
+}
+
+/** true when lat / lng are numbers inside Cambodia (KH_BOX). */
+export function inCambodia(lat, lng) {
+  return typeof lat === 'number' && typeof lng === 'number' && Number.isFinite(lat) && Number.isFinite(lng)
+    && lat >= KH_BOX.minLat && lat <= KH_BOX.maxLat && lng >= KH_BOX.minLng && lng <= KH_BOX.maxLng;
+}
+
+/** The same place (as checkPlace gives it): name, address and point all equal. */
+export function samePlace(a, b) {
+  if (!a || !b) return false;
+  return a.name === b.name && (a.address || null) === (b.address || null) && (a.lat ?? null) === (b.lat ?? null)
+    && (a.lng ?? null) === (b.lng ?? null);
+}
+
+/**
+ * What is kept of a place someone sent (POST /pairs/:id/meet). The address and the map point are kept only when the
+ * server itself suggested that place (`known`: a signed /places suggestion, or a place already in this conversation,
+ * as "Suggest another time" sends it back) — so the card can never name a café while its map opens somewhere else, and
+ * a typed place is its name alone (Google Maps searches the name). A point outside Cambodia is never kept.
+ */
+export function keptPlace(place, known) {
+  if (!place) return null;
+  if (!known) return { name: place.name, address: null, lat: null, lng: null };
+  return inCambodia(place.lat, place.lng) ? { ...place } : { ...place, lat: null, lng: null };
 }
 
 /** The texts of a place the contact-detail and bad-word checks read: [name, address] (address null when none). */

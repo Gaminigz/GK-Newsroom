@@ -672,12 +672,15 @@
     });
   }
 
-  /** The server's stopSplitChat: my last chat lines with this one, then everything I wrote in the pair (chatOrders). */
-  function stopSplitChat(u, pair, other, text) {
+  /**
+   * The server's stopSplitChat: my last chat lines with this one, then everything I wrote in the pair (chatOrders). My
+   * meetings count as lines too (their text is the place line), both ways, like the server.
+   */
+  function stopSplitChat(u, pair, other, text, { kind = 'chat' } = {}) {
     if (!text) return;
     const since = Date.now() - 10 * 60e3;
     const recentLines = chatLog(pair)
-      .filter((m) => m.kind === 'chat' && m.from === u.id && !m.stopped && Date.parse(m.at) >= since)
+      .filter((m) => (m.kind === 'chat' || m.kind === 'meet') && m.from === u.id && !m.stopped && Date.parse(m.at) >= since)
       .slice(-3);
     const recent = recentLines.map((m) => m.text);
     if (recent.length) {
@@ -685,14 +688,14 @@
       const hits = hitsInLast(c.text, text, c.hits.filter((h) => h.lastIndex === recent.length));
       if (hits.length) {
         const reason = R.CONTACT_REASONS[hits[0].type] ?? c.reason;
-        recordStopped(u, pair, other, { text, level: 3, kind: 'chat', hits, reason });
+        recordStopped(u, pair, other, { text, level: 3, kind, hits, reason });
         throw fail(422, 'contact_detail', reason || 'Contact details are not allowed.', { hits, reason, count: R.charCount(text) });
       }
     }
     const lines = recentLines.map((m) => ({ text: m.text, at: m.at }));
     const c = R.findSplitContactDetails(R.chatOrders({ sets: setsOf(pair), me: u.id, text, chat: lines }));
     if (c.ok) return;
-    recordStopped(u, pair, other, { text: c.text, level: 3, kind: 'chat', hits: c.hits, reason: c.reason });
+    recordStopped(u, pair, other, { text: c.text, level: 3, kind, hits: c.hits, reason: c.reason });
     throw fail(422, 'contact_detail', c.reason || 'Contact details are not allowed.', {
       split: true, hits: hitsInLast(c.text, text, c.hits), reason: c.reason, count: R.charCount(text),
     });
@@ -902,9 +905,14 @@
     if (R.meetsLastHour(log, u.id, Date.now()) >= R.MEET_PER_PAIR_HOUR) throw fail(429, 'rate_limited', 'Too many meeting suggestions.');
     const texts = R.placeTexts(p.place);
     stopContactDetails(u, pair, other, texts, { level: 3, kind: 'meet' });
+    stopSplitContactDetails(u, pair, other, texts, { level: 3, kind: 'meet' });
+    stopSplitChat(u, pair, other, R.placeLine(p.place), { kind: 'meet' });
     stopBadWords(u, pair, other, texts, { level: 3, kind: 'meet' });
+    // Address and map pin only for a place the search offered (the server: its signed ref) or one already in this chat.
+    const known = DEMO_PLACES.some((d) => R.samePlace(R.checkPlace(d).place, p.place))
+      || log.some((m) => m.kind === 'meet' && !m.stopped && R.samePlace(m.meet?.place, p.place));
     const open = log.filter((m) => m.kind === 'meet' && !m.stopped && m.meet?.status === 'proposed');
-    const msg = meetMessage(u.id, Date.now(), Date.parse(when.at), p.place);
+    const msg = meetMessage(u.id, Date.now(), Date.parse(when.at), R.keptPlace(p.place, known));
     const replaced = { status: 'cancelled', note: 'replaced', updatedAt: msg.at, doneBy: u.id };
     for (const m of open) Object.assign(m.meet, replaced);
     log.push(msg);
@@ -1810,7 +1818,8 @@
     if (!label) throw invalid('Choose a reason.', { field: 'reason' });
     const { pair, other } = pairFor(u, params[0], { write: true });
     const m = chatLog(pair).find((x) => x.id === params[1]);
-    if (!m || m.kind !== 'chat' || m.stopped || m.from !== other?.id) throw fail(404, 'not_found', 'No such message.');
+    const isMeet = m?.kind === 'meet' && Boolean(m.meet); // a meeting card is reported like a chat line
+    if (!m || (m.kind !== 'chat' && !isMeet) || m.stopped || m.from !== other?.id) throw fail(404, 'not_found', 'No such message.');
     if (m.flagId) return { ok: true, already: true };
     m.flagId = nextId('flag', 'f');
     W.flags.push({ id: m.flagId, chatId: pair.id, from: other.id, to: u.id, at: nowIso(), reason: `Reported by ${u.name} · ${label}`, kind: 'reported', status: 'open' });

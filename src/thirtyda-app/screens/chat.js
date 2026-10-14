@@ -460,7 +460,12 @@ export function mountChat(root, { pair, data, gate, history = null, header: head
   }
 
   function msgRow(m) {
-    if (isMeet(m)) return meetRow(m, meetCtx);
+    if (isMeet(m)) {
+      // A meeting card (screens/meet.js): theirs can be reported like a chat line (its Report link → openReport).
+      const meetR = meetRow(m, meetCtx);
+      if (reported.has(m.id)) markReported(meetR);
+      return meetR;
+    }
     const mine = Boolean(m.mine);
     const bubble = el('div', { class: ['bubble', mine ? 'mine' : 'theirs'] }, bubbleText(m));
     const time = el('time', { class: 'bubble-time', datetime: m.at }, fmtTime(m.at));
@@ -606,7 +611,7 @@ export function mountChat(root, { pair, data, gate, history = null, header: head
   // Set a meeting (screens/meet.js): the same round outline button, left of the mic.
   const meetCtx = {
     base, name, fmtTime, onMessages: (list) => addMessages(list), closed: () => !alive || Boolean(mode),
-    onClosed: (err) => sendFailed(err, ''),
+    onClosed: (err) => sendFailed(err, ''), report: (quote) => openReport(quote),
   };
   const meetBtn = meetButton(meetCtx);
   const marker = el('span', { class: 'meter-marker', style: { left: '0%' } });

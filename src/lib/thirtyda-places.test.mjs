@@ -1,16 +1,20 @@
 // Run: npm run 30da:test (or node --test src/lib/thirtyda-places.test.mjs)
 // The meeting place search (owner 2026-10-14, src/lib/thirtyda-places.mjs): what we ask OpenStreetMap's Nominatim (Cambodia
 // first, around the person, in their language), the suggestions we keep (no house numbers or postcodes, nothing the chat's
-// checks would stop), the cache, the shared 1-per-second queue, "busy", and the 3-second timeout. A fake fetch only:
-// these tests never reach Nominatim.
+// checks would stop), the cache, the shared 1-per-second queue, "busy" (counting the area names' lookups too), the
+// 3-second timeout and the 4-second deadline (a search that never got its turn is never sent), and the signed refs that
+// tie a meeting's address and map pin to a server suggestion. A fake fetch only: these tests never reach Nominatim.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  PHNOM_PENH, PLACES_LIMIT, PLACES_TIMEOUT_MS, searchCentre, parseNear, viewboxAround, cleanQuery, searchUrl, placeFromResult,
-  placesFrom, createPlaceSearch,
+  PHNOM_PENH, PLACES_LIMIT, PLACES_TIMEOUT_MS, PLACES_DEADLINE_MS, PLACES_QUEUE_MAX, PLACE_REF_TTL_MS, searchCentre, parseNear,
+  viewboxAround, cleanQuery, searchUrl, placeFromResult, placesFrom, createPlaceSearch, createPlaceRefs, placeRefKey,
 } from './thirtyda-places.mjs';
-import { NOMINATIM_UA, NOMINATIM_ORIGIN, makeThrottle, nominatimTurn } from './thirtyda-nominatim.mjs';
-import { findContactDetails } from '../thirtyda-app/shared/rules.js';
+import { NOMINATIM_UA, NOMINATIM_ORIGIN, SKIPPED, makeThrottle, nominatimTurn } from './thirtyda-nominatim.mjs';
+import { findContactDetails, findContactDetailsAcross } from '../thirtyda-app/shared/rules.js';
+import { checkPlace } from '../thirtyda-app/shared/meet.js';
+
+const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
 const BROWN = {
   lat: '11.5728123', lon: '104.8999456', name: 'Brown Coffee',
@@ -89,6 +93,10 @@ test('a suggestion the app would stop is never offered: a contact detail or a ba
   assert.equal(placeFromResult({ ...BROWN, name: 'fuck cafe' }), null);
   const odd = placeFromResult({ ...BROWN, address: { ...BROWN.address, road: 'Street 012 345 678' } });
   assert.equal(odd.address, "Tuek L'ak Ti Muoy, Phnom Penh", 'the road that reads like a phone number is dropped');
+  // A road that is fine alone but reads as a phone number with the name ("Cafe 012 887" + "766 Street") is dropped too.
+  const split = placeFromResult({ lat: '11.55', lon: '104.92', name: 'Cafe 012 887', address: { road: '766 Street', city: 'Phnom Penh' } });
+  assert.equal(findContactDetailsAcross(['Cafe 012 887', '766 Street']).ok, false);
+  assert.deepEqual([split.name, split.address], ['Cafe 012 887', 'Phnom Penh']);
   for (const bad of [{ ...BROWN, lat: 'x' }, { ...BROWN, lon: undefined }, { ...BROWN, lat: '95' }, null, {}]) assert.equal(placeFromResult(bad), null);
   // At most 6, each place once.
   const many = Array.from({ length: 9 }, (_, i) => ({ ...BROWN, name: `Cafe ${String.fromCharCode(65 + i)}` }));
@@ -165,6 +173,20 @@ test('the queue: at most one Nominatim request a second (the next starts a secon
   assert.equal(typeof nominatimTurn, 'function', 'the server\'s one queue (src/lib/thirtyda-geo.mjs uses it too)');
 });
 
+test('the queue: a job whose caller stopped waiting is skipped at its turn and uses up no second', async () => {
+  let clock = 0;
+  const turn = makeThrottle({ now: () => clock, sleep: async (ms) => { clock += ms; } });
+  const ran = [];
+  const a = turn(async () => { ran.push('a'); });
+  const b = turn(async () => { ran.push('b'); }, { skip: () => true });
+  const c = turn(async () => { ran.push('c'); return clock; });
+  assert.equal(await b, SKIPPED);
+  await a;
+  assert.equal(await c, 1000, 'c starts a second after a: b took no turn');
+  assert.deepEqual(ran, ['a', 'c']);
+  assert.equal(turn.waiting(), 0);
+});
+
 test('proxy: searches wait in the shared queue; too many waiting → "busy" at once, nothing asked', async () => {
   const fetchImpl = fakeFetch();
   let release;
@@ -179,6 +201,46 @@ test('proxy: searches wait in the shared queue; too many waiting → "busy" at o
   assert.deepEqual((await b).places.length, 1);
   assert.equal(fetchImpl.calls.length, 2);
   assert.equal((await s.search({ q: 'cc' })).busy, undefined, 'room again');
+});
+
+test('proxy: "busy" counts every lookup waiting in the shared queue (the area names too), not only place searches', async () => {
+  const turn = makeThrottle({ gapMs: 20 });
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const held = turn(() => gate); // an area name lookup on its way …
+  const areas = Array.from({ length: PLACES_QUEUE_MAX }, () => turn(async () => 'area')); // … and more behind it
+  await tick();
+  assert.equal(turn.waiting(), PLACES_QUEUE_MAX);
+  const fetchImpl = fakeFetch();
+  const s = createPlaceSearch({ fetchImpl, turn });
+  const t0 = Date.now();
+  assert.deepEqual(await s.search({ q: 'Brown Coffee' }), { places: [], busy: true });
+  assert.ok(Date.now() - t0 < 200, 'at once');
+  assert.equal(fetchImpl.calls.length, 0);
+  release();
+  await held;
+  await Promise.all(areas);
+  assert.equal((await s.search({ q: 'Brown Coffee' })).places.length, 1, 'room again');
+});
+
+test('proxy: the whole search has 4 s, its wait for a turn included; one that never got its turn is never sent', async () => {
+  assert.equal(PLACES_DEADLINE_MS, 4000);
+  const turn = makeThrottle({ gapMs: 20 });
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const held = turn(() => gate); // a slow lookup holds the queue
+  const fetchImpl = fakeFetch();
+  const s = createPlaceSearch({ fetchImpl, turn, deadlineMs: 50 });
+  const t0 = Date.now();
+  assert.deepEqual(await s.search({ q: 'Brown Coffee' }), { places: [], unavailable: true });
+  assert.ok(Date.now() - t0 < 1000, 'gave up on time');
+  release();
+  await held;
+  await tick(60);
+  assert.equal(fetchImpl.calls.length, 0, 'its turn came after the deadline: Nominatim was never asked');
+  assert.equal(turn.waiting(), 0);
+  assert.equal((await s.search({ q: 'Brown Coffee' })).places.length, 1, 'the next search goes through');
+  assert.equal(fetchImpl.calls.length, 1);
 });
 
 test('proxy: no answer in time (3 s, here 30 ms) or an error → unavailable, logged, not cached', async () => {
@@ -210,7 +272,45 @@ test('the area names (src/lib/thirtyda-geo.mjs) wait in the same Nominatim queue
   const geo = readFileSync(new URL('./thirtyda-geo.mjs', import.meta.url), 'utf8');
   assert.match(geo, /import \{ NOMINATIM_UA as UA, nominatimTurn \} from "\.\/thirtyda-nominatim\.mjs";/);
   assert.match(geo, /const throttled = nominatimTurn;/);
+  assert.match(geo, /Math\.max\(pending, throttled\.waiting\(\)\) >= QUEUE_WAIT/, 'and counts the place searches waiting in it');
   assert.doesNotMatch(geo, /let lastCall/, 'no second queue of its own');
   const places = readFileSync(new URL('./thirtyda-places.mjs', import.meta.url), 'utf8');
   assert.match(places, /turn = nominatimTurn,/);
+});
+
+// ---------------------------------------------------------------- refs: the server's own suggestions
+
+test('refs: a suggestion signed for one person, exactly as checkPlace keeps it, for an hour', () => {
+  let now = 1_000_000_000;
+  const refs = createPlaceRefs({ key: Buffer.alloc(32, 1), now: () => now });
+  const p = placeFromResult(BROWN);
+  const ref = refs.sign(p, 'U-1');
+  assert.match(ref, /^[0-9a-z]+\.[A-Za-z0-9_-]{32}$/);
+  assert.equal(refs.ok(p, ref, 'U-1'), true);
+  assert.equal(refs.ok(checkPlace({ ...p, name: `  ${p.name} ` }).place, ref, 'U-1'), true, 'as checkPlace keeps it');
+  for (const other of [{ ...p, lat: 11.48 }, { ...p, lng: 104.77 }, { ...p, address: 'Somewhere else' }, { ...p, address: null }, { ...p, name: 'Another Cafe' }]) {
+    assert.equal(refs.ok(other, ref, 'U-1'), false, JSON.stringify(other));
+  }
+  assert.equal(refs.ok(p, ref, 'U-2'), false, 'someone else\'s');
+  for (const bad of [null, undefined, '', 'nonsense', 42, `${ref}x`, `${ref.slice(0, -1)}${ref.at(-1) === 'A' ? 'B' : 'A'}`]) {
+    assert.equal(refs.ok(p, bad, 'U-1'), false, String(bad));
+  }
+  assert.equal(createPlaceRefs({ key: Buffer.alloc(32, 2), now: () => now }).ok(p, ref, 'U-1'), false, 'another key');
+  assert.equal(refs.sign({ name: 'B' }, 'U-1'), null, 'not a place');
+  now += PLACE_REF_TTL_MS - 1000;
+  assert.equal(refs.ok(p, ref, 'U-1'), true, 'within the hour');
+  now += 2000;
+  assert.equal(refs.ok(p, ref, 'U-1'), false, 'an hour later');
+  assert.equal(PLACE_REF_TTL_MS, 3600e3);
+});
+
+test('refs: the key comes from THIRTYDA_SECRET_KEY when it is set (a restart keeps refs good), else is random', () => {
+  const hex = 'ab'.repeat(32);
+  assert.ok(placeRefKey(hex).equals(placeRefKey(hex)));
+  assert.equal(placeRefKey(hex).length, 32);
+  assert.ok(!placeRefKey(hex).equals(Buffer.from(hex, 'hex')), 'derived, never the secret key itself');
+  const a = placeRefKey('');
+  assert.equal(a.length, 32);
+  assert.ok(!a.equals(placeRefKey('')), 'no key: random each time');
+  assert.ok(!placeRefKey('not hex').equals(placeRefKey('not hex')));
 });

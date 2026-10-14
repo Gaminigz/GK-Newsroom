@@ -4,18 +4,19 @@
 //
 // chat.js puts meetButton() next to the mic and draws every 'meet' message with meetRow(). The sheet searches places
 // through our own server (GET /places → OpenStreetMap, the free search: no Google key, no Google script — the page CSP
-// allows neither), or takes the typed name as it is. Date and time are native inputs read as Phnom Penh time (UTC+7)
-// whatever the phone's clock says; the card shows them in Phnom Penh time again. The place itself is the link: Google
+// allows neither) only when asked — Enter or the Search button, never as you type (OpenStreetMap's Nominatim usage
+// policy forbids auto-complete) — or takes the typed name as it is (no address, no map pin: the server keeps those
+// only for a place it suggested, by the suggestion's `ref`). Date and time are native inputs read as Phnom Penh time
+// (UTC+7) whatever the phone's clock says; the card shows them in Phnom Penh time again. The place itself is the link: Google
 // Maps, outside the app (target=_blank). The rules both sides run: shared/meet.js; the server: src/lib/thirtyda-meet.mjs.
 import {
   el, icon, t, api, toast, modal, state, registerStrings, errorText, SPEECH_LOCALE, findContactDetails, findBadWords,
 } from '../core.js';
 import {
-  MEET_MAX_DAYS, PLACE_NAME_MAX, PLACE_QUERY_MIN, ppParts, ppDateValue, ppTimeValue, ppInstant, checkMeetTime, checkPlace,
-  cleanLine, mapsUrl, meetStatusKey, meetChoices,
+  MEET_MAX_DAYS, PLACE_NAME_MIN, PLACE_NAME_MAX, PLACE_QUERY_MIN, ppParts, ppDateValue, ppTimeValue, ppInstant, checkMeetTime,
+  checkPlace, cleanLine, placeLine, mapsUrl, meetStatusKey, meetChoices,
 } from '../shared/meet.js';
 
-const SEARCH_DELAY_MS = 450; // after the last key
 const DAY_MS = 864e5;
 const PP_ZONE = 'Asia/Phnom_Penh';
 
@@ -26,6 +27,7 @@ const RULES = [
   '.meet-card { display: flex; flex-direction: column; gap: 8px; width: min(300px, 88%); padding: 12px 14px; border: 1.5px solid var(--line); border-radius: var(--radius-lg); background: #fff; color: var(--ink); font-size: 14px; line-height: 1.4; }',
   '.meet-card.mine { border-color: var(--navy); }',
   '.meet-card.busy { opacity: 0.65; }',
+  '.meet-card.reported { border-color: var(--red); }',
   '.meet-head { display: flex; align-items: flex-start; gap: 8px; font-size: 14.5px; font-weight: 800; line-height: 1.3; }',
   '.meet-head > .icon { flex: none; margin-top: 1px; color: var(--navy); }',
   '.meet-tz { font-size: 12px; color: var(--muted); }',
@@ -45,10 +47,14 @@ const RULES = [
   '.meet-more { align-self: flex-start; font-size: 13px; }',
   '.meet-safety { display: flex; align-items: flex-start; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line-soft); font-size: 11.5px; line-height: 1.4; color: var(--muted); }',
   '.meet-safety > .icon { flex: none; margin-top: 1px; }',
+  '.meet-report { align-self: flex-end; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }',
   // The sheet: tall, so the search box sits high and its suggestions stay above an on-screen keyboard.
   'dialog.meet-sheet { min-height: min(600px, calc(100dvh - 32px)); overflow-y: auto; overscroll-behavior: contain; }',
   '.meet-sheet .sheet-body { gap: 16px; }',
   '.meet-sub { font-size: 13.5px; color: var(--muted); }',
+  '.meet-q-row { display: flex; align-items: stretch; gap: 8px; }',
+  '.meet-q-row > .meet-q-wrap { flex: 1 1 auto; min-width: 0; }',
+  '.meet-q-go { flex: none; width: auto; min-height: 0; padding: 0 14px; font-size: 14px; }',
   '.meet-q-wrap { position: relative; }',
   '.meet-q-wrap > .icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }',
   '.meet-q-wrap > .input { padding-left: 38px; font-size: 16px; }', // under 16px iOS Safari zooms the page on focus
@@ -171,11 +177,12 @@ export function openMeetSheet(ctx, prefill = null) {
   ensureMeetStyles();
   if (ctx.closed?.()) return;
   const now = Date.now();
-  let chosen = prefill?.place?.name
-    ? { name: prefill.place.name, address: prefill.place.address ?? null, lat: prefill.place.lat ?? null, lng: prefill.place.lng ?? null }
-    : null;
+  // A suggestion as picked: { name, address, lat, lng, ref } (ref: the server's signature, see choose()).
+  const asChosen = (p, ref = null) => ({ name: p.name, address: p.address ?? null, lat: p.lat ?? null, lng: p.lng ?? null, ref });
+  // A card's place ("Suggest another time") goes back as it is: the server knows it from this conversation.
+  let chosen = prefill?.place?.name ? asChosen(prefill.place) : null;
   let seq = 0;
-  let timer = null;
+  let asking = null; // the search on its way (a second tap on Search does not ask again)
   let sending = false;
   let stoppedKey = null; // the place the server already stopped (not sent twice)
   let tried = false; // Send was tapped: say what is missing
@@ -186,7 +193,11 @@ export function openMeetSheet(ctx, prefill = null) {
   });
   const note = el('p', { class: 'meet-note', 'aria-live': 'polite' });
   const results = el('div', { class: 'meet-results' });
-  const searchBox = el('div', { class: 'meet-search stack' }, el('div', { class: 'meet-q-wrap' }, icon('pin', 18), query), note, results);
+  const searchBtn = el('button', {
+    type: 'button', class: 'btn btn-secondary meet-q-go', disabled: true, on: { click: runSearch },
+  }, t('meet_search_go'));
+  const searchBox = el('div', { class: 'meet-search stack' },
+    el('div', { class: 'meet-q-row' }, el('div', { class: 'meet-q-wrap' }, icon('pin', 18), query), searchBtn), note, results);
   const picked = el('div', { class: 'meet-picked', hidden: true });
   const placeError = el('p', { class: 'field-error', role: 'alert' });
   const pickedKey = () => (chosen ? JSON.stringify([chosen.name, chosen.address]) : null);
@@ -216,9 +227,9 @@ export function openMeetSheet(ctx, prefill = null) {
     el('div', { class: 'dialog-actions' }, send,
       el('button', { type: 'button', class: 'btn btn-secondary', on: { click: () => dlg.close() } }, t('meet_close')))),
   { sheet: true, label: t(prefill ? 'meet_title_other' : 'meet_title'), className: 'meet-sheet' });
-  dlg.node.addEventListener('close', () => { clearTimeout(timer); seq++; });
+  dlg.node.addEventListener('close', () => { seq++; });
 
-  // --- place: search as you type, pick a suggestion, or take the typed name as it is
+  // --- place: search when asked (Enter or Search), pick a suggestion, or take the typed name as it is
   function placeButton(p, typed = false) {
     return el('button', { type: 'button', class: ['meet-result', typed ? 'typed' : ''], on: { click: () => choose(p) } },
       icon(typed ? 'plus' : 'pin', 16),
@@ -230,50 +241,63 @@ export function openMeetSheet(ctx, prefill = null) {
 
   function typedPlace() {
     const name = cleanLine(query.value);
-    return Array.from(name).length >= PLACE_QUERY_MIN ? { name, address: null, lat: null, lng: null } : null;
+    return Array.from(name).length >= PLACE_NAME_MIN ? { name, address: null, lat: null, lng: null, ref: null } : null;
   }
 
+  const searchable = () => Array.from(cleanLine(query.value)).length >= PLACE_QUERY_MIN;
+
   // The list changes only when an answer comes (the typed name included, at its end), never while a search runs: so
-  // nothing moves under a finger that is about to tap.
-  function show(list, { busy = false, unavailable = false, searching = false } = {}) {
+  // nothing moves under a finger that is about to tap. While typing: only "Use …" and the hint to tap Search.
+  function show(list, { busy = false, unavailable = false, searching = false, typing = false } = {}) {
     const typed = searching ? null : typedPlace();
     note.textContent = searching ? t('meet_searching') : busy ? t('meet_busy') : unavailable ? t('meet_unavailable')
-      : typed && list && !list.length ? t('meet_none') : '';
-    results.replaceChildren(...(searching ? [] : list || []).map((p) => placeButton(p)), typed && list ? placeButton(typed, true) : '');
+      : typing && typed && searchable() ? t('meet_search_hint') : typed && list && !list.length ? t('meet_none') : '';
+    results.replaceChildren(
+      ...(searching ? [] : list || []).map((p) => placeButton(p)),
+      typed && (list || typing) ? placeButton(typed, true) : '');
   }
 
   async function search(q) {
     const mine = ++seq;
+    asking = q;
     let r;
     try {
       r = await api.get(`/places?q=${encodeURIComponent(q)}`);
     } catch (err) {
       r = { places: [], busy: err?.code === 'rate_limited', unavailable: err?.code !== 'rate_limited' };
+    } finally {
+      if (asking === q) asking = null;
     }
     if (mine !== seq || chosen) return;
     show(Array.isArray(r?.places) ? r.places : [], { busy: Boolean(r?.busy), unavailable: Boolean(r?.unavailable) });
   }
 
-  query.addEventListener('input', () => {
-    clearTimeout(timer);
-    seq++;
+  /** Enter or the Search button: one search for what is typed (never as you type — the Nominatim usage policy). */
+  function runSearch() {
     const q = cleanLine(query.value);
-    if (Array.from(q).length < PLACE_QUERY_MIN) { show(null); return; }
+    if (!searchable()) { show(null, { typing: true }); return; }
+    if (asking === q) return; // already on its way
     show(null, { searching: true });
-    timer = setTimeout(() => search(q), SEARCH_DELAY_MS);
+    search(q);
+  }
+
+  query.addEventListener('input', () => {
+    seq++; // an answer for an older text is not shown
+    asking = null;
+    searchBtn.disabled = !searchable();
+    show(null, { typing: true });
   });
   query.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
     e.preventDefault(); // Enter searches now
-    clearTimeout(timer);
-    const q = cleanLine(query.value);
-    if (Array.from(q).length >= PLACE_QUERY_MIN) search(q);
+    runSearch();
   });
 
   function choose(p) {
-    chosen = { name: p.name, address: p.address ?? null, lat: p.lat ?? null, lng: p.lng ?? null };
-    clearTimeout(timer);
+    // A suggestion keeps the server's `ref`: with it the server keeps its address and its map pin.
+    chosen = asChosen(p, typeof p.ref === 'string' ? p.ref : null);
     seq++;
+    asking = null;
     renderPlace();
     update();
   }
@@ -292,8 +316,9 @@ export function openMeetSheet(ctx, prefill = null) {
           click: () => {
             query.value = chosen?.name || query.value;
             chosen = null;
+            searchBtn.disabled = !searchable();
             renderPlace();
-            show(null);
+            show(null, { typing: true });
             update();
             query.focus();
           },
@@ -346,7 +371,8 @@ export function openMeetSheet(ctx, prefill = null) {
     send.disabled = true;
     const key = pickedKey();
     try {
-      const res = await api.post(`${ctx.base}/meet`, { place: v.place.place, at: v.when.at });
+      const place = chosen?.ref ? { ...v.place.place, ref: chosen.ref } : v.place.place;
+      const res = await api.post(`${ctx.base}/meet`, { place, at: v.when.at });
       ctx.onMessages([res.message, ...(res.replaced || [])].filter(Boolean));
       dlg.close();
       toast(t('meet_sent', { name: ctx.name }));
@@ -396,7 +422,8 @@ export function meetRow(m, ctx) {
   let busy = false;
   const card = el('div', { class: ['meet-card', m.mine ? 'mine' : 'theirs'] });
   const time = el('time', { class: 'bubble-time', datetime: m.at }, ctx.fmtTime(m.at));
-  const tag = el('span', { hidden: true });
+  // chat.js shows this tag once the card is reported (its own words: chat_reported_tag).
+  const tag = el('span', { class: 'chat-flagged', hidden: true }, icon('flag', 11), t('chat_reported_tag'));
   const meta = el('div', { class: 'chat-meta' }, time, tag);
   const row = el('div', { class: ['chat-msg', 'meet-msg', m.mine ? 'mine' : 'theirs'] }, card, meta);
 
@@ -465,6 +492,13 @@ export function meetRow(m, ctx) {
       nodes.push(el('button', { type: 'button', class: 'link meet-more', disabled: busy, on: { click: confirmCancel } }, t('meet_cancel')));
     }
     nodes.push(el('p', { class: 'meet-safety' }, icon('shield', 13), el('span', {}, t('meet_safety'))));
+    // Their card can be reported like a chat line (chat.js's report sheet quotes the meeting as the card shows it).
+    if (!cur.mine && ctx.report) {
+      const quote = `${t('meet_card_title', { when: fmtMeetWhen(x.at) })} · ${placeLine(place)}`;
+      nodes.push(el('button', {
+        type: 'button', class: 'link meet-report', 'aria-haspopup': 'dialog', on: { click: () => ctx.report({ id: cur.id, text: quote }) },
+      }, icon('flag', 13), el('span', {}, t('meet_report'))));
+    }
     card.classList.toggle('busy', busy);
     card.replaceChildren(...nodes);
   }
@@ -497,6 +531,8 @@ registerStrings({
     meet_search_ph: 'Search a place, e.g. Brown Coffee',
     meet_search_label: 'Search a place',
     meet_searching: 'Searching…',
+    meet_search_go: 'Search',
+    meet_search_hint: 'Tap Search to find the place on the map.',
     meet_none: 'No places found. You can use what you typed.',
     meet_busy: 'Search is busy. Try again in a moment.',
     meet_unavailable: 'Search is not available right now. You can use what you typed.',
@@ -542,6 +578,7 @@ registerStrings({
     meet_done_decline: 'Declined.',
     meet_done_cancel: 'Meeting cancelled.',
     meet_safety: 'Meet in a public place. Tell a friend where you go.',
+    meet_report: 'Report',
   },
   km: {
     meet_button: 'កំណត់ការជួប',
@@ -552,6 +589,8 @@ registerStrings({
     meet_search_ph: 'ស្វែងរកទីកន្លែង ឧ. Brown Coffee',
     meet_search_label: 'ស្វែងរកទីកន្លែង',
     meet_searching: 'កំពុងស្វែងរក…',
+    meet_search_go: 'ស្វែងរក',
+    meet_search_hint: 'ចុច ស្វែងរក ដើម្បីរកទីកន្លែងលើផែនទី។',
     meet_none: 'រកមិនឃើញទីកន្លែងទេ។ អ្នកអាចប្រើអ្វីដែលអ្នកបានវាយ។',
     meet_busy: 'ការស្វែងរកកំពុងរវល់។ សូមព្យាយាមម្ដងទៀតបន្តិចទៀត។',
     meet_unavailable: 'ការស្វែងរកមិនអាចប្រើបានឥឡូវនេះទេ។ អ្នកអាចប្រើអ្វីដែលអ្នកបានវាយ។',
@@ -597,6 +636,7 @@ registerStrings({
     meet_done_decline: 'បានបដិសេធហើយ។',
     meet_done_cancel: 'ការជួបត្រូវបានលុបចោល។',
     meet_safety: 'សូមជួបគ្នានៅទីសាធារណៈ។ ប្រាប់មិត្តភក្តិថាអ្នកទៅណា។',
+    meet_report: 'រាយការណ៍',
   },
   zh: {
     meet_button: '约见面',
@@ -607,6 +647,8 @@ registerStrings({
     meet_search_ph: '搜索地点，例如 Brown Coffee',
     meet_search_label: '搜索地点',
     meet_searching: '正在搜索…',
+    meet_search_go: '搜索',
+    meet_search_hint: '点“搜索”在地图上查找这个地点。',
     meet_none: '没有找到地点。你可以直接使用输入的内容。',
     meet_busy: '搜索繁忙，请稍后再试。',
     meet_unavailable: '搜索暂时不可用。你可以直接使用输入的内容。',
@@ -652,6 +694,7 @@ registerStrings({
     meet_done_decline: '已拒绝。',
     meet_done_cancel: '见面已取消。',
     meet_safety: '请在公共场所见面，并告诉朋友你去哪里。',
+    meet_report: '举报',
   },
   ko: {
     meet_button: '만남 약속 잡기',
@@ -662,6 +705,8 @@ registerStrings({
     meet_search_ph: '장소 검색 (예: Brown Coffee)',
     meet_search_label: '장소 검색',
     meet_searching: '검색 중…',
+    meet_search_go: '검색',
+    meet_search_hint: '검색을 눌러 지도에서 장소를 찾으세요.',
     meet_none: '장소를 찾지 못했어요. 입력한 그대로 쓸 수 있어요.',
     meet_busy: '검색이 많아요. 잠시 후 다시 해 보세요.',
     meet_unavailable: '지금은 검색을 쓸 수 없어요. 입력한 그대로 쓸 수 있어요.',
@@ -707,6 +752,7 @@ registerStrings({
     meet_done_decline: '거절했어요.',
     meet_done_cancel: '만남을 취소했어요.',
     meet_safety: '공공장소에서 만나고, 어디 가는지 친구에게 알려 주세요.',
+    meet_report: '신고',
   },
   ja: {
     meet_button: '会う約束をする',
@@ -717,6 +763,8 @@ registerStrings({
     meet_search_ph: '場所を検索（例：Brown Coffee）',
     meet_search_label: '場所を検索',
     meet_searching: '検索中…',
+    meet_search_go: '検索',
+    meet_search_hint: '「検索」を押して地図で場所を探します。',
     meet_none: '場所が見つかりません。入力したままでも使えます。',
     meet_busy: '検索が混み合っています。少ししてからもう一度お試しください。',
     meet_unavailable: '今は検索を使えません。入力したままでも使えます。',
@@ -762,5 +810,6 @@ registerStrings({
     meet_done_decline: '辞退しました。',
     meet_done_cancel: '約束をキャンセルしました。',
     meet_safety: '人の多い場所で会いましょう。行き先を友だちに伝えてください。',
+    meet_report: '通報',
   },
 });

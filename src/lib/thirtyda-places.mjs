@@ -3,8 +3,13 @@
  * asks OpenStreetMap's Nominatim through the server, never from the phone, so Nominatim sees only our server.
  *
  *   search({ q, lang, near }) → { places: [{ name, address, lat, lng }] } (at most 6), plus cached: true when it came from
- *   the cache, busy: true when too many searches already wait for their turn (nothing asked, the app says "busy"), or
- *   unavailable: true when Nominatim did not answer in 3 seconds or answered with an error.
+ *   the cache, busy: true when too many lookups already wait in the shared Nominatim queue (the area names' too; nothing
+ *   asked, the app says "busy"), or unavailable: true when there was no answer within 4 seconds in all (the wait for its
+ *   turn included; a search that never got its turn is not sent at all), Nominatim did not answer in 3 seconds, or it
+ *   answered with an error.
+ *
+ * Only when the person asks: the app searches on Enter or its Search button, never as they type. The usage policy
+ * forbids auto-complete searches ("you must not implement such a service on the client side using the API").
  *
  * Cambodia first: countrycodes=kh and a viewbox around the person (their stored point, rounded to 2 decimals ≈ 1 km) or
  * Phnom Penh, bounded=0 so a place a little outside still counts. accept-language = the person's app language, so a
@@ -14,25 +19,35 @@
  * area names of src/lib/thirtyda-geo.mjs), and a cache (24 hours, 2,000 searches; the same search in flight is asked once).
  *
  * Every suggestion already passes the app's own contact-detail and bad-word checks (shared/rules.js) — the address is a
- * short line (road, area, city: no house number, no postcode, whose digits read like a phone number) — so picking one
- * never trips the same checks POST /pairs/:id/meet runs on what is sent.
+ * short line (road, area, city: no house number, no postcode, whose digits read like a phone number), and the name and
+ * the address read together pass too — so picking one never trips the same checks POST /pairs/:id/meet runs on what is
+ * sent.
+ *
+ * Each suggestion the server hands out carries `ref` (createPlaceRefs): POST /pairs/:id/meet keeps a place's address and
+ * map point only with it, so a card's name and its map always belong together.
  */
-import { NOMINATIM_ORIGIN, NOMINATIM_UA, nominatimTurn } from "./thirtyda-nominatim.mjs";
-import { LANGS, findContactDetails, findBadWords } from "../thirtyda-app/shared/rules.js";
-import { PLACE_NAME_MAX, PLACE_ADDRESS_MAX, PLACE_QUERY_MIN, PLACE_QUERY_MAX, cleanLine, cutLine } from "../thirtyda-app/shared/meet.js";
+import crypto from "node:crypto";
+import { NOMINATIM_ORIGIN, NOMINATIM_UA, SKIPPED, nominatimTurn } from "./thirtyda-nominatim.mjs";
+import { LANGS, findContactDetails, findContactDetailsAcross, findBadWords } from "../thirtyda-app/shared/rules.js";
+import {
+  PLACE_NAME_MAX, PLACE_ADDRESS_MAX, PLACE_QUERY_MIN, PLACE_QUERY_MAX, cleanLine, cutLine, checkPlace, inCambodia,
+} from "../thirtyda-app/shared/meet.js";
 
 export const PLACES_LIMIT = 6;
 export const PLACES_TIMEOUT_MS = 3000;
+/** The whole search at most: its wait in the shared queue plus Nominatim's answer. Past it: "unavailable". */
+export const PLACES_DEADLINE_MS = 4000;
 export const PLACES_TTL_MS = 24 * 3600e3;
 export const PLACES_CACHE_MAX = 2000;
-/** Searches waiting for their turn in the 1-per-second queue before a new one is answered "busy" at once. */
+/**
+ * Lookups waiting for their turn in the shared 1-per-second queue (place searches and area names alike) before a new
+ * search is answered "busy" at once.
+ */
 export const PLACES_QUEUE_MAX = 4;
 /** Phnom Penh (Independence Monument): the centre when we do not know where the person is. */
 export const PHNOM_PENH = Object.freeze({ lat: 11.56, lng: 104.93 });
 /** Half the side of the box the search prefers, in degrees (≈ 22 km at Phnom Penh). */
 export const VIEW_HALF = 0.2;
-// Cambodia, roughly: a point outside it (a traveller, a wrong fix) searches around Phnom Penh instead.
-const KH = { minLat: 9.5, maxLat: 14.8, minLng: 102.2, maxLng: 107.8 };
 
 const round2 = (n) => Math.round(n * 100) / 100;
 const round6 = (n) => Math.round(n * 1e6) / 1e6;
@@ -41,8 +56,8 @@ const round6 = (n) => Math.round(n * 1e6) / 1e6;
 export function searchCentre(near) {
   const lat = Number(near?.lat);
   const lng = Number(near?.lng);
-  if (near == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return { ...PHNOM_PENH };
-  if (lat < KH.minLat || lat > KH.maxLat || lng < KH.minLng || lng > KH.maxLng) return { ...PHNOM_PENH };
+  // Cambodia only: a point outside it (a traveller, a wrong fix) searches around Phnom Penh instead.
+  if (near == null || !inCambodia(lat, lng)) return { ...PHNOM_PENH };
   return { lat: round2(lat), lng: round2(lng) };
 }
 
@@ -92,7 +107,8 @@ const tidyArea = (s) => cleanLine(s).replace(/^(sangkat|khan|krong|commune|distr
 
 /**
  * One Nominatim result → { name, address, lat, lng }, or null (no point, no name, or a name the app's checks would
- * stop). The address keeps only the parts that pass the checks, then is cut to fit.
+ * stop). The address keeps only the parts that pass the checks — alone, and read together with the name ("Cafe 012
+ * 887" + "766 Street" is a phone number) — and fit.
  */
 export function placeFromResult(r) {
   const lat = Number(r?.lat);
@@ -106,7 +122,7 @@ export function placeFromResult(r) {
   for (const part of [first(ROAD), first(AREA, tidyArea), first(CITY, tidyArea)]) {
     if (!part || part === name || parts.includes(part)) continue;
     const next = [...parts, part].join(", ");
-    if (Array.from(next).length > PLACE_ADDRESS_MAX || !passes(next)) continue;
+    if (Array.from(next).length > PLACE_ADDRESS_MAX || !passes(next) || !findContactDetailsAcross([name, next]).ok) continue;
     parts.push(part);
   }
   return { name, address: parts.join(", ") || null, lat: round6(lat), lng: round6(lng) };
@@ -139,12 +155,14 @@ export function createPlaceSearch({
   ttlMs = PLACES_TTL_MS,
   cacheMax = PLACES_CACHE_MAX,
   timeoutMs = PLACES_TIMEOUT_MS,
+  deadlineMs = PLACES_DEADLINE_MS,
   queueMax = PLACES_QUEUE_MAX,
   onError = (err) => console.error("[30da places]", err instanceof Error ? err.message : err),
 } = {}) {
   const cache = new Map(); // key → { at, places } (oldest first: a hit moves to the end)
   const inflight = new Map(); // key → Promise of the answer
-  let waiting = 0;
+  let waiting = 0; // my own searches not started yet (the queue's turn.waiting() counts everyone's)
+  const queued = () => Math.max(waiting, typeof turn.waiting === "function" ? turn.waiting() : 0);
 
   async function ask(url) {
     const res = await fetchImpl(url, {
@@ -169,14 +187,19 @@ export function createPlaceSearch({
     }
     if (hit) cache.delete(key);
     if (inflight.has(key)) return inflight.get(key);
-    if (waiting >= queueMax) return { places: [], busy: true };
+    // The queue is shared with the area names (src/lib/thirtyda-geo.mjs): count every lookup that waits, not only mine.
+    if (queued() >= queueMax) return { places: [], busy: true };
     waiting++;
+    let started = false;
+    let late = false; // past the deadline: if its turn has not come yet, it never asks Nominatim
     const url = searchUrl({ q: query, lang: language, near: centre });
-    const p = turn(() => {
+    const job = turn(() => {
+      started = true;
       waiting--;
       return ask(url);
-    })
+    }, { skip: () => late })
       .then((places) => {
+        if (places === SKIPPED || !Array.isArray(places)) return { places: [], unavailable: true };
         while (cache.size >= cacheMax) cache.delete(cache.keys().next().value);
         cache.set(key, { at: now(), places });
         return { places };
@@ -185,10 +208,71 @@ export function createPlaceSearch({
         onError(err);
         return { places: [], unavailable: true };
       })
-      .finally(() => inflight.delete(key));
+      .finally(() => {
+        if (!started) waiting--;
+      });
+    // The whole search, its wait for a turn included, has at most `deadlineMs`: the app never shows "Searching…" for long.
+    let timer = null;
+    const deadline = new Promise((resolve) => {
+      timer = setTimeout(() => {
+        late = true;
+        resolve({ places: [], unavailable: true });
+      }, deadlineMs);
+      timer.unref?.();
+    });
+    const p = Promise.race([job, deadline]).finally(() => {
+      clearTimeout(timer);
+      inflight.delete(key);
+    });
     inflight.set(key, p);
     return p;
   }
 
   return { search, size: () => cache.size };
+}
+
+/** How long a suggestion's `ref` stays good: time enough to pick a date and a time, and send. */
+export const PLACE_REF_TTL_MS = 3600e3;
+
+/**
+ * The key place refs are signed with: derived from THIRTYDA_SECRET_KEY when it is set (refs outlive a restart), else
+ * random for this process (a restart then only makes a just-picked place name-only).
+ */
+export function placeRefKey(raw = process.env.THIRTYDA_SECRET_KEY) {
+  const s = String(raw ?? "").trim();
+  if (/^[0-9a-f]{64}$/i.test(s)) return crypto.createHmac("sha256", Buffer.from(s, "hex")).update("30da place ref v1").digest();
+  return crypto.randomBytes(32);
+}
+
+/**
+ * Places the server itself suggested (review 2026-10-14): every /places suggestion carries `ref`, a signature over the
+ * person, the place exactly as checkPlace keeps it (name, address, point) and an expiry (1 hour). POST /pairs/:id/meet
+ * keeps a place's address and point only with a good ref (shared/meet.js keptPlace): a card can never name a public
+ * café while its map opens somewhere else, and nobody puts 140 characters of their own words under a meeting.
+ *   sign(place, uid) → ref | null      ok(place, ref, uid) → boolean (place: as checkPlace gives it)
+ */
+export function createPlaceRefs({ key = placeRefKey(), ttlMs = PLACE_REF_TTL_MS, now = () => Date.now() } = {}) {
+  const mac = (uid, exp, p) => crypto.createHmac("sha256", key)
+    .update(JSON.stringify([String(uid), exp, p.name, p.address ?? null, p.lat ?? null, p.lng ?? null]))
+    .digest("base64url")
+    .slice(0, 32);
+
+  function sign(place, uid) {
+    const c = checkPlace(place);
+    if (!c.ok) return null;
+    const exp = Math.ceil((now() + ttlMs) / 1000);
+    return `${exp.toString(36)}.${mac(uid, exp, c.place)}`;
+  }
+
+  function ok(place, ref, uid) {
+    const m = /^([0-9a-z]{1,12})\.([A-Za-z0-9_-]{32})$/.exec(typeof ref === "string" ? ref : "");
+    if (!m || !place) return false;
+    const exp = parseInt(m[1], 36);
+    if (!(exp * 1000 > now())) return false;
+    const want = Buffer.from(mac(uid, exp, place));
+    const got = Buffer.from(m[2]);
+    return want.length === got.length && crypto.timingSafeEqual(want, got);
+  }
+
+  return { sign, ok };
 }

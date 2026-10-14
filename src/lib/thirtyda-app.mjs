@@ -174,7 +174,7 @@ import {
 import { questionConfig, slotsView, flatView } from "./thirtyda-questions.mjs";
 // Meetings in the Level 3 chat (owner 2026-10-14): the place search and the meeting routes (src/lib/thirtyda-meet.mjs).
 import { meetRoutes, changedAt } from "./thirtyda-meet.mjs";
-import { meetView } from "../thirtyda-app/shared/meet.js";
+import { meetView, placeLine } from "../thirtyda-app/shared/meet.js";
 import {
   convStage, L1_STAGES, openSetLevel, currentSetLevel, levelState, repliedCount, allReplied, levelComplete,
   nextStep, isMyTurn, decisionOf, afterDecisions, replyOrders, writtenOrders, chatOrders, withReply,
@@ -3226,14 +3226,17 @@ function hitsInLast(joined, text, hits) {
  * Then the same over everything I wrote in this pair before the chat (shared/conversation.js chatOrders: my replies and
  * written lines, however old, and these chat lines): replies "012" and "887", then "766 is my lucky number" here. That
  * stop is kept as ONE stopped message, the pieces line by line (the admin sees the whole attempt).
+ * My meetings count as lines too (their text is the place line, src/lib/thirtyda-meet.mjs), both
+ * ways: a chat line read with a meeting before it, and a meeting's place (kind 'meet') read with
+ * the lines before it — the chat lines and, through chatOrders, my replies and written lines.
  */
-async function stopSplitChat(ctx, pair, other, text) {
+async function stopSplitChat(ctx, pair, other, text, { kind = "chat" } = {}) {
   const { d, me } = ctx;
   if (!text) return;
   const chat = await d.collection(C.chats).findOne({ _id: pair._id }, { projection: { messages: { $slice: -40 } } });
   const since = Date.now() - CHAT_SPLIT_MS;
   const recentLines = (chat?.messages || [])
-    .filter((m) => m.kind === "chat" && m.from === me._id && !m.stopped && Date.parse(m.at) >= since)
+    .filter((m) => (m.kind === "chat" || m.kind === "meet") && m.from === me._id && !m.stopped && Date.parse(m.at) >= since)
     .slice(-CHAT_SPLIT_LINES);
   const recent = recentLines.map((m) => m.text);
   if (recent.length) {
@@ -3241,7 +3244,7 @@ async function stopSplitChat(ctx, pair, other, text) {
     const hits = hitsInLast(c.text, text, c.hits.filter((h) => h.lastIndex === recent.length));
     if (hits.length) {
       const reason = CONTACT_REASONS[hits[0].type] ?? c.reason;
-      await recordStopped(ctx, pair, other, { text, level: 3, kind: "chat", hits, reason });
+      await recordStopped(ctx, pair, other, { text, level: 3, kind, hits, reason });
       throw fail(422, "contact_detail", reason || "Contact details are not allowed.", { hits, reason, count: charCount(text) });
     }
   }
@@ -3249,7 +3252,7 @@ async function stopSplitChat(ctx, pair, other, text) {
   const lines = recentLines.map((m) => ({ text: m.text, at: m.at }));
   const c = findSplitContactDetails(chatOrders({ sets, me: me._id, text, chat: lines }));
   if (c.ok) return;
-  await recordStopped(ctx, pair, other, { text: c.text, level: 3, kind: "chat", hits: c.hits, reason: c.reason });
+  await recordStopped(ctx, pair, other, { text: c.text, level: 3, kind, hits: c.hits, reason: c.reason });
   throw fail(422, "contact_detail", c.reason || "Contact details are not allowed.", {
     split: true, hits: hitsInLast(c.text, text, c.hits), reason: c.reason, count: charCount(text),
   });
@@ -3290,7 +3293,9 @@ async function report(ctx) {
   const chats = d.collection(C.chats);
   const chat = await chats.findOne({ _id: pair._id }, { projection: { messages: { $elemMatch: { id: msgId } } } });
   const m = chat?.messages?.[0];
-  if (!m || m.kind !== "chat" || m.stopped || m.from !== other?._id) throw fail(404, "not_found", "No such message.");
+  // A chat line, or a meeting card (src/lib/thirtyda-meet.mjs): its flag quotes the place as the card showed it.
+  const isMeet = m?.kind === "meet" && Boolean(m.meet);
+  if (!m || (m.kind !== "chat" && !isMeet) || m.stopped || m.from !== other?._id) throw fail(404, "not_found", "No such message.");
   if (m.flagId) return { ok: true, already: true };
 
   const flagId = await nextId(d, "flag");
@@ -3302,16 +3307,23 @@ async function report(ctx) {
   await d.collection(C.flags).insertOne({
     _id: flagId, id: flagId, chatId: pair._id, from: other._id, to: me._id, at: nowIso(),
     reason: `Reported by ${me.name} · ${label}`, kind: "reported", status: "open", warned: false,
+    // The reported meeting's place, quoted (the reason keeps its "Reported by … · label" shape for minimalFlag).
+    ...(isMeet ? { text: `Meeting: ${placeLine(m.meet.place)}` } : {}),
   });
   return { ok: true };
 }
 
 // ---------------------------------------------------------------- meetings (owner 2026-10-14, src/lib/thirtyda-meet.mjs)
 
-const MEET_DEPS = { C, fail, nowIso, nextId, appendMessages, pairFor, chatGate, stopContactDetails, stopBadWords };
+const MEET_DEPS = {
+  C, fail, nowIso, nextId, appendMessages, pairFor, chatGate,
+  stopContactDetails, stopSplitContactDetails, stopSplitChat, stopBadWords,
+};
 /** The meeting handlers on this app's own pieces; `over` swaps some (the place search, the clock) in tests. */
 export const meetHandlers = (over = {}) => meetRoutes({ ...MEET_DEPS, ...over });
 const meet = meetHandlers();
+/** The chat's own send and report, for the meeting tests (a chat line read with a meeting before it; a reported card). */
+export const chatHandlers = Object.freeze({ postMessage, report });
 
 // ---------------------------------------------------------------- block + report a person (store policy, owner 2026-10-14)
 // The rules: src/thirtyda-app/shared/safety.js; the store and the admin's flags: src/lib/thirtyda-blocks.mjs.

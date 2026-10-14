@@ -2,7 +2,9 @@
 // Meetings in the Level 3 chat (owner 2026-10-14, src/lib/thirtyda-meet.mjs), run on the app's own pieces (pairFor,
 // chatGate, the chat's contact-detail and bad-word stops — meetHandlers() in src/lib/thirtyda-app.mjs) over an in-memory
 // Mongo stand-in: suggest, one open suggestion, accept / decline / cancel and who may, Level 3 only, the two worlds,
-// blocks, the limits, place names stopped and kept for the admin like a chat line, and the place search's gate.
+// blocks, the limits, place names stopped and kept for the admin like a chat line (alone, name + address together, and
+// with my chat lines both ways), the address and map pin only for a place the server suggested (its signed ref),
+// reporting a meeting card, and the place search's gate.
 // No database, no network: the place search is a fake, translation is off.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,12 +12,14 @@ import { readFileSync } from 'node:fs';
 
 delete process.env.THIRTYDA_TRANSLATE_URL; // translation off: nothing leaves the test
 
-const { meetHandlers, API_ROUTES } = await import('./thirtyda-app.mjs');
+const { meetHandlers, chatHandlers, API_ROUTES } = await import('./thirtyda-app.mjs');
 const { MEET_TEXT, changedAt } = await import('./thirtyda-meet.mjs');
+const { createPlaceRefs } = await import('./thirtyda-places.mjs');
+const { reasonWithoutNames } = await import('./thirtyda-delete.mjs');
 const { BLOCKS, addBlock } = await import('./thirtyda-blocks.mjs');
 const { REVIEW } = await import('./thirtyda-review.mjs');
 const { TALK_ROUTES, talksToSomeone } = await import('./thirtyda-verify.mjs');
-const { MEET_PER_PAIR_HOUR } = await import('../thirtyda-app/shared/meet.js');
+const { MEET_PER_PAIR_HOUR, PLACE_SEARCHES_PER_MINUTE } = await import('../thirtyda-app/shared/meet.js');
 
 // ---------------------------------------------------------------- an in-memory Mongo, just enough for these routes
 
@@ -78,7 +82,15 @@ function fakeCollection() {
   const seed = (q) => Object.fromEntries(Object.entries(q).filter(([, v]) => typeof v !== 'object'));
   return {
     docs,
-    async findOne(q) { const d = docs.find((x) => matches(x, q)); return d ? structuredClone(d) : null; },
+    async findOne(q, opts = {}) {
+      const d = docs.find((x) => matches(x, q));
+      if (!d) return null;
+      const out = structuredClone(d);
+      // { projection: { messages: { $elemMatch } } }: only the first matching message, like Mongo (the chat's report).
+      const em = opts.projection?.messages?.$elemMatch;
+      if (em && Array.isArray(out.messages)) out.messages = out.messages.filter((m) => matches(m, em)).slice(0, 1);
+      return out;
+    },
     find(q) {
       const list = () => docs.filter((x) => matches(x, q)).map((x) => structuredClone(x));
       return { toArray: async () => list(), sort() { return this; }, limit() { return this; } };
@@ -145,27 +157,35 @@ const T0 = Math.floor(Date.now() / 60e3) * 60e3;
 const BROWN = { name: 'Brown Coffee TK', address: 'Russian Federation Blvd, Toul Kork', lat: 11.5728, lng: 104.8999 };
 const at = (ms) => new Date(ms).toISOString();
 
-/** The meeting routes on a fresh world, a clock we move, a fake place search that remembers what it was asked. */
+/**
+ * The meeting routes on a fresh world, a clock we move, a fake place search that remembers what it was asked, and the
+ * place refs with a fixed key on that clock. propose() sends BROWN as the search suggested it to that person (its ref).
+ */
 async function setup(over = {}) {
   const d = await world();
   const clock = { now: T0 };
   const asked = [];
   const placeSearch = { search: async (q) => { asked.push(q); return { places: [BROWN] }; } };
-  const h = meetHandlers({ now: () => clock.now, nowIso: () => new Date(clock.now).toISOString(), placeSearch, ...over });
+  const refs = createPlaceRefs({ key: Buffer.alloc(32, 7), now: () => clock.now });
+  const h = meetHandlers({ now: () => clock.now, nowIso: () => new Date(clock.now).toISOString(), placeSearch, placeRefs: refs, ...over });
   const me = async (id) => d.collection('thirtyda_users').findOne({ _id: id });
-  const call = async (fn, id, { params = [], body = {}, url = 'https://ecom.ggmt.sg/30da/api/x' } = {}) => {
+  const run = (handlers) => async (fn, id, { params = [], body = {}, url = 'https://ecom.ggmt.sg/30da/api/x' } = {}) => {
     const ctx = { d, me: await me(id), params, body, url: new URL(url), status: 200 };
-    const out = await h[fn](ctx);
+    const out = await handlers[fn](ctx);
     return { ...out, status: ctx.status };
   };
+  const call = run(h);
+  const callChat = run(chatHandlers); // the chat's own send and report
   const err = async (p) => {
     try { await p; } catch (e) { return e; }
     assert.fail('expected a refusal');
   };
   const chat = async (pid = 'P-1') => (await d.collection('thirtyda_chats').findOne({ _id: pid }))?.messages || [];
-  const propose = (id, pid = 'P-1', body = {}) => call('propose', id, { params: [pid], body: { place: BROWN, at: at(T0 + DAY), ...body } });
+  const signed = (place, id = 'U-1') => ({ ...place, ref: refs.sign(place, id) });
+  const propose = (id, pid = 'P-1', body = {}) => call('propose', id, { params: [pid], body: { place: signed(BROWN, id), at: at(T0 + DAY), ...body } });
   const act = (id, mid, action, pid = 'P-1') => call('act', id, { params: [pid, mid], body: { action } });
-  return { d, clock, asked, call, err, chat, propose, act };
+  const say = (id, text, pid = 'P-1') => callChat('postMessage', id, { params: [pid], body: { text } });
+  return { d, clock, asked, refs, call, callChat, err, chat, signed, propose, act, say };
 }
 
 // ---------------------------------------------------------------- suggest
@@ -250,6 +270,146 @@ test('one open suggestion per pair: a new one (theirs or mine) replaces the open
   const c = await propose('U-2', 'P-1', { at: at(T0 + 3 * DAY) });
   assert.equal(c.replaced[0].id, b.message.id, 'my own open one too');
   assert.equal((await chat()).filter((m) => m.meet.status === 'proposed').length, 1);
+});
+
+// ---------------------------------------------------------------- split contact details (review 2026-10-14)
+
+test('a phone number split over the name and the address is stopped and kept for the admin, like the chat', async () => {
+  const { d, err, propose, chat } = await setup();
+  const e = await err(propose('U-1', 'P-1', { place: { name: 'Cafe 012 887', address: '766 Street' } }));
+  assert.deepEqual([e.status, e.code], [422, 'contact_detail']);
+  assert.equal(e.extra.index, 0, 'points at the name, where it starts');
+  const [m] = await chat();
+  assert.deepEqual([m.kind, m.stopped, m.level, m.text], ['meet', true, 3, 'Cafe 012 887\n766 Street'], 'the whole try, for the admin');
+  assert.equal(m.meet, undefined, 'never a meeting');
+  const flags = await d.collection('thirtyda_flags').find({}).toArray();
+  assert.deepEqual(flags.map((f) => [f.kind, f.from, f.to, f.chatId]), [['stopped', 'U-1', 'U-2', 'P-1']]);
+  assert.equal((await d.collection('thirtyda_pairs').findOne({ _id: 'P-1' })).lastChat, null, 'nothing reached the other person');
+});
+
+test('a phone number split between my chat line and a meeting is stopped, in both orders', async () => {
+  // (B) A delivered chat line, then "Use what I typed".
+  let w = await setup();
+  assert.equal((await w.say('U-1', 'Lets meet soon ok 012 887')).status, 201, 'the line alone passes');
+  let e = await w.err(w.propose('U-1', 'P-1', { place: { name: '766 Coffee' } }));
+  assert.deepEqual([e.status, e.code], [422, 'contact_detail']);
+  let last = (await w.chat()).at(-1);
+  assert.deepEqual([last.kind, last.stopped, last.text], ['meet', true, '766 Coffee']);
+  assert.equal((await w.propose('U-2', 'P-1', { place: { name: '766 Coffee' } })).status, 201, 'only my own lines count');
+
+  // A meeting, then a chat line.
+  w = await setup();
+  assert.equal((await w.propose('U-1', 'P-1', { place: { name: 'Cafe 012 887' } })).status, 201, 'the place alone passes');
+  e = await w.err(w.say('U-1', '766 is my lucky one ok'));
+  assert.deepEqual([e.status, e.code], [422, 'contact_detail']);
+  last = (await w.chat()).at(-1);
+  assert.deepEqual([last.kind, last.stopped, last.text], ['chat', true, '766 is my lucky one ok']);
+  assert.equal((await w.say('U-2', '766 is my lucky one ok')).status, 201, 'the other person\'s line is read with their own');
+
+  // A meeting, then another meeting.
+  w = await setup();
+  await w.propose('U-1', 'P-1', { place: { name: 'Cafe 012 887' } });
+  w.clock.now += 60e3;
+  e = await w.err(w.propose('U-1', 'P-1', { place: { name: '766 Garden' } }));
+  assert.equal(e.code, 'contact_detail');
+
+  // Ordinary places and lines with numbers pass.
+  w = await setup();
+  await w.say('U-1', 'See you at 7 at the cafe ok');
+  assert.equal((await w.propose('U-1', 'P-1', { place: { name: 'Street 214 Coffee' } })).status, 201);
+  assert.equal((await w.say('U-1', 'I will be there by 6 30 pm')).status, 201);
+});
+
+test('a meeting\'s place is read with my Level 1 / 2 replies too, like a chat line (chatOrders)', async () => {
+  const { d, err, propose, chat } = await setup();
+  const t = at(T0 - DAY);
+  await d.collection('thirtyda_sets').insertOne({
+    _id: 'S-1', id: 'S-1', pairId: 'P-1', level: 1, from: 'U-2', to: 'U-1', sentAt: t,
+    questions: [{ n: 1, source: 'bank', text: 'Coffee or tea?' }, { n: 2, source: 'bank', text: 'Cats or dogs?' }],
+    answers: [{ n: 1, key: null, text: '012', at: t }, { n: 2, key: null, text: '887', at: t }],
+  });
+  const e = await err(propose('U-1', 'P-1', { place: { name: '766 Coffee' } }));
+  assert.deepEqual([e.status, e.code], [422, 'contact_detail']);
+  const last = (await chat()).at(-1);
+  assert.deepEqual([last.kind, last.stopped], ['meet', true]);
+  assert.match(last.text, /012[\s\S]*887[\s\S]*766 Coffee/, 'the whole attempt, piece by piece');
+});
+
+// ---------------------------------------------------------------- the place is the server's suggestion (review 2026-10-14)
+
+test('the address and the map pin only for a place the server suggested to me (its ref); else the name alone', async () => {
+  const far = { name: 'Brown Coffee TK', address: 'Russian Federation Blvd, Toul Kork', lat: 11.4801, lng: 104.7712 };
+  const nameOnly = { name: 'Brown Coffee TK', address: null, lat: null, lng: null };
+
+  let w = await setup();
+  const [s] = (await w.call('places', 'U-1', { url: 'https://ecom.ggmt.sg/30da/api/places?q=Brown' })).places;
+  const r = await w.propose('U-1', 'P-1', { place: s });
+  assert.deepEqual(r.message.meet.place, BROWN, 'as the search suggested it');
+  assert.equal(r.message.meet.mapsUrl, 'https://www.google.com/maps/search/?api=1&query=11.5728%2C104.8999');
+
+  // Another point under the same name: no ref, a ref for another point, someone else's ref, an old ref. (Each on a
+  // fresh world: the refs' key and clock are the same, so only what the ref says decides.)
+  const cases = [
+    ['no ref', 'U-1', far],
+    ['a ref for another point', 'U-1', { ...far, ref: w.refs.sign(BROWN, 'U-1') }],
+    ['the other person\'s ref', 'U-2', w.signed(BROWN, 'U-1')],
+  ];
+  for (const [what, id, place] of cases) {
+    w = await setup();
+    const out = await w.propose(id, 'P-1', { place });
+    assert.deepEqual(out.message.meet.place, nameOnly, what);
+    assert.equal(out.message.meet.mapsUrl, 'https://www.google.com/maps/search/?api=1&query=Brown%20Coffee%20TK', `${what}: Maps searches the name`);
+    assert.equal((await w.chat())[0].text, 'Brown Coffee TK', `${what}: the line the admin reads`);
+  }
+  w = await setup();
+  const old = w.signed(BROWN, 'U-1');
+  w.clock.now += 61 * 60e3;
+  assert.deepEqual((await w.propose('U-1', 'P-1', { place: old, at: at(w.clock.now + DAY) })).message.meet.place, nameOnly, 'an hour old');
+
+  // Free text in the address: never shown.
+  w = await setup();
+  const long = 'I really want to see you alone tonight, come by yourself and do not tell your friends, I will wait at the back gate';
+  const typed = await w.propose('U-1', 'P-1', { place: { name: 'My place', address: long } });
+  assert.deepEqual(typed.message.meet.place, { name: 'My place', address: null, lat: null, lng: null });
+  assert.equal((await w.chat())[0].text, 'My place');
+});
+
+test('a place already in this conversation goes back as it is ("Suggest another time"); a point outside Cambodia is dropped', async () => {
+  const w = await setup();
+  const first = await w.propose('U-1');
+  w.clock.now += 60e3;
+  const again = await w.propose('U-2', 'P-1', { place: { ...first.message.meet.place }, at: at(T0 + 2 * DAY) });
+  assert.deepEqual(again.message.meet.place, BROWN, 'the other person sends my place back without a ref of their own');
+
+  const sg = { name: 'Raffles Cafe', address: 'Beach Road, Singapore', lat: 1.2948, lng: 103.8545 };
+  w.clock.now += 60e3;
+  const out = await w.propose('U-1', 'P-1', { place: w.signed(sg, 'U-1'), at: at(T0 + 3 * DAY) });
+  assert.deepEqual(out.message.meet.place, { ...sg, lat: null, lng: null }, 'outside Cambodia: no map point');
+});
+
+// ---------------------------------------------------------------- report a meeting card (review 2026-10-14)
+
+test('the other person can report a meeting card like a chat line; the flag quotes the place', async () => {
+  const { d, err, propose, callChat, chat } = await setup();
+  const { message } = await propose('U-1');
+  const report = (id, reason = 'rude') => callChat('report', id, { params: ['P-1', message.id], body: { reason } });
+  let e = await err(report('U-1'));
+  assert.deepEqual([e.status, e.code], [404, 'not_found'], 'not my own card');
+  assert.equal((await report('U-2')).ok, true);
+  const flags = await d.collection('thirtyda_flags').find({}).toArray();
+  assert.equal(flags.length, 1);
+  const [f] = flags;
+  assert.deepEqual([f.kind, f.from, f.to, f.chatId, f.status], ['reported', 'U-1', 'U-2', 'P-1', 'open']);
+  assert.equal(f.text, 'Meeting: Brown Coffee TK · Russian Federation Blvd, Toul Kork');
+  assert.equal(f.reason, 'Reported by Name2 · rude message');
+  assert.equal(reasonWithoutNames(f), 'Reported · rude message', 'account deletion still cuts the reason to its label');
+  assert.equal((await chat())[0].flagId, f.id, 'the admin finds the card by its flag');
+  assert.equal((await report('U-2')).already, true, 'once');
+  // A stopped try is never a card to report.
+  await err(propose('U-1', 'P-1', { place: { name: 'Call me 012 345 678' } }));
+  const stopped = (await chat()).at(-1);
+  e = await err(callChat('report', 'U-2', { params: ['P-1', stopped.id], body: { reason: 'rude' } }));
+  assert.equal(e.code, 'not_found');
 });
 
 // ---------------------------------------------------------------- answer
@@ -346,10 +506,12 @@ test('limits: 6 suggestions an hour per conversation (stopped tries count), 20 a
 // ---------------------------------------------------------------- the place search
 
 test('place search: Level 3 people only; the person\'s language and stored point (or ?near=); nothing for under 2 characters', async () => {
-  const { call, err, asked } = await setup();
+  const { call, err, asked, refs } = await setup();
   const url = (q) => `https://ecom.ggmt.sg/30da/api/places?${q}`;
   const r = await call('places', 'U-1', { url: url('q=Brown%20Coffee') });
-  assert.deepEqual(r.places, [BROWN]);
+  assert.deepEqual(r.places.map(({ ref, ...p }) => p), [BROWN]);
+  assert.equal(refs.ok(BROWN, r.places[0].ref, 'U-1'), true, 'each suggestion signed for the one who searched');
+  assert.equal(refs.ok(BROWN, r.places[0].ref, 'U-2'), false);
   assert.deepEqual(asked[0], { q: 'Brown Coffee', lang: 'en', near: { lat: 11.5731, lng: 104.9012 } });
   await call('places', 'U-1', { url: url('q=Wat%20Phnom&near=13.36,103.86') });
   assert.deepEqual(asked[1].near, { lat: 13.36, lng: 103.86 });
@@ -359,13 +521,14 @@ test('place search: Level 3 people only; the person\'s language and stored point
   assert.deepEqual([e.status, e.code], [403, 'chat_closed'], 'Level 2: no meetings yet');
 });
 
-test('place search: 20 a minute per person', async () => {
+test('place search: 10 a minute per person (the app searches only on Enter or Search)', async () => {
   const { call, err } = await setup();
   const url = 'https://ecom.ggmt.sg/30da/api/places?q=Brown';
-  for (let i = 0; i < 20; i++) await call('places', 'U-1', { url });
+  assert.equal(PLACE_SEARCHES_PER_MINUTE, 10);
+  for (let i = 0; i < PLACE_SEARCHES_PER_MINUTE; i++) await call('places', 'U-1', { url });
   const e = await err(call('places', 'U-1', { url }));
   assert.deepEqual([e.status, e.code], [429, 'rate_limited']);
-  assert.deepEqual((await call('places', 'U-2', { url })).places, [BROWN], 'someone else still searches');
+  assert.equal((await call('places', 'U-2', { url })).places[0].name, BROWN.name, 'someone else still searches');
 });
 
 // ---------------------------------------------------------------- the wiring in the app
@@ -389,8 +552,10 @@ test('the chat read: meetings come with the chat lines (never a stopped try), an
   assert.match(body, /\(m\.kind === "chat" \|\| m\.kind === "meet"\) && !m\.stopped && \(Number\.isNaN\(after\) \|\| changedAt\(m\) > after\)/);
   assert.match(body, /m\.kind === "meet" \? meetView\(m, me\._id\)/);
   assert.match(body, /backfillMessages\(d, pair\._id, msgs\.filter\(\(m\) => m\.kind === "chat"\), lang\)/, 'place names are not translated');
-  assert.match(src, /const MEET_DEPS = \{ C, fail, nowIso, nextId, appendMessages, pairFor, chatGate, stopContactDetails, stopBadWords \};/,
-    'the same pairFor (sameWorld, blocks) and the same stops as the chat');
+  assert.match(src, /const MEET_DEPS = \{\n {2}C, fail, nowIso, nextId, appendMessages, pairFor, chatGate,\n {2}stopContactDetails, stopSplitContactDetails, stopSplitChat, stopBadWords,\n\};/,
+    'the same pairFor (sameWorld, blocks) and the same stops as the chat, the split ones too');
+  const split = src.slice(src.indexOf('async function stopSplitChat('), src.indexOf('async function postMessage('));
+  assert.match(split, /\(m\.kind === "chat" \|\| m\.kind === "meet"\) && m\.from === me\._id && !m\.stopped/, 'my meetings are lines too');
   const m = { at: '2026-10-14T05:00:00.000Z', meet: { updatedAt: '2026-10-14T06:00:00.000Z' } };
   assert.equal(changedAt(m), Date.parse('2026-10-14T06:00:00.000Z'));
   assert.equal(changedAt({ at: '2026-10-14T05:00:00.000Z' }), Date.parse('2026-10-14T05:00:00.000Z'));
