@@ -1,7 +1,7 @@
 # 30+DA home page photos
 
 Photos for https://ecom.ggmt.sg/30da/home. Drop a file here, deploy, and it shows.
-No file = a soft navy / warm placeholder. Never stock or AI faces.
+No file = a soft placeholder. The photos here are AI-generated frames of the owner's red-string teaser (nobody real; Yai Media Director, 2026-10-14) — never photos of real people.
 
 | File | Where | Shape | Size |
 | --- | --- | --- | --- |

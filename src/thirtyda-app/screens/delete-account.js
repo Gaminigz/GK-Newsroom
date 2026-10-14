@@ -37,6 +37,7 @@ const RULES = [
   '.legal-links a { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }',
   '.dark .legal-links { color: var(--on-dark-muted); }',
   '.legal-links .dot { opacity: 0.7; }',
+  '.legal-block { display: grid; gap: 2px; }',
   '.account-foot { display: flex; flex-direction: column; align-items: center; gap: 14px; padding-top: 6px; }',
   '.delete-link { min-height: 36px; padding: 0 8px; font-size: 14px; font-weight: 700; color: var(--red); text-decoration: underline; text-underline-offset: 3px; }',
   '.delete-sheet { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }',
@@ -71,19 +72,22 @@ function ensureStyles() {
 
 // ---------------------------------------------------------------- links
 
-/** "Privacy policy · Terms · Help": the public pages in the app's language, same tab (they link back to the app). */
+/** "Home page", then "Privacy policy · Terms · Help": the public pages in the app's language, same tab (they link back to the app). */
 export function legalLinks() {
   ensureStyles();
   const lang = encodeURIComponent(state.lang || 'en');
   // Leaving on purpose to read a page is not "closing the app" (like the trip to Google sign-in): no PIN on the way back.
   const away = () => { if (state.me) leaveWithoutLock(); };
-  return el('p', { class: 'legal-links' },
+  // "Home page" on its own line above (owner 2026-10-14): what 30+DA is and how it works, /30da/home.
+  const home = el('p', { class: 'legal-links' }, el('a', { href: `/30da/home?lang=${lang}`, on: { click: away } }, t('da_home')));
+  const links = el('p', { class: 'legal-links' },
     el('a', { href: `/30da/privacy?lang=${lang}`, on: { click: away } }, t('da_privacy')),
     el('span', { class: 'dot', 'aria-hidden': 'true' }, '·'),
     el('a', { href: `/30da/terms?lang=${lang}`, on: { click: away } }, t('da_terms')),
     el('span', { class: 'dot', 'aria-hidden': 'true' }, '·'),
     // Help & support: who runs 30+DA and the support email (owner 2026-10-14).
     el('a', { href: `/30da/support?lang=${lang}`, on: { click: away } }, t('da_help')));
+  return el('div', { class: 'legal-block' }, home, links);
 }
 
 /** The bottom of #/me: Privacy policy · Terms · Help, the support email, and a red "Delete my account". */
@@ -239,6 +243,7 @@ registerStrings({
     da_privacy: 'Privacy policy',
     da_terms: 'Terms',
     da_help: 'Help',
+    da_home: 'Home page',
     da_support_mail: 'Support:',
     da_delete: 'Delete my account',
     da_title: 'Delete your account?',
@@ -264,6 +269,7 @@ registerStrings({
     da_privacy: 'គោលការណ៍ឯកជនភាព',
     da_terms: 'លក្ខខណ្ឌប្រើប្រាស់',
     da_help: 'ជំនួយ',
+    da_home: 'គេហទំព័រ',
     da_support_mail: 'ជំនួយ៖',
     da_delete: 'លុបគណនីរបស់ខ្ញុំ',
     da_title: 'លុបគណនីរបស់អ្នក?',
@@ -289,6 +295,7 @@ registerStrings({
     da_privacy: '隐私政策',
     da_terms: '使用条款',
     da_help: '帮助',
+    da_home: '主页',
     da_support_mail: '客服：',
     da_delete: '删除我的账号',
     da_title: '删除你的账号？',
@@ -314,6 +321,7 @@ registerStrings({
     da_privacy: '개인정보 처리방침',
     da_terms: '이용약관',
     da_help: '도움말',
+    da_home: '홈페이지',
     da_support_mail: '고객 지원:',
     da_delete: '내 계정 삭제',
     da_title: '계정을 삭제할까요?',
@@ -339,6 +347,7 @@ registerStrings({
     da_privacy: 'プライバシーポリシー',
     da_terms: '利用規約',
     da_help: 'ヘルプ',
+    da_home: 'ホームページ',
     da_support_mail: 'サポート：',
     da_delete: 'アカウントを削除',
     da_title: 'アカウントを削除しますか？',
