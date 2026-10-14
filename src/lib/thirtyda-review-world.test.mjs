@@ -12,11 +12,12 @@ process.env.THIRTYDA_SECRET_KEY ||= crypto.randomBytes(32).toString('hex');
 
 const {
   REVIEW_DEVICES, REVIEW_DEVICE_KEEP_MS, markReviewDevice, isReviewDevice, forgetReviewDevices, clearReviewWorld,
+  REVIEW_DEVICE_PER_DAY, REVIEW_ADDRESS_PER_DAY, claimReviewSignup, releaseReviewSignup,
 } = await import('./thirtyda-review-world.mjs');
 const { REVIEW, REVIEW_SWITCH } = await import('./thirtyda-review.mjs');
 const { SETTINGS_COLLECTION, clearSettingsCache } = await import('./thirtyda-settings.mjs');
 const { BLOCKS, blockId, blockFlag, reportFlag, guestReportFlag, guestReporter, guestReportKey } = await import('./thirtyda-blocks.mjs');
-const { deviceKey } = await import('./thirtyda-verify.mjs');
+const { deviceKey, signupKey, UNVERIFIED_PER_DAY } = await import('./thirtyda-verify.mjs');
 const { API_ROUTES, meView } = await import('./thirtyda-app.mjs');
 const { whileLocked } = await import('./thirtyda-pin.mjs');
 const { talksToSomeone } = await import('./thirtyda-verify.mjs');
@@ -112,11 +113,81 @@ test('review devices: a phone that signed in to a demo account counts only while
   assert.equal(await isReviewDevice(d, PHONE_ID), false, 'forgotten when the switch goes OFF');
 });
 
-test('createProfile: a review device skips "one per phone" and the address day limit — nothing else changes', () => {
+/** A counter collection (SIGNUP_LIMITS) for claimSignup: atomic $inc / $setOnInsert / upsert, and the give-back. */
+function counterCollection() {
+  const docs = new Map();
+  return {
+    docs,
+    async findOneAndUpdate(filter, update, opts) {
+      let doc = docs.get(filter._id);
+      if (!doc) {
+        if (!opts.upsert) return null;
+        doc = { _id: filter._id, ...(update.$setOnInsert || {}) };
+        docs.set(doc._id, doc);
+      }
+      for (const [k, v] of Object.entries(update.$inc || {})) doc[k] = (doc[k] ?? 0) + v;
+      return { ...doc };
+    },
+    async updateOne(filter, update) {
+      const doc = docs.get(filter._id);
+      if (!doc || (filter.n?.$gt !== undefined && !((doc.n ?? 0) > filter.n.$gt))) return { matchedCount: 0 };
+      for (const [k, v] of Object.entries(update.$inc || {})) doc[k] = (doc[k] ?? 0) + v;
+      return { matchedCount: 1 };
+    },
+  };
+}
+
+test(`review devices have a ceiling: ${REVIEW_DEVICE_PER_DAY} fresh profiles per phone and ${REVIEW_ADDRESS_PER_DAY} per address a day`, async () => {
+  assert.ok(REVIEW_DEVICE_PER_DAY >= 2 && REVIEW_DEVICE_PER_DAY <= 10, 'a reviewer can try Delete more than once');
+  assert.ok(REVIEW_ADDRESS_PER_DAY > UNVERIFIED_PER_DAY, 'looser than the ordinary address limit: reviewers share addresses');
+  const coll = counterCollection();
+  const noon = Date.parse('2026-10-14T05:00:00Z'); // 12:00 in Phnom Penh
+  // One review device (the demo PIN is no secret: anyone can make one) keeps making fresh profiles.
+  for (let i = 1; i <= REVIEW_DEVICE_PER_DAY; i++) {
+    assert.equal((await claimReviewSignup(coll, PHONE_ID, '203.0.113.7', { now: noon + i })).ok, true, `#${i}`);
+  }
+  assert.deepEqual(await claimReviewSignup(coll, PHONE_ID, '203.0.113.7', { now: noon + 99 }), { ok: false, keys: [] }, `#${REVIEW_DEVICE_PER_DAY + 1} refused`);
+  assert.equal((await claimReviewSignup(coll, PHONE_ID, '198.51.100.9', { now: noon + 99 })).ok, false, 'the same id from another address: refused too');
+  assert.equal((await claimReviewSignup(coll, PHONE_ID.toUpperCase(), '198.51.100.9', { now: noon + 99 })).ok, false, 'whatever the case');
+  assert.equal(coll.docs.get(signupKey(`review-ip|198.51.100.9`, noon)), undefined, 'a refused phone takes nothing from the address');
+  assert.equal(coll.docs.get(signupKey(`review-ip|203.0.113.7`, noon)).n, REVIEW_DEVICE_PER_DAY, 'the refused ones are not counted');
+  assert.equal(coll.docs.get(signupKey('203.0.113.7', noon)), undefined, 'the ordinary address count is left alone');
+  assert.ok(!JSON.stringify([...coll.docs.values()]).includes(PHONE_ID) && !JSON.stringify([...coll.docs.keys()]).includes('203.0.113'), 'hashes only');
+
+  // New ids from the same address (signing in with the demo PIN again and again): the address's ceiling.
+  let made = REVIEW_DEVICE_PER_DAY;
+  let n = 0;
+  while (made < REVIEW_ADDRESS_PER_DAY) {
+    const id = `${String(++n).padStart(8, '0')}-4b7d-4c1e-9a3b-5d6e7f8a9b0c`;
+    assert.equal((await claimReviewSignup(coll, id, '203.0.113.7', { now: noon })).ok, true, `address #${made + 1}`);
+    made++;
+  }
+  const fresh = '99999999-4b7d-4c1e-9a3b-5d6e7f8a9b0c';
+  assert.equal((await claimReviewSignup(coll, fresh, '203.0.113.7', { now: noon })).ok, false, `address #${REVIEW_ADDRESS_PER_DAY + 1} refused`);
+  assert.equal(coll.docs.get(signupKey(`review-device|${deviceKey(fresh)}`, noon)).n, 0, 'the phone\'s place is given back');
+  assert.equal((await claimReviewSignup(coll, fresh, '198.51.100.9', { now: noon })).ok, true, 'that phone at another address');
+
+  // A profile not made after all gives both places back; a new Phnom Penh day starts again.
+  const other = '88888888-4b7d-4c1e-9a3b-5d6e7f8a9b0c';
+  const slot = await claimReviewSignup(coll, other, '192.0.2.5', { now: noon });
+  assert.equal(slot.keys.length, 2);
+  await releaseReviewSignup(coll, slot.keys);
+  assert.deepEqual(slot.keys.map((k) => coll.docs.get(k).n), [0, 0]);
+  await releaseReviewSignup(coll, undefined); // an ordinary slot has no keys
+  assert.equal((await claimReviewSignup(coll, PHONE_ID, '203.0.113.7', { now: noon + 864e5 })).ok, true, 'tomorrow');
+  assert.equal((await claimReviewSignup(coll, 'not an id', '192.0.2.5', { now: noon })).ok, false, 'never without a good id');
+});
+
+test('createProfile: a review device skips "one per phone" and the address day limit for its own ceiling — nothing else changes', () => {
   const body = fnBody(APP, 'createProfile');
   assert.match(body, /const reviewDevice = unverified && \(await isReviewDevice\(d, body\.deviceId\)/);
   assert.match(body, /const deviceAt = unverified && !reviewDevice \? deviceKey\(body\.deviceId\) : null;/);
   assert.match(body, /slot = unverified && !reviewDevice \? await claimSignup\(limits, clientIp\(ctx\.req\)\) : null;/);
+  // Never limitless (anyone can type the demo PIN): the review device's own ceiling, refused like the address limit.
+  assert.match(body, /if \(reviewDevice\) slot = await claimReviewSignup\(limits, body\.deviceId, clientIp\(ctx\.req\)\);/);
+  assert.match(body, /await releaseReviewSignup\(limits, slot\?\.keys\);/);
+  assert.ok(body.indexOf('claimReviewSignup(') < body.indexOf('if (slot && !slot.ok)'), 'refused (429 too_many_profiles) before the photo is kept');
+  assert.ok(body.indexOf('if (slot && !slot.ok)') < body.indexOf('storePhoto('));
   assert.ok(body.indexOf('reviewDevice') < body.indexOf('claimDevice('), 'decided before the phone is claimed');
   // The sign-ins that make a review device: both review ways, only after a right PIN / code (after the session starts).
   for (const name of ['reviewPin', 'reviewVerify']) {
@@ -217,6 +288,12 @@ test('guest report flag: about the person, "Reported by a guest", no name, no ad
   assert.match(by, /^[0-9a-f]{24}$/);
   assert.equal(guestReporter('203.0.113.7'), by, 'the same address, the same key');
   assert.notEqual(guestReporter('203.0.113.8'), by);
+  // Keyed (an HMAC under the server's key), so the address cannot be found by hashing all 2^32 of them offline.
+  const plain = crypto.createHash('sha256').update('30da-guest-report|203.0.113.7').digest('hex').slice(0, 24);
+  assert.notEqual(by, plain, 'never a plain hash of the address');
+  const serverKey = Buffer.from(process.env.THIRTYDA_SECRET_KEY, 'hex');
+  assert.equal(by, crypto.createHmac('sha256', serverKey).update('30da-guest-report|203.0.113.7').digest('hex').slice(0, 24));
+  assert.notEqual(guestReporter('203.0.113.7', crypto.randomBytes(32)), by, 'another key, another value');
   const f = guestReportFlag({ id: 'f9', by, who: 'U-5', at: '2026-10-14T10:00:00.000Z', label: 'fake profile' });
   assert.deepEqual(f, {
     _id: 'f9', id: 'f9', chatId: null, from: 'U-5', to: null, guest: true, at: '2026-10-14T10:00:00.000Z',
@@ -242,6 +319,16 @@ test('POST /guest/report: a real route, open to a guest (no lock, no "I agree", 
   assert.match(body, /guestReportFlag\(\{ id: flagId, by: guestReporter\(clientIp\(req\)\), who: u\._id/);
   assert.match(body, /err\?\.code === 11000\) return \{ ok: true, already: true \}/);
   assert.deepEqual([...PERSON_REPORT_REASONS], ['rude', 'sexual', 'scam', 'underage', 'fake', 'other'], 'the member report\'s reasons');
+});
+
+test('report sheet at the limit (429 rate_limited): its own short line in all 5 languages, never "Something went wrong"', () => {
+  const safety = read('../thirtyda-app/screens/safety.js');
+  assert.match(safety, /fail\.textContent = err\?\.status === 429 \? t\('sf_too_many'\) : errorText\(err\);/);
+  const lines = [...safety.matchAll(/^ {4}sf_too_many: '([^']+)',$/gm)].map((m) => m[1]);
+  assert.equal(lines.length, 5, 'en / km / zh / ko / ja');
+  assert.ok(lines.every((x) => x.length <= 60), 'short');
+  assert.match(lines[0], /15 minutes/);
+  assert.match(APP, /throw fail\(429, "rate_limited", "Too many reports\. Try again in 15 minutes\."\)/);
 });
 
 test('admin queue: a guest\'s report reads "A guest", with no chat to open', () => {

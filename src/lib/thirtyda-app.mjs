@@ -153,7 +153,7 @@ import {
   reviewPinCheck, reviewPinProbe, ReviewError,
 } from "./thirtyda-review.mjs";
 // The reviewers' side (owner 2026-10-14, the iOS audit): review devices skip Create profile's phone / address limits.
-import { REVIEW_DEVICES, markReviewDevice, isReviewDevice } from "./thirtyda-review-world.mjs";
+import { REVIEW_DEVICES, markReviewDevice, isReviewDevice, claimReviewSignup, releaseReviewSignup } from "./thirtyda-review-world.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
   PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
@@ -1966,7 +1966,8 @@ async function createProfile(ctx) {
   // of today's few for this address — both given back if the profile is not made after all.
   const devices = d.collection(SIGNUP_DEVICES);
   // A phone that signed in to an App review demo account, while "Review sign-in" is ON (src/lib/thirtyda-review-world.mjs):
-  // store reviewers share phones and addresses and are asked to make a fresh profile, so neither limit applies to it.
+  // store reviewers share phones and addresses and are asked to make a fresh profile, so neither limit applies to it —
+  // its own looser ceiling does (claimReviewSignup: per phone and per address per day; the demo PIN is no secret).
   const reviewDevice = unverified && (await isReviewDevice(d, body.deviceId).catch(() => false));
   const deviceAt = unverified && !reviewDevice ? deviceKey(body.deviceId) : null;
   const device = deviceAt ? await claimDevice(devices, deviceAt) : null;
@@ -1975,10 +1976,12 @@ async function createProfile(ctx) {
   let slot = null;
   const giveBack = async () => {
     await releaseSignup(limits, slot?.key);
+    await releaseReviewSignup(limits, slot?.keys);
     await releaseDevice(devices, device?.key);
   };
   try {
     slot = unverified && !reviewDevice ? await claimSignup(limits, clientIp(ctx.req)) : null;
+    if (reviewDevice) slot = await claimReviewSignup(limits, body.deviceId, clientIp(ctx.req));
   } catch (err) {
     await releaseDevice(devices, device?.key);
     throw err;
@@ -2453,7 +2456,7 @@ const guestReports = windowLimiter(OTP_WINDOW_MS);
  * profile yet — sees members' cards, so a guest can report one). The reasons of a member's report (PERSON_REPORT_REASONS),
  * about the profile. GUEST_REPORTS per address per 15 minutes (429 rate_limited), counted before any await. Only someone
  * a guest may see (not blocked, not being deleted, the same world: never an App review account) — else 404, as for
- * someone gone. One open flag per address + person (guestReporter: a hash, never the address): again → { already }.
+ * someone gone. One open flag per address + person (guestReporter: a keyed hash, never the address): again → { already }.
  */
 async function guestReport(ctx) {
   const { d, me, req, body } = ctx;

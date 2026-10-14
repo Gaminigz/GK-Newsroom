@@ -17,6 +17,7 @@
  */
 
 import crypto from "node:crypto";
+import { keyReady, settingsKey } from "./thirtyda-settings.mjs";
 
 export const BLOCKS = "thirtyda_blocks";
 
@@ -87,8 +88,18 @@ export function reportFlag({ id, by, byName, who, at, label, target, chatId = nu
 
 /** The key that keeps one open guest report per address (hashed) + person. */
 export const guestReportKey = (by, who) => `guest|${by}|${who}`;
-/** A guest's address as a report keeps it: a one-way hash (one open report per address + person; never the address). */
-export const guestReporter = (ip) => crypto.createHash("sha256").update(`30da-guest-report|${String(ip ?? "")}`).digest("hex").slice(0, 24);
+/**
+ * The server-only key for guestReporter: THIRTYDA_SECRET_KEY (the one that seals the settings), else a random one made
+ * when this server starts and never stored (a restart then lets one more report per address + person through).
+ */
+let reporterFallback = null;
+const reporterKey = () => (keyReady() ? settingsKey() : (reporterFallback ??= crypto.randomBytes(32)));
+/**
+ * A guest's address as a report keeps it: an HMAC under a server-only key (one open report per address + person). Never
+ * the address, and not a plain hash either — IPv4 is only 2^32 values, so a plain hash could be reversed offline.
+ */
+export const guestReporter = (ip, key = reporterKey()) =>
+  crypto.createHmac("sha256", key).update(`30da-guest-report|${String(ip ?? "")}`).digest("hex").slice(0, 24);
 
 /**
  * The admin's flag for a guest's report (store policy, owner 2026-10-14: a guest — no profile yet — sees members' cards,

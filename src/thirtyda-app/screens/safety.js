@@ -38,7 +38,8 @@ export function reportSheet({ title, quote = null, reasons = PERSON_REPORT_REASO
     } catch (err) {
       if (movedOn(err)) { dlg.close(); return; }
       items.forEach((b) => { b.disabled = false; });
-      fail.textContent = errorText(err);
+      // At the report limit (429 rate_limited: a guest's 10 per address per 15 minutes) — said plainly, never "went wrong".
+      fail.textContent = err?.status === 429 ? t('sf_too_many') : errorText(err);
       fail.hidden = false;
     }
   }
@@ -178,6 +179,7 @@ registerStrings({
     sf_reason_other: 'Other',
     sf_reported: 'Reported. Thank you.',
     sf_already: 'You already reported this.',
+    sf_too_many: 'Too many reports. Try again in 15 minutes.',
     sf_cancel: 'Cancel',
     sf_block_item: 'Block {name}',
     sf_block_title: 'Block {name}?',
@@ -205,6 +207,7 @@ registerStrings({
     sf_reason_other: 'ផ្សេងៗ',
     sf_reported: 'បានរាយការណ៍ហើយ។ សូមអរគុណ។',
     sf_already: 'អ្នកបានរាយការណ៍រួចហើយ។',
+    sf_too_many: 'រាយការណ៍ច្រើនពេក។ សូមព្យាយាមម្ដងទៀតក្នុង 15 នាទី។',
     sf_cancel: 'បោះបង់',
     sf_block_item: 'ទប់ស្កាត់ {name}',
     sf_block_title: 'ទប់ស្កាត់ {name}?',
@@ -232,6 +235,7 @@ registerStrings({
     sf_reason_other: '其他',
     sf_reported: '已举报，谢谢你。',
     sf_already: '你已经举报过了。',
+    sf_too_many: '举报太多了。请 15 分钟后再试。',
     sf_cancel: '取消',
     sf_block_item: '屏蔽 {name}',
     sf_block_title: '屏蔽 {name}？',
@@ -259,6 +263,7 @@ registerStrings({
     sf_reason_other: '기타',
     sf_reported: '신고했어요. 감사합니다.',
     sf_already: '이미 신고했어요.',
+    sf_too_many: '신고가 너무 많아요. 15분 뒤에 다시 해 주세요.',
     sf_cancel: '취소',
     sf_block_item: '{name}님 차단',
     sf_block_title: '{name}님을 차단할까요?',
@@ -286,6 +291,7 @@ registerStrings({
     sf_reason_other: 'その他',
     sf_reported: '報告しました。ありがとうございます。',
     sf_already: 'すでに報告済みです。',
+    sf_too_many: '報告が多すぎます。15分後にもう一度お試しください。',
     sf_cancel: 'キャンセル',
     sf_block_item: '{name}さんをブロック',
     sf_block_title: '{name}さんをブロックしますか？',
