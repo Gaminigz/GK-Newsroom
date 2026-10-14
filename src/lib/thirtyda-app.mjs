@@ -108,7 +108,7 @@ import {
   createSigninState, takeSigninState, stateCookie, readStateCookie, adminSessionAlive, signinPerson, callbackError,
   signinUserFilter, planSignin, pkcePair,
   stateHash, APP_TICKETS, APP_ERRORS, platformOf, newBinder, appCookie, readAppCookie, createAppTicket, takeAppTicket, appReturnQuery,
-  appSchemeUrl, appIntentUrl, publicOrigin,
+  appSchemeUrl, appIntentUrl, publicOrigin, appPlatformOf,
 } from "./thirtyda-signin.mjs";
 import { noteSecretUse } from "./thirtyda-settings.mjs";
 import { outboundFetch } from "./thirtyda-test-fetch.mjs";
@@ -3535,7 +3535,10 @@ export async function handleThirtyDaApp(req, res, url) {
     if (path === `${BASE}/back`) return sendBackPage(req, res, url);
     // The home page: what 30+DA is, how it works, and the way in. Its photos: only the slots whose file is there.
     if (path === `${BASE}/home` || path === `${BASE}/home/`) {
-      return sendPage(req, res, 200, homePage({ lang: requestLang(req, url), photos: homePhotos() }), docHeaders);
+      // In the 30+DA app (its user agent): no store icons (Apple 2.3.10). Varies by User-Agent, so caches keep both.
+      const inApp = appPlatformOf(req.headers["user-agent"]);
+      return sendPage(req, res, 200, homePage({ lang: requestLang(req, url), photos: homePhotos(), inApp }),
+        { ...docHeaders, Vary: "Accept-Language, User-Agent" });
     }
     const hm = path.match(HOME_IMG_RE);
     if (hm) return sendHomeImage(req, res, hm[1], hm[2], { headers: BASE_HEADERS });

@@ -446,7 +446,7 @@ test('GET /30da/home and /30da/home/: 200, the strict page CSP like the other do
     assert.equal(h['X-Frame-Options'], 'DENY');
     assert.equal(h['X-Content-Type-Options'], 'nosniff');
     assert.equal(h['Cache-Control'], privacy.headers['Cache-Control'], 'cached like the other doc pages');
-    assert.equal(h.Vary, 'Accept-Language');
+    assert.equal(h.Vary, 'Accept-Language, User-Agent'); // the app gets the page without store icons
     assert.ok(res.body.includes('<html lang="en">') && res.body.includes('<a class="hm-btn" href="/30da/">'));
     const onPage = Object.keys(homePhotos()).filter((slot) => slot !== HOME_HERO).length;
     assert.equal((res.body.match(/<img\b/g) || []).length, onPage, 'an <img> only for a slot whose file is there');
@@ -630,4 +630,19 @@ test('the app: "Home page" on its own line above "Privacy policy · Terms · Hel
   }
   // The page it opens is the home page, in that language.
   for (const lang of LANGS) assert.ok(homePage({ lang }).includes(`<html lang="${lang}">`));
+});
+
+test('in the 30+DA app (iOS / Android user agent): no store icons at all (Apple 2.3.10), the rest of the page the same', async () => {
+  for (const inApp of ['ios', 'android']) {
+    const html = homePage({ lang: 'en', photos: PEOPLE_PHOTOS, inApp });
+    assert.ok(!html.includes('hm-stores') && !html.includes('Google Play') && !html.includes('App Store'), inApp);
+    assert.ok(html.includes('class="hm-btn"') && html.includes('hm-lives'), `${inApp}: the rest stays`);
+  }
+  assert.ok(homePage({ lang: 'en', photos: PEOPLE_PHOTOS }).includes('hm-stores'), 'the web keeps them');
+  const app = await get('/30da/home', { 'user-agent': 'Mozilla/5.0 (iPhone) AppleWebKit/605.1.15 30DA-iOS/1.0' });
+  assert.equal(app.status, 200);
+  assert.ok(!String(app.body).includes('hm-stores'), 'route: in the app, no store icons');
+  assert.match(String(app.headers.Vary ?? app.headers.vary), /User-Agent/);
+  const web = await get('/30da/home', { 'user-agent': 'Mozilla/5.0 (Macintosh) Safari/605.1.15' });
+  assert.ok(String(web.body).includes('hm-stores'), 'route: on the web, the store icons');
 });

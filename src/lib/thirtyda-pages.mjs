@@ -1520,7 +1520,10 @@ function homeHead(t, lang, title) {
  * and the WhatsApp number carry digits. No script but the JSON-LD data block; no inline style (the page CSP).
  * `photos` = homePhotos(); none → every slot is its placeholder.
  */
-export function homePage({ lang: want, photos = {} } = {}) {
+export function homePage({ lang: want, photos = {}, inApp = null } = {}) {
+  // Opened inside the iOS / Android app (the in-app "Home page" link): no store icons — Apple 2.3.10 forbids showing other
+  // platforms' names or icons in an iOS app, and in the app they mean nothing anyway.
+  const stores = (where) => (inApp ? "" : storeRow(t, where));
   const lang = ok(want);
   const t = PAGE_STRINGS[lang];
   const km = PAGE_STRINGS.km;
@@ -1549,7 +1552,7 @@ export function homePage({ lang: want, photos = {} } = {}) {
   <div class="hm-wrap hm-top-in">
     <a class="hm-logo" href="${WEB_APP_PATH}">30+DA</a>
     ${flagRow(lang, (c) => `/30da/home?lang=${c}`)}
-    ${storeRow(t, "top")}
+    ${stores("top")}
   </div>
 </header>
 <main class="hm-wrap hm-main">
@@ -1558,7 +1561,7 @@ export function homePage({ lang: want, photos = {} } = {}) {
     <div class="hm-left">
       <div class="hm-card">
         ${photo(HOME_PORTRAIT, plain(t.home_alt), { eager: true })}
-        ${storeRow(t, "card")}
+        ${stores("card")}
         <div class="hm-card-over">
           <p class="hm-card-h">30+DA App</p>
           <p class="hm-card-sub">${say(t.home_tagline)}</p>
