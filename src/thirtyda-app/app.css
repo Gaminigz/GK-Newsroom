@@ -1147,3 +1147,87 @@ dialog.verify-sheet { overflow-y: auto; }
 .rules-error { color: #ffb4ab; }
 .rules-foot { display: flex; justify-content: center; align-items: center; gap: 8px; margin: 0; font-size: 14px; color: var(--on-dark-muted); }
 .rules-foot .link { min-height: 40px; padding: 0 6px; font-weight: 600; }
+
+/* =====================================================================
+   Tablets / iPad (owner 2026-10-14, "ugly for iPads"): at least 600 px wide and 500 px tall, so a phone on
+   its side keeps the phone layout and phones are untouched (every tablet rule sits in this one query).
+   No grey side bars any more: the whole window takes the current screen's colour (navy behind the navy
+   screens: opening, #/pin, blocked, the PIN cover, the boot splash; the page white behind the rest), the
+   column widens to 680 px with roomier gutters, and the type and controls grow a little.
+   ===================================================================== */
+@media (min-width: 600px) and (min-height: 500px) {
+  :root { --gutter: 32px; --col: 680px; }
+  html, body { background: var(--page); }
+  html:has(.screen.dark, .pin-cover, .app > .boot),
+  html:has(.screen.dark, .pin-cover, .app > .boot) body { background: var(--navy); }
+  .app { max-width: var(--col); background: transparent; box-shadow: none; }
+  body { font-size: 16px; }
+
+  /* Type a step up on the light screens. */
+  .brandbar .brand { font-size: 26px; }
+  .topbar-h { font-size: 18px; }
+  .title { font-size: 36px; }
+  .qtext { font-size: 17px; }
+  .bubble, button.bubble { font-size: 16px; }
+  .conv-thread .conv-line > .bubble:first-child, .conv-thread .conv-line .conv-reply { font-size: 16px; }
+
+  /* 1 · Opening: a wider column, the promise big at the top, the language buttons lower and larger. */
+  .app:has(> .opening) { max-width: 840px; }
+  .opening { gap: 40px; padding: clamp(32px, 6vh, 80px) 48px calc(clamp(28px, 4vh, 56px) + env(safe-area-inset-bottom)); }
+  .opening-top { container-type: inline-size; }
+  .opening-headline { font-size: clamp(40px, 5.6vh, 62px); }
+  :lang(km) .opening-headline { font-size: clamp(32px, 4.4vh, 48px); }
+  /* The wordmark fills the column (about 4.3 em wide), never taller than the window allows. */
+  .opening-mark { margin-top: clamp(22px, 3vh, 36px); font-size: min(clamp(76px, 12vh, 160px), 23cqi); }
+  .opening-rule { height: 4px; margin-top: 18px; }
+  .opening-tagline { margin-top: 22px; font-size: clamp(22px, 2.6vh, 30px); }
+  .opening-others { gap: 6px; margin-top: 18px; }
+  .opening-others p { font-size: clamp(15px, 1.5vh, 18px); }
+  .opening-langs { gap: 16px; }
+  .opening-langs .label { font-size: 16px; }
+  .opening .lang-grid { gap: 12px; max-width: 600px; }
+  .opening .lang-grid .btn { flex-basis: calc((100% - 24px) / 3); min-height: 58px; border-radius: 14px; font-size: 18px; }
+  .opening-foot { font-size: 22px; }
+  :lang(km) .opening-foot { font-size: 20px; }
+  .opening .legal-links { font-size: 15.5px; gap: 6px 10px; }
+
+  /* 1b · Community rules (#/rules, after the language): the PIN screen's treatment — a centred 600 px column, the
+     rules and "I agree" together in the middle of the window (not 800 px apart), the type a step up. */
+  .rules-screen { max-width: 600px; margin: 0 auto; gap: clamp(16px, 2.4vh, 26px); padding: 24px 32px calc(36px + env(safe-area-inset-bottom)); }
+  .rules-head { margin-top: auto; gap: 14px; }
+  .rules-actions { margin-top: 12px; margin-bottom: auto; }
+  .rules-icon { width: 64px; height: 64px; }
+  .rules-icon .icon { width: 30px; height: 30px; }
+  .rules-title { font-size: 36px; }
+  :lang(km) .rules-title { font-size: 31px; }
+  .rules-lede, .rules-list li { font-size: 17px; }
+  .rules-list { gap: clamp(10px, 1.6vh, 16px); }
+  .rules-ic { width: 36px; height: 36px; }
+  .rules-ic .icon { width: 19px; height: 19px; }
+  .rules-list li > span:last-child { padding-top: 6px; }
+  :lang(km) .rules-list li > span:last-child { padding-top: 2px; }
+  .rules-agree { min-height: 54px; font-size: 17px; }
+  .rules-links, .rules-foot { font-size: 15.5px; }
+
+  /* 2 · Create profile: photos 2–4 stay close to photo 1 instead of spreading over the row. */
+  .photo-side { max-width: 420px; }
+
+  /* 3 · Nearby: four people a row, bigger faces and names. */
+  .people { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px 16px; }
+  .face { max-width: 128px; }
+  .person-name { font-size: 16px; }
+  .person-role { font-size: 13px; }
+  .person-km { font-size: 11px; }
+
+  /* Sheets and dialogs: a centred card, never stretched across the window. */
+  dialog.sheet { width: min(540px, calc(100vw - 64px)); margin: auto; border-radius: 20px; box-shadow: 0 24px 60px rgb(11 28 63 / 0.3); }
+  dialog.dialog { width: min(420px, calc(100vw - 64px)); }
+  .sheet-grip { display: none; }
+  .dialog-body, .sheet-body { padding: 26px; }
+}
+/* Tablet on its side: the opening in two columns, the promise on the left, the languages on the right. */
+@media (min-width: 900px) and (min-height: 500px) and (orientation: landscape) {
+  .app:has(> .opening) { max-width: 1180px; }
+  .opening { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); align-items: center; column-gap: clamp(48px, 6vw, 96px); padding: 40px 56px calc(40px + env(safe-area-inset-bottom)); }
+  .opening-langs { gap: 18px; }
+}

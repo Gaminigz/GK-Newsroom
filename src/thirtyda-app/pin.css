@@ -131,3 +131,22 @@ body.pin-locked .toast { display: none; }
 
 /* Under the 4 boxes: the app covers itself after 30 s without a touch or a move. */
 .pin-idle-note { margin: 12px 0 0; font-size: 13px; line-height: 1.4; text-align: center; opacity: 0.75; }
+
+/* ---------- Tablets / iPad (app.css has the rest): the same screen, larger boxes and type ---------- */
+@media (min-width: 600px) and (min-height: 500px) {
+  .pin-screen { max-width: 560px; gap: 28px; }
+  .pin-mark { font-size: 44px; }
+  .pin-lock-icon { width: 72px; height: 72px; }
+  .pin-title { font-size: 36px; }
+  :lang(km) .pin-title { font-size: 31px; }
+  .pin-text { font-size: 18px; }
+  .pin-error { font-size: 16px; }
+  .pin-forgot { font-size: 17px; }
+  .pin-foot .btn { max-width: 380px; min-height: 52px; font-size: 17px; }
+  .pin-cells { gap: 18px; }
+  .pin-cell { width: 76px; height: 86px; border-radius: 16px; }
+  .pin-cell > i { width: 20px; height: 20px; }
+  .pin-cell > b { font-size: 36px; }
+  .pin-step { right: -40px; }
+  .pin-idle-note { font-size: 15px; }
+}
