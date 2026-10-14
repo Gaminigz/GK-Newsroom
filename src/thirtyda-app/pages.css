@@ -178,6 +178,16 @@ p { margin: 0 0 10px; }
 
 /* ---- The two columns. */
 .page-home .hm-main { padding-top: 22px; padding-bottom: 56px; }
+/* The teaser's red string through the top of the page too (owner 2026-10-14): one loose thread from edge to edge,
+   behind the card and the words; thin at every size (non-scaling stroke). */
+.page-home { overflow-x: clip; }
+.page-home .hm-main { position: relative; }
+.page-home .hm-thread { position: absolute; top: 0; bottom: 0; left: calc(50% - 50vw); width: 100vw; height: 100%; pointer-events: none; z-index: 0; }
+.page-home .hm-thread path { fill: none; stroke: var(--red); stroke-width: 1.5; vector-effect: non-scaling-stroke; opacity: 0.9; }
+.page-home .hm-cols { position: relative; z-index: 1; }
+/* Phones: one column, the words would sit on the thread — the photos already carry it there. On PC it runs behind
+   the card and the Reminder box, never across a line of text. */
+@media (max-width: 899px) { .page-home .hm-thread { display: none; } }
 .page-home .hm-cols { display: flex; flex-direction: column; gap: 30px; }
 .page-home .hm-left { display: flex; justify-content: center; }
 .page-home .hm-text { min-width: 0; }

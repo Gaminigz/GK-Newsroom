@@ -585,7 +585,7 @@ test('only the app\'s colours — navy, white, the soft greys, the red as the th
   // The red is only the thread: the strip's line, and the line + knots of how it works.
   const redRules = [...block.matchAll(/([^{}]+)\{([^}]*var\(--red\)[^}]*)\}/g)].map((m) => m[1].trim());
   assert.ok(redRules.length >= 3);
-  for (const sel of redRules) assert.match(sel, /hm-fr-box::before|hm-path::before|hm-path li::before/, `red only on the thread: ${sel}`);
+  for (const sel of redRules) assert.match(sel, /hm-fr-box::before|hm-path::before|hm-path li::before|hm-thread path/, `red only on the thread: ${sel}`);
   // The button: navy on white, like the app's light button on the dark screen.
   assert.match(block, /\.page-home \.hm-btn \{[^}]*background: #fff; color: var\(--navy\);/);
   // The page itself: no warm colour anywhere outside the Play logo (which keeps its own four).

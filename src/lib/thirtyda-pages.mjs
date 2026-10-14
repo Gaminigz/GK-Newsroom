@@ -1023,6 +1023,7 @@ export function homePage({ lang: want, photos = {} } = {}) {
   </div>
 </header>
 <main class="hm-wrap hm-main">
+  <svg class="hm-thread" aria-hidden="true" focusable="false" viewBox="0 0 1200 800" preserveAspectRatio="none"><path d="M-40 205 C 60 190, 110 250, 300 300 S 520 332, 700 335 S 1080 300, 1130 420 S 1200 520, 1240 500"/></svg>
   <div class="hm-cols">
     <div class="hm-left">
       <div class="hm-card">
