@@ -579,8 +579,10 @@ export function mountChat(root, { pair, data, gate, history = null, header: head
   });
   const sendBtn = el('button', { type: 'button', class: 'round-btn', 'aria-label': t('chat_send'), 'aria-disabled': 'true' }, icon('send', 18));
   // Dictation, only where it really works: the browser's own speech (laptops, phone browsers, the iPhone app — but Apple
-  // has no Khmer recognizer, so not in Khmer there), else the Android app's own (ThirtyDaShell.dictate, Khmer included).
-  const webMic = Boolean(SpeechRec) && !(shellPlatform() === 'ios' && state.lang === 'km');
+  // has no Khmer recognizer, so not in Khmer there); in the Android app only its own (ThirtyDaShell.dictate, Khmer included).
+  // The Android app's WebView HAS the Web Speech constructor but it never works there (no RECORD_AUDIO; Android
+  // 2026-10-14): never use it in the Android app — only the app's own ThirtyDaShell.dictate (1.0.1+), else no mic.
+  const webMic = Boolean(SpeechRec) && shellPlatform() !== 'android' && !(shellPlatform() === 'ios' && state.lang === 'km');
   const mic = el('button', { type: 'button', class: 'round-btn outline', 'aria-label': t('chat_mic'), 'aria-pressed': 'false' }, icon('mic', 18));
   if (!webMic) {
     mic.hidden = true;

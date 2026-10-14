@@ -82,8 +82,8 @@ function randomId() {
 }
 
 /**
- * The 30+DA app's own dictation (Android 1.0.1+: ThirtyDaShell.dictate — Google speech, Khmer included; the WebView has no
- * Web Speech). info().dictate is true only when the phone has a recognizer; an older app has no key → false.
+ * The 30+DA app's own dictation (Android 1.0.1+: ThirtyDaShell.dictate — Google speech, Khmer included; the WebView has the
+ * Web Speech constructor, but it never works there). info().dictate is true only when the phone has a recognizer; an older app has no key → false.
  */
 export async function shellCanDictate() {
   const plugin = window.Capacitor?.Plugins?.ThirtyDaShell;
