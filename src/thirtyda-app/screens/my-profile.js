@@ -4,11 +4,14 @@
 import {
   screen, el, icon, t, go, api, toast, modal, state, setLang, setMe, topBar, heartPills, roleLabel, resizeImage,
   registerStrings, LANGS, LANG_NATIVE, LANG_FLAG, ROLES, PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, NAME_MAX, NAME_RAW_MAX,
+  checkRealName,
 } from '../core.js';
 import {
   phoneVerifier, blankPhone, verifiedPhoneModel, appNameProblem, watchNameInput, clipNameInput, birthYearSelect, truthNote,
 } from './create-profile.js';
 import { changePinSheet, leaveWithoutLock } from '../lock.js';
+import { verifyBanner, CHAT_WAYS } from './verify-chat.js';
+import { blockedPeopleSection } from './safety.js';
 // A tap on a slot asks "Take a selfie" (front camera) or "Choose from photos" (owner 2026-10-14).
 import { photoSource } from '../photo-source.js';
 
@@ -17,6 +20,7 @@ let phoneModel = blankPhone(); // keeps a half-finished phone check across re-re
 function nameProblem(value) {
   const problem = appNameProblem(value);
   if (!value.trim() || problem === 'length') return t('me_name_length');
+  if (problem === 'word') return t('me_name_word');
   return problem === 'contact' ? t('me_name_contact') : null;
 }
 
@@ -77,6 +81,8 @@ screen('/me', async ({ root, query }) => {
   const slots = el('ul', { class: 'photo-slots' });
   const slotCount = el('span', { class: 'label' });
   const keptNote = el('p', { class: 'help kept-note', hidden: true }, icon('lock', 13), el('span', {}, t('me_kept_note')));
+  // Any photo still waiting for the team's approval: only I see it until then.
+  const waitNote = el('p', { class: 'help kept-note wait-note', hidden: true }, icon('clock', 13), el('span', {}, t('me_waiting_note')));
   let busy = false;
   let target = 0; // the slot the camera / photo picker fills
   // Filled (photo; Main = replace, others = remove ×) · open and empty (+ Add photo) · locked (dashed,
@@ -90,6 +96,7 @@ screen('/me', async ({ root, query }) => {
     const open = Math.min(allowed, max);
     slotCount.textContent = `${filled} / ${max}`; // all 4 can be filled; the locks say who sees which
     keptNote.hidden = !kept;
+    waitNote.hidden = !(state.me.photoPending || []).some(Boolean);
     slots.replaceChildren(...Array.from({ length: Math.max(max, urls.length) }, (_, i) => {
       const url = urls[i];
       if (url) {
@@ -103,8 +110,11 @@ screen('/me', async ({ root, query }) => {
             type: 'button', class: 'slot-remove', disabled: busy, 'aria-label': t('me_remove_photo_n', { n: i + 1 }),
             on: { click: () => removePhoto(i, isKept ? levelOf(i) : 0) },
           }, icon('close', 14));
-        return el('li', { class: ['photo-slot', 'filled', isKept && 'kept', busy && 'busy'] },
+        // Waiting for the team's approval (store policy, owner 2026-10-14): only I see it until then.
+        const waiting = Boolean(state.me.photoPending?.[i]);
+        return el('li', { class: ['photo-slot', 'filled', isKept && 'kept', waiting && 'waiting', busy && 'busy'] },
           el('img', { src: url, alt: i === 0 ? t('me_main') : t('me_photo_n', { n: i + 1 }) }),
+          waiting ? el('span', { class: 'slot-wait' }, icon('clock', 11), el('span', {}, t('me_photo_waiting'))) : null,
           // Photos 2–4 stay locked to each person until the two of you reach that level.
           el('span', { class: 'slot-tag' }, i > 0 ? icon('lock', 9) : null,
             el('span', {}, i === 0 ? t('me_main') : t('me_slot_level', { n: levelOf(i) }))),
@@ -234,13 +244,19 @@ screen('/me', async ({ root, query }) => {
   });
   const realValue = () => realInput.value.trim().replace(/\s+/g, ' ');
   const realChanged = () => realValue() !== (me.realName || '');
-  const realOk = () => [...realValue()].length >= 2;
+  // A bad word in the real name (store policy, owner 2026-10-14) is said under it and keeps Save off.
+  const realWord = () => checkRealName(realValue()).error === 'word';
+  const realOk = () => [...realValue()].length >= 2 && !realWord();
+  const realErr = el('p', { class: 'field-error', role: 'alert', hidden: true });
   const paintSave = () => {
     const nameOk = nameChanged() && !(nameInput.value.trim() ? nameProblem(nameInput.value) : true);
     const yearOk = !yearSet() && Boolean(picked);
     const nameBad = nameChanged() && !nameOk;
     const realBad = realChanged() && !realOk();
+    const word = realChanged() && realWord();
     realInput.classList.toggle('is-error', realBad);
+    realErr.textContent = word ? t('me_name_word') : '';
+    realErr.hidden = !word;
     saveId.disabled = nameBad || realBad || !(nameOk || yearOk || (realChanged() && realOk()));
   };
   realInput.addEventListener('input', () => paintSave());
@@ -306,7 +322,14 @@ screen('/me', async ({ root, query }) => {
         yearCell.querySelector('select')?.classList.add('is-error');
         return;
       }
-      const text = err.code === 'contact_detail' ? t('me_name_contact') : err.code === 'invalid' ? t('me_name_length') : '';
+      if (err.code === 'bad_word' && err.data?.field === 'realName') {
+        realErr.textContent = t('me_name_word');
+        realErr.hidden = false;
+        realInput.classList.add('is-error');
+        return;
+      }
+      const text = err.code === 'contact_detail' ? t('me_name_contact') : err.code === 'bad_word' ? t('me_name_word')
+        : err.code === 'invalid' ? t('me_name_length') : '';
       if (!text) return toast(errText(err));
       nameErr.textContent = text;
       nameErr.hidden = false;
@@ -393,7 +416,8 @@ screen('/me', async ({ root, query }) => {
       },
     });
     phoneBlock = el('div', { class: 'stack', style: { '--gap': '8px' } },
-      v.phone && me.phone ? null : el('p', { class: 'lock-note' }, icon('lock', 14), el('span', {}, t('me_phone_needed'))), phone.node);
+      (v.phone && me.phone) || CHAT_WAYS.some((k) => v[k] === true) ? null
+        : el('p', { class: 'lock-note' }, icon('lock', 14), el('span', {}, t('me_phone_needed'))), phone.node);
   }
 
   // --- the PIN that locks the app: small, above Sign out (set first if this profile has none yet)
@@ -444,6 +468,8 @@ screen('/me', async ({ root, query }) => {
   const section = (labelText, ...kids) => el('section', { class: 'section' }, labelText ? el('span', { class: 'label ink' }, labelText) : null, kids);
 
   body.replaceChildren(
+    // Never verified: "Verify within 48 hours to keep your profile" + the time left (owner 2026-10-14).
+    ...[verifyBanner()].filter(Boolean),
     // Language first: it decides what everything below (and every chat) is shown in.
     // Owner (2026-10-13): hearts (left) and where I am (right) at the top, not hidden at the bottom.
     el('div', { class: 'me-hearts-top' },
@@ -452,7 +478,7 @@ screen('/me', async ({ root, query }) => {
     section(t('me_language'), el('div', { class: 'lang-grid' }, langBtns), el('p', { class: 'help' }, t('me_language_note'))),
     el('section', { class: 'section' },
       el('div', { class: 'section-head' }, el('span', { class: 'label ink' }, t('me_photos')), slotCount),
-      slots, keptNote, el('p', { class: 'help' }, t('me_photos_note')), file.inputs),
+      slots, keptNote, waitNote, el('p', { class: 'help' }, t('me_photos_note')), file.inputs),
     el('section', { class: 'section' },
       el('div', { class: 'me-id-row' },
         el('div', { class: 'me-id-cell' },
@@ -464,9 +490,11 @@ screen('/me', async ({ root, query }) => {
       nameErr, yearErr, genderSeg, roleSel,
       el('div', { class: 'field-head' }, el('label', { class: 'label ink', for: 'me-real' }, t('me_real_name')),
         el('span', { class: 'tag' }, icon('lock', 11), t('me_real_tag'))),
-      realInput, truthNote()), // gender, job, real name (shown at Level 3), then the warning
+      realInput, realErr, truthNote()), // gender, job, real name (shown at Level 3), then the warning
     section(t('me_verified_with'), phoneBlock),
     me.pinSet ? changePin : null,
+    // Store policy (owner 2026-10-14): the people I blocked, each with Unblock.
+    blockedPeopleSection(),
     signOut,
     // Privacy policy · Terms, and a red "Delete my account" (Google Play / Apple: in the app).
     accountFoot(),
@@ -493,6 +521,8 @@ registerStrings({
     me_last_photo: 'Keep at least one photo of your face.',
     me_slots_kept: '{count} photos · {n} of {max} unlocked',
     me_kept_note: 'Photos with a lock were added before your level allowed them. If you remove one, you can add a photo there again only at that level.',
+    me_photo_waiting: 'Waiting for approval',
+    me_waiting_note: 'Only you see a photo that is waiting for approval. Our team checks every new photo.',
     me_kept_slot: 'Kept from before: this slot opens again at Level {n}',
     me_remove_kept_title: 'Remove photo {n}?',
     me_remove_kept_body: 'This slot opens at Level {n}. Until you reach Level {n} with someone, you can’t add a photo here again.',
@@ -515,6 +545,7 @@ registerStrings({
     me_birth_missing: 'Add your birth year. You can set it only once.',
     me_birth_set: 'Your birth year is already set.',
     me_name_contact: 'No phone numbers, emails or chat handles in your name.',
+    me_name_word: 'No rude or sexual words in your name.',
     me_save: 'Save',
     me_saved: 'Saved',
     me_language: 'Language',
@@ -544,6 +575,8 @@ registerStrings({
     me_last_photo: 'សូមទុករូបថតមុខយ៉ាងហោចណាស់មួយសន្លឹក។',
     me_slots_kept: 'រូបថត {count} · បានបើក {n} ក្នុងចំណោម {max}',
     me_kept_note: 'រូបថតដែលមានសោ ត្រូវបានបន្ថែមមុនពេលកម្រិតរបស់អ្នកអនុញ្ញាត។ បើអ្នកលុបវា អ្នកអាចបន្ថែមរូបថតនៅទីនោះម្តងទៀតបាន លុះត្រាតែដល់កម្រិតនោះ។',
+    me_photo_waiting: 'កំពុងរង់ចាំការអនុម័ត',
+    me_waiting_note: 'មានតែអ្នកទេដែលឃើញរូបថតដែលកំពុងរង់ចាំការអនុម័ត។ ក្រុមការងាររបស់យើងពិនិត្យរូបថតថ្មីនីមួយៗ។',
     me_kept_slot: 'រក្សាទុកពីមុន៖ ប្រអប់នេះបើកម្តងទៀតនៅកម្រិត {n}',
     me_remove_kept_title: 'លុបរូបថតទី {n}?',
     me_remove_kept_body: 'ប្រអប់នេះបើកនៅកម្រិត {n}។ រហូតដល់អ្នកដល់កម្រិត {n} ជាមួយនរណាម្នាក់ អ្នកមិនអាចបន្ថែមរូបថតនៅទីនេះម្តងទៀតបានទេ។',
@@ -566,6 +599,7 @@ registerStrings({
     me_birth_missing: 'សូមបន្ថែមឆ្នាំកំណើតរបស់អ្នក។ អ្នកអាចកំណត់វាបានតែម្ដងប៉ុណ្ណោះ។',
     me_birth_set: 'ឆ្នាំកំណើតរបស់អ្នកត្រូវបានកំណត់រួចហើយ។',
     me_name_contact: 'កុំដាក់លេខទូរស័ព្ទ អ៊ីមែល ឬឈ្មោះគណនីជជែក ក្នុងឈ្មោះរបស់អ្នក។',
+    me_name_word: 'កុំដាក់ពាក្យអសុរស ឬពាក្យផ្លូវភេទ ក្នុងឈ្មោះរបស់អ្នក។',
     me_save: 'រក្សាទុក',
     me_saved: 'បានរក្សាទុក',
     me_language: 'ភាសា',
@@ -595,6 +629,8 @@ registerStrings({
     me_last_photo: '请至少保留一张正脸照。',
     me_slots_kept: '{count} 张照片 · 已解锁 {n}/{max}',
     me_kept_note: '带锁的照片是在你的等级允许之前添加的。如果删除，要到达那个等级后才能在那里再放照片。',
+    me_photo_waiting: '等待审核',
+    me_waiting_note: '等待审核的照片只有你自己能看到。我们的团队会检查每一张新照片。',
     me_kept_slot: '之前保留的照片：这个位置在等级 {n} 重新开放',
     me_remove_kept_title: '删除第 {n} 张照片？',
     me_remove_kept_body: '这个位置在等级 {n} 开放。在你和某人到达等级 {n} 之前，不能再在这里添加照片。',
@@ -617,6 +653,7 @@ registerStrings({
     me_birth_missing: '请填写你的出生年份，只能设定一次。',
     me_birth_set: '你的出生年份已经设定好了。',
     me_name_contact: '名字中不能包含电话、邮箱或聊天账号。',
+    me_name_word: '名字中不能有粗俗或色情的词。',
     me_save: '保存',
     me_saved: '已保存',
     me_language: '语言',
@@ -646,6 +683,8 @@ registerStrings({
     me_last_photo: '얼굴 사진은 최소 1장 있어야 해요.',
     me_slots_kept: '사진 {count}장 · {max}칸 중 {n}칸 열림',
     me_kept_note: '자물쇠가 있는 사진은 레벨이 허용되기 전에 올린 사진이에요. 삭제하면 그 레벨이 되어야 그 자리에 다시 올릴 수 있어요.',
+    me_photo_waiting: '승인 대기 중',
+    me_waiting_note: '승인 대기 중인 사진은 나만 볼 수 있어요. 저희 팀이 새 사진을 하나하나 확인해요.',
     me_kept_slot: '예전에 올린 사진: 이 자리는 레벨 {n}에서 다시 열려요',
     me_remove_kept_title: '{n}번째 사진을 삭제할까요?',
     me_remove_kept_body: '이 자리는 레벨 {n}에서 열려요. 누군가와 레벨 {n}에 도달하기 전에는 여기에 사진을 다시 올릴 수 없어요.',
@@ -668,6 +707,7 @@ registerStrings({
     me_birth_missing: '출생 연도를 추가해 주세요. 한 번만 정할 수 있어요.',
     me_birth_set: '출생 연도는 이미 정해져 있어요.',
     me_name_contact: '이름에 전화번호, 이메일, 메신저 아이디를 넣을 수 없어요.',
+    me_name_word: '이름에 욕설이나 성적인 말을 넣을 수 없어요.',
     me_save: '저장',
     me_saved: '저장했어요',
     me_language: '언어',
@@ -697,6 +737,8 @@ registerStrings({
     me_last_photo: '顔写真は少なくとも1枚必要です。',
     me_slots_kept: '写真{count}枚 · {max}枠中{n}枠が利用可能',
     me_kept_note: '鍵マークの写真は、レベルで解除される前に追加されたものです。削除すると、そのレベルになるまでその枠に写真を追加できません。',
+    me_photo_waiting: '承認待ち',
+    me_waiting_note: '承認待ちの写真は、あなたにしか見えません。新しい写真はすべてチームが確認します。',
     me_kept_slot: '以前から残っている写真：この枠はレベル{n}で再び使えます',
     me_remove_kept_title: '写真{n}を削除しますか？',
     me_remove_kept_body: 'この枠はレベル{n}で解除されます。誰かとレベル{n}になるまで、ここに写真を追加し直すことはできません。',
@@ -719,6 +761,7 @@ registerStrings({
     me_birth_missing: '生まれ年を追加してください。設定できるのは一度だけです。',
     me_birth_set: '生まれ年はすでに設定されています。',
     me_name_contact: '名前に電話番号・メール・チャットIDは入れられません。',
+    me_name_word: '名前に乱暴な言葉や性的な言葉は使えません。',
     me_save: '保存',
     me_saved: '保存しました',
     me_language: '言語',

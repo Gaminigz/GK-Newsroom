@@ -58,8 +58,9 @@
  * until it has a verified way. Verifying from it attaches to it; a number / account another profile has → refused
  * (verify-code 409 phone_in_use, Telegram status { state:'in_use' }, Google / Facebook / TikTok → 302
  * /30da/#/verified?signin=<provider>&error=in_use). Its other sign-ins come back to /30da/#/verified?…&ok=1 | &error=….
- * Public pages Google / Facebook / TikTok ask for: GET /30da/privacy, GET /30da/delete-data, GET /30da/terms
- * (src/lib/thirtyda-pages.mjs). GET /30da/back: where GKVerify's big "⬅️ Back to 30+DA" Telegram button lands —
+ * Public pages Google / Facebook / TikTok and the stores ask for: GET /30da/privacy, GET /30da/delete-data, GET /30da/terms,
+ * GET /30da/child-safety, GET /30da/support (= GET /30da/help) (src/lib/thirtyda-pages.mjs).
+ * GET /30da/back: where GKVerify's big "⬅️ Back to 30+DA" Telegram button lands —
  * opens the app on an iPhone / Android phone (by User-Agent), else the web app; always 200 (sendBackPage).
  * GET /30da/home (and /30da/home/): the public home page — what 30+DA is, how it works, the way in (the web app);
  * its photos at GET /30da/home/img/<name>.jpg|webp (src/lib/thirtyda-home.mjs).
@@ -67,6 +68,23 @@
  * "Delete my account" (owner 2026-10-13, src/lib/thirtyda-delete.mjs): POST /me/delete { pin? } (unlocked only, the PIN
  * checked by checkPinTry) deletes everything of the person at once and clears the cookie; every conversation with them
  * ends for the other person with PairView.endedReason 'left' ("This person left 30+DA").
+ *
+ * Block + report (store policy, owner 2026-10-14, src/lib/thirtyda-blocks.mjs + src/thirtyda-app/shared/safety.js):
+ * POST / DELETE /people/:id/block, GET /me/blocks (the people I blocked), POST /people/:id/report { reason, target:
+ * 'profile' | 'photo:n' | 'line:S-12/3' }. A block works both ways — Nearby, the guest cards, GET /people (404), a photo
+ * (404), POST /pairs (404) — and a conversation between the two is frozen (asSeen) and left out of GET /pairs, the
+ * heartbeat and GET /me/pending. Each block and each report is an open flag for the admin.
+ *
+ * Bad words (store policy, owner 2026-10-14, src/thirtyda-app/shared/bad-words.js): sexual words, slurs, rude or
+ * threatening words and money / escort words in the five languages. A written line or a chat line with one is stopped
+ * like a contact detail (kept as a stopped message + an open `stopped` flag, 422 bad_word { index?, hits, reason });
+ * an app name or real name with one → 422 bad_word { field } (PATCH /me also flags it for the admin).
+ *
+ * Photo review (store policy, owner 2026-10-14 "Yes, I approve photos", src/lib/thirtyda-photo-review.mjs): every new or
+ * replaced photo is pending (users.photoReview[slot]) until the admin's Photos page approves it. A pending photo shows
+ * only to its owner (MeView.photoPending → "Waiting for approval"): GET /photos/:id (404), Nearby, the guest cards,
+ * GET /people, the conversation headers and a report's photo list skip it for everyone else. Older photos count as
+ * approved. A rejected photo is deleted and its owner gets a notice (kind 'photo').
  *
  * App review accounts (owner 2026-10-14, src/lib/thirtyda-review.mjs; the admin page "App review"): profiles the admin
  * marked demo:'review' live in their own world — they see only each other, real people and guests never see them, and
@@ -104,21 +122,31 @@ import {
   pinHashStale,
 } from "./thirtyda-pin.mjs";
 import {
-  privacyPage, deleteDataPage, termsPage, supportPage, tryResultPage, appReturnPage, requestLang, backPage, backPlatform, backHref,
+  privacyPage, deleteDataPage, termsPage, supportPage, childSafetyPage, tryResultPage, appReturnPage, requestLang, backPage, backPlatform, backHref,
   homePage,
 } from "./thirtyda-pages.mjs";
 import { homePhotos, sendHomeImage, HOME_IMG_RE } from "./thirtyda-home.mjs";
 import {
   canTalk, talksToSomeone, SIGNUP_LIMITS, claimSignup, releaseSignup, verifyBackPath, ATTACH_FROM, phoneViaOf, withPhoneVia, signinsOf,
+  SIGNUP_DEVICES, deviceKey, claimDevice, releaseDevice, verifyByFrom, verifyByOf,
 } from "./thirtyda-verify.mjs";
-import { deleteMe, finishDeletesInBackground } from "./thirtyda-delete.mjs";
+import { deleteMe, finishDeletesInBackground, expireUnverifiedInBackground } from "./thirtyda-delete.mjs";
+import {
+  BLOCKS, blockedIds, blockedBetween, addBlock, removeBlock, myBlocks, blockFlag, blockFlagKey, reportFlag, resolveUpdate,
+} from "./thirtyda-blocks.mjs";
+import { PERSON_REPORT_REASONS, CHAT_REPORT_REASONS, REPORT_LABELS, parseReportTarget } from "../thirtyda-app/shared/safety.js";
+import { isPending, publicPhotoId, pendingFlags, pendingSet, reviewUnset, newProfileReview } from "./thirtyda-photo-review.mjs";
+// The community rules' "I agree" (store policy, owner 2026-10-14): users.terms, and the 403 terms_needed gate.
+import {
+  TERMS_VERSION, termsCurrent, readAgreement, termsFree, termsView, termsDoc, saveTerms, TERMS_NEEDED_MESSAGE,
+} from "./thirtyda-terms.mjs";
 import {
   REVIEW, REVIEW_TRIES, isReview, sameWorld, worldFilter, pairsInWorld, reviewSwitch, reviewAccountFor, checkReviewCode, tryCounter,
 } from "./thirtyda-review.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
   PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
-  NAME_MIN, NAME_MAX, AGE_MIN, AGE_MAX, checkAppName, checkBirthYear,
+  NAME_MIN, NAME_MAX, AGE_MIN, AGE_MAX, checkAppName, checkBirthYear, findBadWords, checkRealName,
 } from "../thirtyda-app/shared/rules.js";
 import {
   LEVEL_RULES, replyOptions, ROLES, questionText, answerText,
@@ -165,7 +193,8 @@ const C = {
 };
 
 const ID_PREFIX = { user: "U-", pair: "P-", set: "S-", msg: "M-", flag: "f" };
-const REPORT_REASONS = { rude: "rude message", scam: "scam or money", sexual: "sexual message", other: "other" };
+// A Level 3 chat line's report (the admin's words); 'underage' added with the store-policy reports (owner 2026-10-14).
+const REPORT_REASONS = { rude: "rude message", scam: "scam or money", sexual: "sexual message", underage: "underage (a minor)", other: "other" };
 const GENDERS = ["man", "woman", "other"]; // Male / Female / Other
 
 const CSP =
@@ -213,6 +242,13 @@ export async function ensureThirtyDaIndexes(d) {
     d.collection(C.sets).createIndex({ pairId: 1, level: 1, from: 1 }, { unique: true }),
     // Unverified profiles per address per day (src/lib/thirtyda-verify.mjs): each day's counters go two days later.
     d.collection(SIGNUP_LIMITS).createIndex({ purgeAt: 1 }, { expireAfterSeconds: 0 }),
+    // One unverified profile per phone: each phone's (hashed) id goes 30 days after it made one (thirtyda-verify.mjs).
+    d.collection(SIGNUP_DEVICES).createIndex({ purgeAt: 1 }, { expireAfterSeconds: 0 }),
+    // People blocking each other (src/lib/thirtyda-blocks.mjs): _id '<by>|<who>'; found by either side.
+    d.collection(BLOCKS).createIndex({ by: 1, at: -1 }),
+    d.collection(BLOCKS).createIndex({ who: 1 }),
+    // One OPEN flag per block / per reporter + person + target (the key goes when the admin closes it).
+    d.collection(C.flags).createIndex({ key: 1 }, { unique: true, partialFilterExpression: { key: { $exists: true }, status: "open" } }),
   ]);
   // Counters never fall behind ids already in use (sample data, older runs).
   const maxOf = async (coll, re) => {
@@ -238,6 +274,7 @@ async function db() {
   if (!ready) ready = ensureThirtyDaIndexes(d).catch((e) => { ready = null; throw e; });
   await ready;
   finishDeletesInBackground(d); // half-way account deletes finish now and every minute (src/lib/thirtyda-delete.mjs)
+  expireUnverifiedInBackground(d); // never verified 48 hours after it was made → deleted (now and every 10 minutes)
   return d;
 }
 
@@ -440,7 +477,7 @@ export function meView(u) {
     gender: u.gender ?? null,
     lang: u.lang ?? "en",
     phone: u.phone ?? null,
-    // Typed on Create profile but never proved by a code (only its owner sees it; chat still needs verified.phone).
+    // Typed on Create profile but never proved by a code (only its owner sees it; chat still needs a verified way: canTalk).
     phoneUnverified: u.phone ? null : u.phoneUnverified ?? null,
     // Set once (sign-up, or once on #/me for profiles made before the rule); only ever shown to its owner.
     birthYear: Number.isInteger(u.birthYear) ? u.birthYear : null,
@@ -451,6 +488,8 @@ export function meView(u) {
     signins: signinsOf(u),
     // Slot-aligned: photos[i] is slot i+1's url, or null for an empty slot (trailing empty slots left out).
     photos: slotUrls(u),
+    // Slot-aligned with photos: true while that photo waits for the team's approval (only its owner sees it meanwhile).
+    photoPending: pendingFlags(u),
     // Slots unlock by level (1 → 1, 2 → 2, 3 → 4). Photos kept from before the rule stay even past `allowed`.
     // All 4 can be uploaded at any time (Gamini 2026-10-13); who SEES them still goes by level.
     photoSlots: { max: PHOTO_MAX, allowed: PHOTO_MAX, levels: [...PHOTO_SLOT_LEVELS], filled: filledCount(u) },
@@ -461,20 +500,26 @@ export function meView(u) {
     blocked: Boolean(u.blocked),
     // A PIN locks the app on this phone (the PIN itself and its hash never leave the server).
     pinSet: Boolean(u.pinHash),
+    // Never verified (owner 2026-10-14): deleted at this time unless it verifies first — the app shows the time left.
+    // null once it has a verified way.
+    verifyBy: verifyByOf(u),
+    // The community rules this profile agreed to ({ version, at } or null): not the current version → the rules first.
+    terms: termsView(u),
   };
 }
 
 /**
  * The owner's photos one viewer may see (slot order, empty slots skipped), and the ones still locked
  * for them (slot + level only — never an id or url). Visibility is bound to the slot, never to a
- * position in a list. A blocked owner shows nothing to anyone else.
+ * position in a list. A blocked owner shows nothing to anyone else; a photo waiting for approval shows only to its owner
+ * (not even as locked).
  */
 function photosFor(owner, { isOwner = false, openLevel = 1 } = {}) {
   const photos = [];
   const lockedPhotos = [];
   if (!isOwner && owner?.blocked) return { photos, lockedPhotos };
   slotsOf(owner).forEach((id, i) => {
-    if (!id) return;
+    if (!id || (!isOwner && isPending(owner, i))) return;
     if (isOwner || photoVisible(i, openLevel)) photos.push(photoUrl(id));
     else lockedPhotos.push({ slot: i + 1, level: photoSlotLevel(i) });
   });
@@ -531,7 +576,7 @@ function pairView(pair, me, other, sets) {
     level: pair.level ?? stageOpenLevel(stage),
     role,
     other: other
-      ? { id: other._id, name: other.name, gender: other.gender ?? null, lang: other.lang ?? "en", photo: other.blocked ? null : photoUrl(other.photos?.[0]) }
+      ? { id: other._id, name: other.name, gender: other.gender ?? null, lang: other.lang ?? "en", photo: other.blocked ? null : photoUrl(publicPhotoId(other, 0)) }
       : { id: otherId, name: "", gender: null, lang: "en", photo: null },
     l2OpensAt: pair.l2OpensAt ?? null,
     l3OpensAt: pair.l3OpensAt ?? null,
@@ -573,8 +618,10 @@ async function settle(d, pair) {
   let to = null;
   if (pair.stage === "l2_wait" && Date.parse(pair.l2OpensAt) <= now) to = { stage: "l2_open", level: 2, at: pair.l2OpensAt };
   if (!to) return pair;
-  // A frozen pair (someone is blocked) keeps its stage and levels; it moves on once the block is lifted.
+  // A frozen pair (someone is blocked — by the admin, or one of them blocked the other) keeps its stage and levels;
+  // it moves on once the block is lifted.
   if (await d.collection(C.users).countDocuments({ _id: { $in: pair.members }, blocked: true }, { limit: 1 })) return pair;
+  if (await blockedBetween(d.collection(BLOCKS), pair.members?.[0], pair.members?.[1])) return pair;
   const moved = await d.collection(C.pairs).findOneAndUpdate(
     { _id: pair._id, stage: pair.stage },
     { $set: { stage: to.stage, level: to.level, updatedAt: to.at } },
@@ -616,35 +663,59 @@ async function openLevelBetween(d, viewerId, ownerId) {
 }
 
 const SET_SUMMARY = { pairId: 1, level: 1, from: 1, to: 1, completedAt: 1, "answers.n": 1, "questions.n": 1 };
-const OTHER_FIELDS = { name: 1, gender: 1, lang: 1, photos: 1, blocked: 1 };
+const OTHER_FIELDS = { name: 1, gender: 1, lang: 1, photos: 1, photoReview: 1, blocked: 1 };
 
-async function viewsFor(d, me, pairs) {
+/**
+ * The other person as `me` may see them: when either of the two blocked the other (src/lib/thirtyda-blocks.mjs) they
+ * count as blocked here — the pair is frozen, their photos and real name are gone — exactly as when the admin blocked
+ * them. A copy: the stored profile is untouched.
+ */
+const asSeen = (other, blocked) => (other && blocked ? { ...other, blocked: true } : other);
+const otherIdOf = (pair, me) => (pair.a === me._id ? pair.b : pair.a);
+
+/** PairViews for `me`. `hide` = the ids blocked either way (read here when not given). */
+async function viewsFor(d, me, pairs, hide = null) {
   pairs = await Promise.all(pairs.map((p) => settle(d, p)));
   if (!pairs.length) return [];
-  const otherOf = (p) => (p.a === me._id ? p.b : p.a);
+  hide ??= await blockedIds(d.collection(BLOCKS), me._id);
+  const otherOf = (p) => otherIdOf(p, me);
   const [others, sets] = await Promise.all([
     d.collection(C.users).find({ _id: { $in: pairs.map(otherOf) } }, { projection: OTHER_FIELDS }).toArray(),
     d.collection(C.sets).find({ pairId: { $in: pairs.map((p) => p._id) } }, { projection: SET_SUMMARY }).toArray(),
   ]);
   const byId = new Map(others.map((u) => [u._id, u]));
-  return pairs.map((p) => pairView(p, me, byId.get(otherOf(p)), sets.filter((s) => s.pairId === p._id)));
+  return pairs.map((p) => pairView(p, me, asSeen(byId.get(otherOf(p)), hide.has(otherOf(p))), sets.filter((s) => s.pairId === p._id)));
+}
+
+/**
+ * My conversations as the lists show them (GET /pairs, the heartbeat, GET /me/pending): a draft hidden from me, and a
+ * conversation with someone blocked either way, are left out (store policy, owner 2026-10-14).
+ */
+async function listedViews(d, me, pairs) {
+  const hide = await blockedIds(d.collection(BLOCKS), me._id);
+  return viewsFor(d, me, pairs.filter((p) => !hiddenFrom(p, me) && !hide.has(otherIdOf(p, me))), hide);
 }
 
 async function viewOf(d, me, pair) {
   return (await viewsFor(d, me, [pair]))[0];
 }
 
-/** Load one of my pairs (settled) and the other person. `write` refuses frozen pairs. */
+/**
+ * Load one of my pairs (settled) and the other person (asSeen: blocked either way → counts as blocked, so the pair is
+ * frozen). `write` refuses frozen pairs. userBlocked: one of us blocked the other (not the admin).
+ */
 async function pairFor(ctx, id, { write = false } = {}) {
   const { d, me } = ctx;
   const found = await d.collection(C.pairs).findOne({ _id: id, members: me._id });
   if (!found || hiddenFrom(found, me)) throw fail(404, "not_found", "No such conversation.");
   const pair = await settle(d, found);
-  const other = await d.collection(C.users).findOne({ _id: pair.a === me._id ? pair.b : pair.a });
+  const stored = await d.collection(C.users).findOne({ _id: otherIdOf(pair, me) });
   // App review accounts and real people never meet (src/lib/thirtyda-review.mjs): such a pair is not there for either.
-  if (other && !sameWorld(me, other)) throw fail(404, "not_found", "No such conversation.");
+  if (stored && !sameWorld(me, stored)) throw fail(404, "not_found", "No such conversation.");
+  const userBlocked = Boolean(stored) && await blockedBetween(d.collection(BLOCKS), me._id, stored._id);
+  const other = asSeen(stored, userBlocked);
   if (write && (!other || other.blocked)) throw fail(409, "other_blocked", "This conversation is closed.");
-  return { pair, other };
+  return { pair, other, userBlocked };
 }
 
 // ---------------------------------------------------------------- chat log (admin reads it)
@@ -714,6 +785,70 @@ async function stopContactDetails(ctx, pair, other, texts, { level, kind }) {
     throw fail(422, "contact_detail", c.reason || "Contact details are not allowed.", {
       index: i, hits: c.hits, reason: c.reason,
     });
+  }
+}
+
+// ---------------------------------------------------------------- bad words (store policy, owner 2026-10-14)
+// Sexual words, slurs, rude or threatening words, money / escort words (src/thirtyda-app/shared/bad-words.js): stopped
+// like a contact detail, and the stopped try is a `stopped` flag for the admin (its reason: "Sexual words", "Slur" …).
+
+/** 422 bad_word { …extra, hits, reason }. */
+const badWord = (w, extra = {}) => fail(422, "bad_word", w.reason || "Rude, sexual or money words are not allowed.", {
+  ...extra, hits: plainHits(w.hits), reason: w.reason,
+});
+
+/** Bad words anywhere in `texts` → stop + record the first (the chat log + a flag, like a contact detail) and throw 422. */
+async function stopBadWords(ctx, pair, other, texts, { level, kind }) {
+  for (let i = 0; i < texts.length; i++) {
+    if (texts[i] == null) continue;
+    const text = String(texts[i]).trim();
+    const w = findBadWords(text);
+    if (w.ok) continue;
+    await recordStopped(ctx, pair, other, { text, level, kind, hits: w.hits, reason: w.reason });
+    throw badWord(w, { index: i });
+  }
+}
+
+/**
+ * A name with a bad word from someone who has a profile (PATCH /me). There is no conversation, so the open `stopped`
+ * flag carries the text itself: { chatId: null, to: null, field: 'name' | 'realName', text, english, hit }. One open
+ * flag per person and field (its `key`): a later try only brings it up to date. Sign-up is refused without a flag —
+ * there is nobody yet to warn or block, and the app says no on the phone before such a name is ever sent.
+ */
+async function recordStoppedName(ctx, field, text, w) {
+  const { d, me } = ctx;
+  if (!me) return;
+  const lang = me.lang ?? "en";
+  const h = w.hits?.[0];
+  const latest = {
+    at: nowIso(), text, lang, english: lang === "en" ? null : await translate(text, lang, "en"),
+    hit: h ? (text.includes(h.match) ? h.match : text.slice(h.start, h.end)) : null, reason: w.reason,
+  };
+  const flags = d.collection(C.flags);
+  const key = `stopped|${me._id}|${field}`;
+  if ((await flags.updateOne({ key, status: "open" }, { $set: latest })).matchedCount) return;
+  const flagId = await nextId(d, "flag");
+  try {
+    await flags.insertOne({
+      _id: flagId, id: flagId, chatId: null, from: me._id, to: null, kind: "stopped", field, status: "open", warned: false,
+      key, ...latest,
+    });
+  } catch (err) {
+    if (err?.code !== 11000) throw err;
+    await flags.updateOne({ key, status: "open" }, { $set: latest }); // two tries at the same moment
+  }
+}
+
+/** Runs a name check; a bad word in it is recorded for the admin (recordStoppedName) before the 422 goes out. */
+async function nameOrStop(ctx, field, raw, check) {
+  try {
+    return check(raw);
+  } catch (err) {
+    if (err?.code === "bad_word") {
+      const text = String(raw ?? "").trim().replace(/\s+/g, " ");
+      await recordStoppedName(ctx, field, text, findBadWords(text));
+    }
+    throw err;
   }
 }
 
@@ -788,7 +923,16 @@ function safeEqualHex(a, b) {
 function checkName(raw) {
   const c = checkAppName(raw);
   if (c.error === "contact") throw fail(422, "contact_detail", c.reason, { field: "name", hits: c.hits, reason: c.reason });
+  if (c.error === "word") throw badWord(c, { field: "name" });
   if (!c.ok) throw invalid(`Your app name needs ${NAME_MIN} to ${NAME_MAX} characters.`, { field: "name", min: NAME_MIN, max: NAME_MAX });
+  return c.name;
+}
+
+/** Real name: first and last, 2–60 characters, no bad word (422 bad_word). */
+function checkReal(raw) {
+  const c = checkRealName(raw);
+  if (c.error === "word") throw badWord(c, { field: "realName" });
+  if (!c.ok) throw invalid("Write your first and last name.", { field: "realName" });
   return c.name;
 }
 
@@ -842,6 +986,7 @@ const ERROR_TEXT = {
   too_short: "Write 20 to 30 characters.",
   too_long: "That is too long.",
   trivial: "Say a little more than yes, ok, hi or bye.",
+  word: "Rude, sexual or money words are not allowed.",
 };
 
 // ---------------------------------------------------------------- auth handlers
@@ -1077,6 +1222,8 @@ async function verifyCode(ctx) {
   if (!phone || code.length !== 6) throw invalid("Enter the 6-digit code.", { field: "code" });
   // The PIN chosen before signing in (it waited on the phone): checked before the code is used up.
   const newPin = waitingPin(body);
+  // The community rules' "I agree" that waited on the phone: kept on the profile this code signs in to.
+  const agreement = readAgreement(body.terms);
 
   const now = Date.now();
   const ip = clientIp(req);
@@ -1104,16 +1251,17 @@ async function verifyCode(ctx) {
   const k = list.indexOf(now);
   if (k >= 0) list.splice(k, 1); // a right code does not count against the address
   await otps.deleteOne({ _id: phone, codeHash: otp.codeHash });
-  return signInWithPhone(ctx, phone, { newPin, via: otp.channel });
+  return signInWithPhone(ctx, phone, { newPin, via: otp.channel, agreement });
 }
 
 /**
  * What a PROVED phone number does — a good code (verify-code) or Telegram's own-number check (the bot's status):
  * the profile with this number is signed in; a signed-in profile without one adds it; otherwise a session that
  * carries the verified number (Create profile comes next). A returning person's waiting PIN (newPin, or already
- * hashed: newPinHash) becomes their PIN. → { ok, existing, user }.
+ * hashed: newPinHash) becomes their PIN, and their waiting "I agree" to the community rules (agreement) is kept.
+ * → { ok, existing, user }.
  */
-async function signInWithPhone(ctx, phone, { newPin = null, newPinHash = null, via = null } = {}) {
+async function signInWithPhone(ctx, phone, { newPin = null, newPinHash = null, via = null, agreement = null } = {}) {
   const { d, me } = ctx;
   // An App review account's number is set only on the admin page: signed in, it never proves (adds or changes) one.
   if (isReview(me)) throw reviewFixed();
@@ -1144,6 +1292,7 @@ async function signInWithPhone(ctx, phone, { newPin = null, newPinHash = null, v
   await startSession(ctx, { userId: user?._id ?? null, phone, phoneVerified: true, phoneVia: phoneViaOf(via) });
   // A sign-in by phone plus a waiting PIN sets (or replaces) that profile's PIN: the person just proved who they are.
   if (signedInByPhone && (newPin || newPinHash)) user = await savePin(ctx, user, newPin, newPinHash);
+  if (user && agreement) user = { ...user, terms: await saveTerms(users, user, agreement) };
   return { ok: true, existing: Boolean(user), user: user ? meView(user) : null };
 }
 
@@ -1680,6 +1829,8 @@ async function handleSignin(req, res, url, provider, step) {
  * open, the waiting PIN kept like any new profile), UNVERIFIED_PER_DAY per address per day (429 too_many_profiles);
  * talking to people waits for a verified way (verify_needed). Without the flag an unproved session is refused as
  * before (401 signed_out / 403 not_verified: a sign-in that ran out is never turned into an unverified profile).
+ * Owner 2026-10-14: an unverified profile carries verifyBy (48 hours on: deleted then unless it verified — thirtyda-delete.mjs
+ * expireUnverified), and one phone makes only one (body.deviceId, kept hashed for 30 days: 409 device_used).
  */
 async function createProfile(ctx) {
   const { d, body, session, me } = ctx;
@@ -1692,13 +1843,15 @@ async function createProfile(ctx) {
   }
   const name = checkName(body.name);
   const birthYear = checkBirth(body.birthYear);
-  const realName = String(body.realName ?? "").trim().replace(/\s+/g, " ");
-  if (charCount(realName) < 2 || charCount(realName) > 60) throw invalid("Write your first and last name.", { field: "realName" });
+  const realName = checkReal(body.realName);
   const role = checkRole(body.role);
   if (!GENDERS.includes(body.gender)) throw invalid("Choose male, female or other.", { field: "gender" });
   const lang = checkLang(body.lang);
   // The PIN chosen right after the language (it waited on the phone until now). Without one the app asks next.
   const newPin = waitingPin(body);
+  // The community rules' "I agree" that waited on the phone ({ termsVersion, agreedAt }). Missing or an older version:
+  // the profile is made all the same, and the rules come first (403 terms_needed until POST /me/terms).
+  const agreement = readAgreement(body.terms);
 
   const users = d.collection(C.users);
   const phone = proved && session.phoneVerified ? session.phone : null;
@@ -1710,17 +1863,36 @@ async function createProfile(ctx) {
   if (!phone && body.phone != null && body.phone !== "" && !typedPhone) throw invalid("That phone number does not look right.", { field: "phone" });
 
   const pinHash = newPin ? await hashPin(newPin) : null;
-  // Unverified: one of today's few for this address, given back if the profile is not made after all.
+  // Unverified: this phone's one (owner 2026-10-14: its id kept only hashed, 30 days; no id → no phone check), then one
+  // of today's few for this address — both given back if the profile is not made after all.
+  const devices = d.collection(SIGNUP_DEVICES);
+  const deviceAt = unverified ? deviceKey(body.deviceId) : null;
+  const device = deviceAt ? await claimDevice(devices, deviceAt) : null;
+  if (device && !device.ok) throw fail(409, "device_used", "This phone already made a profile. Verify your number to make a new one.");
   const limits = d.collection(SIGNUP_LIMITS);
-  const slot = unverified ? await claimSignup(limits, clientIp(ctx.req)) : null;
-  if (slot && !slot.ok) throw fail(429, "too_many_profiles", "Too many new profiles from this connection today. Please try again tomorrow.");
+  let slot = null;
+  const giveBack = async () => {
+    await releaseSignup(limits, slot?.key);
+    await releaseDevice(devices, device?.key);
+  };
+  try {
+    slot = unverified ? await claimSignup(limits, clientIp(ctx.req)) : null;
+  } catch (err) {
+    await releaseDevice(devices, device?.key);
+    throw err;
+  }
+  if (slot && !slot.ok) {
+    await releaseDevice(devices, device?.key);
+    throw fail(429, "too_many_profiles", "Too many new profiles from this connection today. Please try again tomorrow.");
+  }
   let photoId;
   try {
     photoId = await storePhoto(body.photo);
   } catch (err) {
-    await releaseSignup(limits, slot?.key);
+    await giveBack();
     throw err;
   }
+  const madeAt = Date.now();
   const id = await nextId(d, "user");
   const user = {
     _id: id,
@@ -1739,6 +1911,8 @@ async function createProfile(ctx) {
     // The Google / Facebook account this browser signed in with: its id (+ email when given), never a token.
     ...(signinOf(session) ? { signin: signinOf(session) } : {}),
     photos: [photoId],
+    // Photo 1 waits for the team's approval; until then only its owner sees it (src/lib/thirtyda-photo-review.mjs).
+    ...newProfileReview(new Date(madeAt).toISOString()),
     location: null,
     area: "",
     city: "",
@@ -1751,13 +1925,16 @@ async function createProfile(ctx) {
     notices: [],
     ...(pinHash ? { pinHash, pinAt: new Date() } : {}),
     pinTries: 0,
-    createdAt: new Date(),
+    ...(agreement ? { terms: termsDoc(agreement) } : {}),
+    createdAt: new Date(madeAt),
+    // Made without verifying: deleted 48 hours from now unless it verifies first (owner 2026-10-14).
+    ...(unverified ? { verifyBy: verifyByFrom(madeAt) } : {}),
   };
   try {
     await users.insertOne(user);
   } catch (err) {
     await deletePhoto(photoId);
-    await releaseSignup(limits, slot?.key);
+    await giveBack();
     if (err?.code === 11000 && /signin\./.test(JSON.stringify(err.keyPattern ?? err.message ?? ""))) {
       throw fail(409, "signin_in_use", "This Google, Facebook or TikTok account already has a profile. Sign in with it again.");
     }
@@ -1804,14 +1981,11 @@ async function getMe(ctx) {
 async function patchMe(ctx) {
   const { d, body, me } = ctx;
   const set = {};
-  if (body.name !== undefined) set.name = checkName(body.name);
+  // A bad word in either name is recorded for the admin (a `stopped` flag) before the 422.
+  if (body.name !== undefined) set.name = await nameOrStop(ctx, "name", body.name, checkName);
   if (body.lang !== undefined) Object.assign(set, { lang: checkLang(body.lang), language: LANG_ENGLISH[body.lang] });
   if (body.role !== undefined) set.role = checkRole(body.role);
-  if (body.realName !== undefined) {
-    const realName = String(body.realName ?? "").trim().replace(/\s+/g, " ");
-    if (charCount(realName) < 2 || charCount(realName) > 60) throw invalid("Write your first and last name.", { field: "realName" });
-    set.realName = realName;
-  }
+  if (body.realName !== undefined) set.realName = await nameOrStop(ctx, "realName", body.realName, checkReal);
   if (body.gender !== undefined) {
     if (!GENDERS.includes(body.gender)) throw invalid("Choose male, female or other.", { field: "gender" });
     set.gender = body.gender;
@@ -1831,6 +2005,19 @@ async function patchMe(ctx) {
 }
 
 const birthYearSet = () => fail(409, "birth_year_set", "Your birth year is already set.", { field: "birthYear" });
+
+/**
+ * POST /me/terms { termsVersion, agreedAt } — "I agree" to the community rules (the rules screen, or the agreement that
+ * waited on the phone, sent right after a sign-in). An older version → 409 terms_version { version } (read them again).
+ * → { ok, user }.
+ */
+async function agreeTerms(ctx) {
+  const { d, body, me } = ctx;
+  const agreement = readAgreement(body);
+  if (!agreement) throw fail(409, "terms_version", "The rules have changed. Please read them again.", { version: TERMS_VERSION });
+  const terms = await saveTerms(d.collection(C.users), me, agreement);
+  return { ok: true, user: meView({ ...me, terms }) };
+}
 
 /**
  * Why a photo cannot go in slot `index` (default: the lowest empty slot): all 4 slots used (409), or
@@ -1857,8 +2044,8 @@ async function ensurePhotoArray(users, me) {
   me.photos = [];
 }
 
-/** Drop empty slots at the end of the list (one atomic update; a slot filled meanwhile stays). */
-function trimPhotoSlots(users, id) {
+/** Drop empty slots at the end of the list (one atomic update; a slot filled meanwhile stays). Also after a rejected photo. */
+export function trimPhotoSlots(users, id) {
   return users.updateOne({ _id: id, photos: { $type: "array" } }, [{
     $set: {
       photos: {
@@ -1886,8 +2073,9 @@ async function addPhoto(ctx) {
   if (slot < 0) throw photoRefusal(me);
   const photoId = await storePhoto(body.photo);
   for (let tries = 0; tries < PHOTO_MAX && slot >= 0; tries++) {
+    // A new photo waits for the team's approval (pendingSet): only its owner sees it until then.
     const r = await users.updateOne(
-      { _id: me._id, photos: { $type: "array" }, ...emptySlotFilter(slot) }, { $set: { [`photos.${slot}`]: photoId } },
+      { _id: me._id, photos: { $type: "array" }, ...emptySlotFilter(slot) }, { $set: { [`photos.${slot}`]: photoId, ...pendingSet(slot) } },
     );
     if (r.modifiedCount) return { user: meView(await users.findOne({ _id: me._id })) };
     me = { ...me, ...(await users.findOne({ _id: me._id }, { projection: { photos: 1 } })) };
@@ -1915,7 +2103,8 @@ async function putPhoto(ctx) {
   const photoId = await storePhoto(body.photo);
   const r = await users.updateOne(
     { _id: me._id, photos: { $type: "array" }, ...(old ? { [`photos.${index}`]: old } : emptySlotFilter(index)) },
-    { $set: { [`photos.${index}`]: photoId } },
+    // New or replaced: pending until the team approves it (a replaced main photo too — the old one is gone at once).
+    { $set: { [`photos.${index}`]: photoId, ...pendingSet(index) } },
   );
   if (!r.modifiedCount) {
     await deletePhoto(photoId);
@@ -1943,7 +2132,8 @@ async function removePhoto(ctx) {
   }
   // Only while that exact photo is in that slot and a main photo remains.
   const r = await users.updateOne(
-    { _id: me._id, [`photos.${index}`]: id, "photos.0": { $type: "string" } }, { $set: { [`photos.${index}`]: null } },
+    { _id: me._id, [`photos.${index}`]: id, "photos.0": { $type: "string" } },
+    { $set: { [`photos.${index}`]: null }, $unset: reviewUnset(index) }, // a removed photo's review goes with it
   );
   if (!r.modifiedCount) {
     const now = await users.findOne({ _id: me._id }, { projection: { photos: 1 } });
@@ -2022,7 +2212,7 @@ async function heartbeat(ctx) {
   const { d, me } = ctx;
   await d.collection(C.users).updateOne({ _id: me._id }, { $set: { lastSeenAt: new Date() } });
   const pairs = await d.collection(C.pairs).find({ members: me._id }).sort({ updatedAt: -1 }).limit(100).toArray();
-  const views = await viewsFor(d, me, await pairsInWorld(d, me, pairs.filter((p) => !hiddenFrom(p, me))));
+  const views = await listedViews(d, me, await pairsInWorld(d, me, pairs));
   await syncLevel(d, me); // keeps users.level (the admin's column, the photo slots) on the pairs
   const actions = views.filter((v) => v.turn);
   return { actions, notices: unseenNotices(me) };
@@ -2036,7 +2226,7 @@ async function heartbeat(ctx) {
 async function pendingCount(ctx) {
   const { d, me } = ctx;
   const pairs = await d.collection(C.pairs).find({ members: me._id }).sort({ updatedAt: -1 }).limit(100).toArray();
-  const views = await viewsFor(d, me, await pairsInWorld(d, me, pairs.filter((p) => !hiddenFrom(p, me))));
+  const views = await listedViews(d, me, await pairsInWorld(d, me, pairs));
   return { count: views.filter((v) => v.turn).length };
 }
 
@@ -2052,15 +2242,19 @@ async function getPhoto(ctx) {
   const { d, me, params, res } = ctx;
   const id = params[0];
   if (!isPhotoId(id)) throw fail(404, "not_found", "No such photo.");
-  const owner = await d.collection(C.users).findOne({ photos: id }, { projection: { photos: 1, blocked: 1, demo: 1 } });
+  const owner = await d.collection(C.users).findOne({ photos: id }, { projection: { photos: 1, photoReview: 1, blocked: 1, demo: 1 } });
   // A blocked person has vanished: their photos go with them (as GET /people and Nearby already do).
   // A guest (no profile yet, the home screen before Create profile): photo 1 only, like any stranger.
   if (!owner || (owner.blocked && owner._id !== me?._id)) throw fail(404, "not_found", "No such photo.");
+  // Blocked either way (src/lib/thirtyda-blocks.mjs): the two never see each other's photos, not even photo 1.
+  if (me && owner._id !== me._id && await blockedBetween(d.collection(BLOCKS), me._id, owner._id)) throw fail(404, "not_found", "No such photo.");
   // App review accounts and real people (and guests) never see each other's photos.
   if (owner._id !== me?._id && !sameWorld(me, owner)) throw fail(404, "not_found", "No such photo.");
   // Per person, bound to the slot: the owner sees all; anyone sees slot 1; slot 2 needs Level 2
   // opened together, slots 3–4 Level 3. Slots never move, so a photo keeps its level.
   const index = slotsOf(owner).indexOf(id);
+  // Waiting for the team's approval (src/lib/thirtyda-photo-review.mjs): its owner only, whatever the level.
+  if (owner._id !== me?._id && isPending(owner, index)) throw fail(404, "not_found", "No such photo.");
   let allowed = owner._id === me?._id || photoVisible(index, 1);
   if (!allowed && me) allowed = photoVisible(index, await openLevelBetween(d, me._id, owner._id));
   const buf = allowed ? await readPhoto(id) : null;
@@ -2081,6 +2275,8 @@ async function nearby(ctx) {
   const gender = show === "women" ? "woman" : show === "men" ? "man" : null;
   const base = { area: me.area ?? "", city: me.city ?? "" };
   if (!me.location?.coordinates) return { ...base, gps: false, count: 0, people: [] };
+  // Nobody I blocked, nobody who blocked me (src/lib/thirtyda-blocks.mjs).
+  const hide = [...await blockedIds(d.collection(BLOCKS), me._id)];
 
   const rows = await d.collection(C.users).aggregate([
     {
@@ -2090,11 +2286,11 @@ async function nearby(ctx) {
         distanceField: "dist",
         maxDistance: km * 1000,
         spherical: true,
-        query: { _id: { $ne: me._id }, blocked: { $ne: true }, ...worldFilter(me), ...(gender ? { gender } : {}) },
+        query: { _id: { $nin: [me._id, ...hide] }, blocked: { $ne: true }, ...worldFilter(me), ...(gender ? { gender } : {}) },
       },
     },
     { $limit: 300 },
-    { $project: { name: 1, gender: 1, role: 1, hearts: 1, dist: 1, photo: { $arrayElemAt: ["$photos", 0] } } },
+    { $project: { name: 1, gender: 1, role: 1, hearts: 1, dist: 1, photos: { $slice: ["$photos", 1] }, photoReview: 1 } },
   ]).toArray();
   const people = rows.map((u) => ({
     id: u._id,
@@ -2103,7 +2299,8 @@ async function nearby(ctx) {
     role: u.role ?? null,
     km: Math.max(0.1, round1(u.dist / 1000)),
     hearts: heartsOf(u),
-    photo: photoUrl(u.photo),
+    // Photo 1, unless it still waits for the team's approval (then the card shows the silhouette).
+    photo: photoUrl(publicPhotoId(u, 0)),
   }));
   return { ...base, gps: true, count: people.length, people };
 }
@@ -2121,6 +2318,8 @@ async function guestNearby(ctx) {
   const km = Math.min(NEARBY_MAX_KM, Math.max(1, Number(body.km) || 10));
   const gender = body.show === "women" ? "woman" : body.show === "men" ? "man" : null;
   const { point, device } = guestPoint(body);
+  // A profile looking at the guest cards: never someone blocked either way.
+  const hide = me ? [...await blockedIds(d.collection(BLOCKS), me._id)] : [];
   const rows = await d.collection(C.users).aggregate([
     {
       $geoNear: {
@@ -2129,13 +2328,14 @@ async function guestNearby(ctx) {
         distanceField: "dist",
         maxDistance: km * 1000,
         spherical: true,
-        query: { blocked: { $ne: true }, ...worldFilter(me), ...(me ? { _id: { $ne: me._id } } : {}), ...(gender ? { gender } : {}) },
+        query: { blocked: { $ne: true }, ...worldFilter(me), ...(me ? { _id: { $nin: [me._id, ...hide] } } : {}), ...(gender ? { gender } : {}) },
       },
     },
     { $limit: GUEST_LIMIT },
-    { $project: { name: 1, gender: 1, role: 1, hearts: 1, dist: 1, photo: { $arrayElemAt: ["$photos", 0] } } },
+    { $project: { name: 1, gender: 1, role: 1, hearts: 1, dist: 1, photos: { $slice: ["$photos", 1] }, photoReview: 1 } },
   ]).toArray();
-  const people = rows.map((u) => guestCard(u, { photoUrl }));
+  // Photo 1 only, and not while it waits for the team's approval.
+  const people = rows.map(({ photos, photoReview, ...u }) => guestCard({ ...u, photo: publicPhotoId({ photos, photoReview }, 0) }, { photoUrl }));
   return { guest: true, near: device ? "you" : "phnom_penh", gps: true, count: people.length, people };
 }
 
@@ -2150,11 +2350,14 @@ async function person(ctx) {
   const { d, me, params } = ctx;
   const u = await d.collection(C.users).findOne({ _id: params[0] });
   if (!u || (u.blocked && u._id !== me._id)) throw fail(404, "not_found", "This person is not here any more.");
+  // Blocked either way: gone for each other, said exactly as for someone who left (never "you were blocked").
+  if (await blockedBetween(d.collection(BLOCKS), me._id, u._id)) throw fail(404, "not_found", "This person is not here any more.");
   if (u._id !== me._id && !sameWorld(me, u)) throw fail(404, "not_found", "This person is not here any more.");
   let pair = await d.collection(C.pairs).findOne({ members: { $all: [me._id, u._id] } });
   if (pair && hiddenFrom(pair, me)) pair = null;
   const view = pair && u._id !== me._id ? await viewOf(d, me, pair) : null;
-  const photo = photoUrl(u.photos?.[0]);
+  // Photo 1: its owner always; anyone else once the team approved it.
+  const photo = photoUrl(u._id === me._id ? u.photos?.[0] : publicPhotoId(u, 0));
   // What this viewer may see of u's photos (viewOf settled the pair), plus how many are still locked.
   const { photos, lockedPhotos } = photosFor(u, { isOwner: u._id === me._id, openLevel: stageOpenLevel(view?.stage) });
   // The real name: only for the other person once the chat (Level 3) is open between us.
@@ -2187,6 +2390,7 @@ async function createPair(ctx) {
   if (!/^U-\d+$/.test(to) || to === me._id) throw invalid("Choose someone to talk to.", { field: "to" });
   const other = await d.collection(C.users).findOne({ _id: to }, { projection: { blocked: 1, demo: 1 } });
   if (!other || other.blocked || !sameWorld(me, other)) throw fail(404, "not_found", "This person is not here any more.");
+  if (await blockedBetween(d.collection(BLOCKS), me._id, to)) throw fail(404, "not_found", "This person is not here any more.");
 
   const pairs = d.collection(C.pairs);
   const key = [me._id, to].sort().join("|");
@@ -2218,7 +2422,7 @@ async function createPair(ctx) {
 async function listPairs(ctx) {
   const { d, me } = ctx;
   const pairs = await d.collection(C.pairs).find({ members: me._id }).toArray();
-  const views = await viewsFor(d, me, await pairsInWorld(d, me, pairs.filter((p) => !hiddenFrom(p, me))));
+  const views = await listedViews(d, me, await pairsInWorld(d, me, pairs));
   views.sort((x, y) => String(y.updatedAt).localeCompare(String(x.updatedAt)));
   return { pairs: views };
 }
@@ -2256,6 +2460,7 @@ async function sendSet(ctx) {
   const written = list.map((q) => (q?.source === "written" ? String(q.text ?? "").trim() : null));
   await stopContactDetails(ctx, pair, other, written, { level, kind: "question" });
   await stopSplitContactDetails(ctx, pair, other, written, { level, kind: "question" });
+  await stopBadWords(ctx, pair, other, written, { level, kind: "question" });
 
   const { pick, write } = LEVEL_RULES[level];
   if (list.length !== pick + write) throw invalid(`Send exactly ${pick + write} lines.`, { index: Math.min(list.length, pick + write - 1) });
@@ -2446,7 +2651,7 @@ async function conversationFor(d, me, pair, other, sets = null) {
       : { id: otherId, name: "", gender: null, lang: "en", photos: [], lockedPhotos: [] },
     levels,
     canSend,
-    chat: { open: stage === "l3_open", opensAt: null, phoneNeeded: !me.verified?.phone },
+    chat: { open: stage === "l3_open", opensAt: null, phoneNeeded: !canTalk(me) }, // any verified way chats (chatGate)
     decision: {
       canDecide: stage === "l3_decide" && !frozen && view.decision === null,
       mine: view.decision,
@@ -2704,9 +2909,14 @@ async function remind(ctx) {
 
 // ---------------------------------------------------------------- chat handlers
 
+/**
+ * The Level 3 chat: open only at Level 3, and only for a profile with a verified way — ANY one (canTalk: a phone code,
+ * Google, Facebook, TikTok…), not only a phone number (store policy, owner 2026-10-14: Apple 4.2.3 — a reviewer with no
+ * Telegram / WhatsApp must still be able to chat). The error code stays 'phone_needed': the app opens its verify sheet.
+ */
 function chatGate(ctx, pair) {
   if (pair.stage !== "l3_open") throw fail(409, "chat_closed", "The chat opens at Level 3.");
-  if (!ctx.me.verified?.phone) throw fail(403, "phone_needed", "Verify your phone number to chat.");
+  if (!canTalk(ctx.me)) throw fail(403, "phone_needed", "Verify to chat.");
 }
 
 async function listMessages(ctx) {
@@ -2772,6 +2982,7 @@ async function postMessage(ctx) {
   const text = String(body.text ?? "").trim();
   await stopContactDetails(ctx, pair, other, [text], { level: 3, kind: "chat" });
   await stopSplitChat(ctx, pair, other, text);
+  await stopBadWords(ctx, pair, other, [text], { level: 3, kind: "chat" });
   const r = checkChatMessage(text);
   if (!r.ok) {
     throw fail(422, r.error, ERROR_TEXT[r.error] || "Check your message.", { hits: r.hits ?? [], reason: r.reason ?? null, count: r.count });
@@ -2789,9 +3000,12 @@ async function postMessage(ctx) {
 
 async function report(ctx) {
   const { d, me, body, params } = ctx;
-  const label = REPORT_REASONS[body.reason];
+  const label = CHAT_REPORT_REASONS.includes(body.reason) ? REPORT_REASONS[body.reason] : null;
   if (!label) throw invalid("Choose a reason.", { field: "reason" });
-  const { pair, other } = await pairFor(ctx, params[0], { write: true });
+  // A frozen pair still takes a report when it is frozen because one of us blocked the other (block, then report);
+  // the admin's block already closed everything about that person.
+  const { pair, other, userBlocked } = await pairFor(ctx, params[0]);
+  if (!other || (other.blocked && !userBlocked)) throw fail(409, "other_blocked", "This conversation is closed.");
   const msgId = params[1];
   const chats = d.collection(C.chats);
   const chat = await chats.findOne({ _id: pair._id }, { projection: { messages: { $elemMatch: { id: msgId } } } });
@@ -2809,6 +3023,118 @@ async function report(ctx) {
     _id: flagId, id: flagId, chatId: pair._id, from: other._id, to: me._id, at: nowIso(),
     reason: `Reported by ${me.name} · ${label}`, kind: "reported", status: "open", warned: false,
   });
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------- block + report a person (store policy, owner 2026-10-14)
+// The rules: src/thirtyda-app/shared/safety.js; the store and the admin's flags: src/lib/thirtyda-blocks.mjs.
+
+/** The person a block / report is about: a real profile that is not me (an admin-blocked one is gone already). */
+async function otherPerson(ctx, { allowGone = false } = {}) {
+  const { d, me, params } = ctx;
+  if (params[0] === me._id) throw invalid("Choose someone else.", { field: "id" });
+  const u = await d.collection(C.users).findOne({ _id: params[0] }, { projection: { name: 1, photos: 1, photoReview: 1, blocked: 1 } });
+  if (!u || (u.blocked && !allowGone)) throw fail(404, "not_found", "This person is not here any more.");
+  return u;
+}
+
+/** The pair between me and `u` that I know of (a draft of theirs I never opened is not one). */
+async function knownPair(d, me, u) {
+  const pair = await d.collection(C.pairs).findOne({ members: { $all: [me._id, u._id] } });
+  return pair && !hiddenFrom(pair, me) ? pair : null;
+}
+
+/**
+ * POST /people/:id/block → { ok, blocked: { id, name, at } }. Idempotent. From now on the two never see each other
+ * (Nearby, profile, photos, a new conversation) and a conversation between them is frozen and out of both lists. A new
+ * block is also an open flag for the admin (kind 'blocked'). Open to every profile, verified or not.
+ */
+async function blockPerson(ctx) {
+  const { d, me } = ctx;
+  const u = await otherPerson(ctx, { allowGone: true });
+  const { created, at } = await addBlock(d.collection(BLOCKS), me._id, u._id, nowIso());
+  if (created) {
+    const pair = await knownPair(d, me, u);
+    const id = await nextId(d, "flag");
+    try {
+      await d.collection(C.flags).insertOne(blockFlag({ id, by: me._id, who: u._id, at, chatId: pair?._id ?? null }));
+    } catch (err) {
+      if (err?.code !== 11000) throw err; // an open flag for this block is already there
+    }
+  }
+  return { ok: true, blocked: { id: u._id, name: u.name ?? "", at } };
+}
+
+/** DELETE /people/:id/block → { ok, removed }: lift MY block (theirs of me, if any, stays). Withdraws its open flag. */
+async function unblockPerson(ctx) {
+  const { d, me, params } = ctx;
+  if (params[0] === me._id) throw invalid("Choose someone else.", { field: "id" });
+  const removed = await removeBlock(d.collection(BLOCKS), me._id, params[0]);
+  if (removed) {
+    await d.collection(C.flags).updateMany(
+      { key: blockFlagKey(me._id, params[0]), status: "open" }, resolveUpdate("unblocked", nowIso(), "withdrawn"),
+    );
+  }
+  return { ok: true, removed };
+}
+
+/** GET /me/blocks → { blocks: [{ id, name, at }] }: the people I blocked (never who blocked me), newest first. */
+async function listBlocks(ctx) {
+  const { d, me } = ctx;
+  return { blocks: await myBlocks(d.collection(BLOCKS), d.collection(C.users), me._id) };
+}
+
+/**
+ * POST /people/:id/report { reason, target } → { ok, already? }. target: 'profile' (default), 'photo:n' (the n-th photo
+ * GET /people shows me of them, kept on the flag as its id + slot), or 'line:S-12/3' (a line they wrote to me in a set:
+ * a picked line is the admin's own words, so only written ones). One open flag per reporter + person + target: a double
+ * tap or a second report while the first is open → { already: true }. A line's flag is also marked on its row in the
+ * admin's chat log, so the admin reads it there. Open to every profile, verified or not, blocked between or not.
+ */
+async function reportPerson(ctx) {
+  const { d, me, body } = ctx;
+  const reason = String(body.reason ?? "");
+  if (!PERSON_REPORT_REASONS.includes(reason)) throw invalid("Choose a reason.", { field: "reason" });
+  const rawTarget = body.target == null || body.target === "" ? "profile" : String(body.target);
+  const target = parseReportTarget(rawTarget);
+  if (!target) throw invalid("Say what you report.", { field: "target" });
+  const u = await otherPerson(ctx);
+  const pair = await knownPair(d, me, u);
+  const extra = {};
+  let chatId = pair?._id ?? null;
+  let line = null;
+  if (target.kind === "photo") {
+    // The photos I may see of them, in the order GET /people lists them (photosFor): slot order, by the level we opened,
+    // none still waiting for approval.
+    const level = pair ? stageOpenLevel((await settle(d, pair)).stage) : 1;
+    const seen = slotsOf(u).map((id, i) => (id && !isPending(u, i) && photoVisible(i, level) ? { id, slot: i + 1 } : null)).filter(Boolean);
+    const hit = seen[target.n - 1];
+    if (!hit) throw fail(404, "not_found", "No such photo.");
+    Object.assign(extra, { photoId: hit.id, slot: hit.slot });
+  } else if (target.kind === "line") {
+    const set = await d.collection(C.sets).findOne({ _id: target.setId, from: u._id, to: me._id });
+    const q = set?.questions?.find((x) => x.n === target.n);
+    if (!q || q.source !== "written") throw fail(404, "not_found", "No such line.");
+    chatId = set.pairId;
+    extra.level = set.level;
+    line = { level: set.level, n: q.n };
+  }
+  const id = await nextId(d, "flag");
+  try {
+    await d.collection(C.flags).insertOne(reportFlag({
+      id, by: me._id, byName: me.name, who: u._id, at: nowIso(), label: REPORT_LABELS[reason], target: rawTarget, chatId, extra,
+    }));
+  } catch (err) {
+    if (err?.code === 11000) return { ok: true, already: true };
+    throw err;
+  }
+  if (line) {
+    // The admin's chat log: the line's row carries this flag (the newest one), as a reported chat line does.
+    await d.collection(C.chats).updateOne(
+      { _id: chatId }, { $set: { "messages.$[m].flagId": id } },
+      { arrayFilters: [{ "m.kind": "question", "m.from": u._id, "m.level": line.level, "m.n": line.n, "m.stopped": { $ne: true } }] },
+    );
+  }
   return { ok: true };
 }
 
@@ -3011,6 +3337,8 @@ const ROUTES = [
   ["POST", /^\/profile$/, createProfile, { auth: "none" }],
   ["GET", /^\/me$/, getMe, { auth: "none", blockedOk: true }],
   ["PATCH", /^\/me$/, patchMe],
+  // "I agree" to the community rules (src/lib/thirtyda-terms.mjs): open before agreeing, like the PIN routes.
+  ["POST", /^\/me\/terms$/, agreeTerms],
   ["POST", /^\/me\/photos$/, addPhoto],
   ["PUT", /^\/me\/photos\/([0-3])$/, putPhoto],
   ["DELETE", /^\/me\/photos\/([0-3])$/, removePhoto],
@@ -3046,6 +3374,11 @@ const ROUTES = [
   ["GET", /^\/pairs\/(P-\d+)\/messages$/, listMessages],
   ["POST", /^\/pairs\/(P-\d+)\/messages$/, postMessage],
   ["POST", /^\/pairs\/(P-\d+)\/messages\/(M-\d+)\/report$/, report],
+  // Block + report a person (store policy, owner 2026-10-14): open to every profile, verified or not.
+  ["GET", /^\/me\/blocks$/, listBlocks],
+  ["POST", /^\/people\/(U-\d+)\/block$/, blockPerson],
+  ["DELETE", /^\/people\/(U-\d+)\/block$/, unblockPerson],
+  ["POST", /^\/people\/(U-\d+)\/report$/, reportPerson],
 ];
 
 /** The route table (method + path pattern only), for the lock's 423 tests (src/lib/thirtyda-pin.test.mjs). */
@@ -3072,6 +3405,10 @@ async function handleApi(req, res, url, sub) {
     if (auth !== "none" && !ctx.session) throw fail(401, "signed_out", "Please sign in.");
     if (auth === "user" && !ctx.me) throw fail(401, "no_profile", "Create your profile first.");
     if (ctx.me?.blocked && !route.opts.blockedOk) throw fail(403, "blocked", "This account is blocked.");
+    // The community rules (store policy, owner 2026-10-14): a profile that has not agreed to this version agrees first.
+    if (auth === "user" && ctx.me && !termsCurrent(ctx.me.terms) && !termsFree(req.method, sub)) {
+      throw fail(403, "terms_needed", TERMS_NEEDED_MESSAGE, { version: TERMS_VERSION });
+    }
     // "Needed to chat" (owner 2026-10-13): talking to someone waits for one verified way (src/lib/thirtyda-verify.mjs).
     if (ctx.me && talksToSomeone(req.method, sub) && !canTalk(ctx.me)) {
       throw fail(403, "verify_needed", "Verify your phone, Google, Facebook or TikTok to chat.");
@@ -3116,12 +3453,15 @@ export async function handleThirtyDaApp(req, res, url) {
         .end("tiktok-developers-site-verification=W03cvSBvhBWjIUvBNbumExjZmgY8sW1r");
       return;
     }
-    if (path === `${BASE}/privacy`) return sendPage(req, res, 200, privacyPage({ lang: requestLang(req, url) }), docHeaders);
+    // ?from=rules (the app's rules screen, #/rules): "Back to 30+DA" goes back there instead of #/me.
+    if (path === `${BASE}/privacy`) return sendPage(req, res, 200, privacyPage({ lang: requestLang(req, url), from: url.searchParams.get("from") }), docHeaders);
     if (path === `${BASE}/delete-data`) return sendPage(req, res, 200, deleteDataPage({ lang: requestLang(req, url) }), docHeaders);
     // The terms of service TikTok asks for (same look, same 5 languages).
-    if (path === `${BASE}/terms`) return sendPage(req, res, 200, termsPage({ lang: requestLang(req, url) }), docHeaders);
-    // Help & support: who runs 30+DA and the email (the App Store "Support URL").
-    if (path === `${BASE}/support`) return sendPage(req, res, 200, supportPage({ lang: requestLang(req, url) }), docHeaders);
+    if (path === `${BASE}/terms`) return sendPage(req, res, 200, termsPage({ lang: requestLang(req, url), from: url.searchParams.get("from") }), docHeaders);
+    // Help & contact: who runs 30+DA, the email, Telegram (optional) (the App Store "Support URL"); /help is the same page.
+    if (path === `${BASE}/support` || path === `${BASE}/help`) return sendPage(req, res, 200, supportPage({ lang: requestLang(req, url) }), docHeaders);
+    // The child-safety standards (Google Play's Child Safety Standards declaration links here).
+    if (path === `${BASE}/child-safety`) return sendPage(req, res, 200, childSafetyPage({ lang: requestLang(req, url) }), docHeaders);
     // GKVerify's big "⬅️ Back to 30+DA" button (the Telegram bot): back into the app, else the web app.
     if (path === `${BASE}/back`) return sendBackPage(req, res, url);
     // The home page: what 30+DA is, how it works, and the way in. Its photos: only the slots whose file is there.

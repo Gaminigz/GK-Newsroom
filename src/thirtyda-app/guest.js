@@ -2,7 +2,7 @@
 // screen shows who is on 30+DA as cards only (POST /guest/nearby, src/lib/thirtyda-guest.mjs). Looking is free;
 // anything more — opening a profile, hearts, talking, Me — first needs a profile: a small sheet "Make your profile
 // first" → #/create. After Next the person comes back to the home screen, or to the profile they tapped.
-// The PIN chosen on #/pin keeps waiting in this tab (lock.js) and goes with the new profile, as before.
+// The PIN chosen on #/pin keeps waiting on this phone (lock.js, kept when the app closes) and goes with the new profile.
 import { el, icon, t, go, modal, state, registerStrings } from './core.js';
 import { waitingPin } from './lock.js';
 

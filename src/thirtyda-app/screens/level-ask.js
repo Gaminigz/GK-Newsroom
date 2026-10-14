@@ -27,13 +27,14 @@ const clip = (s) => {
   return chars.length > MATCH_MAX ? `${chars.slice(0, MATCH_MAX - 1).join('')}…` : chars.join('');
 };
 
-/** Red message for a rule check (contact detail or too long); null when the box is fine or just unfinished. */
+/** Red message for a rule check (contact detail, bad word or too long); null when the box is fine or just unfinished. */
 export function ruleMessage(check, max) {
   if (check?.error === 'contact') {
     const hit = check.hits?.[0];
     const type = HIT_TYPES.includes(hit?.type) ? hit.type : 'contact';
     return t(`lv_hit_${type}`, { match: clip(hit?.match) });
   }
+  if (check?.error === 'word') return t('lv_hit_word', { match: clip(check.hits?.[0]?.match) });
   if (check?.error === 'too_long') return t('lv_too_long', { max });
   return null;
 }
@@ -130,6 +131,7 @@ export function sendPanel({ pairId, level, bank, name, onSent, onReload, onMoved
   const serverErr = Array(write).fill(null); // a server 422 for a row, until the row is edited
   let busy = false;
   let stoppedSig = null; // the exact set the server last stopped: re-tapping does not post it twice
+  let stoppedWord = false; // …and whether it was stopped for a bad word (else a contact detail)
   let node = null;
 
   const textOf = (i, key) => slots[i]?.find((q) => q.key === key)?.text || '';
@@ -253,7 +255,8 @@ export function sendPanel({ pairId, level, bank, name, onSent, onReload, onMoved
     if (busy) return;
     const { results, missing } = paint();
     if (!missing) return send(false);
-    if (results.some((r) => r.error === 'contact')) return send(true);
+    // A contact detail or a bad word still goes to the server, which records the stopped try for the admin.
+    if (results.some((r) => r.error === 'contact' || r.error === 'word')) return send(true);
     writeRows[results.findIndex((r) => !r.ok)]?.input.focus();
   });
 
@@ -267,7 +270,7 @@ export function sendPanel({ pairId, level, bank, name, onSent, onReload, onMoved
     };
     const sig = JSON.stringify(body);
     if (attempt && sig === stoppedSig) {
-      toast(t('lv_stopped'));
+      toast(t(stoppedWord ? 'lv_stopped_word' : 'lv_stopped'));
       return;
     }
     busy = true;
@@ -287,10 +290,11 @@ export function sendPanel({ pairId, level, bank, name, onSent, onReload, onMoved
       }
       const j = Number(err.data?.index) - pick;
       const row = Number.isInteger(j) && j >= 0 && j < write ? j : -1;
-      if (err.code === 'contact_detail') {
+      if (err.code === 'contact_detail' || err.code === 'bad_word') {
         stoppedSig = sig;
-        if (row >= 0) serverErr[row] = ruleMessage({ error: 'contact', hits: err.data?.hits }, QUESTION_MAX[level]);
-        toast(t('lv_stopped'));
+        stoppedWord = err.code === 'bad_word';
+        if (row >= 0) serverErr[row] = ruleMessage({ error: stoppedWord ? 'word' : 'contact', hits: err.data?.hits }, QUESTION_MAX[level]);
+        toast(t(stoppedWord ? 'lv_stopped_word' : 'lv_stopped'));
       } else if (err.code === 'invalid' && err.data?.slot) {
         // A picked choice is no longer in its list (the admin changed the choices while this was open):
         // the caller loads the lists again; the written lines and the picks still offered are kept, and
@@ -340,6 +344,8 @@ registerStrings({
     lv_hit_contact: 'No contact details: “{match}”',
     lv_too_long: 'Too long. Keep it under {max} characters.',
     lv_stopped: 'Not sent. Contact details are never allowed.',
+    lv_hit_word: 'No rude, sexual or money words: “{match}”',
+    lv_stopped_word: 'Not sent. Rude, sexual or money words are never allowed.',
     lv_translate: 'We will translate for you',
     lv_check_n: 'Check line {n}.',
     lv_sending: 'Sending…',
@@ -363,6 +369,8 @@ registerStrings({
     lv_hit_contact: 'មិនអនុញ្ញាតព័ត៌មានទំនាក់ទំនង៖ “{match}”',
     lv_too_long: 'វែងពេក។ សូមសរសេរមិនឲ្យលើស {max} តួអក្សរ។',
     lv_stopped: 'មិនបានផ្ញើទេ។ ព័ត៌មានទំនាក់ទំនងមិនត្រូវបានអនុញ្ញាតឡើយ។',
+    lv_hit_word: 'មិនអនុញ្ញាតពាក្យអសុរស ពាក្យផ្លូវភេទ ឬពាក្យទាក់ទងនឹងលុយ៖ “{match}”',
+    lv_stopped_word: 'មិនបានផ្ញើទេ។ ពាក្យអសុរស ពាក្យផ្លូវភេទ ឬពាក្យទាក់ទងនឹងលុយ មិនត្រូវបានអនុញ្ញាតឡើយ។',
     lv_translate: 'យើងនឹងបកប្រែជូនអ្នក',
     lv_check_n: 'សូមពិនិត្យឃ្លាទី {n}។',
     lv_sending: 'កំពុងផ្ញើ…',
@@ -386,6 +394,8 @@ registerStrings({
     lv_hit_contact: '不能留联系方式：“{match}”',
     lv_too_long: '太长了，请控制在 {max} 个字以内。',
     lv_stopped: '未发送。任何联系方式都不允许分享。',
+    lv_hit_word: '不能用粗俗、色情或涉及金钱的词：“{match}”',
+    lv_stopped_word: '未发送。不允许粗俗、色情或涉及金钱的词语。',
     lv_translate: '我们会为你翻译',
     lv_check_n: '请检查第 {n} 句。',
     lv_sending: '发送中…',
@@ -409,6 +419,8 @@ registerStrings({
     lv_hit_contact: '연락처는 안 돼요: “{match}”',
     lv_too_long: '너무 길어요. {max}자 이내로 써 주세요.',
     lv_stopped: '보내지 않았어요. 연락처는 절대 공유할 수 없어요.',
+    lv_hit_word: '욕설, 성적인 말, 돈 관련 말은 안 돼요: “{match}”',
+    lv_stopped_word: '보내지 않았어요. 욕설, 성적인 말, 돈 관련 말은 쓸 수 없어요.',
     lv_translate: '번역은 저희가 해 드려요',
     lv_check_n: '{n}번째 한마디를 확인해 주세요.',
     lv_sending: '보내는 중…',
@@ -432,6 +444,8 @@ registerStrings({
     lv_hit_contact: '連絡先は送れません：「{match}」',
     lv_too_long: '長すぎます。{max}文字以内にしてください。',
     lv_stopped: '送信されませんでした。連絡先の共有は一切できません。',
+    lv_hit_word: '乱暴・性的・お金に関する言葉は送れません：「{match}」',
+    lv_stopped_word: '送信されませんでした。乱暴な言葉・性的な言葉・お金に関する言葉は使えません。',
     lv_translate: '翻訳はおまかせください',
     lv_check_n: '{n}つ目のひとことを確認してください。',
     lv_sending: '送信中…',

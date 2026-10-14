@@ -1,7 +1,9 @@
 // 30+DA app lock (owner 2026-10-13, "Lock the app"): a 4-digit PIN, asked every time 30+DA opens on this phone,
 // so nobody else can see the chats. The server enforces it (src/lib/thirtyda-pin.mjs); this is the app's half:
-//  - Before the account exists, the PIN chosen right after the language (#/pin) waits in sessionStorage (this tab
-//    only — never localStorage, never in a URL) and goes once with the first sign-in or Create profile.
+//  - Before the account exists, the PIN chosen right after the language (#/pin) waits on this phone (localStorage —
+//    owner 2026-10-14: the language and the PIN survive closing the app; never in a URL) and goes once with the first
+//    sign-in or Create profile; then it is removed. A visitor who chose one gets "Enter your PIN" each time the app opens
+//    again, checked here on the phone against the waiting PIN (there is no account yet), then the home screen.
 //  - The PIN screen COVERS the app after 30 s with no touch / mouse / key / scroll, when the app is hidden or
 //    closed, and whenever the server answers 423 (it locks by itself after 2 minutes without real use).
 //    Covering takes the screen down (content removed, not blurred) and tells the server (POST /me/lock).
@@ -9,36 +11,47 @@
 //  - A profile with no PIN yet sets one before anything else; #/me has "Change PIN".
 import {
   state, bus, api, t, el, icon, go, toast, modal, setMe, registerStrings, errorText, coverScreen, uncoverScreen,
-  activity, checkNewPin, pinDigits, PIN_LENGTH, IDLE_COVER_MS, LOCK_IDLE_MS, INPUT_AGE_HEADER, inputAge,
+  activity, checkNewPin, pinDigits, PIN_LENGTH, PIN_TRIES, IDLE_COVER_MS, LOCK_IDLE_MS, INPUT_AGE_HEADER, inputAge,
 } from './core.js';
 import { onAppReturn } from './shell.js';
 
-// ---------------------------------------------------------------- what waits in this tab
+// ---------------------------------------------------------------- what waits on this phone
 
 const WAIT_KEY = '30da_pin_wait'; // the PIN chosen before the account exists
 const RESET_KEY = '30da_pin_reset'; // "Forgot PIN" / 5 wrong: after the next sign-in, set a new PIN
 const BACK_KEY = '30da_back'; // the app left on purpose (a new version, the trip to Google / Facebook): no PIN on return
 const BACK_MS = 10 * 60e3;
 
-const tab = {
-  get(key) { try { return sessionStorage.getItem(key); } catch { return null; } },
-  set(key, v) { try { sessionStorage.setItem(key, v); } catch { /* storage off: the app asks again later */ } },
-  del(key) { try { sessionStorage.removeItem(key); } catch { /* nothing kept */ } },
-};
+const storageOf = (area) => ({
+  get(key) { try { return area().getItem(key); } catch { return null; } },
+  set(key, v) { try { area().setItem(key, v); } catch { /* storage off: the app asks again later */ } },
+  del(key) { try { area().removeItem(key); } catch { /* nothing kept */ } },
+});
+/** This tab only: the way back from our own reload / the sign-in trip (a closed app must ask for the PIN again). */
+const tab = storageOf(() => sessionStorage);
+/** Kept on this phone when the app closes (owner 2026-10-14): the waiting PIN and the "set a new PIN" flag. */
+const kept = storageOf(() => localStorage);
+// An older version kept them in this tab only: moved once (a reload for a new version keeps the tab).
+for (const key of [WAIT_KEY, RESET_KEY]) {
+  const v = tab.get(key);
+  if (v == null) continue;
+  if (kept.get(key) == null) kept.set(key, v);
+  tab.del(key);
+}
 
 /** The PIN chosen on #/pin, waiting for the first sign-in / Create profile (null when none, or not a good one). */
 export function waitingPin() {
-  const v = tab.get(WAIT_KEY);
+  const v = kept.get(WAIT_KEY);
   return v && checkNewPin(v).ok ? v : null;
 }
-export const keepWaitingPin = (pin) => tab.set(WAIT_KEY, pin);
+export const keepWaitingPin = (pin) => kept.set(WAIT_KEY, pin);
 /** After "Forgot PIN" / 5 wrong PINs: the next sign-in is followed by "Set a new PIN". */
-export const pinResetPending = () => tab.get(RESET_KEY) === '1';
-const markPinReset = () => tab.set(RESET_KEY, '1');
+export const pinResetPending = () => kept.get(RESET_KEY) === '1';
+const markPinReset = () => kept.set(RESET_KEY, '1');
 /** A PIN was saved on the profile: nothing waits any more. */
 export function clearPinFlags() {
-  tab.del(WAIT_KEY);
-  tab.del(RESET_KEY);
+  kept.del(WAIT_KEY);
+  kept.del(RESET_KEY);
 }
 
 // ---------------------------------------------------------------- the 4 boxes
@@ -175,7 +188,7 @@ const lock = {
   coverMs: IDLE_COVER_MS, // GET /me tells the real value (the demo board: 0 = never covers by itself)
   serverMs: LOCK_IDLE_MS,
   covered: false,
-  mode: null, // 'enter' | 'signin' | 'set' | 'reset'
+  mode: null, // 'enter' | 'signin' | 'set' | 'reset' | 'guest' (a visitor's waiting PIN, checked on the phone)
   node: null,
   focus: null,
   bootMode: null,
@@ -183,6 +196,7 @@ const lock = {
   leavingAt: 0, // leaving counts for BACK_MS at most (leavingNow)
   picker: 0, // when a file picker / camera was opened from the app
   started: false,
+  guestTries: 0, // wrong waiting PINs typed since the app opened (a visitor: no account, so counted here)
 };
 
 /** GET /me (and every 423) carry { coverMs, idleMs }. */
@@ -360,6 +374,51 @@ function enterBody() {
     pad.node, err.node), forgot);
 }
 
+// A visitor with a waiting PIN and no profile yet (owner 2026-10-14): the app opens again on "Enter your PIN", checked
+// here against the PIN kept on this phone, then the home screen. 5 wrong, or "Forgot PIN?": that PIN is forgotten and a
+// new one is set (#/pin) — nothing stands behind it yet but the home screen.
+
+/** The right waiting PIN: the home screen. */
+function guestOpened() {
+  activity.lastInputAt = Date.now();
+  lock.guestTries = 0;
+  hideCover();
+  go('/nearby', { replace: true }); // still covered: this only sets the address …
+  uncoverScreen(); // … and the home screen draws now
+}
+
+/** "Forgot PIN?" / 5 wrong: the waiting PIN goes, the visitor sets a new one. */
+function forgetGuestPin() {
+  clearPinFlags();
+  lock.guestTries = 0;
+  hideCover();
+  go('/pin', { replace: true });
+  uncoverScreen();
+}
+
+function guestBody() {
+  const err = errorLine();
+  const pad = pinPad({ onFull });
+  function onFull(pin) {
+    const want = waitingPin();
+    if (!want) return forgetGuestPin();
+    if (pin === want) return guestOpened();
+    lock.guestTries += 1;
+    const left = PIN_TRIES - lock.guestTries;
+    pad.clear();
+    if (left <= 0) return forgetGuestPin();
+    err.show(wrongText(left));
+    pad.shake();
+    pad.focus();
+  }
+  lock.focus = () => pad.focus();
+  const forgot = el('button', { type: 'button', class: 'link pin-forgot', on: { click: () => forgetGuestPin() } }, t('pin_forgot'));
+  return pinFrame(el('div', { class: 'pin-body' },
+    el('h1', { class: 'pin-title', id: 'pin-title' }, t('pin_enter_title')),
+    el('p', { class: 'pin-text' }, t('pin_enter_text')),
+    pad.node, err.node), forgot);
+}
+
 function signinBody() {
   lock.focus = null;
   return pinFrame(el('div', { class: 'pin-body' },
@@ -399,7 +458,7 @@ function setBody(mode) {
 function renderCover() {
   if (!lock.node) return;
   const mode = lock.mode;
-  lock.node.replaceChildren(mode === 'enter' ? enterBody() : mode === 'signin' ? signinBody() : setBody(mode));
+  lock.node.replaceChildren(mode === 'enter' ? enterBody() : mode === 'guest' ? guestBody() : mode === 'signin' ? signinBody() : setBody(mode));
   lock.node.scrollTop = 0;
   // A tap brings the keyboard on phones; on a computer the boxes take the keys at once.
   lock.focus?.();
@@ -425,7 +484,7 @@ async function afterUser() {
       toast(t('pin_saved'));
       return;
     } catch (e) {
-      tab.del(WAIT_KEY); // used once: not a fresh sign-in any more, or refused
+      kept.del(WAIT_KEY); // used once: not a fresh sign-in any more, or refused
       if (e.status === 423) return; // the 'locked' event covers the app
       lockNow(); // refused: this was no fresh sign-in, so the PIN it already has comes first
       return;
@@ -497,10 +556,13 @@ export function startLock() {
 
   // Every time 30+DA opens, the PIN comes first: a reload or a new tab too (the server may not have had the
   // closing tab's lock yet). Not after the app's own reload or the trip to Google / Facebook (cameBack).
+  // A visitor with a waiting PIN and no profile yet: "Enter your PIN" too, checked on the phone (guestBody).
   const back = cameBack();
   if (lock.bootMode) {
     showCover(lock.bootMode);
     lock.bootMode = null;
+  } else if (!back && !state.me && waitingPin()) {
+    showCover('guest');
   } else if (!back && !waitingPin() && !pinResetPending()) {
     lockNow();
   }

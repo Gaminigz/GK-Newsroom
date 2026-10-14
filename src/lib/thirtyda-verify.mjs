@@ -13,11 +13,18 @@
  */
 
 import crypto from "node:crypto";
+import { VERIFY_KEEP_MS, DEVICE_KEEP_MS, deviceIdOk } from "../thirtyda-app/shared/visitor.js";
 
-/** The verified ways a profile can have (users.verified.*): a phone (a code or the Telegram bot), Google, Facebook, TikTok. */
-export const VERIFIED_WAYS = ["phone", "gmail", "facebook", "tiktok"];
+/**
+ * The verified ways a profile can have (users.verified.*): a phone (a code or the Telegram bot), Google, Facebook, TikTok,
+ * Apple (Sign in with Apple, on the iPhone app: users.verified.apple).
+ */
+export const VERIFIED_WAYS = ["phone", "gmail", "facebook", "tiktok", "apple"];
 
-/** A profile may talk to people once it has at least one verified way. */
+/**
+ * A profile may talk to people once it has at least one verified way — any one of them, for everything: Levels 1–2 and
+ * the Level 3 chat too (src/lib/thirtyda-app.mjs chatGate; store policy, owner 2026-10-14: no Telegram needed).
+ */
 export const canTalk = (user) => VERIFIED_WAYS.some((k) => user?.verified?.[k] === true);
 
 /**
@@ -85,6 +92,68 @@ export async function claimSignup(coll, ip, { now = Date.now(), max = UNVERIFIED
 export async function releaseSignup(coll, key) {
   if (key) await coll.updateOne({ _id: key, n: { $gt: 0 } }, { $inc: { n: -1 } });
 }
+
+// ---------------------------------------------------------------- one unverified profile per phone, 48 hours (owner 2026-10-14)
+
+/**
+ * POST /profile { unverified: true, deviceId } — the app sends this phone's id (the apps' ThirtyDaShell.info().deviceId,
+ * else a random id the website keeps on the phone). Only a one-way hash of it is kept, in SIGNUP_DEVICES, for
+ * DEVICE_KEEP_MS (30 days, TTL on purgeAt), with no link to the profile: a second profile made without verifying from
+ * the same phone is refused (409 device_used). A sign-up that verified is never limited. No id (an older app, storage
+ * off) → no phone check; the per-address limit above still holds. An id is no lock: clearing the website's storage makes
+ * a new one — it keeps honest people from making a pile of throw-away profiles, nothing more.
+ */
+export const SIGNUP_DEVICES = "thirtyda_signup_devices";
+
+/** The key kept for a phone id: a hash, never the id itself; null when it is not a good id. */
+export function deviceKey(deviceId) {
+  if (!deviceIdOk(deviceId)) return null;
+  return crypto.createHash("sha256").update(`30da-device|${deviceId.toLowerCase()}`).digest("hex");
+}
+
+/**
+ * Take this phone's one unverified profile, atomically (two at once cannot both pass). → { ok: true, key } (give it back
+ * with releaseDevice if the profile is not made after all) | { ok: false } (it already made one in the last 30 days).
+ */
+export async function claimDevice(coll, key, { now = Date.now() } = {}) {
+  try {
+    await coll.insertOne({ _id: key, at: new Date(now), purgeAt: new Date(now + DEVICE_KEEP_MS) });
+    return { ok: true, key };
+  } catch (err) {
+    if (err?.code === 11000) return { ok: false, key: null };
+    throw err;
+  }
+}
+
+/** Give a claimed phone back (the profile was not made: a bad photo, a clash, the address limit). */
+export async function releaseDevice(coll, key) {
+  if (key) await coll.deleteOne({ _id: key });
+}
+
+/**
+ * users.verifyBy: a profile made without verifying is deleted at this time unless it verifies first (48 hours after it
+ * was made — src/lib/thirtyda-delete.mjs expireUnverified; profiles made before the rule get 48 hours from its first run).
+ */
+export const verifyByFrom = (now = Date.now()) => new Date(now + VERIFY_KEEP_MS);
+
+/** MeView.verifyBy: the deadline as an ISO time while the profile has no verified way, else null (no banner). */
+export function verifyByOf(user) {
+  if (canTalk(user) || user?.verifyBy == null) return null;
+  const at = new Date(user.verifyBy);
+  return Number.isFinite(at.getTime()) ? at.toISOString() : null;
+}
+
+/**
+ * The Mongo filter for a profile that never verified: no verified way, no verified number, no Google / Facebook / TikTok
+ * account kept, made since profiles carry createdAt (every unverified one does). Belt and braces: an older profile that
+ * proved a number before `verified` was kept never matches.
+ */
+export const neverVerifiedFilter = () => ({
+  ...Object.fromEntries(VERIFIED_WAYS.map((k) => [`verified.${k}`, { $ne: true }])),
+  phone: { $exists: false },
+  signin: { $exists: false },
+  createdAt: { $exists: true },
+});
 
 // ---------------------------------------------------------------- the way back from Google / Facebook / TikTok
 

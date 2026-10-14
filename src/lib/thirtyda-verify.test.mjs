@@ -7,13 +7,16 @@ import assert from 'node:assert/strict';
 import {
   VERIFIED_WAYS, canTalk, TALK_ROUTES, OPEN_WRITES, talksToSomeone, UNVERIFIED_PER_DAY, ppDay, signupKey, claimSignup,
   releaseSignup, verifyBackPath, VERIFY_BACK_REASONS, ATTACH_FROM, PHONE_VIAS, phoneViaOf, withPhoneVia, signinsOf,
+  SIGNUP_DEVICES, deviceKey, claimDevice, releaseDevice, verifyByFrom, verifyByOf, neverVerifiedFilter,
 } from './thirtyda-verify.mjs';
 import { API_ROUTES, meView } from './thirtyda-app.mjs';
+import { VERIFY_KEEP_MS, DEVICE_KEEP_MS } from '../thirtyda-app/shared/visitor.js';
+import { PAGE_STRINGS, privacyPage } from './thirtyda-pages.mjs';
 
 // ---------------------------------------------------------------- who may talk
 
-test('canTalk: any one verified way (phone, Google, Facebook, TikTok) — nothing else', () => {
-  assert.deepEqual(VERIFIED_WAYS, ['phone', 'gmail', 'facebook', 'tiktok']);
+test('canTalk: any one verified way (phone, Google, Facebook, TikTok, Apple) — nothing else', () => {
+  assert.deepEqual(VERIFIED_WAYS, ['phone', 'gmail', 'facebook', 'tiktok', 'apple']);
   for (const way of VERIFIED_WAYS) assert.equal(canTalk({ verified: { [way]: true } }), true, way);
   assert.equal(canTalk({ verified: { phone: false, gmail: false, facebook: false, tiktok: false } }), false, 'a profile made without verifying');
   assert.equal(canTalk({ verified: {} }), false);
@@ -34,6 +37,7 @@ const SAMPLES = [
   ['POST', '/auth/app/begin', false], ['GET', '/auth/app', false],
   ['POST', '/auth/review/check', false], ['POST', '/auth/review/verify', false], // App review sign-in
   ['POST', '/auth/signout', false], ['POST', '/profile', false], ['GET', '/me', false], ['PATCH', '/me', false],
+  ['POST', '/me/terms', false], // "I agree" to the community rules (store policy, owner 2026-10-14)
   ['POST', '/me/photos', false], ['PUT', '/me/photos/1', false], ['DELETE', '/me/photos/2', false],
   ['POST', '/me/location', false], ['POST', '/me/heartbeat', false], ['GET', '/me/pending', false],
   ['POST', '/me/lock', false], ['POST', '/me/unlock', false],
@@ -48,6 +52,10 @@ const SAMPLES = [
   ['POST', '/pairs/P-1/answers', true], ['POST', '/pairs/P-1/decide', true], ['POST', '/pairs/P-1/messages', true],
   // Writes that do not reach the other person: my own reminder, a report to the admin (always open).
   ['POST', '/pairs/P-1/remind', false], ['POST', '/pairs/P-1/messages/M-1/report', false],
+  // Block + report a person (store policy, owner 2026-10-14): safety, so never gated — a profile with nothing verified
+  // must be able to block and report too.
+  ['GET', '/me/blocks', false], ['POST', '/people/U-10231/block', false], ['DELETE', '/people/U-10231/block', false],
+  ['POST', '/people/U-10231/report', false],
 ];
 
 test('gate: every route of the real router has a sample, and only the 6 that talk to someone are gated', () => {
@@ -256,4 +264,104 @@ test('meView: phoneVia (owner only, only for a verified number) and the sign-ins
   assert.equal(meView({ ...base, phoneVia: 'telegram', verified: { phone: false } }).phoneVia, null);
   assert.equal(meView({ ...base, phone: null, phoneVia: 'telegram' }).phoneVia, null);
   assert.deepEqual(meView({ _id: 'U-8', name: 'X', photos: [] }).signins, { google: false, facebook: false, tiktok: false });
+});
+
+// ---------------------------------------------------------------- one unverified profile per phone, 48 hours (owner 2026-10-14)
+
+/** A stand-in for SIGNUP_DEVICES: insertOne refuses a second doc with the same _id (atomically), deleteOne. */
+function deviceCollection() {
+  const docs = new Map();
+  const tick = () => new Promise((r) => setImmediate(r));
+  return {
+    docs,
+    async insertOne(doc) {
+      await tick();
+      if (docs.has(doc._id)) throw Object.assign(new Error('E11000 duplicate key'), { code: 11000 });
+      docs.set(doc._id, { ...doc });
+      return { insertedId: doc._id };
+    },
+    async deleteOne(filter) {
+      await tick();
+      return { deletedCount: docs.delete(filter._id) ? 1 : 0 };
+    },
+  };
+}
+
+const UUID = '3F2504E0-4F89-41D3-9A0C-0305E82C3301';
+
+test('deviceKey: a one-way hash of the phone id (never the id), the same for any letter case; a bad id → null', () => {
+  assert.equal(SIGNUP_DEVICES, 'thirtyda_signup_devices');
+  const key = deviceKey(UUID);
+  assert.match(key, /^[0-9a-f]{64}$/);
+  assert.equal(deviceKey(UUID.toLowerCase()), key, 'iOS writes it upper case, a copy may be lower case');
+  assert.notEqual(deviceKey('3F2504E0-4F89-41D3-9A0C-0305E82C3302'), key);
+  assert.equal(key.includes(UUID.toLowerCase().replace(/-/g, '')), false);
+  for (const bad of [null, undefined, '', 'short', 'has space 123', 42, { id: UUID }]) assert.equal(deviceKey(bad), null, String(bad));
+});
+
+test('claimDevice: one unverified profile per phone; parallel tries → one; given back → free again; 30 days kept', async () => {
+  const coll = deviceCollection();
+  const key = deviceKey(UUID);
+  const now = Date.parse('2026-10-14T03:00:00Z');
+  const first = await claimDevice(coll, key, { now });
+  assert.deepEqual(first, { ok: true, key });
+  const doc = coll.docs.get(key);
+  assert.deepEqual(Object.keys(doc).sort(), ['_id', 'at', 'purgeAt'], 'no profile id, no phone id, no address');
+  assert.equal(doc.purgeAt.getTime() - now, DEVICE_KEEP_MS);
+  assert.equal(DEVICE_KEEP_MS, 30 * 864e5);
+  assert.deepEqual(await claimDevice(coll, key, { now: now + 1 }), { ok: false, key: null }, 'the same phone again');
+  assert.equal((await claimDevice(coll, deviceKey('a1b2c3d4e5f60718'), { now })).ok, true, 'another phone');
+  await releaseDevice(coll, key);
+  assert.equal((await claimDevice(coll, key, { now })).ok, true, 'the profile was not made after all: the phone is free again');
+  await releaseDevice(coll, null); // nothing claimed: nothing to give back
+  const other = deviceCollection();
+  const results = await Promise.all(Array.from({ length: 8 }, () => claimDevice(other, key, { now })));
+  assert.equal(results.filter((r) => r.ok).length, 1, 'parallel tries: exactly one');
+  const broken = { insertOne: async () => { throw new Error('db down'); } };
+  await assert.rejects(claimDevice(broken, key, { now }), /db down/, 'a database error is not "used"');
+});
+
+test('verifyBy: 48 hours after it was made; MeView carries it only while nothing is verified', () => {
+  const made = Date.parse('2026-10-14T03:00:00Z');
+  assert.equal(verifyByFrom(made).getTime() - made, VERIFY_KEEP_MS);
+  assert.equal(VERIFY_KEEP_MS, 48 * 3600e3);
+  const by = verifyByFrom(made);
+  const base = { _id: 'U-9', name: 'Uma', photos: [], verified: { phone: false, gmail: false, facebook: false, tiktok: false }, verifyBy: by };
+  assert.equal(verifyByOf(base), by.toISOString());
+  assert.equal(meView(base).verifyBy, by.toISOString());
+  assert.equal(meView({ ...base, verifyBy: by.toISOString() }).verifyBy, by.toISOString(), 'stored as a string: the same');
+  for (const way of ['phone', 'gmail', 'facebook', 'tiktok']) {
+    assert.equal(meView({ ...base, verified: { ...base.verified, [way]: true } }).verifyBy, null, `verified by ${way}: no deadline`);
+  }
+  assert.equal(meView({ ...base, verifyBy: undefined }).verifyBy, null, 'none set yet: none shown');
+  assert.equal(meView({ ...base, verifyBy: 'soon' }).verifyBy, null);
+  assert.equal(meView({ _id: 'U-1', name: 'Old', photos: [], verified: { phone: true } }).verifyBy, null, 'a verified profile');
+});
+
+test('neverVerifiedFilter: no verified way, no verified number, no sign-in account, has createdAt', () => {
+  const f = neverVerifiedFilter();
+  for (const way of ['phone', 'gmail', 'facebook', 'tiktok']) assert.deepEqual(f[`verified.${way}`], { $ne: true });
+  assert.deepEqual(f.phone, { $exists: false }, 'an older profile with a proved number never matches');
+  assert.deepEqual(f.signin, { $exists: false });
+  assert.deepEqual(f.createdAt, { $exists: true });
+  assert.notEqual(neverVerifiedFilter(), f, 'a fresh object each time (callers add to it)');
+});
+
+test('privacy page: the phone ID (what, why, how long), the approximate location and the 48 hours, in all 5 languages', () => {
+  const words = {
+    en: ['Phone ID', '30 days', 'approximate location', '48 hours'],
+    km: ['លេខសម្គាល់ទូរស័ព្ទ', '30 ថ្ងៃ', 'ទីតាំងប្រហាក់ប្រហែល', '48 ម៉ោង'],
+    zh: ['手机识别码', '30 天', '大致位置', '48 小时'],
+    ko: ['휴대폰 ID', '30일', '대략적인 위치', '48시간'],
+    ja: ['端末ID', '30日間', 'おおよその位置', '48時間'],
+  };
+  for (const [lang, want] of Object.entries(words)) {
+    const t = PAGE_STRINGS[lang];
+    const page = privacyPage({ lang });
+    assert.ok(page.includes(`<b>${t.priv_device_k}</b> ${t.priv_device}`), `${lang}: the phone ID line`);
+    for (const w of want) assert.ok(page.includes(w), `${lang}: says "${w}"`);
+  }
+  assert.match(PAGE_STRINGS.en.priv_device, /without verifying/, 'why: only for a profile made without verifying');
+  assert.match(PAGE_STRINGS.en.priv_device, /scrambled/, 'what: never the ID itself');
+  assert.match(PAGE_STRINGS.en.priv_device, /one such profile per phone/);
 });

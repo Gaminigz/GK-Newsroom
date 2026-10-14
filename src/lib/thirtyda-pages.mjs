@@ -1,10 +1,16 @@
 /**
  * 30+DA small pages, served by src/lib/thirtyda-app.mjs in the app's look (src/thirtyda-app/pages.css):
  *
- *   GET /30da/privacy        the privacy policy (Google, Facebook and TikTok ask for its address)
- *   GET /30da/delete-data    how to have your data deleted (Facebook asks for its address)
- *   GET /30da/terms          the terms of service (TikTok asks for its address): 30+ only, honest, no contact
- *                            details, respect, we may remove accounts that break the rules, contact
+ *   GET /30da/privacy        the privacy policy (Google, Facebook, TikTok and both stores ask for its address): who runs
+ *                            it, every item kept and why, who sees what, every outside service by name, how long, choices
+ *   GET /30da/delete-data    how to have your data deleted (Facebook and Google Play ask for its address): in the app,
+ *                            step by step, or by email; what goes, what stays and how long (src/lib/thirtyda-delete.mjs)
+ *   GET /30da/child-safety   the child-safety standards (Google Play's declaration for a Dating app links here)
+ *   GET /30da/support        Help & contact (the App Store "Support URL"); GET /30da/help is the same page
+ *   GET /30da/terms          the terms of service (TikTok asks for its address; the app's community rules screen
+ *                            links here): 30+ only, honest, respect, what is never allowed (zero tolerance), no contact
+ *                            details, report + block (checked within 24 hours), moderators may read chats, contact
+ *   ?from=rules on /privacy and /terms: opened from the app's rules screen, so "Back to 30+DA" goes to #/rules
  *   the admin's "Try sign-in" result (the end of GET /30da/api/auth/<provider>/callback for a test)
  *   GET /30da/back           where GKVerify's big "⬅️ Back to 30+DA" Telegram button lands (backPage): opens the app
  *                            on an iPhone / Android phone, else the web app
@@ -13,7 +19,8 @@
  *                            soon, Windows = the web app), the headline, the reminder, how it works in words, support &
  *                            contact, hashtags, SEO + JSON-LD; its own look in pages.css under .page-home (HOME_SLOTS)
  *
- * Short and sweet (owner 2026-10-13): a few plain one-line points, in the app's 5 languages, with the same small
+ * Short and sweet (owner 2026-10-13): plain one-line points (the privacy policy under a few headings, as the stores
+ * ask for the whole of it), in the app's 5 languages, with the same small
  * flag row as the app's Me page at the top. The language: ?lang=en|km|zh|ko|ja, else the browser's
  * Accept-Language, else English (pickLang). The flags are plain links (no script: the page CSP allows none):
  * ?lang=… on the two public pages. The try page's address is single use (opening it again would start the
@@ -23,13 +30,14 @@
  * escaped. Pure: no database, no request.
  */
 import { LANGS, LANG_NATIVE, LANG_FLAG } from "../thirtyda-app/shared/rules.js";
+import { TERMS_VERSION } from "../thirtyda-app/shared/terms.js";
 import { APP_SCHEME, APP_PACKAGE } from "./thirtyda-signin.mjs";
 
 export const CONTACT_EMAIL = "gk.smart@ggmt.sg";
 /** Who runs 30+DA (owner 2026-10-14): on every public page, next to the email. */
 export const OPERATOR = "GGMT PTE. LTD.";
 /** The day the privacy policy last changed (YYYY-MM-DD): the one place to change it. Each language writes it its own way (policyDate). */
-export const POLICY_DATE = "2026-10-13";
+export const POLICY_DATE = "2026-10-14";
 /** The subject a deletion email asks for (English in every language: the team reads it; the mail link fills it in). */
 export const DELETE_SUBJECT = "Delete my 30+DA account";
 const NAMES = { google: "Google", facebook: "Facebook", tiktok: "TikTok" };
@@ -75,38 +83,93 @@ export const PAGE_STRINGS = {
     language: "Language",
     questions: "Questions:",
     run_by: "Run by",
-    support_title: "Help & support",
+    support_title: "Help & contact",
     support_lede: "30+DA is a calm dating app for people aged 30 and over.",
+    support_who_k: "Who we are:",
+    support_who: "{operator} runs 30+DA.",
     support_mail_k: "Email us:",
     support_mail: "write in any of the 5 languages.",
+    support_tg_k: "Telegram (optional):",
+    support_tg: "you can also message us at {bot}. You never need Telegram: email works for everything.",
     support_delete_k: "Delete your account:",
     support_safety_k: "Report a problem:",
-    support_safety: "email us. We check every report.",
+    support_safety: "tap Report in the app, or email us. We check every report within 24 hours.",
+    support_child_k: "Child safety:",
+    support_child: "our zero-tolerance standard and how to report.",
     priv_title: "Privacy policy",
     priv_date: "Updated {date}",
     priv_lede: "30+DA is a dating app for people aged 30 and over.",
+    priv_operator: "{operator} runs 30+DA and decides how your data is used. Privacy questions: {mail}.",
+    priv_data_h: "What we keep and why",
     priv_keep_k: "We keep:",
-    priv_keep: "your profile, photos, phone number, rough area and messages.",
-    priv_social_k: "From Google, Facebook or TikTok:",
-    priv_social: "we keep only your account number and email.",
+    priv_keep: "your profile, photos, phone number, approximate location and messages.",
     priv_why_k: "Why:",
     priv_why: "to sign you in, show you people nearby and keep everyone safe.",
-    priv_who_k: "Who sees it:",
-    priv_who: "other members see your app name, photos and area. Your real name only once you both open the chat.",
+    priv_profile_k: "Profile:",
+    priv_profile: "app name, gender, job and up to 4 photos, to show you to others.",
+    priv_real_k: "Real name:",
+    priv_real: "shown only when you both open the chat (Level 3).",
+    priv_birth_k: "Birth year:",
+    priv_birth: "to check you are 30 or over. Others never see it.",
+    priv_phone_k: "Phone number:",
+    priv_phone: "to verify you and sign you in. Others never see it.",
+    priv_social_k: "From Google, Facebook or TikTok:",
+    priv_social: "we keep only your account number and email.",
+    priv_loc_k: "Location:",
+    priv_loc: "rounded to about 1 km and moved a little at random, to show distances. Others see only a distance and an area name.",
+    priv_lines_k: "Lines and chat:",
+    priv_lines: "what you write, with its translations, to pass it on.",
+    priv_safety_k: "Reports and blocks:",
+    priv_safety: "who you report or block and why, to keep everyone safe.",
+    priv_support_k: "Support:",
+    priv_support: "what you write to us by email or on Telegram.",
+    priv_pin_k: "PIN:",
+    priv_pin: "only a scrambled copy. Nobody can read your PIN, not even us.",
+    priv_see_h: "Who sees what",
+    priv_guests_k: "Guests:",
+    priv_guests: "people without a profile see your app name, gender, job, hearts, a distance band (like ≤ 2 km) and photo 1.",
+    priv_who_k: "Members:",
+    priv_who: "also see your area and language. Photo 2 at Level 2; photos 3–4 and your real name at Level 3.",
     priv_team_k: "Our team:",
-    priv_team: "only to check reports and keep the app safe.",
-    priv_codes_k: "Telegram or WhatsApp:",
-    priv_codes: "your number, only to send your code.",
+    priv_team: "our moderators check every new photo before others see it. They may read conversations, only to check reports and keep everyone safe.",
+    priv_proc_h: "Services that help us",
+    proc_railway: "runs our server.",
+    proc_atlas: "stores the data and photos.",
+    proc_osm: "turns a rough point into an area name. It never gets your name.",
+    proc_translate_k: "Our own translation server:",
+    proc_translate: "translates lines and chat. No outside AI company sees them.",
+    proc_fonts: "the app’s letters. Google sees your internet address.",
+    priv_codes_k: "Telegram or WhatsApp (Meta):",
+    priv_codes: "your number, only to send or check your code.",
+    proc_signin: "sign you in, only if you choose them.",
     priv_never: "We never sell your data. No ads, no tracking.",
+    priv_long_h: "How long we keep it",
     priv_long_k: "How long:",
-    priv_long: "until you delete your account.",
+    priv_long: "until you delete your account. Never verified: deleted after 48 hours.",
     priv_how_delete: "How to delete",
+    priv_device_k: "Phone ID:",
+    priv_device: "if you make a profile without verifying, we keep a scrambled copy of your phone’s ID for 30 days: one such profile per phone.",
     kept_k: "What stays:",
-    kept: "a bare note of any report and of the delete (no names or words), for safety, and your chat with our Telegram support bot.",
+    kept: "a bare note of any report and of the delete (member numbers, reason and time; no names, words or photos), for safety, and your chat with our Telegram support bot, no longer linked to your profile.",
+    kept_long_k: "For how long:",
+    kept_long: "these notes and the support chat have no set end date yet. If you made a profile without verifying, the scrambled phone ID also stays, for 30 days.",
+    priv_choice_h: "Your choices",
+    priv_loc_off_k: "Turn off location:",
+    priv_loc_off: "in your phone’s settings, for 30+DA. We then stop getting it.",
+    priv_edit_k: "Change your profile:",
+    priv_edit: "your app name, job, real name and photos, on My profile.",
+    priv_withdraw_k: "Withdraw consent:",
+    priv_withdraw: "delete your account at any time (My profile → Delete my account), or email us.",
     del_title: "Delete your data",
-    del_lede: "Two ways. Both delete your account and everything in it.",
+    del_lede: "Two ways. Both delete your account, your photos and your messages.",
+    del_for: "For the 30+DA app by {operator}.",
     del_app_k: "In the app:",
     del_app: "My profile → Delete my account. It is instant.",
+    del_steps_k: "Step by step:",
+    del_steps: "open My profile, scroll to the bottom, tap Delete my account, then Continue. Type your PIN and tap Delete forever.",
+    del_goes_k: "What goes:",
+    del_goes: "your profile, photos, phone number, sign-ins, PIN, lines and chat messages, with their translations.",
+    del_others: "People you talked to see “This person left 30+DA”. What they wrote stays theirs.",
     del_mail_k: "Or by email:",
     del_step1: "Email {mail} with the subject {subject}.",
     del_step2: "Tell us your app name and how you sign in (phone, Google, Facebook or TikTok).",
@@ -138,17 +201,23 @@ export const PAGE_STRINGS = {
     try_others_tiktok: "Others can sign in once TikTok approves the app.",
     fix_not_live_tiktok: "Submit the app for review in TikTok (with Login Kit), then try again.",
     terms_title: "Terms of service",
-    terms_lede: "Using 30+DA means you agree to these few rules.",
+    terms_lede: "Using 30+DA means you agree to these rules. We have zero tolerance for breaking them.",
     terms_age_k: "Age:",
     terms_age: "only for people aged 30 and over.",
     terms_honest_k: "Be honest:",
     terms_honest: "your own photos, your real age and your real name.",
+    terms_respect_k: "Respect:",
+    terms_respect: "be kind. No hate, harassment, threats, spam or selling.",
+    terms_banned_k: "Never allowed:",
+    terms_banned: "nudity or sexual content, asking for sex, escorts, paid or sugar dating, money or gifts for dates, human trafficking, anything involving minors, and scams.",
     terms_contact_k: "No contact details:",
     terms_contact: "numbers, links and social accounts are stopped at every level.",
-    terms_respect_k: "Respect:",
-    terms_respect: "be kind. No insults, threats, spam or selling.",
-    terms_team_k: "Our team:",
-    terms_team: "may warn, block or remove accounts that break these rules.",
+    terms_reports_k: "Report and block:",
+    terms_reports: "from any profile, photo or message. We check every report within 24 hours.",
+    terms_mods_k: "Safety checks:",
+    terms_mods: "our moderators may read conversations to check reports and keep everyone safe.",
+    terms_zero_k: "Zero tolerance:",
+    terms_zero: "we remove anyone who breaks these rules.",
     terms_data_k: "Your data:",
     // The Android app's sign-in return page (appReturnPage).
     app_title: "Back to 30+DA",
@@ -194,43 +263,116 @@ export const PAGE_STRINGS = {
     home_frame_4: "This time, don’t walk past.",
     home_terms: "Terms",
     home_help: "Help",
+    // The child-safety page (childSafetyPage): the Google Play Child Safety Standards declaration links here.
+    cs_title: "Child safety",
+    cs_lede: "30+DA is only for adults aged 30 and over. {operator} has zero tolerance for child sexual abuse and exploitation (CSAE).",
+    cs_standard_k: "Our standard:",
+    cs_standard: "no child may use 30+DA. Anything that sexualises, grooms or exploits a child is banned.",
+    cs_age_k: "Age check:",
+    cs_age: "everyone gives a birth year, and our server refuses anyone under 30.",
+    cs_report_k: "Report in the app:",
+    cs_report: "on a profile, tap ⋯ → Report → Underage. On a photo, tap Report photo. In a conversation, tap a line or message → Report.",
+    cs_act_k: "What we do:",
+    cs_act: "we check every report within 24 hours, remove the content and block the account.",
+    cs_csam_k: "Child sexual abuse material (CSAM):",
+    cs_csam: "removed at once, the account banned for good, and reported to the authorities, such as the Cambodian National Police and NCMEC (USA).",
+    cs_law_k: "The law:",
+    cs_law: "we follow child-safety laws and help the police.",
+    cs_contact_k: "Child-safety contact:",
+    cs_contact: "Gamini Kassapa, {mail}. Write any time, in any of the 5 languages.",
+    cs_danger: "If a child is in danger right now, call the police.",
   },
   km: {
     language: "ភាសា",
     questions: "សំណួរ៖",
     run_by: "ដំណើរការដោយ",
-    support_title: "ជំនួយ និងការគាំទ្រ",
+    support_title: "ជំនួយ និងទំនាក់ទំនង",
     support_lede: "30+DA គឺជាកម្មវិធីស្វែងរកដៃគូដ៏ស្ងប់ស្ងាត់ សម្រាប់អ្នកដែលមានអាយុ 30 ឆ្នាំឡើងទៅ។",
+    support_who_k: "យើងជានរណា៖",
+    support_who: "{operator} ជាអ្នកដំណើរការ 30+DA។",
     support_mail_k: "អ៊ីមែលមកយើង៖",
     support_mail: "សរសេរជាភាសាណាមួយក្នុងចំណោម 5 ភាសា។",
+    support_tg_k: "Telegram (មិនបង្ខំ)៖",
+    support_tg: "អ្នកក៏អាចផ្ញើសារមកយើងតាម {bot} បានដែរ។ អ្នកមិនចាំបាច់មាន Telegram ទេ៖ អ៊ីមែលប្រើបានសម្រាប់គ្រប់យ៉ាង។",
     support_delete_k: "លុបគណនីរបស់អ្នក៖",
     support_safety_k: "រាយការណ៍បញ្ហា៖",
-    support_safety: "អ៊ីមែលមកយើង។ យើងពិនិត្យរាល់របាយការណ៍។",
+    support_safety: "ចុច រាយការណ៍ ក្នុងកម្មវិធី ឬអ៊ីមែលមកយើង។ យើងពិនិត្យរាល់របាយការណ៍ក្នុងរយៈពេល 24 ម៉ោង។",
+    support_child_k: "សុវត្ថិភាពកុមារ៖",
+    support_child: "គោលការណ៍មិនអត់ឱនរបស់យើង និងរបៀបរាយការណ៍។",
     priv_title: "គោលការណ៍ឯកជនភាព",
     priv_date: "កែថ្មី {date}",
     priv_lede: "30+DA ជាកម្មវិធីណាត់ជួប សម្រាប់អ្នកដែលមានអាយុពី 30 ឆ្នាំឡើងទៅ។",
+    priv_operator: "{operator} ជាអ្នកដំណើរការ 30+DA ហើយសម្រេចពីរបៀបប្រើទិន្នន័យរបស់អ្នក។ សំណួរអំពីឯកជនភាព៖ {mail}។",
+    priv_data_h: "អ្វីដែលយើងរក្សាទុក និងហេតុអ្វី",
     priv_keep_k: "យើងរក្សាទុក៖",
-    priv_keep: "ប្រវត្តិរូប រូបថត លេខទូរស័ព្ទ តំបន់ប្រហាក់ប្រហែល និងសាររបស់អ្នក។",
-    priv_social_k: "ពី Google, Facebook ឬ TikTok៖",
-    priv_social: "យើងរក្សាទុកតែលេខគណនី និងអ៊ីមែលរបស់អ្នកប៉ុណ្ណោះ។",
+    priv_keep: "ប្រវត្តិរូប រូបថត លេខទូរស័ព្ទ ទីតាំងប្រហាក់ប្រហែល និងសាររបស់អ្នក។",
     priv_why_k: "ហេតុអ្វី៖",
     priv_why: "ដើម្បីឲ្យអ្នកចូលបាន បង្ហាញមនុស្សនៅជិតអ្នក និងរក្សាសុវត្ថិភាពគ្រប់គ្នា។",
-    priv_who_k: "អ្នកណាឃើញ៖",
-    priv_who: "សមាជិកផ្សេងទៀតឃើញឈ្មោះក្នុងកម្មវិធី រូបថត និងតំបន់របស់អ្នក។ ឈ្មោះពិត លុះត្រាតែអ្នកទាំងពីរបើកការជជែក។",
+    priv_profile_k: "ប្រវត្តិរូប៖",
+    priv_profile: "ឈ្មោះក្នុងកម្មវិធី ភេទ មុខរបរ និងរូបថតរហូតដល់ 4 សន្លឹក ដើម្បីបង្ហាញអ្នកដល់អ្នកដទៃ។",
+    priv_real_k: "ឈ្មោះពិត៖",
+    priv_real: "បង្ហាញតែពេលអ្នកទាំងពីរបើកការជជែក (កម្រិត 3)។",
+    priv_birth_k: "ឆ្នាំកំណើត៖",
+    priv_birth: "ដើម្បីពិនិត្យថាអ្នកមានអាយុពី 30 ឆ្នាំឡើងទៅ។ អ្នកដទៃមិនដែលឃើញទេ។",
+    priv_phone_k: "លេខទូរស័ព្ទ៖",
+    priv_phone: "ដើម្បីផ្ទៀងផ្ទាត់ និងឲ្យអ្នកចូលបាន។ អ្នកដទៃមិនដែលឃើញទេ។",
+    priv_social_k: "ពី Google, Facebook ឬ TikTok៖",
+    priv_social: "យើងរក្សាទុកតែលេខគណនី និងអ៊ីមែលរបស់អ្នកប៉ុណ្ណោះ។",
+    priv_loc_k: "ទីតាំង៖",
+    priv_loc: "បង្គត់ប្រហែល 1 គីឡូម៉ែត្រ ហើយផ្លាស់ទីបន្តិចដោយចៃដន្យ ដើម្បីបង្ហាញចម្ងាយ។ អ្នកដទៃឃើញតែចម្ងាយ និងឈ្មោះតំបន់ប៉ុណ្ណោះ។",
+    priv_lines_k: "ឃ្លា និងការជជែក៖",
+    priv_lines: "អ្វីដែលអ្នកសរសេរ និងការបកប្រែរបស់វា ដើម្បីផ្ញើទៅអ្នកម្ខាងទៀត។",
+    priv_safety_k: "ការរាយការណ៍ និងការទប់ស្កាត់៖",
+    priv_safety: "អ្នកណាដែលអ្នករាយការណ៍ ឬទប់ស្កាត់ និងមូលហេតុ ដើម្បីរក្សាសុវត្ថិភាពគ្រប់គ្នា។",
+    priv_support_k: "ជំនួយ៖",
+    priv_support: "អ្វីដែលអ្នកសរសេរមកយើងតាមអ៊ីមែល ឬតាម Telegram។",
+    priv_pin_k: "លេខ PIN៖",
+    priv_pin: "មានតែច្បាប់ចម្លងជាកូដដែលអានមិនបាន។ គ្មាននរណាអាចអានលេខ PIN របស់អ្នកបានទេ សូម្បីតែយើង។",
+    priv_see_h: "អ្នកណាឃើញអ្វី",
+    priv_guests_k: "ភ្ញៀវ៖",
+    priv_guests: "អ្នកដែលមិនទាន់មានប្រវត្តិរូប ឃើញឈ្មោះក្នុងកម្មវិធី ភេទ មុខរបរ បេះដូង ចម្ងាយប្រហាក់ប្រហែល (ដូចជា ≤ 2 គីឡូម៉ែត្រ) និងរូបថតទី 1 របស់អ្នក។",
+    priv_who_k: "សមាជិក៖",
+    priv_who: "ឃើញតំបន់ និងភាសារបស់អ្នកផងដែរ។ រូបថតទី 2 នៅកម្រិត 2។ រូបថតទី 3–4 និងឈ្មោះពិត នៅកម្រិត 3។",
     priv_team_k: "ក្រុមការងាររបស់យើង៖",
-    priv_team: "មើលតែដើម្បីពិនិត្យការរាយការណ៍ និងរក្សាសុវត្ថិភាព។",
-    priv_codes_k: "Telegram ឬ WhatsApp៖",
-    priv_codes: "ប្រើលេខរបស់អ្នក តែដើម្បីផ្ញើលេខកូដប៉ុណ្ណោះ។",
+    priv_team: "អ្នកសម្របសម្រួលរបស់យើងពិនិត្យរូបថតថ្មីនីមួយៗ មុនពេលអ្នកដទៃឃើញ។ ពួកគេអាចអានការសន្ទនា តែដើម្បីពិនិត្យការរាយការណ៍ និងរក្សាសុវត្ថិភាពគ្រប់គ្នាប៉ុណ្ណោះ។",
+    priv_proc_h: "សេវាដែលជួយយើង",
+    proc_railway: "ដំណើរការម៉ាស៊ីនមេរបស់យើង។",
+    proc_atlas: "រក្សាទុកទិន្នន័យ និងរូបថត។",
+    proc_osm: "ប្ដូរចំណុចប្រហាក់ប្រហែលទៅជាឈ្មោះតំបន់។ វាមិនដែលទទួលបានឈ្មោះរបស់អ្នកទេ។",
+    proc_translate_k: "ម៉ាស៊ីនបកប្រែផ្ទាល់ខ្លួនរបស់យើង៖",
+    proc_translate: "បកប្រែឃ្លា និងការជជែក។ គ្មានក្រុមហ៊ុន AI ខាងក្រៅណាមួយឃើញទេ។",
+    proc_fonts: "អក្សររបស់កម្មវិធី។ Google ឃើញអាសយដ្ឋានអ៊ីនធឺណិតរបស់អ្នក។",
+    priv_codes_k: "Telegram ឬ WhatsApp (Meta)៖",
+    priv_codes: "ប្រើលេខរបស់អ្នក តែដើម្បីផ្ញើ ឬពិនិត្យលេខកូដប៉ុណ្ណោះ។",
+    proc_signin: "ឲ្យអ្នកចូល លុះត្រាតែអ្នកជ្រើសរើសវា។",
     priv_never: "យើងមិនលក់ទិន្នន័យរបស់អ្នកទេ។ គ្មានពាណិជ្ជកម្ម គ្មានការតាមដាន។",
+    priv_long_h: "យើងរក្សាទុករយៈពេលប៉ុន្មាន",
     priv_long_k: "រយៈពេល៖",
-    priv_long: "រហូតដល់អ្នកលុបគណនី។",
+    priv_long: "រហូតដល់អ្នកលុបគណនី។ ប្រវត្តិរូបដែលមិនដែលផ្ទៀងផ្ទាត់ ត្រូវលុបក្រោយ 48 ម៉ោង។",
     priv_how_delete: "របៀបលុប",
+    priv_device_k: "លេខសម្គាល់ទូរស័ព្ទ៖",
+    priv_device: "បើអ្នកបង្កើតប្រវត្តិរូបដោយមិនផ្ទៀងផ្ទាត់ យើងរក្សាទុកលេខសម្គាល់ទូរស័ព្ទរបស់អ្នកជាទម្រង់កូដដែលអានមិនបាន រយៈពេល 30 ថ្ងៃ ដើម្បីឲ្យទូរស័ព្ទមួយបង្កើតបានតែមួយ។",
     kept_k: "អ្វីដែលនៅសល់៖",
-    kept: "មានតែកំណត់ត្រាខ្លីនៃការរាយការណ៍ និងនៃការលុប (គ្មានឈ្មោះ ឬពាក្យ) ដើម្បីសុវត្ថិភាព និងការជជែករបស់អ្នកជាមួយបូតជំនួយ Telegram របស់យើង។",
+    kept: "មានតែកំណត់ត្រាខ្លីនៃការរាយការណ៍ និងនៃការលុប (លេខសមាជិក មូលហេតុ និងពេលវេលា គ្មានឈ្មោះ ពាក្យ ឬរូបថត) ដើម្បីសុវត្ថិភាព និងការជជែករបស់អ្នកជាមួយបូតជំនួយ Telegram របស់យើង ដែលលែងភ្ជាប់នឹងប្រវត្តិរូបរបស់អ្នក។",
+    kept_long_k: "រក្សាទុករយៈពេល៖",
+    kept_long: "កំណត់ត្រាទាំងនេះ និងការជជែកជំនួយ មិនទាន់មានថ្ងៃផុតកំណត់នៅឡើយ។ បើអ្នកបានបង្កើតប្រវត្តិរូបដោយមិនផ្ទៀងផ្ទាត់ លេខសម្គាល់ទូរស័ព្ទជាកូដក៏នៅសល់ដែរ រយៈពេល 30 ថ្ងៃ។",
+    priv_choice_h: "ជម្រើសរបស់អ្នក",
+    priv_loc_off_k: "បិទទីតាំង៖",
+    priv_loc_off: "នៅក្នុងការកំណត់ទូរស័ព្ទរបស់អ្នក សម្រាប់ 30+DA។ បន្ទាប់មកយើងឈប់ទទួលបានវា។",
+    priv_edit_k: "កែប្រវត្តិរូប៖",
+    priv_edit: "ឈ្មោះក្នុងកម្មវិធី មុខរបរ ឈ្មោះពិត និងរូបថត នៅ ប្រវត្តិរូបរបស់ខ្ញុំ។",
+    priv_withdraw_k: "ដកការយល់ព្រមវិញ៖",
+    priv_withdraw: "លុបគណនីរបស់អ្នកបានគ្រប់ពេល (ប្រវត្តិរូបរបស់ខ្ញុំ → លុបគណនីរបស់ខ្ញុំ) ឬអ៊ីមែលមកយើង។",
     del_title: "លុបទិន្នន័យរបស់អ្នក",
-    del_lede: "មានពីរវិធី។ វិធីទាំងពីរលុបគណនីរបស់អ្នក និងអ្វីៗទាំងអស់នៅក្នុងនោះ។",
+    del_lede: "មានពីរវិធី។ វិធីទាំងពីរលុបគណនី រូបថត និងសាររបស់អ្នក។",
+    del_for: "សម្រាប់កម្មវិធី 30+DA ដោយ {operator}។",
     del_app_k: "ក្នុងកម្មវិធី៖",
     del_app: "ប្រវត្តិរូបរបស់ខ្ញុំ → លុបគណនីរបស់ខ្ញុំ។ លុបភ្លាមៗ។",
+    del_steps_k: "ម្ដងមួយជំហាន៖",
+    del_steps: "បើក ប្រវត្តិរូបរបស់ខ្ញុំ រំកិលទៅខាងក្រោមបំផុត ចុច លុបគណនីរបស់ខ្ញុំ រួចចុច បន្ត។ វាយលេខ PIN ហើយចុច លុបជារៀងរហូត។",
+    del_goes_k: "អ្វីដែលត្រូវលុប៖",
+    del_goes: "ប្រវត្តិរូប រូបថត លេខទូរស័ព្ទ ការចូល លេខ PIN ឃ្លា និងសារជជែក រួមទាំងការបកប្រែ។",
+    del_others: "អ្នកដែលអ្នកធ្លាប់សន្ទនាជាមួយ នឹងឃើញថា «មនុស្សនេះបានចាកចេញពី 30+DA»។ អ្វីដែលពួកគេបានសរសេរ នៅតែជារបស់ពួកគេ។",
     del_mail_k: "ឬតាមអ៊ីមែល៖",
     del_step1: "ផ្ញើអ៊ីមែលទៅ {mail} ដោយដាក់ចំណងជើង {subject}។",
     del_step2: "ប្រាប់ឈ្មោះក្នុងកម្មវិធី និងរបៀបដែលអ្នកចូល (ទូរស័ព្ទ Google, Facebook ឬ TikTok)។",
@@ -262,17 +404,23 @@ export const PAGE_STRINGS = {
     try_others_tiktok: "អ្នកដទៃអាចចូលបាន ពេល TikTok អនុម័តកម្មវិធី។",
     fix_not_live_tiktok: "សូមដាក់កម្មវិធីឲ្យ TikTok ពិនិត្យ (មាន Login Kit) រួចសាកម្ដងទៀត។",
     terms_title: "លក្ខខណ្ឌប្រើប្រាស់",
-    terms_lede: "ការប្រើ 30+DA មានន័យថា អ្នកយល់ព្រមនឹងច្បាប់ខ្លីៗទាំងនេះ។",
+    terms_lede: "ការប្រើ 30+DA មានន័យថា អ្នកយល់ព្រមនឹងច្បាប់ទាំងនេះ។ យើងមិនអត់ឱនចំពោះការបំពានច្បាប់ឡើយ។",
     terms_age_k: "អាយុ៖",
     terms_age: "សម្រាប់តែអ្នកដែលមានអាយុពី 30 ឆ្នាំឡើងទៅ។",
     terms_honest_k: "ស្មោះត្រង់៖",
     terms_honest: "រូបថតរបស់អ្នកផ្ទាល់ អាយុពិត និងឈ្មោះពិត។",
+    terms_respect_k: "ការគោរព៖",
+    terms_respect: "សូមមានចិត្តល្អ។ គ្មានការស្អប់ខ្ពើម ការយាយី ការគំរាមកំហែង សារឥតបានការ ឬការលក់ដូរ។",
+    terms_banned_k: "ហាមដាច់ខាត៖",
+    terms_banned: "រូបអាក្រាត ឬខ្លឹមសារផ្លូវភេទ ការសុំរួមភេទ សេវាកំដរ ការណាត់ជួបដើម្បីលុយ ការសុំលុយ ឬអំណោយសម្រាប់ការណាត់ជួប ការជួញដូរមនុស្ស អ្វីៗដែលពាក់ព័ន្ធនឹងអនីតិជន និងការបោកប្រាស់។",
     terms_contact_k: "គ្មានព័ត៌មានទំនាក់ទំនង៖",
     terms_contact: "លេខទូរស័ព្ទ តំណភ្ជាប់ និងគណនីបណ្ដាញសង្គម ត្រូវបានរារាំងគ្រប់កម្រិត។",
-    terms_respect_k: "ការគោរព៖",
-    terms_respect: "សូមមានចិត្តល្អ។ គ្មានការជេរប្រមាថ ការគំរាមកំហែង សារឥតបានការ ឬការលក់ដូរ។",
-    terms_team_k: "ក្រុមការងាររបស់យើង៖",
-    terms_team: "អាចព្រមាន បិទ ឬលុបគណនីដែលបំពានច្បាប់ទាំងនេះ។",
+    terms_reports_k: "រាយការណ៍ និងទប់ស្កាត់៖",
+    terms_reports: "ពីប្រវត្តិរូប រូបថត ឬសារណាមួយ។ យើងពិនិត្យរាល់របាយការណ៍ក្នុងរយៈពេល 24 ម៉ោង។",
+    terms_mods_k: "ការត្រួតពិនិត្យសុវត្ថិភាព៖",
+    terms_mods: "អ្នកសម្របសម្រួលរបស់យើងអាចអានការសន្ទនា ដើម្បីពិនិត្យរបាយការណ៍ និងរក្សាសុវត្ថិភាពអ្នករាល់គ្នា។",
+    terms_zero_k: "មិនអត់ឱន៖",
+    terms_zero: "យើងដកចេញអ្នកណាដែលបំពានច្បាប់ទាំងនេះ។",
     terms_data_k: "ទិន្នន័យរបស់អ្នក៖",
     // The Android app's sign-in return page (appReturnPage).
     app_title: "ត្រឡប់ទៅ 30+DA",
@@ -313,43 +461,116 @@ export const PAGE_STRINGS = {
     home_frame_4: "លើកនេះ កុំដើរហួសគ្នាទៀត។",
     home_terms: "លក្ខខណ្ឌប្រើប្រាស់",
     home_help: "ជំនួយ",
+    // The child-safety page (childSafetyPage).
+    cs_title: "សុវត្ថិភាពកុមារ",
+    cs_lede: "30+DA សម្រាប់តែមនុស្សពេញវ័យដែលមានអាយុពី 30 ឆ្នាំឡើងទៅ។ {operator} មិនអត់ឱនដាច់ខាតចំពោះការរំលោភបំពានផ្លូវភេទ និងការកេងប្រវ័ញ្ចលើកុមារ (CSAE)។",
+    cs_standard_k: "គោលការណ៍របស់យើង៖",
+    cs_standard: "កុមារមិនអាចប្រើ 30+DA បានឡើយ។ អ្វីៗដែលចាត់ទុកកុមារជាវត្ថុផ្លូវភេទ ល្បួងកុមារ ឬកេងប្រវ័ញ្ចកុមារ ត្រូវហាមឃាត់ដាច់ខាត។",
+    cs_age_k: "ការពិនិត្យអាយុ៖",
+    cs_age: "អ្នករាល់គ្នាផ្ដល់ឆ្នាំកំណើត ហើយម៉ាស៊ីនមេរបស់យើងបដិសេធអ្នកដែលមានអាយុក្រោម 30 ឆ្នាំ។",
+    cs_report_k: "រាយការណ៍ក្នុងកម្មវិធី៖",
+    cs_report: "នៅលើប្រវត្តិរូប ចុច ⋯ → រាយការណ៍ → អាយុមិនទាន់គ្រប់។ នៅលើរូបថត ចុច រាយការណ៍រូបថត។ ក្នុងការសន្ទនា ចុចលើឃ្លា ឬសារ → រាយការណ៍។",
+    cs_act_k: "អ្វីដែលយើងធ្វើ៖",
+    cs_act: "យើងពិនិត្យរាល់របាយការណ៍ក្នុងរយៈពេល 24 ម៉ោង លុបខ្លឹមសារនោះ និងបិទគណនីនោះ។",
+    cs_csam_k: "សម្ភារៈរំលោភបំពានផ្លូវភេទលើកុមារ (CSAM)៖",
+    cs_csam: "ត្រូវលុបភ្លាមៗ គណនីត្រូវហាមឃាត់ជារៀងរហូត ហើយត្រូវរាយការណ៍ទៅអាជ្ញាធរ ដូចជាអគ្គស្នងការដ្ឋាននគរបាលជាតិកម្ពុជា និង NCMEC (សហរដ្ឋអាមេរិក)។",
+    cs_law_k: "ច្បាប់៖",
+    cs_law: "យើងគោរពច្បាប់ការពារកុមារ និងជួយនគរបាល។",
+    cs_contact_k: "ទំនាក់ទំនងសុវត្ថិភាពកុមារ៖",
+    cs_contact: "Gamini Kassapa, {mail}។ សរសេរមកបានគ្រប់ពេល ជាភាសាណាមួយក្នុងចំណោម 5 ភាសា។",
+    cs_danger: "បើកុមារម្នាក់កំពុងមានគ្រោះថ្នាក់ឥឡូវនេះ សូមទូរស័ព្ទទៅនគរបាល។",
   },
   zh: {
     language: "语言",
     questions: "联系我们：",
     run_by: "运营方：",
-    support_title: "帮助与支持",
+    support_title: "帮助与联系",
     support_lede: "30+DA 是一款为 30 岁及以上人士打造的安心交友应用。",
+    support_who_k: "我们是谁：",
+    support_who: "30+DA 由 {operator} 运营。",
     support_mail_k: "发邮件给我们：",
     support_mail: "5 种语言都可以。",
+    support_tg_k: "Telegram（可选）：",
+    support_tg: "你也可以通过 {bot} 给我们发消息。不用 Telegram 也完全可以：邮件就能解决所有问题。",
     support_delete_k: "删除账户：",
     support_safety_k: "举报问题：",
-    support_safety: "发邮件给我们。每一份举报我们都会查看。",
+    support_safety: "在应用里点“举报”，或发邮件给我们。每一份举报我们都会在 24 小时内查看。",
+    support_child_k: "儿童安全：",
+    support_child: "我们的零容忍标准以及如何举报。",
     priv_title: "隐私政策",
     priv_date: "更新于 {date}",
     priv_lede: "30+DA 是为 30 岁及以上人士打造的交友应用。",
+    priv_operator: "30+DA 由 {operator} 运营，并由其决定如何使用你的数据。隐私问题请联系：{mail}。",
+    priv_data_h: "我们保存什么，为什么",
     priv_keep_k: "我们保存：",
     priv_keep: "你的资料、照片、手机号、大致位置和消息。",
-    priv_social_k: "来自 Google、Facebook 或 TikTok：",
-    priv_social: "我们只保存你的账号编号和邮箱。",
     priv_why_k: "用途：",
     priv_why: "让你登录、为你显示附近的人，并保障大家的安全。",
-    priv_who_k: "谁能看到：",
-    priv_who: "其他会员能看到你的昵称、照片和所在区域。真实姓名要等你们都打开聊天后才显示。",
+    priv_profile_k: "资料：",
+    priv_profile: "应用名、性别、职业和最多 4 张照片，用来向别人展示你。",
+    priv_real_k: "真实姓名：",
+    priv_real: "只有你们都打开聊天后（等级 3）才显示。",
+    priv_birth_k: "出生年份：",
+    priv_birth: "用来确认你满 30 岁。别人永远看不到。",
+    priv_phone_k: "手机号：",
+    priv_phone: "用来验证你并让你登录。别人永远看不到。",
+    priv_social_k: "来自 Google、Facebook 或 TikTok：",
+    priv_social: "我们只保存你的账号编号和邮箱。",
+    priv_loc_k: "位置：",
+    priv_loc: "精确到约 1 公里，并随机偏移一点，用来显示距离。别人只能看到距离和区域名称。",
+    priv_lines_k: "简短的话和聊天：",
+    priv_lines: "你写的内容及其翻译，用来传给对方。",
+    priv_safety_k: "举报和屏蔽：",
+    priv_safety: "你举报或屏蔽了谁、原因是什么，用来保障大家的安全。",
+    priv_support_k: "客服：",
+    priv_support: "你通过邮件或 Telegram 发给我们的内容。",
+    priv_pin_k: "PIN 码：",
+    priv_pin: "只保存不可还原的加密副本。谁都看不到你的 PIN，包括我们。",
+    priv_see_h: "谁能看到什么",
+    priv_guests_k: "访客：",
+    priv_guests: "还没有资料的人能看到你的应用名、性别、职业、爱心数、距离范围（如 ≤ 2 公里）和第 1 张照片。",
+    priv_who_k: "会员：",
+    priv_who: "还能看到你的区域和语言。等级 2 可看第 2 张照片；等级 3 可看第 3–4 张照片和真实姓名。",
     priv_team_k: "我们的团队：",
-    priv_team: "只为处理举报、保障安全而查看。",
-    priv_codes_k: "Telegram 或 WhatsApp：",
-    priv_codes: "只用你的号码发送验证码。",
+    priv_team: "每张新照片都会先由我们的管理员审核，别人才能看到。管理员可能会查看对话，只为处理举报、保障大家的安全。",
+    priv_proc_h: "帮助我们运行的服务",
+    proc_railway: "运行我们的服务器。",
+    proc_atlas: "存储数据和照片。",
+    proc_osm: "把大致位置转换成区域名称。它永远拿不到你的名字。",
+    proc_translate_k: "我们自己的翻译服务器：",
+    proc_translate: "翻译简短的话和聊天。没有任何外部 AI 公司能看到。",
+    proc_fonts: "提供应用的字体。Google 能看到你的网络地址。",
+    priv_codes_k: "Telegram 或 WhatsApp（Meta）：",
+    priv_codes: "只用你的号码发送或核对验证码。",
+    proc_signin: "只在你选择用它们登录时使用。",
     priv_never: "我们绝不出售你的数据。没有广告，没有追踪。",
+    priv_long_h: "保存多久",
     priv_long_k: "保存多久：",
-    priv_long: "直到你删除账号。",
+    priv_long: "直到你删除账号。从未验证的资料会在 48 小时后删除。",
     priv_how_delete: "如何删除",
+    priv_device_k: "手机识别码：",
+    priv_device: "如果你未验证就创建资料，我们会把你手机识别码的不可还原副本保存 30 天，这样每部手机只能创建一个。",
     kept_k: "保留的内容：",
-    kept: "为了安全，只保留举报和删除的简短记录（不含姓名或文字），以及你和我们 Telegram 客服机器人的对话。",
+    kept: "为了安全，只保留举报和删除的简短记录（会员编号、原因和时间，不含姓名、文字或照片），以及你和我们 Telegram 客服机器人的对话（不再与你的资料关联）。",
+    kept_long_k: "保留期限：",
+    kept_long: "这些记录和客服对话目前还没有设定截止日期。如果你未验证就创建过资料，不可还原的手机识别码也会保留 30 天。",
+    priv_choice_h: "你的选择",
+    priv_loc_off_k: "关闭位置：",
+    priv_loc_off: "在手机设置里为 30+DA 关闭。之后我们就不再获取。",
+    priv_edit_k: "修改资料：",
+    priv_edit: "在“我的资料”里修改应用名、职业、真实姓名和照片。",
+    priv_withdraw_k: "撤回同意：",
+    priv_withdraw: "随时删除你的账号（我的资料 → 删除我的账号），或发邮件给我们。",
     del_title: "删除你的数据",
-    del_lede: "两种方式，都会删除你的账号及其中的一切。",
+    del_lede: "两种方式，都会删除你的账号、照片和消息。",
+    del_for: "适用于 {operator} 的 30+DA 应用。",
     del_app_k: "在应用里：",
     del_app: "我的资料 → 删除我的账号。立即删除。",
+    del_steps_k: "具体步骤：",
+    del_steps: "打开“我的资料”，滑到最下面，点“删除我的账号”，再点“继续”。输入 PIN，然后点“永久删除”。",
+    del_goes_k: "会删除：",
+    del_goes: "你的资料、照片、手机号、登录方式、PIN、发出的话和聊天消息，以及它们的翻译。",
+    del_others: "和你聊过的人会看到“此人已离开 30+DA”。他们自己写的内容仍归他们。",
     del_mail_k: "或发邮件：",
     del_step1: "发邮件到 {mail}，标题写 {subject}。",
     del_step2: "告诉我们你的昵称和登录方式（手机、Google、Facebook 或 TikTok）。",
@@ -381,17 +602,23 @@ export const PAGE_STRINGS = {
     try_others_tiktok: "TikTok 审核通过应用后，其他人也能登录。",
     fix_not_live_tiktok: "请在 TikTok 添加 Login Kit 并提交应用审核，然后再试。",
     terms_title: "服务条款",
-    terms_lede: "使用 30+DA，即表示你同意以下几条规则。",
+    terms_lede: "使用 30+DA，即表示你同意以下规则。违反规则，零容忍。",
     terms_age_k: "年龄：",
     terms_age: "仅限 30 岁及以上人士。",
     terms_honest_k: "诚实：",
     terms_honest: "用你自己的照片、真实年龄和真实姓名。",
+    terms_respect_k: "尊重：",
+    terms_respect: "友善待人。禁止仇恨、骚扰、威胁、垃圾信息和推销。",
+    terms_banned_k: "严格禁止：",
+    terms_banned: "裸露或色情内容、约性、陪侍、有偿交友或包养、为约会索要金钱或礼物、人口贩卖、任何涉及未成年人的内容，以及诈骗。",
     terms_contact_k: "不留联系方式：",
     terms_contact: "号码、链接和社交账号在每个级别都会被拦截。",
-    terms_respect_k: "尊重：",
-    terms_respect: "友善待人。禁止辱骂、威胁、垃圾信息和推销。",
-    terms_team_k: "我们的团队：",
-    terms_team: "可对违反规则的账号发出警告、封禁或删除。",
+    terms_reports_k: "举报和屏蔽：",
+    terms_reports: "可在任何资料、照片或消息上操作。每条举报我们都会在 24 小时内处理。",
+    terms_mods_k: "安全检查：",
+    terms_mods: "为了处理举报、保障大家的安全，我们的管理员可能会查看对话内容。",
+    terms_zero_k: "零容忍：",
+    terms_zero: "违反这些规则的人，我们会将其移除。",
     terms_data_k: "你的数据：",
     // The Android app's sign-in return page (appReturnPage).
     app_title: "返回 30+DA",
@@ -432,43 +659,116 @@ export const PAGE_STRINGS = {
     home_frame_4: "这一次，|别再|擦肩而过。",
     home_terms: "使用条款",
     home_help: "帮助",
+    // The child-safety page (childSafetyPage).
+    cs_title: "儿童安全",
+    cs_lede: "30+DA 只面向 30 岁及以上的成年人。{operator} 对儿童性虐待和性剥削（CSAE）零容忍。",
+    cs_standard_k: "我们的标准：",
+    cs_standard: "儿童不得使用 30+DA。任何将儿童性化、诱骗或剥削儿童的内容和行为一律禁止。",
+    cs_age_k: "年龄核查：",
+    cs_age: "每个人都要填写出生年份，我们的服务器会拒绝未满 30 岁的人。",
+    cs_report_k: "在应用里举报：",
+    cs_report: "在资料页点 ⋯ → 举报 → 未成年。在照片上点“举报照片”。在对话里点一句话或一条消息 → 举报。",
+    cs_act_k: "我们会怎么做：",
+    cs_act: "每份举报都会在 24 小时内处理：删除内容并封禁账号。",
+    cs_csam_k: "儿童性虐待材料（CSAM）：",
+    cs_csam: "立即删除，永久封禁账号，并向有关部门举报，例如柬埔寨国家警察总署和美国 NCMEC。",
+    cs_law_k: "法律：",
+    cs_law: "我们遵守儿童保护法律，并配合警方。",
+    cs_contact_k: "儿童安全联系方式：",
+    cs_contact: "Gamini Kassapa，{mail}。随时可以写信，5 种语言都可以。",
+    cs_danger: "如果有儿童正身处危险，请立即报警。",
   },
   ko: {
     language: "언어",
     questions: "문의:",
     run_by: "운영:",
-    support_title: "도움말 및 지원",
+    support_title: "도움말 및 문의",
     support_lede: "30+DA는 30세 이상을 위한 차분한 데이트 앱입니다.",
+    support_who_k: "운영사:",
+    support_who: "{operator}에서 30+DA를 운영해요.",
     support_mail_k: "이메일 문의:",
     support_mail: "5개 언어 중 어느 언어로든 쓰셔도 됩니다.",
+    support_tg_k: "Telegram(선택):",
+    support_tg: "{bot}로 메시지를 보낼 수도 있어요. Telegram이 없어도 괜찮아요. 이메일로 모두 해결할 수 있어요.",
     support_delete_k: "계정 삭제:",
     support_safety_k: "문제 신고:",
-    support_safety: "이메일로 알려 주세요. 모든 신고를 확인합니다.",
+    support_safety: "앱에서 신고를 누르거나 이메일로 알려 주세요. 모든 신고는 24시간 안에 확인해요.",
+    support_child_k: "아동 안전:",
+    support_child: "무관용 기준과 신고 방법.",
     priv_title: "개인정보 처리방침",
     priv_date: "{date} 업데이트",
     priv_lede: "30+DA는 30세 이상을 위한 만남 앱이에요.",
+    priv_operator: "{operator}에서 30+DA를 운영하며, 내 데이터를 어떻게 쓸지 정해요. 개인정보 문의: {mail}",
+    priv_data_h: "보관하는 정보와 이유",
     priv_keep_k: "보관하는 정보:",
-    priv_keep: "프로필, 사진, 전화번호, 대략적인 지역, 메시지.",
-    priv_social_k: "Google·Facebook·TikTok에서:",
-    priv_social: "계정 번호와 이메일만 보관해요.",
+    priv_keep: "프로필, 사진, 전화번호, 대략적인 위치, 메시지.",
     priv_why_k: "이유:",
     priv_why: "로그인, 근처 사람 보여 주기, 모두의 안전을 위해서예요.",
-    priv_who_k: "누가 보나요:",
-    priv_who: "다른 회원은 앱 이름, 사진, 지역을 봐요. 실명은 두 분 모두 채팅을 열었을 때만 보여요.",
+    priv_profile_k: "프로필:",
+    priv_profile: "앱 이름, 성별, 직업, 사진 최대 4장. 다른 사람에게 나를 보여 주기 위해서예요.",
+    priv_real_k: "실명:",
+    priv_real: "두 분 모두 채팅을 열었을 때(레벨 3)만 보여요.",
+    priv_birth_k: "출생 연도:",
+    priv_birth: "30세 이상인지 확인하기 위해서예요. 다른 사람은 볼 수 없어요.",
+    priv_phone_k: "전화번호:",
+    priv_phone: "인증과 로그인을 위해서예요. 다른 사람은 볼 수 없어요.",
+    priv_social_k: "Google·Facebook·TikTok에서:",
+    priv_social: "계정 번호와 이메일만 보관해요.",
+    priv_loc_k: "위치:",
+    priv_loc: "약 1km 단위로 반올림하고 무작위로 조금 옮겨서, 거리를 보여 줄 때만 써요. 다른 사람은 거리와 지역 이름만 봐요.",
+    priv_lines_k: "한마디와 채팅:",
+    priv_lines: "내가 쓴 글과 그 번역. 상대에게 전하기 위해서예요.",
+    priv_safety_k: "신고와 차단:",
+    priv_safety: "누구를 왜 신고하거나 차단했는지. 모두의 안전을 위해서예요.",
+    priv_support_k: "고객 지원:",
+    priv_support: "이메일이나 Telegram으로 보낸 내용.",
+    priv_pin_k: "PIN:",
+    priv_pin: "알아볼 수 없게 바꾼 값만 보관해요. 우리를 포함해 누구도 PIN을 볼 수 없어요.",
+    priv_see_h: "누가 무엇을 보나요",
+    priv_guests_k: "게스트:",
+    priv_guests: "프로필이 없는 사람은 앱 이름, 성별, 직업, 하트 수, 거리 범위(예: ≤ 2km), 사진 1을 봐요.",
+    priv_who_k: "회원:",
+    priv_who: "지역과 언어도 봐요. 레벨 2에서 사진 2, 레벨 3에서 사진 3–4와 실명이 보여요.",
     priv_team_k: "운영팀:",
-    priv_team: "신고 확인과 안전을 위해서만 봐요.",
-    priv_codes_k: "Telegram·WhatsApp:",
-    priv_codes: "인증 코드를 보낼 때만 번호를 써요.",
+    priv_team: "새 사진은 운영자가 모두 확인한 뒤에 다른 사람에게 보여요. 운영자가 대화를 볼 수 있어요. 신고 확인과 모두의 안전을 위해서만요.",
+    priv_proc_h: "함께 쓰는 서비스",
+    proc_railway: "서버를 운영해요.",
+    proc_atlas: "데이터와 사진을 저장해요.",
+    proc_osm: "대략적인 위치를 지역 이름으로 바꿔요. 이름은 절대 받지 않아요.",
+    proc_translate_k: "자체 번역 서버:",
+    proc_translate: "한마디와 채팅을 번역해요. 외부 AI 회사는 보지 못해요.",
+    proc_fonts: "앱의 글꼴. Google은 내 인터넷 주소를 볼 수 있어요.",
+    priv_codes_k: "Telegram·WhatsApp(Meta):",
+    priv_codes: "인증 코드를 보내거나 확인할 때만 번호를 써요.",
+    proc_signin: "직접 선택했을 때만 로그인에 써요.",
     priv_never: "데이터를 절대 팔지 않아요. 광고도, 추적도 없어요.",
+    priv_long_h: "보관 기간",
     priv_long_k: "보관 기간:",
-    priv_long: "계정을 삭제할 때까지.",
+    priv_long: "계정을 삭제할 때까지. 인증하지 않은 프로필은 48시간 후에 삭제돼요.",
     priv_how_delete: "삭제 방법",
+    priv_device_k: "휴대폰 ID:",
+    priv_device: "인증 없이 프로필을 만들면 휴대폰 ID를 알아볼 수 없게 바꾼 값을 30일 동안 보관해요. 휴대폰 한 대에 하나만 만들 수 있게요.",
     kept_k: "남는 것:",
-    kept: "안전을 위해 신고와 삭제에 대한 짧은 기록(이름이나 글 없음)과 Telegram 고객지원 봇과의 대화만 남아요.",
+    kept: "안전을 위해 신고와 삭제에 대한 짧은 기록(회원 번호, 이유, 시간. 이름, 글, 사진 없음)과, 내 프로필과 더 이상 연결되지 않은 Telegram 고객지원 봇과의 대화만 남아요.",
+    kept_long_k: "얼마나 오래:",
+    kept_long: "이 기록과 고객 지원 대화는 아직 정해진 삭제 날짜가 없어요. 인증 없이 프로필을 만들었다면, 알아볼 수 없게 바꾼 휴대폰 ID도 30일 동안 남아요.",
+    priv_choice_h: "나의 선택",
+    priv_loc_off_k: "위치 끄기:",
+    priv_loc_off: "휴대폰 설정에서 30+DA의 위치를 끄세요. 그러면 더 이상 받지 않아요.",
+    priv_edit_k: "프로필 수정:",
+    priv_edit: "내 프로필에서 앱 이름, 직업, 실명, 사진을 바꿀 수 있어요.",
+    priv_withdraw_k: "동의 철회:",
+    priv_withdraw: "언제든 계정을 삭제하거나(내 프로필 → 내 계정 삭제) 이메일을 보내 주세요.",
     del_title: "내 데이터 삭제",
-    del_lede: "두 가지 방법이 있어요. 둘 다 계정과 그 안의 모든 것을 삭제해요.",
+    del_lede: "두 가지 방법이 있어요. 둘 다 계정, 사진, 메시지를 삭제해요.",
+    del_for: "{operator}의 30+DA 앱.",
     del_app_k: "앱에서:",
     del_app: "내 프로필 → 내 계정 삭제. 바로 삭제돼요.",
+    del_steps_k: "단계별로:",
+    del_steps: "내 프로필을 열고 맨 아래로 내려 내 계정 삭제를 누른 뒤 계속을 누르세요. PIN을 입력하고 영구 삭제를 누르세요.",
+    del_goes_k: "삭제되는 것:",
+    del_goes: "프로필, 사진, 전화번호, 로그인 수단, PIN, 한마디와 채팅 메시지, 그리고 그 번역.",
+    del_others: "대화하던 사람에게는 “이 사람은 30+DA를 떠났어요”라고 보여요. 상대가 쓴 글은 상대의 것으로 남아요.",
     del_mail_k: "또는 메일로:",
     del_step1: "{mail}로 메일을 보내 주세요. 제목: {subject}",
     del_step2: "앱 이름과 로그인 방법(전화번호, Google, Facebook, TikTok)을 알려 주세요.",
@@ -500,17 +800,23 @@ export const PAGE_STRINGS = {
     try_others_tiktok: "TikTok이 앱을 승인하면 다른 사람도 로그인할 수 있어요.",
     fix_not_live_tiktok: "TikTok에서 Login Kit을 추가하고 앱 심사를 제출한 뒤 다시 시도하세요.",
     terms_title: "서비스 약관",
-    terms_lede: "30+DA를 사용하면 아래 몇 가지 규칙에 동의하는 거예요.",
+    terms_lede: "30+DA를 사용하면 아래 규칙에 동의하는 거예요. 규칙 위반은 절대 용납하지 않아요.",
     terms_age_k: "나이:",
     terms_age: "30세 이상만 이용할 수 있어요.",
     terms_honest_k: "정직:",
     terms_honest: "본인 사진, 실제 나이, 실명을 사용하세요.",
+    terms_respect_k: "존중:",
+    terms_respect: "친절하게 대해 주세요. 혐오, 괴롭힘, 협박, 스팸, 판매는 안 돼요.",
+    terms_banned_k: "절대 금지:",
+    terms_banned: "노출이나 성적인 콘텐츠, 성관계 요구, 유흥 서비스, 돈을 받는 만남이나 스폰서 만남, 만남의 대가로 돈이나 선물 요구, 인신매매, 미성년자와 관련된 모든 것, 그리고 사기.",
     terms_contact_k: "연락처 금지:",
     terms_contact: "전화번호, 링크, SNS 계정은 모든 단계에서 차단돼요.",
-    terms_respect_k: "존중:",
-    terms_respect: "친절하게 대해 주세요. 욕설, 협박, 스팸, 판매는 안 돼요.",
-    terms_team_k: "운영팀:",
-    terms_team: "규칙을 어긴 계정은 경고, 차단 또는 삭제할 수 있어요.",
+    terms_reports_k: "신고와 차단:",
+    terms_reports: "어떤 프로필, 사진, 메시지에서도 할 수 있어요. 모든 신고는 24시간 안에 확인해요.",
+    terms_mods_k: "안전 확인:",
+    terms_mods: "신고를 확인하고 모두의 안전을 지키기 위해 운영자가 대화를 볼 수 있어요.",
+    terms_zero_k: "무관용:",
+    terms_zero: "규칙을 어긴 사람은 내보내요.",
     terms_data_k: "내 데이터:",
     // The Android app's sign-in return page (appReturnPage).
     app_title: "30+DA로 돌아가기",
@@ -551,43 +857,116 @@ export const PAGE_STRINGS = {
     home_frame_4: "이번에는 스쳐 지나가지 마세요.",
     home_terms: "이용약관",
     home_help: "도움말",
+    // The child-safety page (childSafetyPage).
+    cs_title: "아동 안전",
+    cs_lede: "30+DA는 30세 이상 성인만 이용할 수 있어요. {operator}에서는 아동 성적 학대 및 착취(CSAE)를 절대 용납하지 않아요.",
+    cs_standard_k: "우리의 기준:",
+    cs_standard: "아동은 30+DA를 이용할 수 없어요. 아동을 성적으로 대상화하거나, 길들이거나(그루밍), 착취하는 모든 것은 금지예요.",
+    cs_age_k: "나이 확인:",
+    cs_age: "모두 출생 연도를 입력하고, 서버가 30세 미만은 받지 않아요.",
+    cs_report_k: "앱에서 신고:",
+    cs_report: "프로필에서 ⋯ → 신고 → 미성년자. 사진에서는 사진 신고. 대화에서는 한마디나 메시지를 눌러 → 신고.",
+    cs_act_k: "우리가 하는 일:",
+    cs_act: "모든 신고를 24시간 안에 확인하고, 내용을 삭제하고 계정을 차단해요.",
+    cs_csam_k: "아동 성착취물(CSAM):",
+    cs_csam: "즉시 삭제하고, 계정을 영구 정지하고, 캄보디아 국가경찰과 미국 NCMEC 같은 관계 기관에 신고해요.",
+    cs_law_k: "법:",
+    cs_law: "아동 보호 법을 지키고 경찰에 협조해요.",
+    cs_contact_k: "아동 안전 문의:",
+    cs_contact: "Gamini Kassapa, {mail}. 언제든, 5개 언어 중 어느 언어로든 써 주세요.",
+    cs_danger: "아이가 지금 위험하다면 바로 경찰에 신고하세요.",
   },
   ja: {
     language: "言語",
     questions: "お問い合わせ：",
     run_by: "運営：",
-    support_title: "ヘルプとサポート",
+    support_title: "ヘルプとお問い合わせ",
     support_lede: "30+DA は 30 歳以上の方のための落ち着いた出会いアプリです。",
+    support_who_k: "運営会社：",
+    support_who: "30+DA は {operator} が運営しています。",
     support_mail_k: "メールでのお問い合わせ：",
     support_mail: "5 つの言語のどれで書いても大丈夫です。",
+    support_tg_k: "Telegram（任意）：",
+    support_tg: "{bot} にメッセージを送ることもできます。Telegram がなくても大丈夫です。メールですべて対応できます。",
     support_delete_k: "アカウント削除：",
     support_safety_k: "問題の報告：",
-    support_safety: "メールでお知らせください。すべての報告を確認します。",
+    support_safety: "アプリの「報告」を押すか、メールでお知らせください。すべての報告を24時間以内に確認します。",
+    support_child_k: "子どもの安全：",
+    support_child: "ゼロトレランスの基準と報告のしかた。",
     priv_title: "プライバシーポリシー",
     priv_date: "{date} 更新",
     priv_lede: "30+DA は、30歳以上の方のための出会いアプリです。",
+    priv_operator: "30+DA は {operator} が運営し、データの使い方を決めています。プライバシーについてのお問い合わせ：{mail}",
+    priv_data_h: "保存するものとその理由",
     priv_keep_k: "保存するもの：",
-    priv_keep: "プロフィール、写真、電話番号、おおよその地域、メッセージ。",
-    priv_social_k: "Google・Facebook・TikTok から：",
-    priv_social: "アカウント番号とメールアドレスだけを保存します。",
+    priv_keep: "プロフィール、写真、電話番号、おおよその位置、メッセージ。",
     priv_why_k: "目的：",
     priv_why: "ログイン、近くの人の表示、みんなの安全のため。",
-    priv_who_k: "見える人：",
-    priv_who: "他の会員には、アプリ名・写真・地域が見えます。本名は、お互いにチャットを開いたときだけ。",
+    priv_profile_k: "プロフィール：",
+    priv_profile: "アプリ名、性別、職業、写真4枚まで。ほかの人にあなたを紹介するためです。",
+    priv_real_k: "本名：",
+    priv_real: "お互いにチャットを開いたとき（レベル3）だけ表示されます。",
+    priv_birth_k: "生まれ年：",
+    priv_birth: "30歳以上かどうかの確認のため。ほかの人には見えません。",
+    priv_phone_k: "電話番号：",
+    priv_phone: "本人確認とログインのため。ほかの人には見えません。",
+    priv_social_k: "Google・Facebook・TikTok から：",
+    priv_social: "アカウント番号とメールアドレスだけを保存します。",
+    priv_loc_k: "位置：",
+    priv_loc: "約1kmに丸め、さらに少しランダムにずらして、距離の表示に使います。ほかの人に見えるのは距離と地域名だけです。",
+    priv_lines_k: "ひとこととチャット：",
+    priv_lines: "あなたが書いた内容とその翻訳。相手に届けるためです。",
+    priv_safety_k: "報告とブロック：",
+    priv_safety: "誰をなぜ報告・ブロックしたか。みんなの安全のためです。",
+    priv_support_k: "サポート：",
+    priv_support: "メールや Telegram で私たちに送った内容。",
+    priv_pin_k: "PIN：",
+    priv_pin: "元に戻せない形にしたものだけを保存します。私たちも含め、誰もあなたの PIN を読めません。",
+    priv_see_h: "誰が何を見るか",
+    priv_guests_k: "ゲスト：",
+    priv_guests: "プロフィールのない人には、アプリ名・性別・職業・ハート数・距離の目安（例：≤ 2 km）・写真1が見えます。",
+    priv_who_k: "会員：",
+    priv_who: "地域と言語も見えます。写真2はレベル2から、写真3〜4と本名はレベル3から。",
     priv_team_k: "運営チーム：",
-    priv_team: "報告の確認と安全のためだけに見ます。",
-    priv_codes_k: "Telegram・WhatsApp：",
-    priv_codes: "コードを送るためだけに番号を使います。",
+    priv_team: "新しい写真は、ほかの人に見える前に運営がすべて確認します。報告の確認とみんなの安全のためだけに、運営が会話を読むことがあります。",
+    priv_proc_h: "協力してもらっているサービス",
+    proc_railway: "サーバーを動かしています。",
+    proc_atlas: "データと写真を保存しています。",
+    proc_osm: "おおよその位置を地域名に変えます。あなたの名前は渡しません。",
+    proc_translate_k: "自前の翻訳サーバー：",
+    proc_translate: "ひとこととチャットを翻訳します。外部の AI 企業は内容を見ません。",
+    proc_fonts: "アプリの文字（フォント）。Google にはあなたのインターネットアドレスが見えます。",
+    priv_codes_k: "Telegram・WhatsApp（Meta）：",
+    priv_codes: "コードを送ったり確認したりするためだけに番号を使います。",
+    proc_signin: "あなたが選んだときだけ、ログインに使います。",
     priv_never: "データは売りません。広告も追跡もありません。",
+    priv_long_h: "どのくらい保存するか",
     priv_long_k: "保存期間：",
-    priv_long: "アカウントを削除するまで。",
+    priv_long: "アカウントを削除するまで。確認していないプロフィールは48時間後に削除されます。",
     priv_how_delete: "削除のしかた",
+    priv_device_k: "端末ID：",
+    priv_device: "確認せずにプロフィールを作ると、端末IDを元に戻せない形にしたものを30日間保存します。1台で作れるのは1つだけです。",
     kept_k: "残るもの：",
-    kept: "安全のため、通報と削除の簡単な記録（名前や文章は含みません）と、Telegramサポートボットとのやりとりだけです。",
+    kept: "安全のための、報告と削除の簡単な記録（会員番号・理由・時刻。名前・文章・写真は含みません）と、Telegram サポートボットとのやりとり（あなたのプロフィールとのつながりは外れます）だけです。",
+    kept_long_k: "残す期間：",
+    kept_long: "これらの記録とサポートのやりとりには、まだ決まった終了日がありません。確認せずにプロフィールを作った場合は、元に戻せない形の端末IDも30日間残ります。",
+    priv_choice_h: "あなたが選べること",
+    priv_loc_off_k: "位置をオフに：",
+    priv_loc_off: "スマホの設定で 30+DA の位置情報をオフにできます。その後は受け取りません。",
+    priv_edit_k: "プロフィールの変更：",
+    priv_edit: "アプリ名・職業・本名・写真は、マイプロフィールで変えられます。",
+    priv_withdraw_k: "同意の取り消し：",
+    priv_withdraw: "いつでもアカウントを削除できます（マイプロフィール → アカウントを削除）。メールでも受け付けます。",
     del_title: "データの削除",
-    del_lede: "方法は2つ。どちらもアカウントとその中のすべてを削除します。",
+    del_lede: "方法は2つ。どちらもアカウント・写真・メッセージを削除します。",
+    del_for: "{operator} の 30+DA アプリが対象です。",
     del_app_k: "アプリで：",
     del_app: "マイプロフィール → アカウントを削除。すぐに削除されます。",
+    del_steps_k: "手順：",
+    del_steps: "マイプロフィールを開き、いちばん下までスクロールして「アカウントを削除」、続けて「次へ」を押します。PINを入力して「完全に削除」を押してください。",
+    del_goes_k: "削除されるもの：",
+    del_goes: "プロフィール、写真、電話番号、ログイン方法、PIN、ひとこととチャットのメッセージ、その翻訳。",
+    del_others: "話していた相手には「この人は30+DAを退会しました」と表示されます。相手が書いた内容は相手のものとして残ります。",
     del_mail_k: "またはメールで：",
     del_step1: "{mail} に、件名 {subject} でメールしてください。",
     del_step2: "アプリ名とログイン方法（電話番号・Google・Facebook・TikTok）を書いてください。",
@@ -619,17 +998,23 @@ export const PAGE_STRINGS = {
     try_others_tiktok: "TikTok がアプリを承認すると、他の人もログインできます。",
     fix_not_live_tiktok: "TikTok で Login Kit を追加してアプリを審査に出してから、もう一度試してください。",
     terms_title: "利用規約",
-    terms_lede: "30+DA を使うと、次のいくつかのルールに同意したことになります。",
+    terms_lede: "30+DA を使うと、次のルールに同意したことになります。違反は一切許しません。",
     terms_age_k: "年齢：",
     terms_age: "30歳以上の方のみ。",
     terms_honest_k: "正直に：",
     terms_honest: "ご本人の写真、本当の年齢、本名を使ってください。",
+    terms_respect_k: "思いやり：",
+    terms_respect: "親切に。差別・嫌がらせ・脅し・スパム・販売は禁止です。",
+    terms_banned_k: "絶対に禁止：",
+    terms_banned: "裸や性的な内容、性行為の誘い、風俗、お金目的の交際やパパ活、デートの見返りにお金やプレゼントを求めること、人身売買、未成年に関わるすべてのこと、そして詐欺。",
     terms_contact_k: "連絡先は禁止：",
     terms_contact: "電話番号・リンク・SNS アカウントは、どの段階でも止められます。",
-    terms_respect_k: "思いやり：",
-    terms_respect: "親切に。暴言・脅し・スパム・販売は禁止です。",
-    terms_team_k: "運営チーム：",
-    terms_team: "ルールに違反したアカウントは、警告・ブロック・削除することがあります。",
+    terms_reports_k: "報告とブロック：",
+    terms_reports: "どのプロフィール・写真・メッセージからでもできます。報告はすべて24時間以内に確認します。",
+    terms_mods_k: "安全確認：",
+    terms_mods: "報告の確認とみんなの安全のため、運営が会話を読むことがあります。",
+    terms_zero_k: "ゼロトレランス：",
+    terms_zero: "ルールに違反した人は退会させます。",
     terms_data_k: "あなたのデータ：",
     // The Android app's sign-in return page (appReturnPage).
     app_title: "30+DA に戻る",
@@ -670,6 +1055,24 @@ export const PAGE_STRINGS = {
     home_frame_4: "今度こそ、|すれ違わないで。",
     home_terms: "利用規約",
     home_help: "ヘルプ",
+    // The child-safety page (childSafetyPage).
+    cs_title: "子どもの安全",
+    cs_lede: "30+DA は 30 歳以上の大人だけのアプリです。{operator} は、子どもへの性的虐待・搾取（CSAE）を一切許しません。",
+    cs_standard_k: "私たちの基準：",
+    cs_standard: "子どもは 30+DA を使えません。子どもを性的に扱うこと、手なずけること（グルーミング）、搾取することはすべて禁止です。",
+    cs_age_k: "年齢の確認：",
+    cs_age: "全員が生まれ年を入力し、30歳未満の人はサーバーが受け付けません。",
+    cs_report_k: "アプリで報告：",
+    cs_report: "プロフィールでは ⋯ → 報告 → 未成年。写真では「写真を報告」。会話では、ひとことやメッセージを押して → 報告。",
+    cs_act_k: "私たちの対応：",
+    cs_act: "すべての報告を24時間以内に確認し、内容を削除してアカウントを止めます。",
+    cs_csam_k: "児童性的虐待コンテンツ（CSAM）：",
+    cs_csam: "すぐに削除し、アカウントを永久に停止し、カンボジア国家警察や米国の NCMEC などの関係機関に通報します。",
+    cs_law_k: "法律：",
+    cs_law: "子どもを守る法律に従い、警察に協力します。",
+    cs_contact_k: "子どもの安全の窓口：",
+    cs_contact: "Gamini Kassapa、{mail}。いつでも、5つの言語のどれでも書いてください。",
+    cs_danger: "子どもがいま危険な状態なら、すぐに警察に通報してください。",
   },
 };
 
@@ -743,37 +1146,101 @@ ${inner}
 
 /**
  * "Back to 30+DA": the app opens these pages in its own tab (#/me and the opening screen link here), and an app's web
- * view has no back button — this goes back to #/me (the opening screen for someone not signed in).
+ * view has no back button — this goes back to #/me (the opening screen for someone not signed in), or to the community
+ * rules screen (#/rules) when the page was opened from there (?from=rules).
  */
-const backToApp = (t) => `      <p class="doc-actions"><a class="doc-btn" href="/30da/#/me">${t.back_app}</a></p>`;
+const backToApp = (t, from = null) => `      <p class="doc-actions"><a class="doc-btn" href="/30da/#/${fromRules(from) ? "rules" : "me"}">${t.back_app}</a></p>`;
+/** ?from=rules: the page was opened from the app's community rules screen. Anything else is ignored. */
+const fromRules = (from) => from === "rules";
+/** What a link to another of these pages carries along: the language, and ?from=rules when it came from the rules screen. */
+const pageQuery = (lang, from) => `lang=${lang}${fromRules(from) ? "&amp;from=rules" : ""}`;
 
-/** GET /30da/privacy[?lang=] — what Google and Facebook ask for, one plain line each. */
-export function privacyPage({ lang: want } = {}) {
+/** The label after a name the page shows as it is (a brand), in each language's own colon. */
+const COLON = { en: ":", km: "៖", zh: "：", ko: ":", ja: "：" };
+/** One "<b>label</b> line" point of a .facts list: the `<key>_k` label and the `<key>` line. */
+const factLine = (t, k, rest = "") => `        <li><b>${t[`${k}_k`]}</b> ${t[k]}${rest}</li>`;
+
+/** The privacy policy's "what we keep and why", one point each, in page order (each a `<key>_k` + `<key>` pair). */
+export const PRIVACY_DATA = Object.freeze([
+  "priv_profile", "priv_real", "priv_birth", "priv_phone", "priv_social", "priv_loc", "priv_lines", "priv_safety",
+  "priv_support", "priv_pin",
+]);
+/** "Who sees what": guests, members, our team (moderators may read conversations). */
+export const PRIVACY_SEES = Object.freeze(["priv_guests", "priv_who", "priv_team"]);
+/** "Your choices": location off, change the profile, withdraw consent. */
+export const PRIVACY_CHOICES = Object.freeze(["priv_loc_off", "priv_edit", "priv_withdraw"]);
+/** Our own translation server (src/lib/thirtyda-translate.mjs: on our M1 box, no outside AI company). */
+export const TRANSLATE_HOST = "llm.ggmt.sg";
+/**
+ * Every service that handles people's data for 30+DA, by name, and the line that says what for: [name, key]. A null
+ * name = the label is the language's own `<key>_k` (our translation server; Telegram / WhatsApp, which send the codes).
+ *   Railway                 runs the server (src/scripts/serve-web.mjs)
+ *   MongoDB Atlas           the database and the photos (GridFS)
+ *   OpenStreetMap Nominatim a rounded point → an area name (src/lib/thirtyda-geo.mjs), never a name
+ *   our translation server  lines and chat (src/lib/thirtyda-translate.mjs, TRANSLATE_HOST)
+ *   Google Fonts            the app's letters (every page loads them)
+ *   Telegram / WhatsApp     the number, to send or check a code (and the Telegram support bot)
+ *   Google, Facebook, TikTok, Apple   sign-in, only when chosen
+ */
+export const PROCESSORS = Object.freeze([
+  ["Railway", "proc_railway"],
+  ["MongoDB Atlas", "proc_atlas"],
+  ["OpenStreetMap Nominatim", "proc_osm"],
+  [null, "proc_translate"],
+  ["Google Fonts", "proc_fonts"],
+  [null, "priv_codes"],
+  ["Google, Facebook, TikTok, Apple", "proc_signin"],
+]);
+
+/**
+ * GET /30da/privacy[?lang=][&from=rules] — the full policy (Apple 5.1.1 / 5.1.2, Google Play User Data), in plain
+ * one-line points under a few headings, true to the code: who runs it and the privacy contact; what we keep (in short,
+ * then every item and what it is for); who sees what (guests: name, gender, job, hearts, a distance band, photo 1;
+ * members; our moderators, who check photos and may read conversations); every outside service by name; how long
+ * (until a delete; never verified → 48 hours; what a delete keeps and for how long: src/lib/thirtyda-delete.mjs); and
+ * the person's choices (location off, change the profile, withdraw consent = delete or email).
+ */
+export function privacyPage({ lang: want, from = null } = {}) {
   const lang = ok(want);
   const t = PAGE_STRINGS[lang];
-  const point = (k) => `        <li><b>${t[`${k}_k`]}</b> ${t[k]}</li>`;
+  const point = (k) => factLine(t, k);
+  const service = ([name, k]) => {
+    const label = name ? `${name}${COLON[lang]}` : t[`${k}_k`];
+    return `        <li><b>${label}</b> ${t[k]}${k === "proc_translate" ? ` (${TRANSLATE_HOST})` : ""}</li>`;
+  };
+  const list = (lines) => `      <ul class="facts">\n${lines.join("\n")}\n      </ul>`;
   const body = `      <h1>${t.priv_title}</h1>
       <p class="doc-date">${fill(t.priv_date, { date: policyDate(lang) })}</p>
       <p class="doc-lede">${t.priv_lede}</p>
-      <ul class="facts">
-${["priv_keep", "priv_social", "priv_why", "priv_who", "priv_team", "priv_codes"].map(point).join("\n")}
-        <li>${t.priv_never}</li>
-        <li><b>${t.priv_long_k}</b> ${t.priv_long} <a href="/30da/delete-data?lang=${lang}">${t.priv_how_delete}</a></li>
-      </ul>
-      <p class="doc-fine"><b>${t.kept_k}</b> ${t.kept}</p>
+      <p>${fill(t.priv_operator, { operator: `<b>${OPERATOR}</b>`, mail: mailLink })}</p>
+${list([point("priv_keep"), point("priv_why"), `        <li>${t.priv_never}</li>`])}
+      <h2>${t.priv_data_h}</h2>
+${list(PRIVACY_DATA.map(point))}
+      <p class="doc-fine"><b>${t.priv_device_k}</b> ${t.priv_device}</p>
+      <h2>${t.priv_see_h}</h2>
+${list(PRIVACY_SEES.map(point))}
+      <h2>${t.priv_proc_h}</h2>
+${list(PROCESSORS.map(service))}
+      <h2>${t.priv_long_h}</h2>
+${list([factLine(t, "priv_long", ` <a href="/30da/delete-data?lang=${lang}">${t.priv_how_delete}</a>`), point("kept"), point("kept_long")])}
+      <h2>${t.priv_choice_h}</h2>
+${list(PRIVACY_CHOICES.map(point))}
       <p class="doc-contact">${t.run_by} <b>${OPERATOR}</b> · ${t.questions} ${mailLink}</p>
-${backToApp(t)}`;
+${backToApp(t, from)}`;
   return page({
     title: `${t.priv_title} · 30+DA`,
     lang,
-    inner: docColumn({ lang, flags: flagRow(lang, (c) => `/30da/privacy?lang=${c}`), body }),
+    inner: docColumn({ lang, flags: flagRow(lang, (c) => `/30da/privacy?${pageQuery(c, from)}`), body }),
   });
 }
 
 /**
- * GET /30da/delete-data[?lang=] — two ways, both delete the account and everything in it: in the app (My profile →
- * Delete my account, at once: src/lib/thirtyda-delete.mjs), or email us and we delete it all within 30 days. Says what
- * stays (Google Play asks): a bare note of reports / of the delete, for safety, and the Telegram support chat.
+ * GET /30da/delete-data[?lang=] — Google Play's "delete your data" page, for the 30+DA app by OPERATOR (the developer's
+ * name as on Play). Two ways, both delete the account, its photos and its messages: in the app (My profile → Delete my
+ * account, at once, step by step: src/thirtyda-app/screens/delete-account.js → src/lib/thirtyda-delete.mjs), or email
+ * us and we delete it all within 30 days. Then what goes, what stays and for how long — true to thirtyda-delete.mjs: a
+ * bare note of reports / of the delete (ids, reason, time) and the Telegram support chat (unlinked), with no set end
+ * yet; a never-verified profile's hashed phone ID, 30 days.
  */
 export function deleteDataPage({ lang: want } = {}) {
   const lang = ok(want);
@@ -781,11 +1248,16 @@ export function deleteDataPage({ lang: want } = {}) {
   const mail = [fill(t.del_step1, { mail: deleteMailLink, subject: `<b>${DELETE_SUBJECT}</b>` }), t.del_step2, t.del_step3].join(" ");
   const body = `      <h1>${t.del_title}</h1>
       <p class="doc-lede">${t.del_lede}</p>
+      <p>${fill(t.del_for, { operator: `<b>${OPERATOR}</b>` })}</p>
       <ul class="facts">
         <li><b>${t.del_app_k}</b> ${t.del_app}</li>
+${factLine(t, "del_steps")}
         <li><b>${t.del_mail_k}</b> ${mail}</li>
       </ul>
-      <p class="doc-fine"><b>${t.kept_k}</b> ${t.kept}</p>
+      <ul class="facts">
+${["del_goes", "kept", "kept_long"].map((k) => factLine(t, k)).join("\n")}
+      </ul>
+      <p class="doc-fine">${t.del_others}</p>
       <p class="doc-fine">${t.del_signout}</p>
       <p class="doc-contact">${t.run_by} <b>${OPERATOR}</b> · ${t.questions} ${mailLink} · <a href="/30da/privacy?lang=${lang}">${t.priv_title}</a></p>
 ${backToApp(t)}`;
@@ -796,33 +1268,46 @@ ${backToApp(t)}`;
   });
 }
 
+/** The terms' points, in page order (each a `<key>_k` label + `<key>` line in PAGE_STRINGS). */
+export const TERMS_POINTS = Object.freeze([
+  "terms_age", "terms_honest", "terms_respect", "terms_banned", "terms_contact", "terms_reports", "terms_mods", "terms_zero",
+]);
+
 /**
- * GET /30da/terms[?lang=] — the few rules, true to what the app does: 30 and over only, honest profile, contact
- * details stopped at every level (src/thirtyda-app/shared/rules.js), respect, the team may warn / block / remove.
+ * GET /30da/terms[?lang=][&from=rules] — the rules, true to what the app does (store policy, owner 2026-10-14: the
+ * same rules the app's community rules screen asks everyone to agree to): 30 and over only, honest profile, respect,
+ * what is never allowed (zero tolerance), contact details stopped at every level (src/thirtyda-app/shared/rules.js),
+ * report + block on any profile, photo or message (checked within 24 hours), moderators may read conversations, and
+ * anyone who breaks the rules is removed. Dated TERMS_VERSION, the version the app asks people to agree to.
  */
-export function termsPage({ lang: want } = {}) {
+export function termsPage({ lang: want, from = null } = {}) {
   const lang = ok(want);
   const t = PAGE_STRINGS[lang];
   const point = (k) => `        <li><b>${t[`${k}_k`]}</b> ${t[k]}</li>`;
   const body = `      <h1>${t.terms_title}</h1>
-      <p class="doc-date">${fill(t.priv_date, { date: policyDate(lang) })}</p>
+      <p class="doc-date">${fill(t.priv_date, { date: policyDate(lang, TERMS_VERSION) })}</p>
       <p class="doc-lede">${t.terms_lede}</p>
       <ul class="facts">
-${["terms_age", "terms_honest", "terms_contact", "terms_respect", "terms_team"].map(point).join("\n")}
-        <li><b>${t.terms_data_k}</b> <a href="/30da/privacy?lang=${lang}">${t.priv_title}</a></li>
+${TERMS_POINTS.map(point).join("\n")}
+        <li><b>${t.terms_data_k}</b> <a href="/30da/privacy?${pageQuery(lang, from)}">${t.priv_title}</a></li>
       </ul>
       <p class="doc-contact">${t.run_by} <b>${OPERATOR}</b> · ${t.questions} ${mailLink}</p>
-${backToApp(t)}`;
+${backToApp(t, from)}`;
   return page({
     title: `${t.terms_title} · 30+DA`,
     lang,
-    inner: docColumn({ lang, flags: flagRow(lang, (c) => `/30da/terms?lang=${c}`), body }),
+    inner: docColumn({ lang, flags: flagRow(lang, (c) => `/30da/terms?${pageQuery(c, from)}`), body }),
   });
 }
 
+/** Support's Telegram, as on the home page (SUPPORT_TELEGRAM): optional, email works for everything. */
+export const SUPPORT_TELEGRAM_NAME = "@GKSmartbiz";
+const supportTelegramLink = () => `<a href="${SUPPORT_TELEGRAM}" target="_blank" rel="noopener">${SUPPORT_TELEGRAM_NAME}</a>`;
+
 /**
- * GET /30da/support[?lang=] — Help & support (the App Store "Support URL"; owner 2026-10-14 "I don't see
- * gk.smart@ggmt.sg anywhere"): who runs 30+DA, the email, how to report, how to delete.
+ * GET /30da/support[?lang=] (and GET /30da/help, the same page) — Help & contact (the App Store "Support URL"; owner
+ * 2026-10-14 "I don't see gk.smart@ggmt.sg anywhere"): who runs 30+DA, the email, Telegram (optional: @GKSmartbiz,
+ * never needed), how to report, child safety, how to delete.
  */
 export function supportPage({ lang: want } = {}) {
   const lang = ok(want);
@@ -830,8 +1315,11 @@ export function supportPage({ lang: want } = {}) {
   const body = `      <h1>${t.support_title}</h1>
       <p class="doc-lede">${t.support_lede}</p>
       <ul class="facts">
+        <li><b>${t.support_who_k}</b> ${fill(t.support_who, { operator: `<b>${OPERATOR}</b>` })}</li>
         <li><b>${t.support_mail_k}</b> ${supportMailLink} — ${t.support_mail}</li>
+        <li><b>${t.support_tg_k}</b> ${fill(t.support_tg, { bot: supportTelegramLink() })}</li>
         <li><b>${t.support_safety_k}</b> ${t.support_safety}</li>
+        <li><b>${t.support_child_k}</b> ${t.support_child} <a href="/30da/child-safety?lang=${lang}">${t.cs_title}</a></li>
         <li><b>${t.support_delete_k}</b> ${t.del_app} <a href="/30da/delete-data?lang=${lang}">${t.priv_how_delete}</a></li>
       </ul>
       <p class="doc-contact">${t.run_by} <b>${OPERATOR}</b> · <a href="/30da/privacy?lang=${lang}">${t.priv_title}</a> · <a href="/30da/terms?lang=${lang}">${t.terms_title}</a></p>
@@ -840,6 +1328,39 @@ ${backToApp(t)}`;
     title: `${t.support_title} · 30+DA`,
     lang,
     inner: docColumn({ lang, flags: flagRow(lang, (c) => `/30da/support?lang=${c}`), body }),
+  });
+}
+
+/** The child-safety page's points, in page order (each a `<key>_k` label + `<key>` line in PAGE_STRINGS). */
+export const CHILD_SAFETY_POINTS = Object.freeze(["cs_standard", "cs_age", "cs_report", "cs_act", "cs_csam", "cs_law", "cs_contact"]);
+/** The subject a child-safety email gets (English in every language: the team reads it). */
+export const CHILD_SAFETY_SUBJECT = "30+DA child safety";
+const childSafetyMailLink = `<a href="mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(CHILD_SAFETY_SUBJECT)}">${CONTACT_EMAIL}</a>`;
+
+/**
+ * GET /30da/child-safety[?lang=] — the published child-safety standards Google Play asks a Dating app for (its Child
+ * Safety Standards declaration links here): 30+DA and its developer OPERATOR by name, zero tolerance for child sexual
+ * abuse and exploitation (CSAE), the age check (birth year, the server refuses under 30: checkBirth), the in-app
+ * report path (src/thirtyda-app/shared/safety.js: Underage on a profile, a photo, a line or a chat message), what we do
+ * (checked within 24 hours, removed, blocked), CSAM removed and reported to the authorities, and the child-safety
+ * contact (CONTACT_EMAIL).
+ */
+export function childSafetyPage({ lang: want } = {}) {
+  const lang = ok(want);
+  const t = PAGE_STRINGS[lang];
+  const point = (k) => `        <li><b>${t[`${k}_k`]}</b> ${fill(t[k], { mail: childSafetyMailLink })}</li>`;
+  const body = `      <h1>${t.cs_title}</h1>
+      <p class="doc-lede">${fill(t.cs_lede, { operator: `<b>${OPERATOR}</b>` })}</p>
+      <ul class="facts">
+${CHILD_SAFETY_POINTS.map(point).join("\n")}
+      </ul>
+      <p class="doc-alert" role="note">${t.cs_danger}</p>
+      <p class="doc-contact">${t.run_by} <b>${OPERATOR}</b> · <a href="/30da/terms?lang=${lang}">${t.terms_title}</a> · <a href="/30da/support?lang=${lang}">${t.support_title}</a></p>
+${backToApp(t)}`;
+  return page({
+    title: `${t.cs_title} · 30+DA`,
+    lang,
+    inner: docColumn({ lang, flags: flagRow(lang, (c) => `/30da/child-safety?lang=${c}`), body }),
   });
 }
 

@@ -349,7 +349,8 @@ test('terms of service: short, plain, 5 languages, flag row, honest about what t
     const t = PAGE_STRINGS[lang];
     const html = termsPage({ lang });
     assert.ok(html.includes(`<html lang="${lang}">`) && html.includes(`<h1>${t.terms_title}</h1>`), `${lang}: title`);
-    for (const k of ['terms_age', 'terms_honest', 'terms_contact', 'terms_respect', 'terms_team']) {
+    // Store policy (owner 2026-10-14): the community rules — zero tolerance, what is never allowed, 24-hour reports, moderators.
+    for (const k of ['terms_age', 'terms_honest', 'terms_respect', 'terms_banned', 'terms_contact', 'terms_reports', 'terms_mods', 'terms_zero']) {
       assert.ok(html.includes(`<li><b>${t[`${k}_k`]}</b> ${t[k]}</li>`), `${lang}: ${k}`);
     }
     assert.ok(html.includes(`href="/30da/privacy?lang=${lang}"`) && html.includes('mailto:gk.smart@ggmt.sg'), `${lang}: privacy link + contact`);
@@ -362,6 +363,7 @@ test('terms of service: short, plain, 5 languages, flag row, honest about what t
   }
   assert.match(PAGE_STRINGS.en.terms_age, /30 and over/);
   assert.ok(termsPage().includes('<html lang="en">') && termsPage({ lang: 'xx' }).includes('<html lang="en">'));
-  assert.ok(shown(termsPage()).length < 700, `terms (en) stays short: ${shown(termsPage()).length} characters`);
+  // Longer since the store-policy rules (what is never allowed, reports, moderators), still one screen of plain lines.
+  assert.ok(shown(termsPage()).length < 1000, `terms (en) stays short: ${shown(termsPage()).length} characters`);
   assert.ok(privacyPage().includes('From Google, Facebook or TikTok:') && deleteDataPage().includes('(phone, Google, Facebook or TikTok)'));
 });

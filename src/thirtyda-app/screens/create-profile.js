@@ -4,23 +4,25 @@
 import {
   screen, el, icon, t, go, api, toast, modal, state, setLang, setMe, registerStrings,
   resizeImage, updateLocation, roleLabel, LANGS, LANG_CODES, LANG_NATIVE, LANG_FLAG, ROLES, charCount,
-  PHOTO_SLOT_LEVELS, NAME_MAX, NAME_RAW_MAX, checkAppName, clipChars, birthYearOptions, checkBirthYear,
+  PHOTO_SLOT_LEVELS, NAME_MAX, NAME_RAW_MAX, checkAppName, clipChars, birthYearOptions, checkBirthYear, checkRealName,
 } from '../core.js';
-// The PIN chosen right after the language waits in this tab; it goes with the sign-in / the new profile (lock.js).
+// The PIN chosen right after the language waits on this phone; it goes with the sign-in / the new profile (lock.js).
 import { waitingPin, clearPinFlags, pinResetPending, leaveWithoutLock, backFromSheet } from '../lock.js';
 import { takeAfterCreate } from '../guest.js';
+// The community rules' "I agree" that waits on this phone goes with the sign-in / the new profile (terms.js).
+import { termsBody } from '../terms.js';
 // In the 30+DA app a sign-in runs in the app's own sheet (Google refuses web views): shell.js.
-import { shellAuth, shellSignIn, onAppReturn } from '../shell.js';
+import { shellAuth, shellSignIn, onAppReturn, deviceId } from '../shell.js';
 // A tap on a photo circle / tile asks "Take a selfie" (front camera) or "Choose from photos" (owner 2026-10-14).
 import { photoSource } from '../photo-source.js';
 
 // ---------------------------------------------------------------- app name + birth year (also used on #/me)
 
-/** 'length' | 'contact' | null for a typed app name (empty → null: nothing to complain about yet). */
+/** 'length' | 'contact' | 'word' | null for a typed app name (empty → null: nothing to complain about yet). */
 export function appNameProblem(value) {
   const c = checkAppName(value);
   if (c.ok || c.error === 'empty') return null;
-  return c.error === 'contact' ? 'contact' : 'length';
+  return c.error === 'contact' || c.error === 'word' ? c.error : 'length';
 }
 
 // What each app-name box held, and where its cursor was, just before the edit in progress; and where a
@@ -850,7 +852,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     input.readOnly = true;
     try {
       const pin = waitingPin(); // a returning person's waiting PIN becomes their PIN (they just proved who they are)
-      const r = await api.post('/auth/verify-code', { phone: model.sentTo, code: model.code, ...(pin ? { pin } : {}) });
+      const r = await api.post('/auth/verify-code', { phone: model.sentTo, code: model.code, ...(pin ? { pin } : {}), ...termsBody() });
       if (pin && r.user?.pinSet) clearPinFlags();
       const via = model.sentBy || model.channel;
       Object.assign(model, { verified: true, verifiedPhone: r.user?.phone || model.sentTo, verifiedBy: via, codeSent: false, code: '', devCode: null, failed: [] });
@@ -1199,6 +1201,7 @@ function signinNotice(query) {
 
 function nameProblem(value) {
   const problem = appNameProblem(value);
+  if (problem === 'word') return t('cp_name_word');
   return problem === 'contact' ? t('cp_name_contact') : problem === 'length' ? t('cp_name_length') : null;
 }
 
@@ -1406,11 +1409,21 @@ screen('/create', ({ root, query }) => {
     nameInput.setAttribute('aria-invalid', String(Boolean(problem)));
   };
   paintName();
+  // A bad word in the real name is said under it (store policy, owner 2026-10-14) and keeps Next off.
+  const realErr = el('p', { class: 'field-error', role: 'alert', hidden: true });
+  const paintReal = () => {
+    const bad = checkRealName(draft.realName).error === 'word';
+    realErr.textContent = bad ? t('cp_name_word') : '';
+    realErr.hidden = !bad;
+    realInput.classList.toggle('is-error', bad);
+    realInput.setAttribute('aria-invalid', String(bad));
+  };
   const realInput = el('input', {
     class: 'input truth-field', id: 'cp-real', type: 'text', maxlength: '60', autocomplete: 'name', enterkeyhint: 'next',
     placeholder: t('cp_real_name_ph'), value: draft.realName,
-    on: { input: () => { draft.realName = realInput.value; update(); } },
+    on: { input: () => { draft.realName = realInput.value; paintReal(); update(); } },
   });
+  paintReal();
 
   // --- I am (gender) + You are (role)
   const GENDER_KEYS = ['man', 'woman', 'other']; // Male / Female / Other
@@ -1457,7 +1470,7 @@ screen('/create', ({ root, query }) => {
   const cont = el('button', { type: 'button', class: 'btn btn-primary', on: { click: () => submit() } }, contText, icon('arrow', 18));
   const contNote = el('p', { class: 'help center' }, t('cp_need_all'));
   const fieldsReady = () => Boolean(draft.photo && checkAppName(draft.name).ok && checkBirthYear(draft.birthYear).ok
-    && charCount(draft.realName.trim()) >= 2
+    && checkRealName(draft.realName).ok
     && draft.gender && draft.role);
   // "Verify to chat" (owner 2026-10-13): Next works as soon as the fields are filled — verifying is only needed to
   // chat. Verified here → the profile is made as before; not → { unverified: true } (screens/verify-chat.js asks later).
@@ -1481,12 +1494,17 @@ screen('/create', ({ root, query }) => {
     update();
     contText.textContent = t('cp_saving');
     try {
+      // Made without verifying: this phone's id goes along — one such profile per phone (owner 2026-10-14; the server
+      // keeps only a hash of it, 30 days). A verified sign-up sends none.
+      const device = verifiedHere() ? null : await deviceId();
       const r = await api.post('/profile', {
         name: draft.name.trim().replace(/\s+/g, ' '), birthYear: Number(draft.birthYear), realName: draft.realName.trim(),
         role: draft.role, gender: draft.gender, lang: state.lang, photo: draft.photo,
         ...(typed?.phone ? { phone: typed.phone } : {}),
         ...(waitingPin() ? { pin: waitingPin() } : {}),
+        ...termsBody(),
         ...(verifiedHere() ? {} : { unverified: true }),
+        ...(device ? { deviceId: device } : {}),
       });
       if (r.user?.pinSet) clearPinFlags();
       const extras = await heldExtras();
@@ -1517,8 +1535,13 @@ screen('/create', ({ root, query }) => {
       yearErr.hidden = false;
       yearSel.classList.add('is-error');
       yearSel.focus();
-    } else if (err.code === 'contact_detail' || fieldName === 'name') {
-      nameErr.textContent = err.code === 'contact_detail' ? t('cp_name_contact') : t('cp_name_length');
+    } else if (err.code === 'bad_word' && fieldName === 'realName') {
+      realErr.textContent = t('cp_name_word');
+      realErr.hidden = false;
+      realInput.classList.add('is-error');
+      realInput.focus();
+    } else if (err.code === 'contact_detail' || err.code === 'bad_word' || fieldName === 'name') {
+      nameErr.textContent = err.code === 'contact_detail' ? t('cp_name_contact') : err.code === 'bad_word' ? t('cp_name_word') : t('cp_name_length');
       nameErr.hidden = false;
       nameInput.classList.add('is-error');
       nameInput.focus();
@@ -1540,6 +1563,10 @@ screen('/create', ({ root, query }) => {
       go('/nearby', { replace: true });
     } else if (err.code === 'too_many_profiles') {
       toast(t('cp_too_many_profiles'), 6000); // made without verifying: a few per connection per day
+    } else if (err.code === 'device_used') {
+      // This phone already made one without verifying (30 days): verify here, then Next makes the profile.
+      toast(t('cp_device_used'), 6000);
+      phone.node.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
     } else {
       toast(err.status === 0 ? t('err_network') : t('err_generic'));
     }
@@ -1560,7 +1587,7 @@ screen('/create', ({ root, query }) => {
           field(t('cp_birth_year'), null, { forId: 'cp-year' }, yearSel)),
         el('p', { class: 'visually-hidden', id: 'cp-name-rule' }, t('cp_name_length')),
         nameErr, yearErr, truthNote()),
-      field(t('cp_real_name'), tag(t('cp_tag_not_shown'), 'eye-off', false), { forId: 'cp-real' }, realInput),
+      field(t('cp_real_name'), tag(t('cp_tag_not_shown'), 'eye-off', false), { forId: 'cp-real' }, realInput, realErr),
       field(t('cp_i_am'), null, { labelId: 'cp-gender-l' },
         el('div', { class: 'seg', role: 'group', 'aria-labelledby': 'cp-gender-l' }, genderBtns)),
       field(t('cp_you_are'), null, { forId: 'cp-role' }, roleSel),
@@ -1608,6 +1635,7 @@ registerStrings({
     cp_too_young: '30+DA is for people aged 30 and over.',
     cp_year_needed: 'Choose your birth year from the list.',
     cp_name_contact: 'No phone numbers, emails or chat handles in your name.',
+    cp_name_word: 'No rude or sexual words in your name.',
     cp_i_am: 'I am',
     cp_gender_woman: 'Female',
     cp_gender_man: 'Male',
@@ -1702,6 +1730,7 @@ registerStrings({
     cp_too_young: '30+DA សម្រាប់អ្នកដែលមានអាយុពី 30 ឆ្នាំឡើងទៅ។',
     cp_year_needed: 'សូមជ្រើសរើសឆ្នាំកំណើតរបស់អ្នកពីបញ្ជី។',
     cp_name_contact: 'កុំដាក់លេខទូរស័ព្ទ អ៊ីមែល ឬឈ្មោះគណនីជជែក ក្នុងឈ្មោះរបស់អ្នក។',
+    cp_name_word: 'កុំដាក់ពាក្យអសុរស ឬពាក្យផ្លូវភេទ ក្នុងឈ្មោះរបស់អ្នក។',
     cp_i_am: 'ខ្ញុំជា',
     cp_gender_woman: 'ស្រី',
     cp_gender_man: 'ប្រុស',
@@ -1796,6 +1825,7 @@ registerStrings({
     cp_too_young: '30+DA 仅供 30 岁及以上的人使用。',
     cp_year_needed: '请从列表中选择你的出生年份。',
     cp_name_contact: '名字中不能包含电话、邮箱或聊天账号。',
+    cp_name_word: '名字中不能有粗俗或色情的词。',
     cp_i_am: '我是',
     cp_gender_woman: '女',
     cp_gender_man: '男',
@@ -1890,6 +1920,7 @@ registerStrings({
     cp_too_young: '30+DA는 30세 이상만 이용할 수 있어요.',
     cp_year_needed: '목록에서 출생 연도를 선택해 주세요.',
     cp_name_contact: '이름에 전화번호, 이메일, 메신저 아이디를 넣을 수 없어요.',
+    cp_name_word: '이름에 욕설이나 성적인 말을 넣을 수 없어요.',
     cp_i_am: '나는',
     cp_gender_woman: '여성',
     cp_gender_man: '남성',
@@ -1984,6 +2015,7 @@ registerStrings({
     cp_too_young: '30+DAは30歳以上の方のためのアプリです。',
     cp_year_needed: 'リストから生まれ年を選んでください。',
     cp_name_contact: '名前に電話番号・メール・チャットIDは入れられません。',
+    cp_name_word: '名前に乱暴な言葉や性的な言葉は使えません。',
     cp_i_am: '性別',
     cp_gender_woman: '女性',
     cp_gender_man: '男性',

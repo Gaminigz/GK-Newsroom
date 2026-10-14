@@ -22,14 +22,18 @@
  *   rows keyed by it may be someone else's (handlesOf).
  * A delete that stops half way is finished by the person's own retry or, within about two minutes, in the background
  * (finishDeletesInBackground, started with the app).
+ * Never verified (owner 2026-10-14): a profile made without verifying that still has no verified way at its users.verifyBy
+ * (48 hours after it was made) is deleted the same way by the server itself, at start and every 10 minutes
+ * (expireUnverified / expireUnverifiedInBackground; its audit line says 'unverified_expired').
  * What changes for others:
  *   every conversation with it → stage 'ended', endedReason 'left' (the other person reads "This person left 30+DA",
  *   nothing more can be sent; their own lines stay theirs to read). A draft the other person never opened (nothing was
  *   ever sent, they never knew) is deleted instead, so it never surfaces as a conversation they did not have; so is a
  *   conversation whose other person already left (nobody is left to read it).
  *   Flags / reports about it or by it (thirtyda_flags): only the minimal record stays for safety — ids, reason, time,
- *   kind, status (names cut out of the reason; an open flag about it is closed as 'left'). The words they pointed at
- *   were its own chat lines, which are gone.
+ *   kind, status (names cut out of the reason; an open flag about it is closed as 'left'), and what a report pointed at
+ *   ('profile' | 'photo:n' | 'line:…') and what the admin did. The words and photos they pointed at were its own, gone.
+ *   Blocks by it or of it (thirtyda_blocks): deleted.
  *   Support through the Telegram bot (thirtyda_support, thirtyda_support_chats): the link to the profile is dropped;
  *   the Telegram thread itself stays for the team.
  *   The audit log (thirtyda_audit) gets one { action: 'account_deleted', userId } (and the time), nothing else.
@@ -42,9 +46,10 @@ import { deletePhoto as deleteStoredPhoto, isPhotoId } from "./thirtyda-photos.m
 import { SIGNIN_PROVIDERS, APP_TICKETS, SIGNIN_STATES } from "./thirtyda-signin.mjs";
 import { TG_CHECKS, TG_LINKS, windowLimiter } from "./thirtyda-telegram-bot.mjs";
 import { SUPPORT, SUPPORT_CHATS } from "./thirtyda-support.mjs";
-import { SIGNUP_LIMITS } from "./thirtyda-verify.mjs";
+import { SIGNUP_LIMITS, SIGNUP_DEVICES, neverVerifiedFilter, verifyByFrom } from "./thirtyda-verify.mjs";
 import { PIN_LENGTH, pinDigits } from "./thirtyda-pin.mjs";
 import { clientIp } from "./thirtyda-net.mjs";
+import { BLOCKS } from "./thirtyda-blocks.mjs";
 
 export const USERS = "thirtyda_users";
 export const SESSIONS = "thirtyda_user_sessions";
@@ -75,8 +80,10 @@ export const COVERAGE = {
   [APP_TICKETS]: "the native apps' sign-in tickets for its accounts: deleted",
   [SUPPORT]: "the link to the profile: dropped (the Telegram thread stays for the team)",
   [SUPPORT_CHATS]: "the link to the profile: dropped (the Telegram thread stays for the team)",
+  [BLOCKS]: "every block by it or of it: deleted (nobody is left to hide from; its flags keep the minimal record)",
   [SIGNIN_STATES]: null, // a 10-minute state carries no profile; a 'to: me' one that comes back later is a plain new sign-in
   [SIGNUP_LIMITS]: null, // per address and day (hashed), no profile
+  [SIGNUP_DEVICES]: null, // per phone (a one-way hash of its id), no link to any profile; gone after 30 days
   thirtyda_counters: null, // id counters
   thirtyda_questions: null, // the admin's question choices
   thirtyda_settings: null, // the admin's sealed keys
@@ -205,6 +212,9 @@ export function minimalFlag(flag, userId) {
     status: about && flag.status === "open" ? "left" : flag.status ?? null,
     warned: Boolean(flag.warned),
     left: about ? "from" : "to",
+    // What a report pointed at ('profile' | 'photo:n' | 'line:S-12/3': no words, no photo) and what the admin did.
+    ...(flag.target ? { target: String(flag.target) } : {}),
+    ...(flag.resolvedAt ? { resolvedAt: flag.resolvedAt, resolvedAction: flag.resolvedAction ?? null } : {}),
   };
 }
 
@@ -269,6 +279,9 @@ async function cleanUp(d, userId, h, at, { deletePhoto, ownSessions }) {
     await d.collection(CHATS).updateMany({ _id: { $in: ended.map((p) => p._id) } }, { $set: { endedReason: "left" } });
   }
 
+  // Blocks by it or of it (src/lib/thirtyda-blocks.mjs): nobody is left to hide from.
+  done.blocks = (await d.collection(BLOCKS).deleteMany({ $or: [{ by: userId }, { who: userId }] })).deletedCount ?? 0;
+
   // Flags about it / by it: the minimal record only.
   const flags = await d.collection(FLAGS).find({ $or: [{ from: userId }, { to: userId }] }).toArray();
   for (const f of flags) await d.collection(FLAGS).replaceOne({ _id: f._id }, minimalFlag(f, userId));
@@ -295,8 +308,11 @@ async function cleanUp(d, userId, h, at, { deletePhoto, ownSessions }) {
  *   4. its own sessions (the person is signed out), then the profile itself;
  *   5. cleanUp again, with anything a request already in flight added meanwhile (a session, a number, a photo, a line).
  * → { ok, already } (already: there was no such profile — done before, or never there).
+ * onlyIf: the claim (step 1) happens only while the profile still matches it — the 48-hour sweep's "still never
+ * verified", so a person who verifies at that very moment keeps the profile (→ { ok: false, skipped: true }, nothing
+ * changed). action: the audit line's action ('account_deleted'; the sweep's 'unverified_expired').
  */
-export async function deleteAccount(d, userId, { now = Date.now(), deletePhoto = deleteStoredPhoto } = {}) {
+export async function deleteAccount(d, userId, { now = Date.now(), deletePhoto = deleteStoredPhoto, onlyIf = null, action = "account_deleted" } = {}) {
   const at = new Date(now).toISOString();
   const users = d.collection(USERS);
   const user = await users.findOne({ _id: userId });
@@ -313,10 +329,11 @@ export async function deleteAccount(d, userId, { now = Date.now(), deletePhoto =
   if (own && !handles.phones.includes(own) && !(await users.findOne({ phone: own, _id: { $ne: userId } }, { projection: { _id: 1 } }))) {
     handles.phones.push(own);
   }
-  await users.updateOne({ _id: userId }, claimUpdate(user, handles, new Date(now)));
+  const claimed = await users.updateOne({ _id: userId, ...(onlyIf || {}) }, claimUpdate(user, handles, new Date(now)));
+  if (onlyIf && !claimed?.matchedCount) return { ok: false, skipped: true };
   const done = await cleanUp(d, userId, handles, at, { deletePhoto, ownSessions: false });
   await d.collection(AUDIT).updateOne(
-    { action: "account_deleted", userId }, { $setOnInsert: { at: new Date(now) } }, { upsert: true },
+    { action, userId }, { $setOnInsert: { at: new Date(now) } }, { upsert: true },
   );
   // Everything else is done: its own sessions end now, while the profile (marked deleting) is still there — should
   // this stop right here, the background still finds the profile and finishes it; no session is ever left pointing at
@@ -377,6 +394,66 @@ export function finishDeletesInBackground(d, { every = RESUME_AFTER_MS, deletePh
   timer.unref?.();
   resumer = { ran: round(), stop() { clearInterval(timer); resumer = null; } };
   return resumer;
+}
+
+// ---------------------------------------------------------------- never verified: gone after 48 hours (owner 2026-10-14)
+
+/** How often the server looks for profiles past their 48 hours (and once at start). */
+export const EXPIRE_EVERY_MS = 10 * 60e3;
+
+/**
+ * A profile that never verified any way (neverVerifiedFilter) is deleted at users.verifyBy — 48 hours after it was made
+ * (createProfile sets it; the app shows the time left). One made before the rule gets its 48 hours from this run on. A
+ * blocked one is left alone (the admin's case: its record stays until the admin decides); one already being deleted is
+ * finished by resumeDeletions. Each goes through deleteAccount (everything of it, the others' conversations end as
+ * 'left'), claimed only while still never verified. → how many were deleted.
+ */
+export async function expireUnverified(d, { now = Date.now(), limit = 20, deletePhoto = deleteStoredPhoto } = {}) {
+  const users = d.collection(USERS);
+  const still = { ...neverVerifiedFilter(), blocked: { $ne: true }, deleting: { $exists: false } };
+  await users.updateMany({ ...still, verifyBy: { $exists: false } }, { $set: { verifyBy: verifyByFrom(now) } });
+  const due = await users.find({ ...still, verifyBy: { $lt: new Date(now) } }, { projection: { _id: 1 } })
+    .sort({ verifyBy: 1 }).limit(limit).toArray();
+  let deleted = 0;
+  for (const u of due) {
+    try {
+      const r = await deleteAccount(d, u._id, { now, deletePhoto, onlyIf: still, action: "unverified_expired" });
+      if (r.ok && !r.already) deleted += 1;
+    } catch (err) {
+      console.error("[30da delete] unverified", u._id, ":", err instanceof Error ? err.message : err);
+    }
+  }
+  return deleted;
+}
+
+let expirer = null; // one per process
+
+/**
+ * expireUnverified without waiting for anyone: one round as soon as the app reaches its database (server start), then
+ * every EXPIRE_EVERY_MS. Best effort, rounds never overlap, the timer never keeps the process alive. Called again → the
+ * same one. → { ran: Promise<number> (the first round), stop() }.
+ */
+export function expireUnverifiedInBackground(d, { every = EXPIRE_EVERY_MS, deletePhoto = deleteStoredPhoto } = {}) {
+  if (expirer) return expirer;
+  let busy = false;
+  const round = async () => {
+    if (busy) return 0;
+    busy = true;
+    try {
+      return await expireUnverified(d, { now: Date.now(), deletePhoto });
+    } catch (err) {
+      console.error("[30da delete] unverified:", err instanceof Error ? err.message : err);
+      return 0;
+    } finally {
+      busy = false;
+    }
+  };
+  // Profiles with a deadline (only never-verified ones get one): a small sparse index.
+  Promise.resolve(d.collection(USERS).createIndex?.({ verifyBy: 1 }, { sparse: true })).catch(() => {});
+  const timer = setInterval(round, every);
+  timer.unref?.();
+  expirer = { ran: round(), stop() { clearInterval(timer); expirer = null; } };
+  return expirer;
 }
 
 const limits = windowLimiter(15 * 60e3);

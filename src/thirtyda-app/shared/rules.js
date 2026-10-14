@@ -1,6 +1,10 @@
-// 30+DA shared rules: languages, the contact-detail detector and the text limits.
+// 30+DA shared rules: languages, the contact-detail detector, the bad-word check and the text limits.
 // Imported by the server AND served to the browser unchanged, so: plain ES module, no Node
 // imports, no DOM, and no regex lookbehind (older iOS Safari cannot even parse it).
+
+import { badWordSpans, BAD_WORD_REASONS } from './bad-words.js';
+
+export { BAD_WORD_REASONS };
 
 export const LANGS = ['en', 'km', 'zh', 'ko', 'ja'];
 export const LANG_CODES = { en: 'EN', km: 'KM', zh: 'ZH', ko: 'KO', ja: 'JA' };
@@ -780,6 +784,18 @@ export function findContactDetailsAcross(texts) {
   return { ...r, text, hits: r.hits.map((h) => ({ ...h, index: indexAt(h.start), lastIndex: indexAt(Math.max(h.start, h.end - 1)) })) };
 }
 
+/**
+ * Sexual words, slurs, rude or threatening words, and money / escort words (store policy, owner 2026-10-14; the lists
+ * and how they match: ./bad-words.js), read through the same folding as contact details (ｆｕｃｋ, fück, f.u.c.k).
+ * → { ok, hits:[{ type:'word', category, match, start, end }], reason } (reason: the first hit's BAD_WORD_REASONS).
+ */
+export function findBadWords(text) {
+  const f = fold(text);
+  if (!f.low.trim()) return { ok: true, hits: [], reason: null };
+  const hits = badWordSpans(f.low).map((h) => ({ ...toHit(f, { type: 'word', fs: h.fs, fe: h.fe }), category: h.category }));
+  return { ok: hits.length === 0, hits, reason: hits.length ? BAD_WORD_REASONS[hits[0].category] : null };
+}
+
 // ---------------------------------------------------------------------------
 // Counting and the level text rules.
 
@@ -874,12 +890,15 @@ function isTrivial(text) {
   return words.every(isTrivialWord); // nothing but emoji/punctuation is trivial too
 }
 
-// Level 3 chat line: 20–30 characters, not just "ok"/"hi"/"bye", never a contact detail.
+// Level 3 chat line: 20–30 characters, not just "ok"/"hi"/"bye", never a contact detail or a bad word
+// (error 'contact' | 'word': the two the server stops and records for the admin; a contact detail is reported first).
 export function checkChatMessage(text) {
   const count = charCount(text);
   const { ok: clean, hits, reason } = findContactDetails(text);
   const result = (error) => ({ ok: !error, error, hits, reason, count });
   if (!clean) return result('contact');
+  const words = findBadWords(text);
+  if (!words.ok) return { ok: false, error: 'word', hits: words.hits, reason: words.reason, count };
   if (count < CHAT_MIN) return result('too_short');
   if (count > CHAT_MAX) return result('too_long');
   if (isTrivial(text)) return result('trivial');
@@ -893,6 +912,8 @@ function checkWritten(text, [min, max]) {
   const { ok: clean, hits, reason } = findContactDetails(text);
   const result = (error) => ({ ok: !error, error, hits, reason, count });
   if (!clean) return result('contact');
+  const words = findBadWords(text);
+  if (!words.ok) return { ok: false, error: 'word', hits: words.hits, reason: words.reason, count };
   if (count < min) return result('empty');
   if (count > max) return result('too_long');
   return result(null);
@@ -954,8 +975,8 @@ export function checkBirthYear(value, now = Date.now()) {
 }
 
 /**
- * An app name → { ok, name, count, error:null|'empty'|'too_short'|'too_long'|'contact', hits, reason }
- * (name = trimmed, single spaces). A contact detail is reported first: it is the rule that matters.
+ * An app name → { ok, name, count, error:null|'empty'|'too_short'|'too_long'|'contact'|'word', hits, reason }
+ * (name = trimmed, single spaces). A contact detail is reported first, then a bad word: they are the rules that matter.
  * too_long also covers a name over the raw caps (NAME_RAW_MAX code points, NAME_CHAR_MAX in one character).
  */
 export function checkAppName(text) {
@@ -965,8 +986,28 @@ export function checkAppName(text) {
   const result = (error) => ({ ok: !error, name, count, error, hits, reason });
   if (!count) return result('empty');
   if (!clean) return result('contact');
+  const words = findBadWords(name);
+  if (!words.ok) return { ok: false, name, count, error: 'word', hits: words.hits, reason: words.reason };
   if (count > NAME_MAX || widest > NAME_CHAR_MAX || [...name].length > NAME_RAW_MAX) return result('too_long');
   if (count < NAME_MIN) return result('too_short');
+  return result(null);
+}
+
+export const REAL_NAME_MIN = 2, REAL_NAME_MAX = 60;
+
+/**
+ * A real name (first and last, private until Level 3) → { ok, name, count, error:null|'empty'|'too_short'|'too_long'|
+ * 'word', hits, reason } (name = trimmed, single spaces). 2–60 characters and no bad word (reported first).
+ */
+export function checkRealName(text) {
+  const name = String(text ?? '').trim().replace(/\s+/g, ' ');
+  const count = charCount(name);
+  const words = findBadWords(name);
+  const result = (error) => ({ ok: !error, name, count, error, hits: words.hits, reason: words.reason });
+  if (!count) return result('empty');
+  if (!words.ok) return result('word');
+  if (count < REAL_NAME_MIN) return result('too_short');
+  if (count > REAL_NAME_MAX) return result('too_long');
   return result(null);
 }
 

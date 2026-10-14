@@ -7,11 +7,16 @@ import {
   screen, el, icon, t, go, api, toast, modal, state, topBar, levelBar, avatar, countdown, pronoun, fmtKm,
   pairRoute, stageLevel, nextKind, registerStrings, morePhotosPrompt, stageOpenLevel, roleLabel,
 } from '../core.js';
+import { personMenuButton, reportPhotoButton } from './safety.js';
+import { canChat } from './verify-chat.js';
 
-function viewPhoto(url, name) {
+/** A photo, large. `person` given: "Report photo" under it (its place among the photos I can see of them). */
+function viewPhoto(url, name, person = null) {
+  const n = person ? (person.photos || []).indexOf(url) + 1 : 0;
   const dlg = modal(el('div', { class: 'dialog-body viewer' },
     el('img', { src: url, alt: name }),
-    el('button', { type: 'button', class: 'btn btn-secondary', on: { click: () => dlg.close() } }, t('core_close'))),
+    el('button', { type: 'button', class: 'btn btn-secondary', on: { click: () => dlg.close() } }, t('core_close')),
+    n ? reportPhotoButton(person, () => n, { close: () => dlg.close() }) : null),
   { label: name });
 }
 
@@ -35,7 +40,7 @@ function photoStrip(person) {
     el('span', { class: 'label' }, t('pf_photos')),
     el('ul', { class: 'thumbs' },
       visible.map((url, i) => el('li', {}, el('button', {
-        type: 'button', class: 'thumb', 'aria-label': t('pf_photo_n', { n: i + 1 }), on: { click: () => viewPhoto(url, name) },
+        type: 'button', class: 'thumb', 'aria-label': t('pf_photo_n', { n: i + 1 }), on: { click: () => viewPhoto(url, name, person) },
       }, el('img', { src: url, alt: '' })))),
       locked.map((x) => el('li', { class: 'thumb locked' },
         icon('lock', 15),
@@ -121,8 +126,9 @@ screen('/person/:id', async ({ params, root }) => {
     return;
   }
   const stops = [];
-  // PROFILE opens my own profile (language, photos, sign out).
-  root.append(topBar({ left: 'back', right: t('pf_title') }));
+  // PROFILE opens my own profile (language, photos, sign out). The ⋯ (Report / Block) comes once the person is loaded.
+  const bar = topBar({ left: 'back', right: t('pf_title') });
+  root.append(bar);
   const body = el('div', { class: 'profile-body' }, el('p', { class: 'loading' }, t('core_loading')));
   root.append(body);
 
@@ -140,6 +146,9 @@ screen('/person/:id', async ({ params, root }) => {
 
   const { person, pair } = data;
   const name = person.name;
+  // Store policy (owner 2026-10-14): Report {name} · Block {name}. Blocked → gone for each other: back to Nearby.
+  const barRight = bar.querySelector('.topbar-right');
+  barRight?.insertBefore(personMenuButton(person, { onBlocked: () => go('/nearby', { replace: true }) }), barRight.querySelector('.me-btn'));
   const level = pair?.level || 1;
   const chatOpen = pair?.stage === 'l3_open';
   const ended = pair?.stage === 'ended';
@@ -150,7 +159,7 @@ screen('/person/:id', async ({ params, root }) => {
     el('div', { class: 'section' }, el('span', { class: 'label' }, t('pf_verified_with')), verifiedChips(person.verified)),
     el('div', { class: 'profile-photo' },
       person.photo
-        ? el('button', { type: 'button', 'aria-label': t('pf_view_photo'), on: { click: () => viewPhoto(person.photo, name) } }, avatar(person.photo, 170))
+        ? el('button', { type: 'button', 'aria-label': t('pf_view_photo'), on: { click: () => viewPhoto(person.photo, name, person) } }, avatar(person.photo, 170))
         : avatar(null, 170)),
     el('h1', { class: 'display profile-name' }, name),
     person.realName
@@ -170,7 +179,7 @@ screen('/person/:id', async ({ params, root }) => {
     el('div', { class: 'profile-actions' },
       actionButton(person, pair, { reload, stops }),
       chatOpen || ended ? null : el('div', { class: 'btn btn-dashed', role: 'note' }, icon('lock', 16), el('span', {}, t('pf_chat_opens'))),
-      pair?.next === 'chat' && !state.me?.verified?.phone
+      pair?.next === 'chat' && !canChat(state.me)
         ? el('p', { class: 'lock-note' }, icon('lock', 14), el('span', {}, t('pf_phone_needed')),
           el('button', { type: 'button', class: 'link', on: { click: () => go('/me') } }, t('pf_verify_phone')))
         : null),

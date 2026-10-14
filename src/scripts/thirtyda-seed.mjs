@@ -20,6 +20,7 @@ import { getDb, closeDb } from "../lib/mongo.ts";
 import { ensureThirtyDaIndexes } from "../lib/thirtyda-app.mjs";
 import { deletePhoto } from "../lib/thirtyda-photos.mjs";
 import { hashPin } from "../lib/thirtyda-pin.mjs";
+import { TERMS_VERSION } from "../thirtyda-app/shared/terms.js";
 import { buildDemo, DEMO_NOTES } from "../data/thirtyda-sample.mjs";
 
 // Every demo person's PIN (the app asks for it each time it opens). Only ever set in a *_dev database: a
@@ -29,6 +30,7 @@ const DEV_PIN = "2580";
 const APP_COLLECTIONS = [
   "thirtyda_users", "thirtyda_user_sessions", "thirtyda_otps", "thirtyda_pairs",
   "thirtyda_sets", "thirtyda_chats", "thirtyda_flags", "thirtyda_counters",
+  "thirtyda_blocks", // people blocking each other (src/lib/thirtyda-blocks.mjs): the demo starts with none
   "thirtyda_photos.files", "thirtyda_photos.chunks", // GridFS photo store
   "thirtyda_questions", // admin-set question choices: the demo starts on the built-in ones
   "thirtyda_settings", // admin Connections (sealed tokens): the demo starts with none, so codes are test codes
@@ -58,6 +60,8 @@ try {
     const pinHash = await hashPin(DEV_PIN);
     for (const u of demo.users) Object.assign(u, { pinHash, pinAt: new Date(), pinTries: 0 });
   }
+  // Every demo person has agreed to the current community rules (src/thirtyda-app/shared/terms.js), so the app opens.
+  for (const u of demo.users) u.terms = { version: TERMS_VERSION, at: new Date() };
   await d.collection("thirtyda_users").insertMany(demo.users);
   await d.collection("thirtyda_pairs").insertMany(demo.pairs);
   await d.collection("thirtyda_sets").insertMany(demo.sets);

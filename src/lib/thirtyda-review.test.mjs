@@ -169,7 +169,7 @@ test('the app checks the world in every route that shows or reaches a person (se
   assert.match(body('person'), /sameWorld\(me, u\)/, 'a profile');
   assert.match(body('getPhoto'), /sameWorld\(me, owner\)/, 'photos');
   assert.match(body('createPair'), /sameWorld\(me, other\)/, 'start a conversation');
-  assert.match(body('pairFor'), /sameWorld\(me, other\)/, 'every conversation route (read and write)');
+  assert.match(body('pairFor'), /sameWorld\(me, (other|stored)\)/, 'every conversation route (read and write)');
   for (const fn of ['listPairs', 'heartbeat', 'pendingCount']) assert.match(body(fn), /pairsInWorld\(d, me,/, fn);
   assert.match(body('signInWithPhone'), /if \(isReview\(user\)\) throw phoneInUse\(\)/, 'a review number never signs in by a code or Telegram');
   assert.match(body('sendCode'), /refuseReviewNumber\(d, phone\)/);

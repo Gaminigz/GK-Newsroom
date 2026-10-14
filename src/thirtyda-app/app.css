@@ -57,6 +57,9 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 button:disabled { cursor: default; }
 input, select, textarea { font: inherit; color: inherit; }
 img { display: block; max-width: 100%; }
+/* Members' photos are not for keeping (store policy, owner 2026-10-14): no "Save image" from a long press on iPhone,
+   no dragging one out on a computer. */
+img { -webkit-touch-callout: none; -webkit-user-drag: none; user-select: none; -webkit-user-select: none; }
 a { color: inherit; }
 :focus-visible { outline: 2px solid #3b6fe0; outline-offset: 2px; }
 .visually-hidden {
@@ -408,6 +411,13 @@ a { color: inherit; }
 .unlock-line .icon { flex: none; color: var(--navy); }
 .banner { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: var(--radius); background: var(--field); font-size: 12.5px; font-weight: 600; }
 .banner .icon { flex: none; }
+/* "Verify within 48 hours to keep your profile" + the time left (screens/verify-chat.js verifyBanner, owner 2026-10-14) */
+.verify-banner { display: flex; align-items: center; gap: 10px; width: 100%; margin: 0 0 12px; padding: 10px 12px; border: 0; border-radius: var(--radius); background: var(--orange-soft); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.verify-banner > .icon { flex: none; }
+.verify-banner > .icon-clock { color: var(--orange); }
+.verify-banner .vb-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.verify-banner strong { font-size: 13.5px; font-weight: 800; line-height: 1.3; }
+.verify-banner .vb-left { font-size: 12.5px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* ---------- Avatars, level bar, heart pills ---------- */
 .avatar {
@@ -924,6 +934,16 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
 :lang(km) .slot-sub { letter-spacing: 0.02em; }
 /* Kept: a photo from before the level rule, in a slot this level has not unlocked (lock in the tag). */
 .photo-slot.kept .slot-tag { background: var(--navy); color: #fff; }
+/* Waiting for the team's approval (store policy, owner 2026-10-14): only the owner sees it; a band across the photo. */
+.photo-slot.waiting > img { filter: saturate(0.6) brightness(0.92); }
+.slot-wait {
+  position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: center; justify-content: center; gap: 3px; padding: 3px 4px;
+  background: rgb(240 140 0 / 0.94); color: #fff; font-size: 9.5px; font-weight: 800; line-height: 1.15; text-align: center;
+}
+.slot-wait .icon { flex: none; }
+.slot-wait span { overflow-wrap: anywhere; }
+:lang(ja) .slot-wait span, :lang(zh) .slot-wait span, :lang(ko) .slot-wait span { word-break: keep-all; }
 .kept-note { display: flex; align-items: flex-start; gap: 6px; margin-top: -2px; }
 .kept-note .icon { flex: none; margin-top: 2px; }
 /* Japanese: wrap only at the marked point (レベル2で / 解除), never inside a word. */
@@ -1096,3 +1116,34 @@ dialog.verify-sheet { overflow-y: auto; }
 .me-hearts-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .me-place { display: inline-flex; align-items: center; gap: 4px; min-width: 0; font-size: 13px; color: var(--ink); text-align: right; }
 .me-place > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Block + report (store policy, owner 2026-10-14; screens/safety.js): the ⋯ in a top bar, "Report photo" in a viewer,
+   the line you can tap to report, and the "Blocked people" list on Me. */
+.chat-actions { display: flex; align-items: center; gap: 6px; }
+.report-photo { align-self: center; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.blocked-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.blocked-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; border-bottom: 1px solid var(--line-soft); }
+.blocked-row:last-child { border-bottom: 0; }
+.blocked-name { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-weight: 700; }
+.blocked-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blocked-name .icon { flex: none; color: var(--muted); }
+/* Community rules (store policy, owner 2026-10-14; screens/rules.js): after the language, before the PIN — six
+   one-line rules, Terms · Privacy policy, "I agree". Navy like the opening and PIN screens. Fits 390 px. */
+.rules-screen { gap: 18px; padding: 14px 24px calc(24px + env(safe-area-inset-bottom)); }
+.rules-top { min-height: 34px; }
+.rules-head { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.rules-icon { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid rgb(255 255 255 / 0.4); }
+.rules-title { font-family: var(--display); font-weight: 900; font-stretch: 108%; font-size: 30px; line-height: 1.1; }
+:lang(km) .rules-title { font-size: 26px; line-height: 1.45; }
+.rules-lede { font-size: 15.5px; line-height: 1.5; color: var(--on-dark-soft); }
+.rules-list { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.rules-list li { display: flex; align-items: flex-start; gap: 12px; font-size: 15.5px; line-height: 1.45; }
+.rules-list li > span:last-child { padding-top: 4px; }
+:lang(km) .rules-list li { line-height: 1.7; }
+.rules-ic { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgb(255 255 255 / 0.12); }
+.rules-links { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 10px; font-size: 14px; color: var(--on-dark-muted); }
+.rules-links a { color: #fff; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.rules-actions { display: flex; flex-direction: column; gap: 12px; margin-top: auto; }
+.rules-agree { width: 100%; }
+.rules-error { color: #ffb4ab; }
+.rules-foot { display: flex; justify-content: center; align-items: center; gap: 8px; margin: 0; font-size: 14px; color: var(--on-dark-muted); }
+.rules-foot .link { min-height: 40px; padding: 0 6px; font-weight: 600; }

@@ -75,17 +75,18 @@
       clear: () => map.clear(),
     };
   }
-  const seed = { thirtyda_lang: JSON.stringify(SC.lang) };
+  // The PIN chosen right after the language waits on the phone (localStorage, lock.js): per frame as well. Screen 2
+  // (Create profile) starts as if that step was just done, so it shows Create profile, not the PIN step.
+  const seed = { thirtyda_lang: JSON.stringify(SC.lang), ...(S === 2 ? { '30da_pin_wait': DEMO_PIN } : {}) };
   try {
     Object.defineProperty(window, 'localStorage', { value: memoryStorage(seed), configurable: true });
   } catch {
     try { window.localStorage.setItem('thirtyda_lang', seed.thirtyda_lang); } catch { /* storage blocked: the app falls back to en */ }
   }
-  // The PIN chosen right after the language waits in sessionStorage (lock.js): per frame as well. Screen 2
-  // (Create profile) starts as if that step was just done, so it shows Create profile, not the PIN step.
+  // This tab's storage, per frame as well.
   try {
     // '30da_back': each load starts the scenario as if just signed in (no PIN first).
-    const tabSeed = { '30da_back': String(Date.now()), ...(S === 2 ? { '30da_pin_wait': DEMO_PIN } : {}) };
+    const tabSeed = { '30da_back': String(Date.now()) };
     Object.defineProperty(window, 'sessionStorage', { value: memoryStorage(tabSeed), configurable: true });
   } catch { /* the real one: fine when the demo is opened on its own */ }
 
@@ -210,8 +211,13 @@
   const ready = Promise.all([
     import('/30da/shared/rules.js'), import('/30da/shared/questions.js'),
     import('/30da/shared/question-slots.js'), import('/30da/shared/conversation.js'), import('/30da/shared/pin.js'),
-  ]).then(([rules, questions, slots, conversation, pin]) => {
-    R = { ...rules, ...questions, ...slots, ...conversation, ...pin };
+    import('/30da/shared/terms.js'),
+  ]).then(([rules, questions, slots, conversation, pin, terms]) => {
+    R = { ...rules, ...questions, ...slots, ...conversation, ...pin, ...terms };
+    // Screen 2 (Create profile) starts after the community rules' "I agree" too (the API answers only after this).
+    if (S === 2) {
+      try { window.localStorage.setItem(R.TERMS_KEY, JSON.stringify(R.newAgreement())); } catch { /* storage blocked */ }
+    }
     build();
   });
 
@@ -294,12 +300,15 @@
 
   // ------------------------------------------------------------------ the world
 
-  const REPORT_REASONS = { rude: 'rude message', scam: 'scam or money', sexual: 'sexual message', other: 'other' };
+  const REPORT_REASONS = { rude: 'rude message', scam: 'scam or money', sexual: 'sexual message', underage: 'underage (a minor)', other: 'other' };
+  // Block + report a person (store policy, owner 2026-10-14; src/lib/thirtyda-blocks.mjs): the demo keeps them in memory.
+  const PERSON_REASONS = ['rude', 'sexual', 'scam', 'underage', 'fake', 'other'];
   const ERROR_TEXT = {
     empty: 'Write something first.',
     too_short: 'Write 20 to 30 characters.',
     too_long: 'That is too long.',
     trivial: 'Say a little more than yes, ok, hi or bye.',
+    word: 'Rude, sexual or money words are not allowed.',
   };
 
   const W = {
@@ -497,6 +506,8 @@
       phoneVia: u.verified?.phone && u.phone && ['telegram', 'whatsapp', 'sms'].includes(u.phoneVia) ? u.phoneVia : null,
       signins: { google: Boolean(u.signin?.google), facebook: Boolean(u.signin?.facebook), tiktok: Boolean(u.signin?.tiktok) },
       photos: slotUrls(u),
+      // Server (store policy, owner 2026-10-14): a new / replaced photo waits for the team ("Waiting for approval").
+      photoPending: slotUrls(u).map((x, i) => Boolean(x) && u.photoReview?.[i] === 'pending'),
       photoSlots: { max: R.PHOTO_MAX, allowed: R.PHOTO_MAX, levels: [...R.PHOTO_SLOT_LEVELS], filled: filledCount(u) },
       area: u.area ?? '',
       city: u.city ?? '',
@@ -504,6 +515,8 @@
       level: u.level ?? 1,
       blocked: Boolean(u.blocked),
       pinSet: Boolean(u.pin),
+      // Server: the community rules this profile agreed to (every demo person: the current version).
+      terms: { version: R.TERMS_VERSION, at: nowIso() },
     };
   }
 
@@ -655,6 +668,19 @@
     throw fail(422, 'contact_detail', reason || 'Contact details are not allowed.', { hits, reason, count: R.charCount(text) });
   }
 
+  // Bad words (store policy, owner 2026-10-14): stopped and recorded like a contact detail, 422 bad_word.
+  const badWord = (w, extra = {}) => fail(422, 'bad_word', w.reason || ERROR_TEXT.word, { ...extra, hits: plainHits(w.hits), reason: w.reason });
+  function stopBadWords(u, pair, other, texts, opts) {
+    for (let i = 0; i < texts.length; i++) {
+      if (texts[i] == null) continue;
+      const text = String(texts[i]).trim();
+      const w = R.findBadWords(text);
+      if (w.ok) continue;
+      recordStopped(u, pair, other, { text, ...opts, hits: w.hits, reason: w.reason });
+      throw badWord(w, { index: i });
+    }
+  }
+
   const KM_DIGITS = { '០': 0, '១': 1, '២': 2, '៣': 3, '៤': 4, '៥': 5, '៦': 6, '៧': 7, '៨': 8, '៩': 9 };
   function normalizePhone(raw) {
     let s = String(raw ?? '')
@@ -672,6 +698,7 @@
   function checkName(raw) {
     const c = R.checkAppName(raw);
     if (c.error === 'contact') throw fail(422, 'contact_detail', c.reason, { field: 'name', hits: c.hits, reason: c.reason });
+    if (c.error === 'word') throw badWord(c, { field: 'name' });
     if (!c.ok) throw invalid(`Your app name needs ${R.NAME_MIN} to ${R.NAME_MAX} characters.`, { field: 'name', min: R.NAME_MIN, max: R.NAME_MAX });
     return c.name;
   }
@@ -1066,7 +1093,7 @@
   // "Verify to chat" (owner 2026-10-13, server: src/lib/thirtyda-verify.mjs): a profile can be made without verifying
   // ({ unverified: true }, a few per day — here per frame), and talking to someone waits for one verified way.
   const UNVERIFIED_PER_DAY = 3;
-  const canTalk = (u) => ['phone', 'gmail', 'facebook', 'tiktok'].some((k) => u?.verified?.[k] === true);
+  const canTalk = (u) => ['phone', 'gmail', 'facebook', 'tiktok', 'apple'].some((k) => u?.verified?.[k] === true);
   const TALK_ROUTES = [
     ['POST', /^\/pairs$/], ['POST', /^\/pairs\/(P-\d+)\/sets$/], ['PUT', /^\/pairs\/(P-\d+)\/replies$/],
     ['POST', /^\/pairs\/(P-\d+)\/answers$/], ['POST', /^\/pairs\/(P-\d+)\/decide$/], ['POST', /^\/pairs\/(P-\d+)\/messages$/],
@@ -1087,8 +1114,10 @@
     }
     const name = checkName(body.name);
     const birthYear = checkBirth(body.birthYear);
-    const realName = String(body.realName ?? '').trim().replace(/\s+/g, ' ');
-    if (R.charCount(realName) < 2 || R.charCount(realName) > 60) throw invalid('Write your first and last name.', { field: 'realName' });
+    const real = R.checkRealName(body.realName);
+    if (real.error === 'word') throw badWord(real, { field: 'realName' });
+    if (!real.ok) throw invalid('Write your first and last name.', { field: 'realName' });
+    const realName = real.name;
     const role = checkRole(body.role);
     if (!['man', 'woman', 'other'].includes(body.gender)) throw invalid('Choose male, female or other.', { field: 'gender' });
     const lang = checkLang(body.lang);
@@ -1106,7 +1135,7 @@
     const user = {
       id, name, realName, birthYear, role, gender: body.gender, lang, phone, phoneUnverified: typed, phoneVia: phone ? s.phoneVia ?? null : null,
       verified: { phone: Boolean(phone), gmail: Boolean(s?.verified?.gmail), facebook: Boolean(s?.verified?.facebook), tiktok: Boolean(s?.verified?.tiktok) },
-      photos: [photo], seeded: false, location: null, km: 0, area: '', city: '', hearts: { red: 0, orange: 0 },
+      photos: [photo], photoReview: { 0: 'pending' }, seeded: false, location: null, km: 0, area: '', city: '', hearts: { red: 0, orange: 0 },
       level: 1, blocked: false, notices: [], pin: newPin, pinTries: 0,
     };
     W.users.set(id, user);
@@ -1160,6 +1189,7 @@
     const slot = emptySlot(slotsOf(u), R.PHOTO_MAX);
     if (slot < 0) throw photoRefusal(u);
     setSlot(u, slot, checkPhoto(body.photo));
+    (u.photoReview ??= {})[slot] = 'pending'; // the demo has no team: it waits
     return { user: meView(u) };
   }
 
@@ -1170,6 +1200,7 @@
     if (index >= R.PHOTO_MAX) throw photoRefusal(u, index);
     if (index > 0 && !slotsOf(u)[0]) throw fail(409, 'main_first', 'Add your main photo first.');
     setSlot(u, index, checkPhoto(body.photo));
+    (u.photoReview ??= {})[index] = 'pending';
     return { user: meView(u) };
   }
 
@@ -1186,6 +1217,7 @@
     }
     if (!photos[0]) throw fail(409, 'last_photo', 'Keep at least one photo of your face.');
     u.photos[index] = null;
+    if (u.photoReview) delete u.photoReview[index];
     while (u.photos.length && !u.photos.at(-1)) u.photos.pop();
     return { user: meView(u) };
   }
@@ -1338,6 +1370,7 @@
     const written = list.map((q) => (q?.source === 'written' ? String(q.text ?? '').trim() : null));
     stopContactDetails(u, pair, other, written, { level, kind: 'question' });
     stopSplitContactDetails(u, pair, other, written, { level, kind: 'question' });
+    stopBadWords(u, pair, other, written, { level, kind: 'question' });
 
     const { pick, write } = R.LEVEL_RULES[level];
     if (list.length !== pick + write) throw invalid(`Send exactly ${pick + write} lines.`, { index: Math.min(list.length, pick + write - 1) });
@@ -1508,7 +1541,7 @@
         : { id: otherId, name: '', gender: null, lang: 'en', photos: [], lockedPhotos: [] },
       levels,
       canSend,
-      chat: { open: stage === 'l3_open', opensAt: null, phoneNeeded: !u.verified?.phone },
+      chat: { open: stage === 'l3_open', opensAt: null, phoneNeeded: !canTalk(u) },
       decision: { canDecide: stage === 'l3_decide' && !frozen && view.decision === null, mine: view.decision, ended: stage === 'ended', endedAt: view.endedAt },
       next: view.next,
     };
@@ -1578,7 +1611,7 @@
 
   function chatGate(u, pair) {
     if (pair.stage !== 'l3_open') throw fail(409, 'chat_closed', 'The chat opens at Level 3.');
-    if (!u.verified?.phone) throw fail(403, 'phone_needed', 'Verify your phone number to chat.');
+    if (!canTalk(u)) throw fail(403, 'phone_needed', 'Verify to chat.'); // any verified way chats (the server's chatGate)
   }
 
   function listMessages({ url, params }) {
@@ -1610,6 +1643,7 @@
     const text = String(body.text ?? '').trim();
     stopContactDetails(u, pair, other, [text], { level: 3, kind: 'chat' });
     stopSplitChat(u, pair, other, text);
+    stopBadWords(u, pair, other, [text], { level: 3, kind: 'chat' });
     const r = R.checkChatMessage(text);
     if (!r.ok) throw fail(422, r.error, ERROR_TEXT[r.error] || 'Check your message.', { hits: r.hits ?? [], reason: r.reason ?? null, count: r.count });
     const lang = u.lang ?? 'en';
@@ -1678,7 +1712,29 @@
     ['GET', /^\/pairs\/(P-\d+)\/messages$/, listMessages],
     ['POST', /^\/pairs\/(P-\d+)\/messages$/, postMessage],
     ['POST', /^\/pairs\/(P-\d+)\/messages\/(M-\d+)\/report$/, report],
+    ['GET', /^\/me\/blocks$/, () => ({ blocks: (W.blocks || []).filter((b) => b.by === me().id).map((b) => ({ id: b.who, name: W.users.get(b.who)?.name ?? '', at: b.at })) })],
+    ['POST', /^\/people\/(U-\d+)\/block$/, blockPerson],
+    ['DELETE', /^\/people\/(U-\d+)\/block$/, ({ params }) => {
+      const before = (W.blocks || []).length;
+      W.blocks = (W.blocks || []).filter((b) => !(b.by === me().id && b.who === params[0]));
+      return { ok: true, removed: W.blocks.length < before };
+    }],
+    ['POST', /^\/people\/(U-\d+)\/report$/, ({ body, params }) => {
+      if (!PERSON_REASONS.includes(body.reason)) throw invalid('Choose a reason.', { field: 'reason' });
+      if (!W.users.get(params[0]) || params[0] === me().id) throw fail(404, 'not_found', 'This person is not here any more.');
+      return { ok: true };
+    }],
   ];
+
+  /** POST /people/:id/block (the demo: remembered for this frame only; the conversation is not frozen here). */
+  function blockPerson({ params }) {
+    const x = W.users.get(params[0]);
+    if (!x || x.id === me().id) throw fail(404, 'not_found', 'This person is not here any more.');
+    W.blocks = W.blocks || [];
+    let b = W.blocks.find((r) => r.by === me().id && r.who === x.id);
+    if (!b) W.blocks.push(b = { by: me().id, who: x.id, at: nowIso() });
+    return { ok: true, blocked: { id: x.id, name: x.name, at: b.at } };
+  }
 
   function route(method, url, body) {
     const sub = url.pathname.slice(API.length) || '/';

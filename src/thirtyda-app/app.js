@@ -6,11 +6,14 @@ import {
   state, api, bus, t, el, icon, go, modal, heartbeat, startRouter, setMe, registerStrings, actionLabel, pairRoute,
 } from './core.js';
 import { startLock, bootLock, applyLockInfo, waitingPin, pinResetPending, leaveWithoutLock } from './lock.js';
+// The community rules' "I agree" (store policy, owner 2026-10-14): screens/rules.js, kept on the phone by terms.js.
+import { agreedHere, syncTerms, termsNeeded } from './terms.js';
 
 // Each screen registers its own route. One failing module must not take the whole app down,
 // so they load side by side and a failure is only logged.
 const SCREENS = [
   ['opening', () => import('./screens/opening.js')],
+  ['rules', () => import('./screens/rules.js')],
   ['pin', () => import('./screens/pin.js')],
   ['create-profile', () => import('./screens/create-profile.js')],
   ['nearby', () => import('./screens/nearby.js')],
@@ -26,7 +29,7 @@ const SCREENS = [
   ['verify-chat', () => import('./screens/verify-chat.js')],
 ];
 
-const OPEN_PATHS = new Set(['/opening', '/pin', '/create']);
+const OPEN_PATHS = new Set(['/opening', '/rules', '/pin', '/create']);
 const BEAT_VISIBLE_MS = 30e3;
 const BEAT_HIDDEN_MS = 5 * 60e3; // only while notifications are allowed
 
@@ -65,16 +68,30 @@ async function loadSession() {
 // Create profile comes after the PIN step (#/pin), unless the person is signing in again after "Forgot PIN?".
 // A guest (owner 2026-10-13: "Language → PIN → the home screen"): the PIN chosen, no profile yet → the home screen
 // (#/nearby) to look around; Me is Create profile; anything else goes back home (guest.js asks for a profile first).
+// The community rules (store policy, owner 2026-10-14): "Language → Community rules → PIN". Past the language nothing
+// opens before "I agree" on this phone (#/rules) — except the way back in after "Forgot PIN?" (that profile agreed
+// already; the server asks again if the rules changed). A profile without the current rules: #/rules before anything.
 function guard(path) {
   if (state.me?.blocked) return path === '/blocked' ? null : '/blocked';
   if (!state.me) {
-    if (path === '/create' && !waitingPin() && !pinResetPending()) return '/pin';
-    if (OPEN_PATHS.has(path)) return null;
-    if (waitingPin()) return path === '/nearby' ? null : path === '/me' ? '/create' : '/nearby';
-    return state.pending ? '/create' : '/opening';
+    const to = visitorRoute(path);
+    const where = to ?? path;
+    if (where !== '/opening' && where !== '/rules' && !agreedHere() && !pinResetPending()) return '/rules';
+    return to;
   }
+  if (termsNeeded()) return path === '/rules' ? null : '/rules';
   if (OPEN_PATHS.has(path) || path === '/' || path === '/blocked') return '/nearby';
   return null;
+}
+
+/** Where someone with no profile may be (null = stay on `path`). */
+function visitorRoute(path) {
+  // The PIN already chosen on this phone (kept when the app closes, lock.js): never "Set your PIN" again — home.
+  if (path === '/pin' && waitingPin()) return '/nearby';
+  if (path === '/create' && !waitingPin() && !pinResetPending()) return '/pin';
+  if (OPEN_PATHS.has(path)) return null;
+  if (waitingPin()) return path === '/nearby' ? null : path === '/me' ? '/create' : '/nearby';
+  return state.pending ? '/create' : '/opening';
 }
 
 function renderOffline(host) {
@@ -90,7 +107,7 @@ function renderOffline(host) {
 let noticeOpen = false;
 
 function showNotices() {
-  if (noticeOpen || !state.me || state.me.blocked || state.locked) return;
+  if (noticeOpen || !state.me || state.me.blocked || state.locked || termsNeeded()) return; // the rules come first
   const notice = state.notices.find((n) => n && !n.seenAt);
   if (!notice) return;
   noticeOpen = true;
@@ -99,7 +116,9 @@ function showNotices() {
     el('span', { class: 'dialog-icon' }, icon('shield', 24)),
     el('h2', { class: 'dialog-title', id: 'notice-title' }, t('app_notice_title')),
     // Warnings have a fixed meaning, so they are shown in the reader's language.
-    el('p', {}, notice.kind === 'warning' ? t('app_notice_warning') : notice.text || ''),
+    // A rejected photo (store policy, owner 2026-10-14): the same fixed words, in the reader's language.
+    el('p', {}, notice.kind === 'warning' ? t(notice.rule === 'word' ? 'app_notice_warning_word' : 'app_notice_warning')
+      : notice.kind === 'photo' ? t('app_notice_photo') : notice.text || ''),
     el('div', { class: 'dialog-actions' }, ok)), { dismissible: false, label: t('app_notice_title') });
 
   ok.addEventListener('click', async () => {
@@ -198,6 +217,7 @@ async function boot() {
   bus.addEventListener('notices', showNotices);
   bus.addEventListener('actions', () => notifyActions(state.actions));
   let meId = state.me?.id ?? null;
+  let rulesOk = !termsNeeded();
   bus.addEventListener('me', () => {
     const id = state.me?.id ?? null;
     if (id !== meId) pendingSeen = null; // another person (or nobody) on this phone now
@@ -206,14 +226,25 @@ async function boot() {
       showNotices();
     }
     meId = id;
+    // Just signed in: an "I agree" made on this phone before the sign-in goes now (POST /me/terms).
+    syncTerms();
+    // Just agreed to the community rules: the news and messages that waited.
+    const ok = Boolean(state.me) && !termsNeeded();
+    if (ok && !rulesOk) {
+      heartbeat();
+      showNotices();
+    }
+    rulesOk = ok;
   });
   // Back from the PIN screen: the news and messages that waited.
   bus.addEventListener('unlocked', () => {
     noticeOpen = false; // the cover closed every dialog, a notice too: it shows again
     pendingSeen = null; // seen now: the next lock starts from the next heartbeat
+    syncTerms();
     heartbeat();
     showNotices();
   });
+  syncTerms(); // signed in already (the app opened): an agreement still waiting on this phone goes now
   startLock();
   startRouter({ host, guard });
   showNotices();
@@ -228,6 +259,8 @@ registerStrings({
     app_notice_title: 'A message from 30+DA',
     app_notice_ok: 'I understand',
     app_notice_warning: 'We stopped a message that broke the 30+DA rules. Contact details are never allowed. Next time the account is blocked.',
+    app_notice_warning_word: 'We stopped words that broke the 30+DA rules. Rude, sexual or money words are never allowed. Next time the account is blocked.',
+    app_notice_photo: 'A photo was not accepted — please use a clear photo of your face.',
     app_pending_note: 'Something new is waiting for you.',
   },
   km: {
@@ -235,6 +268,8 @@ registerStrings({
     app_notice_title: 'សារពី 30+DA',
     app_notice_ok: 'ខ្ញុំយល់ហើយ',
     app_notice_warning: 'យើងបានបញ្ឈប់សារមួយដែលបំពានច្បាប់របស់ 30+DA។ ព័ត៌មានទំនាក់ទំនងមិនត្រូវបានអនុញ្ញាតឡើយ។ បើកើតឡើងម្ដងទៀត គណនីនឹងត្រូវបិទ។',
+    app_notice_warning_word: 'យើងបានបញ្ឈប់ពាក្យដែលបំពានច្បាប់របស់ 30+DA។ ពាក្យអសុរស ពាក្យផ្លូវភេទ ឬពាក្យទាក់ទងនឹងលុយ មិនត្រូវបានអនុញ្ញាតឡើយ។ បើកើតឡើងម្ដងទៀត គណនីនឹងត្រូវបិទ។',
+    app_notice_photo: 'រូបថតមួយមិនត្រូវបានទទួលយកទេ — សូមប្រើរូបថតមុខរបស់អ្នកដែលច្បាស់។',
     app_pending_note: 'មានអ្វីថ្មីកំពុងរង់ចាំអ្នក។',
   },
   zh: {
@@ -242,6 +277,8 @@ registerStrings({
     app_notice_title: '来自 30+DA 的通知',
     app_notice_ok: '我明白了',
     app_notice_warning: '我们拦截了一条违反 30+DA 规则的消息。任何联系方式都不允许分享。如再违规，账号将被封禁。',
+    app_notice_warning_word: '我们拦截了违反 30+DA 规则的词语。不允许粗俗、色情或涉及金钱的词语。如再违规，账号将被封禁。',
+    app_notice_photo: '有一张照片没有通过审核——请使用一张清晰的本人正脸照。',
     app_pending_note: '有新动态在等你。',
   },
   ko: {
@@ -249,6 +286,8 @@ registerStrings({
     app_notice_title: '30+DA 안내',
     app_notice_ok: '알겠습니다',
     app_notice_warning: '30+DA 규칙을 어긴 메시지를 저희가 막았어요. 연락처는 절대 공유할 수 없어요. 다시 그러면 계정이 차단됩니다.',
+    app_notice_warning_word: '30+DA 규칙을 어긴 말을 저희가 막았어요. 욕설, 성적인 말, 돈 관련 말은 쓸 수 없어요. 다시 그러면 계정이 차단됩니다.',
+    app_notice_photo: '사진 한 장이 승인되지 않았어요. 얼굴이 잘 보이는 사진을 올려 주세요.',
     app_pending_note: '새로운 소식이 기다리고 있어요.',
   },
   ja: {
@@ -256,6 +295,8 @@ registerStrings({
     app_notice_title: '30+DAからのお知らせ',
     app_notice_ok: 'わかりました',
     app_notice_warning: '30+DAのルールに違反するメッセージを停止しました。連絡先の共有は一切できません。次回はアカウントが停止されます。',
+    app_notice_warning_word: '30+DAのルールに違反する言葉を停止しました。乱暴な言葉・性的な言葉・お金に関する言葉は使えません。次回はアカウントが停止されます。',
+    app_notice_photo: '写真が1枚承認されませんでした。顔がはっきり写った写真を使ってください。',
     app_pending_note: '新しいお知らせが届いています。',
   },
 });

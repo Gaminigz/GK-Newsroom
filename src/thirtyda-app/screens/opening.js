@@ -1,6 +1,6 @@
 // Screen 1 · Opening — headline, the 30+DA wordmark rising in letter by letter, the white rule
-// filling left → right, and the five language buttons. Picking a language goes to Set your PIN (#/pin),
-// then the home screen as a guest (Create profile when they want to do something).
+// filling left → right, and the five language buttons. Picking a language goes to the community rules (#/rules,
+// "I agree"), then Set your PIN (#/pin), then the home screen as a guest (Create profile when they want to do something).
 import { screen, el, icon, t, go, state, setLang, registerStrings, LANGS, LANG_NATIVE, LANG_FLAG } from '../core.js';
 import { legalLinks, takeDeletedNote } from './delete-account.js';
 
@@ -12,9 +12,10 @@ screen('/opening', ({ root }) => {
     : null;
 
   const letters = [...'30+DA'].map((ch, i) => el('span', { class: 'rise', 'aria-hidden': 'true', style: { '--i': i } }, ch));
+  // Then the community rules (#/rules, store policy owner 2026-10-14: "I agree" before anything else), then the PIN.
   const pick = (code) => {
     setLang(code, { rerender: false });
-    go('/pin');
+    go('/rules');
   };
 
   root.append(

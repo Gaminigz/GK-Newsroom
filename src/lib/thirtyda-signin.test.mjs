@@ -459,7 +459,7 @@ test('every page string is there in all 5 languages, with the same {placeholders
   }
 });
 
-test('privacy + delete-data: short, plain, in each language, flags on top, what Google / Facebook ask for', () => {
+test('privacy + delete-data: plain one-line points, in each language, flags on top, what Google / Facebook ask for', () => {
   for (const lang of PAGE_LANGS) {
     const t = PAGE_STRINGS[lang];
     const p = privacyPage({ lang });
@@ -473,14 +473,16 @@ test('privacy + delete-data: short, plain, in each language, flags on top, what 
       assert.equal((flags.match(/aria-current="true"/g) || []).length, 1);
       assert.ok(flags.includes(`hreflang="${lang}" lang="${lang}" aria-current="true"`), `${name} ${lang}: current flag`);
       assert.ok(html.includes('mailto:gk.smart@ggmt.sg'), `${name} ${lang}: contact`);
+      assert.ok(html.includes('<b>GGMT PTE. LTD.</b>'), `${name} ${lang}: the operator by its legal name`);
       assert.ok(!/OAuth|token|redirect|cookie/i.test(shown(html)), `${name} ${lang}: no technical words`);
     }
-    // Privacy: what we keep, from Google / Facebook, why, who sees it, how long + how to delete, contact.
-    for (const k of ['priv_keep', 'priv_social', 'priv_why', 'priv_who', 'priv_team', 'priv_codes', 'priv_never', 'priv_long']) {
-      assert.ok(p.includes(t[k]), `privacy ${lang}: ${k}`);
+    // Privacy: in short (what we keep, why, never sold), then the whole of it.
+    for (const k of ['priv_keep', 'priv_why', 'priv_never', 'priv_long', 'priv_operator']) {
+      assert.ok(p.includes(t[k].split('{')[0]), `privacy ${lang}: ${k}`);
     }
     assert.ok(p.includes(`<h1>${t.priv_title}</h1>`) && p.includes(`href="/30da/delete-data?lang=${lang}"`));
-    assert.ok((p.match(/<li>/g) || []).length <= 8, 'a few lines, not a wall');
+    // Never a wall: each point one plain line.
+    for (const li of p.match(/<li>[\s\S]*?<\/li>/g) || []) assert.ok([...shown(li).trim()].length <= 240, `privacy ${lang}: one line, not a wall: ${shown(li)}`);
     // Delete-data: email us (subject filled in), within 30 days, links back to the policy in the same language.
     assert.ok(d.includes(`<h1>${t.del_title}</h1>`) && d.includes('Delete my 30+DA account') && d.includes('30'));
     assert.ok(d.includes('href="mailto:gk.smart@ggmt.sg?subject=Delete%20my%2030%2BDA%20account"'));
@@ -488,10 +490,10 @@ test('privacy + delete-data: short, plain, in each language, flags on top, what 
   }
   assert.ok(privacyPage().includes('<html lang="en">') && privacyPage().includes('<h1>Privacy policy</h1>'), 'no language → English');
   assert.ok(privacyPage({ lang: 'xx' }).includes('<html lang="en">'));
-  assert.ok(shown(privacyPage()).length < 900, `privacy (en) stays short: ${shown(privacyPage()).length} characters`);
-  // 650: the in-app way + the one "What stays" line Google Play asks for (src/lib/thirtyda-delete.mjs keeps a bare note)
-  // + "Run by GGMT PTE. LTD." (owner 2026-10-14).
-  assert.ok(shown(deleteDataPage()).length < 650, `delete-data (en) stays short: ${shown(deleteDataPage()).length} characters`);
+  // The whole policy (store policy, owner 2026-10-14) — still a few screens, not a contract.
+  assert.ok(shown(privacyPage()).length < 3600, `privacy (en) stays readable: ${shown(privacyPage()).length} characters`);
+  // The in-app way step by step, the email way, what goes, what stays and for how long (Google Play).
+  assert.ok(shown(deleteDataPage()).length < 1500, `delete-data (en) stays short: ${shown(deleteDataPage()).length} characters`);
 });
 
 test('privacy: the date comes from POLICY_DATE alone, written each language\'s way; Google / Facebook line says what we keep', () => {

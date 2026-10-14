@@ -78,6 +78,12 @@ p { margin: 0 0 10px; }
 .facts li { margin: 0; padding: 10px 0; border-top: 1px solid var(--line-soft); }
 .facts li:last-child { border-bottom: 1px solid var(--line-soft); }
 .facts b { font-weight: 800; }
+/* The privacy policy's few headings (what we keep, who sees what, services, how long, your choices). */
+.doc-body h2 { margin: 28px 0 0; font-size: 19px; line-height: 1.3; font-weight: 800; font-stretch: 104%; overflow-wrap: anywhere; }
+.doc-body h2 + .facts { margin-top: 8px; }
+.facts + .doc-fine { margin-top: 10px; }
+/* Child safety: "If a child is in danger right now, call the police." */
+.doc-alert { margin: 18px 0 0; padding: 12px 14px; border-radius: 10px; background: var(--red-soft); color: var(--ink); font-weight: 700; }
 
 /* Delete your data: three numbered steps. */
 .steps { list-style: none; margin: 18px 0 14px; padding: 0; counter-reset: step; }
@@ -105,7 +111,7 @@ p { margin: 0 0 10px; }
 /* Khmer / CJK: no tracking or capitals in the small date line, a touch more line height for Khmer. */
 :lang(km) .doc-date, :lang(zh) .doc-date, :lang(ko) .doc-date, :lang(ja) .doc-date { font-family: var(--body); letter-spacing: 0; text-transform: none; font-size: 13px; }
 :lang(km) body, .doc:lang(km), .tr:lang(km) { line-height: 1.7; }
-:lang(km) h1 { line-height: 1.45; }
+:lang(km) h1, :lang(km) .doc-body h2 { line-height: 1.45; }
 :lang(km) .try-big { line-height: 1.4; }
 :lang(ko) .doc-body { word-break: keep-all; overflow-wrap: break-word; }
 

@@ -214,6 +214,7 @@ const SAMPLES = [
   ['POST', '/profile', null],
   ['GET', '/me', null],
   ['PATCH', '/me', null],
+  ['POST', '/me/terms', null], // "I agree" to the community rules (store policy, owner 2026-10-14): after the PIN
   ['POST', '/me/photos', null],
   ['PUT', '/me/photos/1', null],
   ['DELETE', '/me/photos/2', null],
@@ -245,6 +246,11 @@ const SAMPLES = [
   ['GET', '/pairs/P-1/messages', null],
   ['POST', '/pairs/P-1/messages', null],
   ['POST', '/pairs/P-1/messages/M-1/report', null],
+  // Block + report a person (store policy, owner 2026-10-14): data routes, so locked like the rest.
+  ['GET', '/me/blocks', null],
+  ['POST', '/people/U-10231/block', null],
+  ['DELETE', '/people/U-10231/block', null],
+  ['POST', '/people/U-10231/report', null],
 ];
 
 test('423 gate: every route of the real router is listed, and only sign-in + PIN routes stay open', () => {

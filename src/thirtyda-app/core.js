@@ -3,11 +3,16 @@
 import { LANGS, LANG_CODES, photoSlotsFor } from './shared/rules.js';
 import { ROLES } from './shared/questions.js';
 import { INPUT_AGE_HEADER } from './shared/pin.js';
+import { approxPoint } from './shared/visitor.js';
+import { termsCurrent } from './shared/terms.js';
 
 export * from './shared/rules.js';
 export * from './shared/questions.js';
 export * from './shared/question-slots.js';
 export * from './shared/pin.js';
+export * from './shared/visitor.js';
+export * from './shared/safety.js';
+export * from './shared/terms.js';
 
 const API_BASE = '/30da/api';
 const LANG_KEY = 'thirtyda_lang';
@@ -175,6 +180,10 @@ function redirectFor(err) {
   } else if (err.status === 403 && err.code === 'blocked') {
     if (state.me) state.me.blocked = true;
     if (path !== '/blocked') go('/blocked', { replace: true });
+  } else if (err.status === 403 && err.code === 'terms_needed') {
+    // The community rules changed (or were never agreed to on this profile): the rules screen first (screens/rules.js).
+    if (state.me) state.me.terms = null;
+    if (path !== '/rules') go('/rules', { replace: true });
   } else if (err.status === 423) {
     emit('locked', err.data || {}); // the server locked this session: the PIN screen covers the app (lock.js)
   }
@@ -271,7 +280,7 @@ async function renderRoute() {
 
 function renderFailure(root, err) {
   // 401 / blocked already redirected, 423 is covered by the PIN screen; nothing to show here.
-  if (err instanceof ApiError && (err.status === 401 || err.status === 423 || err.code === 'blocked')) return;
+  if (err instanceof ApiError && (err.status === 401 || err.status === 423 || err.code === 'blocked' || err.code === 'terms_needed')) return;
   if (!(err instanceof ApiError)) console.error(err);
   root.classList.add('failed');
   root.replaceChildren(
@@ -408,6 +417,8 @@ const ICONS = {
   facebook: '<path d="M14.5 21v-7.5h2.6l.4-3h-3V8.6c0-.9.3-1.5 1.5-1.5h1.6V4.4c-.3 0-1.2-.1-2.3-.1-2.3 0-3.8 1.4-3.8 4v2.2H9v3h2.5V21"/>',
   image: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M4 18l5-5 4 4 3-3 4 4"/>',
   alert: '<path d="M12 3.8 21.2 19.5H2.8z"/><path d="M12 9.6v4.6"/><circle cx="12" cy="16.9" r=".7" fill="currentColor"/>',
+  more: '<circle cx="5.5" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="18.5" cy="12" r="1.4" fill="currentColor"/>',
+  block: '<circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/>',
 };
 
 /** Inline SVG icon (currentColor). Unknown names fall back to 'question'. */
@@ -657,7 +668,8 @@ export function roleLabel(key) {
 
 /** POST /me/heartbeat → state.actions / state.notices, then 'actions' + 'notices' events. */
 export async function heartbeat() {
-  if (!state.me || state.me.blocked || state.locked) return null;
+  // Not before the community rules are agreed to (the server would answer 403 terms_needed).
+  if (!state.me || state.me.blocked || state.locked || !termsCurrent(state.me.terms)) return null;
   try {
     const r = await api.post('/me/heartbeat', {});
     state.actions = Array.isArray(r.actions) ? r.actions : [];
@@ -670,7 +682,10 @@ export async function heartbeat() {
   }
 }
 
-/** Browser position → { lat, lng }. Rejects with err.code 'denied' | 'unavailable' | 'unsupported' | 'timeout'. */
+/**
+ * Browser position → { lat, lng }, rounded to 2 decimals (about 1 km — owner 2026-10-14: distance bands need no more,
+ * so a closer point never leaves the phone). Rejects with err.code 'denied' | 'unavailable' | 'unsupported' | 'timeout'.
+ */
 export function locate({ timeout = 15000 } = {}) {
   return new Promise((resolve, reject) => {
     const fail = (code) => reject(Object.assign(new Error(code), { code }));
@@ -678,7 +693,12 @@ export function locate({ timeout = 15000 } = {}) {
     // The permission prompt itself has no timeout; give up if nobody answers it.
     const guard = setTimeout(() => fail('timeout'), timeout + 15000);
     navigator.geolocation.getCurrentPosition(
-      (p) => { clearTimeout(guard); resolve({ lat: p.coords.latitude, lng: p.coords.longitude }); },
+      (p) => {
+        clearTimeout(guard);
+        const point = approxPoint({ lat: p.coords.latitude, lng: p.coords.longitude });
+        if (point) resolve(point);
+        else fail('unavailable');
+      },
       (e) => { clearTimeout(guard); fail(e.code === 1 ? 'denied' : e.code === 3 ? 'timeout' : 'unavailable'); },
       { enableHighAccuracy: false, timeout, maximumAge: 5 * 60e3 },
     );

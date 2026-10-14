@@ -17,10 +17,11 @@
 // choice with POST /decide.
 import {
   screen, el, icon, t, go, api, toast, modal, topBar, levelBar, countdown, errorText, registerStrings, heartbeat,
-  stageLevel, nextKind, l1Answers, answerText,
+  stageLevel, nextKind, l1Answers, answerText, reportTarget,
 } from '../core.js';
 import { sendPanel, translateNote, redirected, myLang, enc } from './level-ask.js';
 import { mountChat, ensureStyles, partnerHeader, fmtTime, dayLabel } from './chat.js';
+import { personMenuButton, reportPerson } from './safety.js';
 
 const POLL_MS = 4000; // the other person's lines, replies and choice show up while you look
 const POLL_MAX_MS = 30000; // back-off ceiling while offline
@@ -147,8 +148,19 @@ function mountConversation(root, base, initial, chat) {
       el('span', {}, t(ended() ? 'cv_ended_bar' : 'cv_level_bar', { n: level })), levelBar(level));
     // The real name only once the chat is open (the server sends it only then).
     const realName = conv.chat?.open ? conv.other?.realName || '' : '';
-    return partnerHeader({ name: left() ? t('cv_left_name') : name(), photos, myLang: myLang(), theirLang: theirLang(), sub, realName });
+    // Store policy (owner 2026-10-14): ⋯ Report / Block, and "Report photo" in the viewer — not for someone who left.
+    const who = person();
+    return partnerHeader({
+      name: left() ? t('cv_left_name') : name(), photos, myLang: myLang(), theirLang: theirLang(), sub, realName,
+      menu: who ? personMenuButton(who, { onBlocked: () => go('/nearby', { replace: true }) }) : null,
+      reportPhoto: who ? (n) => reportPerson(who, reportTarget.photo(n)) : null,
+    });
   }
+  /** The other person, for Report / Block (null once they left 30+DA). */
+  const person = () => {
+    const id = conv.other?.id || conv.pair?.other?.id;
+    return id && !left() ? { id, name: name() } : null;
+  };
   const headerSig = (c) => JSON.stringify([
     c.other?.name, c.other?.lang, c.other?.photos, c.other?.realName, c.pair?.level, c.pair?.stage, c.chat?.open,
   ]);
@@ -212,9 +224,31 @@ function mountConversation(root, base, initial, chat) {
 
   function theirLine(s, line) {
     const key = keyOf(s, line);
-    return el('div', { class: 'conv-line theirs', dataset: { key } },
-      el('div', { class: 'bubble theirs', id: lineId(key) }, lineParts(line, false)),
-      myReply(s, line, key));
+    const bubble = el('div', { class: 'bubble theirs', id: lineId(key) }, lineParts(line, false));
+    if (line.source === 'written') reportableLine(bubble, s, line);
+    return el('div', { class: 'conv-line theirs', dataset: { key } }, bubble, myReply(s, line, key));
+  }
+
+  /**
+   * A line they wrote themselves (store policy, owner 2026-10-14): tap it (or Enter) to report it, like a chat line.
+   * A picked line is the admin's own words, so only written ones.
+   */
+  function reportableLine(bubble, s, line) {
+    const who = person();
+    if (!who || !s?.id) return;
+    bubble.classList.add('can-report');
+    bubble.tabIndex = 0;
+    bubble.setAttribute('role', 'button');
+    bubble.setAttribute('aria-haspopup', 'dialog');
+    const open = () => reportPerson(who, reportTarget.line(s.id, line.n), {
+      quote: el('div', { class: 'bubble theirs report-quote' }, lineParts(line, false)),
+    });
+    bubble.addEventListener('click', open);
+    bubble.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      open();
+    });
   }
 
   /** My reply under one of their lines: the tap I gave (tap it to change while the set is not complete), or the choices. */

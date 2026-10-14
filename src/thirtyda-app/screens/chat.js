@@ -6,7 +6,7 @@
 // stopped attempt for the admin.
 import {
   screen, el, icon, t, go, api, toast, modal, state, topBar, avatar, langPair, errorText,
-  registerStrings, checkChatMessage, CHAT_MIN, CHAT_MAX, SPEECH_LOCALE, PHOTO_MAX,
+  registerStrings, checkChatMessage, CHAT_MIN, CHAT_MAX, SPEECH_LOCALE, PHOTO_MAX, CHAT_REPORT_REASONS,
 } from '../core.js';
 
 const POLL_MS = 3000;
@@ -16,7 +16,7 @@ const METER_SCALE = 40; // the track runs 0–40 so "too long" still has room to
 const NEAR_BOTTOM_PX = 96;
 const GROUP_MS = 5 * 60e3; // same sender within 5 min → one time stamp under the run
 const LONG_PRESS_MS = 480;
-const REPORT_REASONS = ['rude', 'scam', 'sexual', 'other'];
+const REPORT_REASONS = CHAT_REPORT_REASONS; // rude, scam, sexual, underage, other (shared/safety.js)
 const CONTACT_TYPES = ['phone', 'email', 'handle', 'app', 'link'];
 const NO_SPACE_LANGS = new Set(['zh', 'ja']); // dictation appends without a space
 
@@ -157,22 +157,31 @@ function contactText(r) {
 const reduceMotion = () => Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 
 /** Full-size view of the partner's photos, with thumbnails to switch between them. */
-function viewPhotos(urls, start, name) {
+/** reportPhoto(n): "Report photo" under the shown one (n = its place among the photos I can see, 1-based). */
+function viewPhotos(urls, start, name, reportPhoto = null) {
   const label = (i) => t('chat_photo_n', { name, n: i + 1 });
+  let shown = start;
   const img = el('img', { src: urls[start], alt: label(start) });
   const thumbs = urls.map((url, i) => el('button', {
     type: 'button', class: 'thumb', 'aria-label': label(i), 'aria-pressed': String(i === start),
     on: { click: () => show(i) },
   }, el('img', { src: url, alt: '' })));
   function show(i) {
+    shown = i;
     img.src = urls[i];
     img.alt = label(i);
     thumbs.forEach((b, k) => b.setAttribute('aria-pressed', String(k === i)));
   }
+  const report = reportPhoto
+    ? el('button', {
+      type: 'button', class: 'link report-photo', on: { click: () => { dlg.close(); reportPhoto(shown + 1); } },
+    }, icon('flag', 14), el('span', {}, t('chat_report_photo')))
+    : null;
   const dlg = modal(el('div', { class: 'dialog-body viewer' },
     img,
     urls.length > 1 ? el('div', { class: 'chat-viewer-thumbs' }, thumbs) : null,
-    el('button', { type: 'button', class: 'btn btn-secondary', on: { click: () => dlg.close() } }, t('core_close'))),
+    el('button', { type: 'button', class: 'btn btn-secondary', on: { click: () => dlg.close() } }, t('core_close')),
+    report),
   { label: name });
 }
 
@@ -252,18 +261,22 @@ function square(url) {
  * app name, their real name under it (`realName`: only at Level 3, the server sends it then), `sub` (text
  * or a node), and the translation chip (EN⇄KM; a tap says who writes in what).
  */
-export function partnerHeader({ name = '', photos = [], myLang = 'en', theirLang = 'en', sub = null, realName = '' }) {
+/**
+ * The conversation / chat header. Store policy (owner 2026-10-14): `menu` (a node, the ⋯ of screens/safety.js) sits
+ * right of the language chip; reportPhoto(n) adds "Report photo" to the photo viewer.
+ */
+export function partnerHeader({ name = '', photos = [], myLang = 'en', theirLang = 'en', sub = null, realName = '', menu = null, reportPhoto = null }) {
   let photoBtns;
   if (photos.length > 1) {
     photoBtns = [el('button', {
       type: 'button', class: 'chat-stack', 'aria-label': t('chat_photos_of', { name, n: photos.length }),
-      on: { click: () => viewPhotos(photos, 0, name) },
+      on: { click: () => viewPhotos(photos, 0, name, reportPhoto) },
     }, photos.map((url, i) => el('span', { class: 'chat-photo', style: { zIndex: String(photos.length - i) } }, square(url))))];
   } else {
     photoBtns = photos.length
       ? [el('button', {
         type: 'button', class: 'chat-photo', 'aria-label': t('chat_photo_n', { name, n: 1 }),
-        on: { click: () => viewPhotos(photos, 0, name) },
+        on: { click: () => viewPhotos(photos, 0, name, reportPhoto) },
       }, square(photos[0]))]
       : [el('span', { class: 'chat-photo' }, square(null))];
   }
@@ -277,7 +290,8 @@ export function partnerHeader({ name = '', photos = [], myLang = 'en', theirLang
     type: 'button', class: 'chip chip-sm chip-outline chat-lang', 'aria-label': t('chat_lang_aria', { pair: pairCode }),
     on: { click: () => toast(langNote()) },
   }, icon('translate', 14), pairCode);
-  const bar = topBar({ left: 'back', title: el('span', { class: 'chat-name' }, name), sub, right: chip });
+  const right = menu ? el('span', { class: 'chat-actions' }, chip, menu) : chip;
+  const bar = topBar({ left: 'back', title: el('span', { class: 'chat-name' }, name), sub, right });
   bar.insertBefore(el('div', { class: 'chat-photos' }, photoBtns), bar.querySelector('.topbar-title'));
   if (realName) {
     bar.querySelector('.topbar-h')?.after(el('div', { class: 'chat-real', title: realName },
@@ -565,11 +579,13 @@ export function mountChat(root, { pair, data, gate, history = null, header: head
     }
     counter.textContent = `${n} / ${CHAT_MAX}`;
     const server = serverError && serverError.text === text.trim() ? serverError : null;
-    const contact = r.error === 'contact' || Boolean(server?.contact);
+    // A contact detail or a bad word (store policy, owner 2026-10-14): the two the server stops and records.
+    const contact = r.error === 'contact' || r.error === 'word' || Boolean(server?.contact);
     input.classList.toggle('is-error', contact);
     input.setAttribute('aria-invalid', String(contact));
     let msg = null;
     if (r.error === 'contact') msg = contactText(r);
+    else if (r.error === 'word') msg = t('chat_err_word');
     else if (server) msg = server.msg;
     else if (r.error === 'trivial' || r.error === 'too_long') msg = errText(r.error);
     else if (r.error === 'too_short' && nudged && n > 0) msg = errText('too_short');
@@ -582,16 +598,17 @@ export function mountChat(root, { pair, data, gate, history = null, header: head
     const text = input.value.trim();
     const r = checkChatMessage(text);
     const server = serverError && serverError.text === text ? serverError : null;
-    if ((!r.ok && r.error !== 'contact') || (server && !server.contact)) {
+    const stops = r.error === 'contact' || r.error === 'word';
+    if ((!r.ok && !stops) || (server && !server.contact)) {
       nudged = true;
       update();
       input.focus();
       return;
     }
-    // A contact detail still goes to the server, which records the stopped attempt for the admin;
+    // A contact detail or a bad word still goes to the server, which records the stopped attempt for the admin;
     // the same stopped text is not sent twice.
-    if (r.error === 'contact' && text === stoppedText) {
-      toast(t('chat_stopped'));
+    if (stops && text === stoppedText) {
+      toast(t(r.error === 'word' ? 'chat_stopped_word' : 'chat_stopped'));
       return;
     }
     sending = true;
@@ -620,6 +637,12 @@ export function mountChat(root, { pair, data, gate, history = null, header: head
         stoppedText = text;
         serverError = { text, contact: true, msg: contactText(err.data) };
         toast(t('chat_stopped'));
+        return;
+      case 'bad_word':
+      case 'word':
+        stoppedText = text;
+        serverError = { text, contact: true, msg: t('chat_err_word') };
+        toast(t('chat_stopped_word'));
         return;
       case 'too_short':
       case 'too_long':
@@ -810,6 +833,8 @@ registerStrings({
     chat_err_link: 'Links are not allowed.',
     chat_err_contact: 'Contact details are not allowed.',
     chat_stopped: 'Message stopped. Contact details are never allowed.',
+    chat_err_word: 'Rude, sexual or money words are not allowed.',
+    chat_stopped_word: 'Message stopped. Rude, sexual or money words are never allowed.',
     chat_no_translation: 'Translation not available yet',
     chat_new_messages: 'New messages',
     chat_empty: 'Level 3 is open. Write your first message to {name}: {min} to {max} characters.',
@@ -823,6 +848,8 @@ registerStrings({
     chat_report_rude: 'Rude',
     chat_report_scam: 'Scam or money',
     chat_report_sexual: 'Sexual',
+    chat_report_underage: 'Underage',
+    chat_report_photo: 'Report photo',
     chat_report_other: 'Other',
     chat_reported: 'Reported. Thank you.',
     chat_already_reported: 'You already reported this message.',
@@ -865,6 +892,8 @@ registerStrings({
     chat_err_link: 'មិនអនុញ្ញាតឲ្យដាក់តំណភ្ជាប់ទេ។',
     chat_err_contact: 'មិនអនុញ្ញាតឲ្យដាក់ព័ត៌មានទំនាក់ទំនងទេ។',
     chat_stopped: 'សារត្រូវបានបញ្ឈប់។ ព័ត៌មានទំនាក់ទំនងមិនត្រូវបានអនុញ្ញាតឡើយ។',
+    chat_err_word: 'មិនអនុញ្ញាតឲ្យប្រើពាក្យអសុរស ពាក្យផ្លូវភេទ ឬពាក្យទាក់ទងនឹងលុយទេ។',
+    chat_stopped_word: 'សារត្រូវបានបញ្ឈប់។ ពាក្យអសុរស ពាក្យផ្លូវភេទ ឬពាក្យទាក់ទងនឹងលុយ មិនត្រូវបានអនុញ្ញាតឡើយ។',
     chat_no_translation: 'មិនទាន់មានការបកប្រែនៅឡើយ',
     chat_new_messages: 'សារថ្មី',
     chat_empty: 'កម្រិត 3 បានបើកហើយ។ សរសេរសារដំបូងទៅ {name}៖ ពី {min} ដល់ {max} តួអក្សរ។',
@@ -878,6 +907,8 @@ registerStrings({
     chat_report_rude: 'មិនគួរសម',
     chat_report_scam: 'ការបោកប្រាស់ ឬរឿងលុយកាក់',
     chat_report_sexual: 'ផ្លូវភេទ',
+    chat_report_underage: 'អាយុមិនទាន់គ្រប់',
+    chat_report_photo: 'រាយការណ៍រូបថត',
     chat_report_other: 'ផ្សេងៗ',
     chat_reported: 'បានរាយការណ៍ហើយ។ សូមអរគុណ។',
     chat_already_reported: 'អ្នកបានរាយការណ៍សារនេះរួចហើយ។',
@@ -920,6 +951,8 @@ registerStrings({
     chat_err_link: '不能发送链接。',
     chat_err_contact: '不能发送联系方式。',
     chat_stopped: '消息已被拦截。任何联系方式都不允许分享。',
+    chat_err_word: '不能使用粗俗、色情或涉及金钱的词语。',
+    chat_stopped_word: '消息已被拦截。不允许粗俗、色情或涉及金钱的词语。',
     chat_no_translation: '暂无翻译',
     chat_new_messages: '新消息',
     chat_empty: '等级 3 已开启。给 {name} 写第一条消息吧：{min} 到 {max} 个字。',
@@ -933,6 +966,8 @@ registerStrings({
     chat_report_rude: '粗鲁无礼',
     chat_report_scam: '诈骗或要钱',
     chat_report_sexual: '色情内容',
+    chat_report_underage: '未成年',
+    chat_report_photo: '举报照片',
     chat_report_other: '其他',
     chat_reported: '已举报，谢谢你。',
     chat_already_reported: '你已经举报过这条消息。',
@@ -975,6 +1010,8 @@ registerStrings({
     chat_err_link: '링크는 보낼 수 없어요.',
     chat_err_contact: '연락처는 보낼 수 없어요.',
     chat_stopped: '메시지가 차단됐어요. 연락처는 절대 보낼 수 없어요.',
+    chat_err_word: '욕설, 성적인 말, 돈 관련 말은 쓸 수 없어요.',
+    chat_stopped_word: '메시지가 차단됐어요. 욕설, 성적인 말, 돈 관련 말은 쓸 수 없어요.',
     chat_no_translation: '아직 번역이 없어요',
     chat_new_messages: '새 메시지',
     chat_empty: '레벨 3이 열렸어요. {name}님에게 첫 메시지를 보내 보세요: {min}~{max}자.',
@@ -988,6 +1025,8 @@ registerStrings({
     chat_report_rude: '무례함',
     chat_report_scam: '사기 또는 돈 요구',
     chat_report_sexual: '성적인 내용',
+    chat_report_underage: '미성년자',
+    chat_report_photo: '사진 신고',
     chat_report_other: '기타',
     chat_reported: '신고했어요. 감사합니다.',
     chat_already_reported: '이미 신고한 메시지예요.',
@@ -1030,6 +1069,8 @@ registerStrings({
     chat_err_link: 'リンクは送れません。',
     chat_err_contact: '連絡先は送れません。',
     chat_stopped: 'メッセージは停止されました。連絡先は一切送れません。',
+    chat_err_word: '乱暴な言葉・性的な言葉・お金に関する言葉は使えません。',
+    chat_stopped_word: 'メッセージは停止されました。乱暴な言葉・性的な言葉・お金に関する言葉は使えません。',
     chat_no_translation: '翻訳はまだありません',
     chat_new_messages: '新着メッセージ',
     chat_empty: 'レベル3が開きました。{name}さんへ最初のメッセージを：{min}〜{max}文字で。',
@@ -1043,6 +1084,8 @@ registerStrings({
     chat_report_rude: '失礼な内容',
     chat_report_scam: '詐欺・お金の話',
     chat_report_sexual: '性的な内容',
+    chat_report_underage: '未成年',
+    chat_report_photo: '写真を報告',
     chat_report_other: 'その他',
     chat_reported: '報告しました。ありがとうございます。',
     chat_already_reported: 'このメッセージはすでに報告済みです。',

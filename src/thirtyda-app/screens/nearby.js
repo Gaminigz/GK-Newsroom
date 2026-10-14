@@ -5,6 +5,7 @@ import {
   heartbeat, updateLocation, locate, registerStrings, roleLabel,
 } from '../core.js';
 import { profileFirst } from '../guest.js';
+import { verifyBanner } from './verify-chat.js';
 
 const KM_KEY = 'thirtyda_km';
 const SHOW_KEY = 'thirtyda_show';
@@ -216,6 +217,8 @@ screen('/nearby', ({ root }) => {
   }
 
   root.append(
+    // Never verified: "Verify within 48 hours to keep your profile" + the time left (owner 2026-10-14).
+    ...[guest ? null : verifyBanner()].filter(Boolean),
     el('section', { class: 'distance' },
       range,
       el('div', { class: 'ticks' }, el('span', { class: 'label' }, fmtKm(1, { whole: true })), within, el('span', { class: 'label' }, fmtKm(50, { whole: true })))),

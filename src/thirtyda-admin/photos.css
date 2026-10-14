@@ -1,0 +1,58 @@
+/* ---------- Photos (new and changed photos waiting for approval) — src/thirtyda-admin/photos.html ---------- */
+.ph-lede { margin: -4px 0 16px; max-width: 78ch; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.ph-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.ph-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.ph-card.is-main { box-shadow: inset 0 0 0 1.5px var(--navy); }
+.ph-img {
+  aspect-ratio: 3 / 4;
+  border-radius: 6px;
+  background: #eef2f8;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+.ph-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.ph-meta { display: grid; gap: 6px; min-width: 0; }
+.ph-who { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 13px; }
+.ph-who b { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ph-who small { font-family: var(--mono); font-size: 10px; color: var(--muted); white-space: nowrap; }
+.ph-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.ph-tags .tag { font-size: 10px; }
+.tag.ph-slot.main { background: var(--navy); color: #fff; }
+.tag.ph-none { background: #fff3e0; color: #9a5b0b; } /* a caution: others see a silhouette */
+.tag.ph-blocked { background: var(--red-soft); color: var(--red); }
+.ph-meta time { font-size: 11px; color: var(--muted); }
+.ph-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ph-actions .btn-primary, .ph-actions .btn { width: 100%; height: 36px; margin: 0; }
+.ph-confirm { display: grid; gap: 8px; padding: 10px; border-radius: 6px; background: var(--red-soft); }
+.ph-confirm p { margin: 0; font-size: 12px; font-weight: 700; color: var(--red); }
+.ph-check { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.ph-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--red); }
+.ph-confirm-row { display: flex; align-items: center; gap: 14px; }
+.ph-confirm-row .btn { height: 34px; flex: 1 1 auto; }
+.ph-confirm-row .link { font-size: 12px; }
+.ph-empty { background: var(--card); border-radius: var(--radius); }
+
+@media (max-width: 560px) {
+  .ph-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .ph-card { padding: 8px; gap: 8px; }
+  .ph-actions { grid-template-columns: 1fr; }
+  .ph-confirm-row { flex-wrap: wrap; gap: 8px; }
+  .ph-confirm-row .btn { flex: 1 0 100%; }
+}

@@ -149,23 +149,30 @@ function queueHtml() {
   const flags = view.data.flags;
   if (!flags.length) return '<p class="empty">No open flags. All calm.</p>';
   return flags.map((f) => {
-    const how = f.kind === 'stopped'
-      ? 'Stopped by the app before sending'
-      : `Delivered · ${esc(f.toName)} reported it`;
+    // Store policy (owner 2026-10-14): a person blocked in the app, or a report on a profile / photo / written line.
+    const target = f.targetLabel ? ` · ${esc(f.targetLabel)}` : '';
+    // A stopped name (bad words, owner 2026-10-14) has no conversation and nobody on the other side.
+    const how = f.kind === 'stopped' && f.field ? 'Stopped by the app · name not saved'
+      : f.kind === 'stopped' ? 'Stopped by the app before sending'
+      : f.kind === 'blocked' ? `${esc(f.toName)} blocked ${esc(f.fromName)} in the app`
+        : `Delivered · ${esc(f.toName)} reported it${target}`;
+    const body = f.photo ? `<img class="flag-photo" src="${esc(f.photo)}" alt="Reported photo" loading="lazy">`
+      : f.message?.text ? bubble(f.message) : '';
+    const tag = f.level ? `<span class="tag">Level ${f.level} ${esc(f.levelName)}</span>` : f.targetLabel ? `<span class="tag">${esc(f.targetLabel)}</span>` : '';
     return `<article class="flag">
-      <div class="flag-top"><b>${esc(f.fromName)} → ${esc(f.toName)}</b><span class="tag">Level ${f.level} ${esc(f.levelName)}</span><time datetime="${f.at}">${ago(f.at)}</time></div>
+      <div class="flag-top"><b>${esc(f.fromName)}${f.to ? ` → ${esc(f.toName)}` : ''}</b>${tag}<time datetime="${f.at}">${ago(f.at)}</time></div>
       <div class="reason">
         <svg width="9" height="10" viewBox="0 0 9 10" fill="none" aria-hidden="true"><path d="M1.5 9.5V1M1.5 1.3h5.5L5.8 3.4 7 5.5H1.5" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
         ${esc(f.reason)}
       </div>
-      ${bubble(f.message)}
+      ${body}
       <div class="label how">${how}</div>
       <div class="flag-actions">
         <button type="button" class="btn block" data-block="${esc(f.from)}" data-flag="${esc(f.id)}">Block ${esc(f.fromName)}</button>
         <button type="button" class="btn" data-warn="${esc(f.id)}" ${f.warned ? 'disabled' : ''}>${f.warned ? 'Warning sent' : 'Send warning'}</button>
       </div>
       <div class="flag-links">
-        <button type="button" class="link" data-chat-flag="${esc(f.id)}">View chat</button>
+        ${f.field ? '' : `<button type="button" class="link" data-chat-flag="${esc(f.id)}">View chat</button>`}
         <button type="button" class="link plain" data-dismiss="${esc(f.id)}">Dismiss</button>
       </div>
     </article>`;

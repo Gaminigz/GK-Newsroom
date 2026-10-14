@@ -10,11 +10,14 @@ import { readFileSync, readdirSync } from 'node:fs';
 import {
   COVERAGE, NOT_COLLECTIONS, USERS, SESSIONS, OTPS, PAIRS, SETS, CHATS, FLAGS, AUDIT, RESUME_AFTER_MS, DELETE_PER_PROFILE,
   handlesOf, pairOutcome, endPairUpdate, reasonWithoutNames, minimalFlag, deleteAccount, resumeDeletions, deleteMe,
-  finishDeletesInBackground,
+  finishDeletesInBackground, expireUnverified, expireUnverifiedInBackground, EXPIRE_EVERY_MS,
 } from './thirtyda-delete.mjs';
+import { SIGNUP_DEVICES } from './thirtyda-verify.mjs';
+import { VERIFY_KEEP_MS } from '../thirtyda-app/shared/visitor.js';
 import { APP_TICKETS } from './thirtyda-signin.mjs';
 import { TG_CHECKS, TG_LINKS } from './thirtyda-telegram-bot.mjs';
 import { SUPPORT, SUPPORT_CHATS } from './thirtyda-support.mjs';
+import { BLOCKS } from './thirtyda-blocks.mjs';
 
 // ---------------------------------------------------------------- an in-memory Mongo, just enough
 
@@ -628,4 +631,140 @@ test('delete-data: in the app (My profile → Delete my account, instant) or by 
   assert.doesNotMatch(PAGE_STRINGS.en.del_lede, /delete everything/i, 'never "everything" while a bare note stays');
   assert.match(PAGE_STRINGS.en.kept, /report/);
   assert.match(PAGE_STRINGS.en.kept, /safety/);
+});
+
+// ---------------------------------------------------------------- never verified: gone after 48 hours (owner 2026-10-14)
+
+const HOUR = 3600e3;
+const NONE = { phone: false, gmail: false, facebook: false, tiktok: false };
+const T0 = Date.parse('2026-10-16T10:00:00Z');
+
+/** Ann's world plus profiles made without verifying, each in its own case. */
+async function unverifiedWorld() {
+  const w = await world();
+  const { d } = w;
+  const u = (id, extra) => ({ _id: id, id, name: id.slice(-3), photos: [], verified: { ...NONE }, blocked: false, createdAt: new Date(T0 - 49 * HOUR), ...extra });
+  await Promise.all([
+    // Past its 48 hours, never verified, one photo, Bee opened a talk with it: deleted, Bee's talk ends as 'left'.
+    u('U-20001', { photos: [pid(7)], phoneUnverified: '+85512000777', verifyBy: new Date(T0 - HOUR) }),
+    // Still within its 48 hours.
+    u('U-20002', { createdAt: new Date(T0 - 47 * HOUR), verifyBy: new Date(T0 + HOUR) }),
+    // Verified (Google) after it was made: the old deadline means nothing now.
+    u('U-20003', { verified: { ...NONE, gmail: true }, signin: { google: { id: 'g-20003' } }, verifyBy: new Date(T0 - HOUR) }),
+    // Blocked by the admin: left alone (the admin's case).
+    u('U-20004', { blocked: true, verifyBy: new Date(T0 - HOUR) }),
+    // Made before the rule (no deadline yet): 48 hours from now on.
+    u('U-20005', { createdAt: new Date(T0 - 10 * 24 * HOUR) }),
+    // No createdAt (older than unverified profiles) and a verified number without the flag: never touched.
+    { _id: 'U-20006', id: 'U-20006', name: 'Old', phone: '+85512000666', photos: [], blocked: false },
+  ].map((x) => d.collection(USERS).insertOne(x)));
+  await d.collection(SESSIONS).insertOne({ _id: 's-20001', userId: 'U-20001', phone: null });
+  await d.collection(PAIRS).insertOne({ _id: 'P-20', key: `${B}|U-20001`, a: B, b: 'U-20001', members: [B, 'U-20001'], stage: 'l1', startedAt: 't', opened: { [B]: 't' } });
+  w.photos.store.add(pid(7));
+  return w;
+}
+
+test('expireUnverified: never verified at its deadline → deleted like "Delete my account"; everyone else untouched', async () => {
+  assert.equal(VERIFY_KEEP_MS, 48 * HOUR);
+  assert.equal(EXPIRE_EVERY_MS, 10 * 60e3);
+  const { d, photos } = await unverifiedWorld();
+  const before = d.dump();
+  assert.equal(await expireUnverified(d, { now: T0, deletePhoto: photos.deletePhoto }), 1);
+  const user = (id) => d.docs(USERS).find((x) => x._id === id);
+  assert.equal(user('U-20001'), undefined, 'past 48 hours, never verified: gone');
+  assert.equal(d.docs(SESSIONS).some((x) => x.userId === 'U-20001'), false, 'and signed out');
+  assert.equal(photos.store.has(pid(7)), false, 'its photo too');
+  const talk = d.docs(PAIRS).find((p) => p._id === 'P-20');
+  assert.equal(talk.stage, 'ended');
+  assert.equal(talk.endedReason, 'left', 'Bee reads "This person left 30+DA"');
+  const audit = d.docs(AUDIT).filter((x) => x.userId === 'U-20001');
+  assert.deepEqual(audit.map((x) => x.action), ['unverified_expired'], 'one audit line, saying why');
+  assert.deepEqual(Object.keys(audit[0]).sort(), ['_id', 'action', 'at', 'userId']);
+  for (const id of ['U-20002', 'U-20003', 'U-20004', 'U-20006']) {
+    assert.deepEqual(user(id), before[USERS].find((x) => x._id === id), `${id} is untouched`);
+  }
+  assert.equal(user('U-20005').verifyBy.getTime(), T0 + VERIFY_KEEP_MS, 'made before the rule: 48 hours from the first run');
+  assert.equal(user('U-20006').verifyBy, undefined, 'no createdAt + a proved number: never given a deadline');
+  for (const id of [A, B, C, D, E]) assert.deepEqual(user(id), before[USERS].find((x) => x._id === id), `${id} (verified, older shapes) untouched`);
+  // Later runs: each goes at its own deadline — U-20002 an hour on, U-20005 only once its 48 hours are up.
+  assert.equal(await expireUnverified(d, { now: T0 + 2 * HOUR, deletePhoto: photos.deletePhoto }), 1, 'U-20002');
+  assert.equal(await expireUnverified(d, { now: T0 + VERIFY_KEEP_MS - 1, deletePhoto: photos.deletePhoto }), 0);
+  assert.equal(await expireUnverified(d, { now: T0 + VERIFY_KEEP_MS + 1, deletePhoto: photos.deletePhoto }), 1, 'U-20005');
+  assert.deepEqual(d.docs(USERS).filter((x) => /^U-2000/.test(x._id)).map((x) => x._id).sort(), ['U-20003', 'U-20004', 'U-20006']);
+});
+
+test('expireUnverified: verifying at the very moment of the sweep keeps the profile (the claim checks again)', async () => {
+  const { d, photos } = await unverifiedWorld();
+  d.hooks.before = async (name, op) => {
+    if (name !== USERS || op !== 'updateOne') return;
+    d.hooks.before = null;
+    const doc = d.collection(USERS).docs.get('U-20001');
+    doc.verified.phone = true; // the person's code went through just now
+    doc.phone = '+85512000777';
+  };
+  assert.equal(await expireUnverified(d, { now: T0, deletePhoto: photos.deletePhoto }), 0);
+  const kept = d.docs(USERS).find((x) => x._id === 'U-20001');
+  assert.ok(kept && !kept.deleting && kept.blocked === false && kept.verified.phone === true, 'kept, not marked, not hidden');
+  assert.equal(photos.store.has(pid(7)), true);
+  assert.equal(d.docs(AUDIT).some((x) => x.userId === 'U-20001'), false);
+  assert.deepEqual(await deleteAccount(d, 'U-20001', { now: T0, onlyIf: { 'verified.phone': { $ne: true } } }), { ok: false, skipped: true });
+});
+
+test('expireUnverifiedInBackground: runs at once (server start), one per process, a failure is logged and waits', async () => {
+  const { d, photos } = await unverifiedWorld();
+  const logged = [];
+  const error = console.error;
+  console.error = (...a) => logged.push(a.join(' '));
+  const realNow = Date.now;
+  Date.now = () => T0;
+  let bg;
+  try {
+    const stuck = async (id) => { if (id === pid(7)) throw new Error('photo store down'); return photos.deletePhoto(id); };
+    bg = expireUnverifiedInBackground(d, { every: 3600e3, deletePhoto: stuck });
+    assert.equal(expireUnverifiedInBackground(d), bg, 'one per process');
+    assert.equal(await bg.ran, 0, 'the first round ran at once; its one delete failed');
+  } finally {
+    Date.now = realNow;
+    console.error = error;
+    bg?.stop();
+  }
+  assert.ok(logged.some((l) => l.includes('U-20001') && l.includes('photo store down')), 'the failure is logged');
+  assert.ok(d.docs(USERS).find((x) => x._id === 'U-20001')?.deleting, 'marked: resumeDeletions finishes it');
+  assert.equal(await resumeDeletions(d, { now: T0 + RESUME_AFTER_MS + 1, deletePhoto: photos.deletePhoto }), 1);
+  assert.equal(d.docs(USERS).some((x) => x._id === 'U-20001'), false);
+  expireUnverifiedInBackground(d, { every: 3600e3 }).stop();
+});
+
+test('the phones that made an unverified profile (hashed ids) hold no person: a delete leaves them, they go after 30 days', () => {
+  assert.equal(COVERAGE[SIGNUP_DEVICES], null);
+});
+
+// ---------------------------------------------------------------- blocks + reports (store policy, owner 2026-10-14)
+
+test('deleteAccount: every block by her or of her goes; others\' blocks stay; her report flags keep target + what the admin did', async () => {
+  const { d, photos } = await world();
+  await Promise.all([
+    d.collection(BLOCKS).insertOne({ _id: `${A}|${C}`, by: A, who: C, at: 't' }),
+    d.collection(BLOCKS).insertOne({ _id: `${D}|${A}`, by: D, who: A, at: 't' }),
+    d.collection(BLOCKS).insertOne({ _id: `${B}|${C}`, by: B, who: C, at: 't' }),
+    d.collection(FLAGS).insertOne({
+      _id: 'f9', id: 'f9', chatId: null, from: A, to: C, at: 't9', reason: 'Reported by Cee · fake profile', kind: 'reported',
+      status: 'dismissed', warned: false, target: 'photo:1', photoId: pid(1), slot: 1, resolvedAt: 't10', resolvedAction: 'dismissed',
+    }),
+    d.collection(FLAGS).insertOne({
+      _id: 'f10', id: 'f10', chatId: null, from: E, to: A, at: 't11', reason: 'Blocked in the app', kind: 'blocked', status: 'open',
+      warned: false, key: `blocked|${A}|${E}`,
+    }),
+  ]);
+  assert.equal(COVERAGE[BLOCKS].includes('deleted'), true);
+  await deleteAccount(d, A, { now: Date.parse('2026-10-14T10:00:00Z'), deletePhoto: photos.deletePhoto });
+  assert.deepEqual(d.docs(BLOCKS).map((b) => b._id), [`${B}|${C}`], 'only a block between two other people stays');
+  const f9 = d.docs(FLAGS).find((f) => f._id === 'f9');
+  assert.deepEqual([f9.target, f9.resolvedAt, f9.resolvedAction, f9.photoId, f9.slot], ['photo:1', 't10', 'dismissed', undefined, undefined],
+    'what was reported and what the admin did stay; the photo id goes (the photo is gone)');
+  assert.equal(f9.reason, 'Reported · fake profile', 'no name');
+  const f10 = d.docs(FLAGS).find((f) => f._id === 'f10');
+  assert.equal(f10.key, undefined, 'the open-flag key goes with the minimal record');
+  assert.equal(f10.status, 'open', 'a block BY her stays open for the team (about someone else)');
+  assert.deepEqual(traces(d), []);
 });

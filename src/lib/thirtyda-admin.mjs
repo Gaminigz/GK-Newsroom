@@ -12,7 +12,8 @@
  *   POST /30da/admin/api/users/:id/delete  { confirm: id } the whole account, for good — the app's own full delete
  *        (src/lib/thirtyda-delete.mjs deleteAccount). The one delete path: Users → Delete and App review → Remove.
  *        → the overview (counts + users); 400 confirm ≠ id, 404 no such profile. Audited with the id only.
- *   POST /30da/admin/api/flags/:id/warn|dismiss
+ *   POST /30da/admin/api/flags/:id/warn|dismiss    (closing a flag writes resolvedAt + resolvedAction; Block does too)
+ *   GET  /30da/admin/api/flags/:id/photo  the photo a report points at (store policy, owner 2026-10-14)
  *   GET  /30da/admin/api/questions        both levels: [{ id:'L1', slots:[[{key,text:{en,km,zh,ko,ja}}×5]×4], titles, … }]
  *   PUT  /30da/admin/api/questions/L1|L2  { slots, titles?, updatedAt? } → saved level | 422 { problems } | 409 changed
  *   POST /30da/admin/api/questions/L1|L2/reset   back to the built-in choices
@@ -41,6 +42,13 @@
  *   GET  /30da/admin/api/support/:chatId      { chat, messages } — opening it marks it read
  *   POST /30da/admin/api/support/:chatId/reply { text } → the bot sends it to that chat (plain text ≤ 2000) and it is kept;
  *        Telegram refusing (they blocked the bot) comes back in plain words. Audited with ids and lengths only, never text.
+ *   GET  /30da/admin/photos                   Photos: new and replaced photos waiting for approval (src/lib/thirtyda-photo-review.mjs)
+ *   GET  /30da/admin/api/photos               { photos: [{ user, name, slot, at, url, photoId, blocked, nonePublic }], count } — photo 1 first
+ *   GET  /30da/admin/api/photos/count         { count } (the sidebar badge on every admin page)
+ *   GET  /30da/admin/api/photos/:photoId      the photo itself, only while it is pending, never cached
+ *   POST /30da/admin/api/photos/:userId/:slotIndex/approve   { photoId } → everyone can see it now
+ *   POST /30da/admin/api/photos/:userId/:slotIndex/reject    { photoId, block? } → deleted, the person told; block = also block them
+ *        Both act only while that photo is still pending in that slot (409 otherwise). Audited with ids only.
  *   GET  /30da/admin/review                   App review: demo accounts for the App Store / Google Play reviewers
  *   GET  /30da/admin/api/review               { on, code, accounts, profiles, notes, … } (src/lib/thirtyda-review.mjs reviewView)
  *   POST /30da/admin/api/review/switch        { on } "Review sign-in" ON / OFF
@@ -85,18 +93,31 @@ import {
   listSupportChats, supportThread, sendSupportReply, supportUnread, describeBot, SUPPORT_TEXT_MAX,
 } from "./thirtyda-support.mjs";
 import { tryResultPage, requestLang } from "./thirtyda-pages.mjs";
-import { normalizePhone } from "./thirtyda-app.mjs";
+import { normalizePhone, trimPhotoSlots } from "./thirtyda-app.mjs";
 import {
   reviewView, setReviewSwitch, newReviewCode, makeReviewAccount, stopReviewAccount, ReviewError, isReview,
 } from "./thirtyda-review.mjs";
 import { deleteAccount } from "./thirtyda-delete.mjs";
 import { QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS } from "../thirtyda-app/shared/question-slots.js";
+import { resolveUpdate, reopenUpdate } from "./thirtyda-blocks.mjs";
+import { targetLabel } from "../thirtyda-app/shared/safety.js";
+import { BAD_WORD_REASONS } from "../thirtyda-app/shared/bad-words.js";
+import { readPhoto, isPhotoId, deletePhoto } from "./thirtyda-photos.mjs";
+import {
+  pendingQueue, pendingOwner, reviewTarget, approvePhoto, rejectPhoto, photoNotice,
+} from "./thirtyda-photo-review.mjs";
 
 const BASE = "/30da/admin";
 const CODE = process.env.THIRTYDA_ADMIN_CODE || "";
 const COOKIE = "thirtyda_admin";
 const WARNING_TEXT =
   "We stopped a message that broke the 30+DA rules. Contact details are never allowed. Next time the account is blocked.";
+// A warning over a bad word (store policy, owner 2026-10-14): the notice carries rule 'word' and the app says this instead.
+const WARNING_TEXT_WORD =
+  "We stopped words that broke the 30+DA rules. Rude, sexual or money words are never allowed. Next time the account is blocked.";
+const BAD_WORD_REASON_SET = new Set(Object.values(BAD_WORD_REASONS));
+// A stopped name (no conversation): what the queue calls the field.
+const FIELD_LABELS = { name: "App name", realName: "Real name" };
 const SESSION_HOURS = 8;
 const MAX_ATTEMPTS = 5; // wrong codes per IP per window
 const MAX_FAILURES = 20; // wrong codes from everyone together per window: caps guessing from rotating IPs
@@ -183,15 +204,23 @@ async function overview() {
     flags: open.map((f) => {
       const chat = chats.find((c) => c.id === f.chatId);
       const msg = chat?.messages.find((m) => m.flagId === f.id) ?? {};
-      // The level the message was written at, not where the pair is now.
-      const level = msg.level ?? chat?.level;
+      // The level the message was written at, not where the pair is now. A block, or a report on a profile or a photo,
+      // is about the person, not a message: no level.
+      const aboutPerson = f.kind === "blocked" || (f.target && !String(f.target).startsWith("line:"));
+      const level = aboutPerson ? null : msg.level ?? f.level ?? chat?.level;
+      const { key, photoId, ...rest } = f; // the open-flag key and the photo's id stay on the server
       return {
-        ...f,
+        ...rest,
         fromName: byId.get(f.from)?.name ?? f.from,
         toName: byId.get(f.to)?.name ?? f.to,
         level,
-        levelName: LEVEL_NAMES[level],
-        message: { text: msg.text ?? "", english: msg.english ?? null, hit: msg.hit ?? null },
+        levelName: level ? LEVEL_NAMES[level] : null,
+        // Store policy (owner 2026-10-14): what a report points at ("Profile", "Photo 2", "Line 3"), and the reported
+        // photo itself (GET /api/flags/:id/photo, this flag only).
+        targetLabel: f.target ? targetLabel(f.target) : f.field ? FIELD_LABELS[f.field] ?? null : null,
+        photo: photoId ? `${BASE}/api/flags/${encodeURIComponent(f.id)}/photo` : null,
+        // A stopped name has no conversation: its flag carries the text itself.
+        message: { text: msg.text ?? f.text ?? "", english: msg.english ?? f.english ?? null, hit: msg.hit ?? f.hit ?? null },
       };
     }),
   };
@@ -505,6 +534,34 @@ async function telegramBotRoute(req, res, isTry) {
 }
 
 /**
+ * Block a person: the monitor's Block, and Reject + block on the Photos page. → { alreadyBlocked }
+ * Blocking settles every open flag this user raised; undo reopens exactly those. A flag
+ * raised after the block (e.g. a report on an older message) settles too, but then the
+ * block itself is not new, so there is nothing to undo.
+ */
+async function blockUser(d, u) {
+  const users = d.collection("thirtyda_users");
+  const flags = d.collection("thirtyda_flags");
+  const alreadyBlocked = Boolean(u.blocked);
+  const settled = (await flags.find({ from: u.id ?? u._id, status: "open" }).toArray()).map((f) => f._id);
+  await flags.updateMany({ _id: { $in: settled } }, resolveUpdate("blocked", new Date().toISOString()));
+  await users.updateOne(
+    { _id: u._id },
+    alreadyBlocked ? { $addToSet: { blockResolved: { $each: settled } } } : { $set: { blocked: true, blockResolved: settled } },
+  );
+  return { alreadyBlocked };
+}
+
+/** The Photos page's data: pending photos, photo 1 first, each with its admin-only url. */
+async function photoQueueView(d) {
+  const rows = await pendingQueue(d.collection("thirtyda_users"));
+  return {
+    count: rows.length,
+    photos: rows.map((r) => ({ ...r, url: `${BASE}/api/photos/${r.photoId}` })),
+  };
+}
+
+/**
  * POST /api/users/:id/delete { confirm: id } (signed in, same-origin JSON: checked before this): the whole account, for
  * good, through the app's own full delete (deleteAccount: profile, photos, messages, sessions, sign-in links, codes).
  * The one delete path of the admin: Users → Delete (monitor.js) and App review → Remove (review.js) both call it.
@@ -570,7 +627,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
   const path = url.pathname.replace(/\/+$/, "") || "/";
   const sub = path.slice(BASE.length) || "/";
 
-  const asset = sub.match(/^\/(app\.css|signin\.js|monitor\.js|questions\.js|connections\.js|support\.js|support\.css|support-badge\.js|review\.js|review\.css|delete-profile\.js)$/);
+  const asset = sub.match(/^\/(app\.css|signin\.js|monitor\.js|questions\.js|connections\.js|support\.js|support\.css|support-badge\.js|photos\.js|photos\.css|review\.js|review\.css|delete-profile\.js)$/);
   if (req.method === "GET" && asset) return serveFile(res, asset[1]);
 
   if (req.method !== "GET" && req.method !== "HEAD" && sub.startsWith("/api/")) {
@@ -634,6 +691,11 @@ export async function handleThirtyDaAdmin(req, res, url) {
     if (!me) return send(res, 302, "", { Location: BASE });
     await audit(req, "view_support");
     return serveFile(res, "support.html");
+  }
+  if (req.method === "GET" && sub === "/photos") {
+    if (!me) return send(res, 302, "", { Location: BASE });
+    await audit(req, "view_photos");
+    return serveFile(res, "photos.html");
   }
   if (req.method === "GET" && sub === "/review") {
     if (!me) return send(res, 302, "", { Location: BASE });
@@ -862,21 +924,69 @@ export async function handleThirtyDaAdmin(req, res, url) {
     const { flagId = null, undo = false } = await readJson(req);
     const alreadyBlocked = m[2] === "block" && Boolean(u.blocked);
     if (m[2] === "block") {
-      // Blocking settles every open flag this user raised; undo reopens exactly those. A flag
-      // raised after the block (e.g. a report on an older message) settles too, but then the
-      // block itself is not new, so there is nothing to undo.
-      const settled = (await flags.find({ from: u.id, status: "open" }).toArray()).map((f) => f._id);
-      await flags.updateMany({ _id: { $in: settled } }, { $set: { status: "blocked" } });
-      await users.updateOne(
-        { _id: u._id },
-        alreadyBlocked ? { $addToSet: { blockResolved: { $each: settled } } } : { $set: { blocked: true, blockResolved: settled } },
-      );
+      await blockUser(d, u);
     } else if (m[2] === "unblock" && u.blocked) {
-      if (undo) await flags.updateMany({ _id: { $in: u.blockResolved || [] } }, { $set: { status: "open" } });
+      if (undo) await flags.updateMany({ _id: { $in: u.blockResolved || [] } }, reopenUpdate());
       await users.updateOne({ _id: u._id }, { $set: { blocked: false, blockResolved: [] } });
     }
     await audit(req, m[2] === "block" ? (alreadyBlocked ? "block_user_again" : "block_user") : undo ? "undo_block" : "unblock_user", { user: u.id, flagId });
     return json(res, 200, { ...(await overview()), alreadyBlocked });
+  }
+
+  // Photos waiting for approval (store policy, owner 2026-10-14, src/lib/thirtyda-photo-review.mjs).
+  if (req.method === "GET" && sub === "/api/photos") return json(res, 200, await photoQueueView(await db()));
+  if (req.method === "GET" && sub === "/api/photos/count") return json(res, 200, { count: (await photoQueueView(await db())).count });
+  // The photo itself: only while it waits for approval, only for the admin, never cached.
+  m = sub.match(/^\/api\/photos\/([a-f0-9]{32})$/);
+  if (req.method === "GET" && m) {
+    const d = await db();
+    const owner = await pendingOwner(d.collection("thirtyda_users"), m[1]);
+    const buf = owner ? await readPhoto(m[1]) : null;
+    if (!buf) return send(res, 404, "Not found", { "Content-Type": "text/plain" });
+    return send(res, 200, buf, { "Content-Type": "image/jpeg", "Content-Length": buf.length, "Cache-Control": "no-store" });
+  }
+  m = sub.match(/^\/api\/photos\/(U-\d+)\/([0-3])\/(approve|reject)$/);
+  if (req.method === "POST" && m) {
+    const body = await readJsonBody(req, 1e4);
+    if (body.bad || body.tooLarge) return json(res, 400, { error: "Send { photoId }." });
+    const target = reviewTarget(m[1], m[2], body.value.photoId);
+    if (!target) return json(res, 400, { error: "Send { photoId }." });
+    const d = await db();
+    const users = d.collection("thirtyda_users");
+    const slot = target.index + 1;
+    const changed = async () => json(res, 409, {
+      error: "This photo was changed or already checked. The list is up to date now.", ...(await photoQueueView(d)),
+    });
+    if (m[3] === "approve") {
+      if (!(await approvePhoto(users, target))) return changed();
+      await audit(req, "photo_approve", { user: target.userId, slot, photo: target.photoId });
+      return json(res, 200, { ok: true, ...(await photoQueueView(d)) });
+    }
+    // Reject: the slot is emptied and the person told (a notice), then the stored photo is deleted; block = also block them.
+    const notice = photoNotice({ id: `N-${crypto.randomBytes(6).toString("hex")}`, slot });
+    if (!(await rejectPhoto(users, { ...target, notice }))) return changed();
+    await trimPhotoSlots(users, target.userId);
+    await deletePhoto(target.photoId);
+    let blocked = null;
+    if (body.value.block === true) {
+      const u = await users.findOne({ _id: target.userId });
+      if (u) blocked = await blockUser(d, u);
+    }
+    await audit(req, "photo_reject", {
+      user: target.userId, slot, photo: target.photoId, block: Boolean(blocked), ...(blocked ? { alreadyBlocked: blocked.alreadyBlocked } : {}),
+    });
+    return json(res, 200, { ok: true, blocked: Boolean(blocked), ...(await photoQueueView(d)) });
+  }
+
+  // The photo a report points at (store policy, owner 2026-10-14): only through its flag, only for the admin, never cached.
+  m = sub.match(/^\/api\/flags\/(f\d+)\/photo$/);
+  if (req.method === "GET" && m) {
+    const d = await db();
+    const f = await d.collection("thirtyda_flags").findOne({ _id: m[1] }, { projection: { photoId: 1 } });
+    const buf = f && isPhotoId(f.photoId) ? await readPhoto(f.photoId) : null;
+    if (!buf) return send(res, 404, "Not found", { "Content-Type": "text/plain" });
+    await audit(req, "view_reported_photo", { flag: m[1] });
+    return send(res, 200, buf, { "Content-Type": "image/jpeg", "Content-Length": buf.length, "Cache-Control": "no-store" });
   }
 
   m = sub.match(/^\/api\/flags\/(f\d+)\/(warn|dismiss)$/);
@@ -885,17 +995,21 @@ export async function handleThirtyDaAdmin(req, res, url) {
     const flags = d.collection("thirtyda_flags");
     const f = await flags.findOne({ _id: m[1], status: "open" });
     if (!f) return json(res, 404, { error: "This flag is already closed." });
-    // A warning keeps the flag in the queue so it can still be blocked or dismissed.
-    await flags.updateOne({ _id: f._id }, { $set: m[2] === "warn" ? { warned: true } : { status: "dismissed" } });
+    // A warning keeps the flag in the queue so it can still be blocked or dismissed; Dismiss closes it (resolvedAt +
+    // resolvedAction, src/lib/thirtyda-blocks.mjs).
+    const at = new Date().toISOString();
+    await flags.updateOne({ _id: f._id }, m[2] === "warn" ? { $set: { warned: true, warnedAt: f.warnedAt ?? at } } : resolveUpdate("dismissed", at));
     if (m[2] === "warn" && !f.warned) {
-      // The app shows unseen notices as a dialog the user has to acknowledge.
+      // The app shows unseen notices as a dialog the user has to acknowledge (rule 'word': in its bad-word wording).
+      const word = BAD_WORD_REASON_SET.has(f.reason);
       await d.collection("thirtyda_users").updateOne({ _id: f.from }, {
         $push: {
           notices: {
             id: `N-${crypto.randomBytes(6).toString("hex")}`,
             kind: "warning",
+            ...(word ? { rule: "word" } : {}),
             flagId: f.id,
-            text: WARNING_TEXT,
+            text: word ? WARNING_TEXT_WORD : WARNING_TEXT,
             at: new Date().toISOString(),
             seenAt: null,
           },

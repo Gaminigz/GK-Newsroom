@@ -3,6 +3,7 @@
 // (ThirtyDaShell.openAuth: iOS ASWebAuthenticationSession, Android Chrome Custom Tab). The server half, and why only
 // this web view can finish what its sheet started, is in src/lib/thirtyda-signin.mjs (POST /auth/app/begin, then the
 // app itself loads /30da/api/auth/app?… when the sheet is done). No UI of its own: create-profile.js uses it.
+import { deviceIdOk } from './shared/visitor.js';
 
 /** 'ios' | 'android' inside the app — its user agent ends "30DA-iOS/<v>" | "30DA-Android/<v>", or Capacitor says so — else null. */
 export function shellPlatform() {
@@ -66,4 +67,43 @@ export function onAppReturn(fn) {
     document.removeEventListener('visibilitychange', onVisible);
     try { handle?.remove?.(); } catch { /* gone */ }
   };
+}
+
+const DEVICE_KEY = '30da_device'; // the website's own id for this phone (kept on it; never in a URL)
+
+/** A random id: a UUID where the browser has one, else 32 random hex digits. */
+function randomId() {
+  try {
+    if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * This phone's id, for "one profile without verifying per phone" (owner 2026-10-14; the server keeps only a hash of it,
+ * 30 days): in the 30+DA app its own id (ThirtyDaShell.info().deviceId), else a random id kept on this phone
+ * (localStorage). → the id, or null (storage off and no app id: the server then only counts per address).
+ */
+export async function deviceId() {
+  const plugin = window.Capacitor?.Plugins?.ThirtyDaShell;
+  if (shellPlatform() && typeof plugin?.info === 'function') {
+    try {
+      const info = await Promise.race([plugin.info(), new Promise((resolve) => { setTimeout(() => resolve(null), 1500); })]);
+      const id = typeof info?.deviceId === 'string' ? info.deviceId.trim() : '';
+      if (deviceIdOk(id)) return id;
+    } catch { /* an app without it: the kept id */ }
+  }
+  try {
+    let id = localStorage.getItem(DEVICE_KEY);
+    if (!deviceIdOk(id)) {
+      id = randomId();
+      if (!deviceIdOk(id)) return null;
+      localStorage.setItem(DEVICE_KEY, id);
+    }
+    return id;
+  } catch {
+    return null;
+  }
 }
