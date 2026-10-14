@@ -5,7 +5,7 @@
 // the app, and the app opens on "Enter your PIN") until the first sign-in or Create profile sends it once (lock.js). From
 // then on 30+DA asks for it every time. Once chosen, this screen is never shown again (app.js guard → home).
 import { screen, el, t, go, icon } from '../core.js';
-import { setPinSteps, keepWaitingPin, pinFrame } from '../lock.js';
+import { setPinSteps, keepWaitingPin, pinFrame, reviewLink } from '../lock.js';
 
 screen('/pin', ({ root }) => {
   root.classList.add('dark', 'pin-route');
@@ -24,6 +24,7 @@ screen('/pin', ({ root }) => {
         type: 'button', class: 'icon-btn light', 'aria-label': t('core_back'),
         on: { click: () => go('/rules', { replace: true }) }, // the step before: the community rules
       }, icon('back', 18))),
-    pinFrame(steps.node));
+    // App review (owner 2026-10-14): a store reviewer signs in with the demo PIN right here (only while it is on).
+    pinFrame(steps.node, reviewLink()));
   steps.focus();
 });

@@ -142,6 +142,7 @@ import {
 } from "./thirtyda-terms.mjs";
 import {
   REVIEW, REVIEW_TRIES, isReview, sameWorld, worldFilter, pairsInWorld, reviewSwitch, reviewAccountFor, checkReviewCode, tryCounter,
+  reviewPinCheck, ReviewError,
 } from "./thirtyda-review.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
@@ -1370,6 +1371,52 @@ async function reviewVerify(ctx) {
   await d.collection(C.sessions).updateOne({ _id: ctx.session._id }, { $set: { pinOk: false }, $unset: { pinResetUntil: "" } });
   await audit({ ok: true });
   return { ok: true, existing: true, user: meView(user), locked: true };
+}
+
+const reviewPinTries = tryCounter(OTP_WINDOW_MS); // wrong review PINs per address (REVIEW_PIN_TRIES)
+
+/**
+ * POST /auth/review/pin { pin } — "App review" on the app's PIN screens (owner 2026-10-14: "we don't need phone to log
+ * in, it's just 1122 3344"): only while "Review sign-in" is ON (else 404 like an unknown route). The PIN is compared
+ * with the CURRENT review accounts' PIN hashes only (reviewPinCheck: timing-safe, every account every time), never
+ * with a real profile's, so a real person whose own PIN is 1122 never lands in Dara. Wrong → 400 not_review; 5 wrong
+ * per address per 15 minutes plus the address limit of verify-code (429). Right → this browser signs into that
+ * profile like reviewVerify (startSession, reviewSignin), but OPEN: the PIN was just proven, so the app goes straight
+ * to Nearby (no second PIN), and no "new PIN without the old one". Never switches a signed-in, open profile (409).
+ * Audited with ids only (never the PIN, never the address). → { ok, existing: true, user, locked: false, notices, lock }.
+ */
+async function reviewPin(ctx) {
+  const { d, body, req, me } = ctx;
+  if (!(await reviewSwitch(d).catch(() => ({ on: false }))).on) throw fail(404, "not_found", "No such endpoint.");
+  if (me) throw fail(409, "signed_in", "This phone is signed in. Sign out first.");
+  const now = Date.now();
+  const ip = clientIp(req);
+  const guesses = inWindowFor(ipGuesses, ip, now);
+  if (guesses.length >= IP_GUESSES) throw fail(429, "rate_limited", "Too many tries. Try again in 15 minutes.");
+  guesses.push(now); // counted before any await, like verify-code
+  const audit = (extra) => d.collection("thirtyda_audit").insertOne({ at: new Date(), action: "review_signin", via: "pin", ...extra }).catch(() => {});
+  let user;
+  try {
+    user = await reviewPinCheck(d, { pin: body.pin, key: ip, tries: reviewPinTries, now });
+  } catch (err) {
+    if (!(err instanceof ReviewError)) throw err;
+    if (err.code === "not_review") await audit({ ok: false, reason: "wrong" });
+    else {
+      const k = guesses.indexOf(now); // nothing was compared
+      if (k >= 0) guesses.splice(k, 1);
+    }
+    throw fail(err.status, err.code, err.message, err.attemptsLeft === undefined ? {} : { attemptsLeft: err.attemptsLeft });
+  }
+  const k = guesses.indexOf(now); // a right PIN does not count
+  if (k >= 0) guesses.splice(k, 1);
+  await startSession(ctx, {
+    userId: user._id, phone: user.phone, phoneVerified: true, phoneVia: null, reviewSignin: true,
+    verified: { gmail: false, facebook: false, tiktok: false },
+  });
+  // Open (startSession: pinOk true, active now): the PIN was just proven. No "new PIN without the old one".
+  await d.collection(C.sessions).updateOne({ _id: ctx.session._id }, { $set: { pinOk: true }, $unset: { pinResetUntil: "" } });
+  await audit({ ok: true, userId: user._id });
+  return { ok: true, existing: true, user: meView(user), locked: false, notices: unseenNotices(user), lock: lockInfo() };
 }
 
 // ---------------------------------------------------------------- the free Telegram bot (owner 2026-10-13)
@@ -3328,6 +3375,8 @@ const ROUTES = [
   // App review (src/lib/thirtyda-review.mjs): does this number use the review code; then the code signs in (locked).
   ["POST", /^\/auth\/review\/check$/, reviewCheck, { auth: "none" }],
   ["POST", /^\/auth\/review\/verify$/, reviewVerify, { auth: "none" }],
+  // …or "App review" on the PIN screen: the review account's PIN alone signs in (open), only while the switch is ON.
+  ["POST", /^\/auth\/review\/pin$/, reviewPin, { auth: "none" }],
   // The native apps (src/lib/thirtyda-signin.mjs): the web view begins a sign-in for its sheet (binder cookie + the
   // provider's address), then claims what the sheet did (a redirect, never JSON; the web callback's own lock rules).
   ["POST", /^\/auth\/app\/begin$/, appBegin, { auth: "none", blockedOk: true }],

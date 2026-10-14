@@ -76,8 +76,8 @@ function render() {
   $('sw-pill').textContent = v.on ? 'ON' : 'OFF';
   $('sw-pill').classList.toggle('on', v.on);
   $('sw-help').textContent = v.on
-    ? `Reviewers can sign in with a review account's mock number and the code. Turn it off after the review${v.switchedAt ? ` (on since ${whenOf(v.switchedAt)})` : ''}.`
-    : 'Off: the review code does not work, and the mock numbers act like any other number. Turn it on before you send the app for review.';
+    ? `Reviewers sign in with a review account's PIN ("App review" on the app's PIN screen), or its mock number and the code. Turn it off after the review${v.switchedAt ? ` (on since ${whenOf(v.switchedAt)})` : ''}.`
+    : 'Off: "App review" is not shown in the app, the review PINs and the review code do not work, and the mock numbers act like any other number. Turn it on before you send the app for review.';
   $('sw-btn').textContent = v.on ? 'Turn off' : 'Turn on';
   $('sw-btn').classList.toggle('on', !v.on);
   $('sw-btn').disabled = false;
@@ -224,7 +224,7 @@ async function remove(p) {
 // ---------- the switch, the code, copy ----------
 $('sw-btn').addEventListener('click', () => {
   const on = !view.on;
-  if (!on && !confirm('Turn review sign-in off? The review code stops working at once.')) return;
+  if (!on && !confirm('Turn review sign-in off? The review PINs and the review code stop working at once.')) return;
   act('switch', { on }, on ? 'Review sign-in is on.' : 'Review sign-in is off.').catch(() => {});
 });
 $('code-new').addEventListener('click', () => {

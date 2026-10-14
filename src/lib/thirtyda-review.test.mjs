@@ -13,8 +13,9 @@ const {
   REVIEW, REVIEW_MAX, REVIEW_DEFAULTS, REVIEW_SPOTS, REVIEW_PLACE, reviewSpotFor, REVIEW_CODE, REVIEW_SWITCH, REVIEW_WRONG_MAX, isReview, sameWorld, worldFilter, pairsInWorld,
   maskTail, spacedPhone, waysOf, profileRow, reviewNotes, reviewSwitch, setReviewSwitch, newReviewCode, reviewCodeView, sameCode,
   tryCounter, reviewAccountFor, checkReviewCode, makeReviewAccount, stopReviewAccount, reviewPinOf, reviewView, ReviewError,
+  reviewAccountForPin, reviewPinCheck, REVIEW_PIN_TRIES,
 } = await import('./thirtyda-review.mjs');
-const { verifyPin } = await import('./thirtyda-pin.mjs');
+const { verifyPin, hashPin, whileLocked } = await import('./thirtyda-pin.mjs');
 const { SETTINGS_COLLECTION, clearSettingsCache } = await import('./thirtyda-settings.mjs');
 const { normalizePhone } = await import('./thirtyda-app.mjs');
 
@@ -286,6 +287,94 @@ test('sign-in: the code is for a CURRENT review account mock number only, and on
   assert.equal(await reviewAccountFor(d, DARA_PHONE), null, 'no longer a review account: no');
 });
 
+// ---------------------------------------------------------------- the PIN-only way ("App review" on the PIN screen)
+
+/** Dara + Sophea as the owner's review accounts (1122 / 3344), and kk a REAL profile whose own PIN is 1122. */
+async function pinWorld() {
+  const d = await world();
+  await makeReviewAccount(d, 'U-10001', REVIEW_DEFAULTS[0]);
+  await makeReviewAccount(d, 'U-10002', REVIEW_DEFAULTS[1]);
+  await d.collection('thirtyda_users').updateOne({ _id: 'U-10003' }, { $set: { pinHash: await hashPin('5678'), phone: '+85511223344', verified: { phone: true } } });
+  await d.collection('thirtyda_users').insertOne({ _id: 'U-10005', name: 'Real', level: 1, photos: [], verified: { phone: true }, phone: '+85511112222', pinHash: await hashPin('1122') });
+  return d;
+}
+
+test('PIN-only: OFF → 404 like an unknown route (nothing counted, nothing compared)', async () => {
+  const d = await pinWorld();
+  const tries = tryCounter();
+  assert.equal(await reviewAccountForPin(d, '1122'), null, 'OFF: no review account answers');
+  await assert.rejects(reviewPinCheck(d, { pin: '1122', key: 'ip-1', tries }), (e) => e instanceof ReviewError && e.status === 404 && e.code === 'not_found');
+  assert.equal(tries.left('ip-1', REVIEW_PIN_TRIES), REVIEW_PIN_TRIES, 'no try counted while OFF');
+});
+
+test('PIN-only: 1122 → Dara, 3344 → Sophea; a wrong PIN → "That PIN is not a review account."', async () => {
+  const d = await pinWorld();
+  await setReviewSwitch(d, true);
+  const tries = tryCounter();
+  assert.equal((await reviewPinCheck(d, { pin: '1122', key: 'ip-1', tries }))._id, 'U-10001');
+  assert.equal((await reviewPinCheck(d, { pin: '3344', key: 'ip-1', tries }))._id, 'U-10002');
+  assert.equal((await reviewPinCheck(d, { pin: '១១២២', key: 'ip-1', tries }))._id, 'U-10001', 'Khmer digits, like the app');
+  assert.equal(tries.left('ip-1', REVIEW_PIN_TRIES), REVIEW_PIN_TRIES, 'a right PIN does not count');
+  await assert.rejects(reviewPinCheck(d, { pin: '9999', key: 'ip-1', tries }),
+    (e) => e.status === 400 && e.code === 'not_review' && e.message === 'That PIN is not a review account.' && e.attemptsLeft === REVIEW_PIN_TRIES - 1);
+  await assert.rejects(reviewPinCheck(d, { pin: '12', key: 'ip-1', tries }), (e) => e.status === 422 && e.code === 'bad_pin');
+  await assert.rejects(reviewPinCheck(d, { pin: undefined, key: 'ip-1', tries }), (e) => e.status === 422);
+});
+
+test('PIN-only: a real profile\'s PIN never matches (a real person whose PIN is 1122 never lands in Dara, nor in themselves)', async () => {
+  const d = await pinWorld();
+  await setReviewSwitch(d, true);
+  assert.equal(await reviewAccountForPin(d, '5678'), null, "kk's own PIN: not a review account");
+  assert.equal((await reviewAccountForPin(d, '1122'))._id, 'U-10001', "1122 is Dara's — never 'Real', whose own PIN is also 1122");
+  // Dara stops being a review account: 1122 now matches nobody (not 'Real', not Dara's old PIN).
+  await stopReviewAccount(d, 'U-10001');
+  assert.equal(await reviewAccountForPin(d, '1122'), null);
+  // Only CURRENT review accounts: blocked / being deleted / a number not set by the admin → no.
+  await d.collection('thirtyda_users').updateOne({ _id: 'U-10002' }, { $set: { blocked: true } });
+  assert.equal(await reviewAccountForPin(d, '3344'), null, 'blocked');
+  await d.collection('thirtyda_users').updateOne({ _id: 'U-10002' }, { $set: { blocked: false, deleting: { at: new Date() } } });
+  assert.equal(await reviewAccountForPin(d, '3344'), null, 'being deleted');
+  await d.collection('thirtyda_users').updateOne({ _id: 'U-10002' }, { $unset: { deleting: '' }, $set: { phoneVia: 'telegram' } });
+  assert.equal(await reviewAccountForPin(d, '3344'), null, 'a number not set by the admin');
+  await d.collection('thirtyda_users').updateOne({ _id: 'U-10002' }, { $set: { phoneVia: 'review' } });
+  assert.equal((await reviewAccountForPin(d, '3344'))._id, 'U-10002');
+  await setReviewSwitch(d, false);
+  assert.equal(await reviewAccountForPin(d, '3344'), null, 'switched OFF: stops at once');
+});
+
+test('PIN-only: 5 wrong per address per 15 minutes, then 429 even for a right PIN; another address is not affected', async () => {
+  const d = await pinWorld();
+  await setReviewSwitch(d, true);
+  const tries = tryCounter();
+  const t0 = 1_000_000;
+  for (let i = 0; i < REVIEW_PIN_TRIES; i++) {
+    await assert.rejects(reviewPinCheck(d, { pin: '9999', key: 'ip-1', tries, now: t0 + i }), (e) => e.code === 'not_review');
+  }
+  await assert.rejects(reviewPinCheck(d, { pin: '1122', key: 'ip-1', tries, now: t0 + 10 }), (e) => e.status === 429 && e.code === 'too_many_attempts');
+  assert.equal((await reviewPinCheck(d, { pin: '1122', key: 'ip-2', tries, now: t0 + 10 }))._id, 'U-10001', 'another address');
+  assert.equal((await reviewPinCheck(d, { pin: '1122', key: 'ip-1', tries, now: t0 + 15 * 60e3 + 1 }))._id, 'U-10001', '15 minutes later');
+  assert.equal(REVIEW_PIN_TRIES, 5);
+});
+
+test('PIN-only route: POST /auth/review/pin is real, a sign-in while locked, signs in OPEN as that profile, audited with ids only', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { API_ROUTES } = await import('./thirtyda-app.mjs');
+  assert.ok(API_ROUTES.some((r) => r.method === 'POST' && r.re.test('/auth/review/pin')));
+  assert.equal(whileLocked('POST', '/auth/review/pin'), 'signin');
+  const src = readFileSync(new URL('./thirtyda-app.mjs', import.meta.url), 'utf8');
+  const i = src.indexOf('async function reviewPin(');
+  const body = src.slice(i, src.indexOf('\n}\n', i));
+  assert.match(body, /if \(!\(await reviewSwitch\(d\)[^\n]*\.on\) throw fail\(404, "not_found"/, 'OFF → 404 first');
+  assert.match(body, /reviewPinCheck\(d, \{ pin: body\.pin, key: ip, tries: reviewPinTries, now \}\)/);
+  assert.match(body, /startSession\(ctx, \{\s*userId: user\._id, phone: user\.phone, phoneVerified: true, phoneVia: null, reviewSignin: true,/);
+  assert.match(body, /\$set: \{ pinOk: true \}, \$unset: \{ pinResetUntil: "" \}/, 'open, and no new PIN without the old one');
+  assert.doesNotMatch(body, /pinOk: false/, 'never locked after the PIN was just proven');
+  assert.match(body, /locked: false/);
+  assert.match(body, /IP_GUESSES/, 'the address limit of verify-code too');
+  assert.match(body, /const audit = \(extra\) => d\.collection\("thirtyda_audit"\)\.insertOne\(\{ at: new Date\(\), action: "review_signin", via: "pin", \.\.\.extra \}\)/);
+  assert.deepEqual([...body.matchAll(/await audit\((\{[^}]*\})\)/g)].map((m) => m[1]), ['{ ok: false, reason: "wrong" }', '{ ok: true, userId: user._id }'], 'the audit carries ids only');
+});
+
 // ---------------------------------------------------------------- turning a profile into a review account and back
 
 test('Use as review account: mock number verified (phoneVia review), the PIN set as the app sets it, the rest untouched', async () => {
@@ -475,13 +564,16 @@ test('page: review accounts with number + PIN + their conversations, and the not
   ]);
   assert.deepEqual(v.accounts[0].talks, [{ pairId: 'P-1', with: 'U-10002', withName: 'Sophea', stage: 'l3_open', level: 3 }], 'only the talk with the other review account');
   for (const want of ['Dara', '+855 10 000 1122', 'PIN 1122', 'Sophea', '+855 10 000 3344', 'PIN 3344', `Review code (for every demo account): ${code}`,
-    'pick a language', 'Set any 4-digit PIN (used only until you sign in)', 'tap Telegram', 'Enter the review code',
-    'The demo accounts stay in Phnom Penh, Cambodia: allowing location on your device does not move them.',
-    "From then on the app unlocks with the demo account's PIN (1122 / 3344), not the one from step 2."]) {
+    'Sign in (no phone number, no code):', '1. Open the app and pick a language.',
+    '2. On the PIN screen ("Set your PIN") tap "App review" at the bottom.', '3. Type 1122 for Dara or 3344 for Sophea.',
+    '4. You are signed in: Nearby shows the other demo account, and your conversation with it is open (Level 3 chat).',
+    'unlock it with the same PIN (1122 / 3344)', 'Second way (not needed)', 'tap Telegram', 'enter the review code',
+    'The demo accounts stay in Phnom Penh, Cambodia: allowing location on your device does not move them.']) {
     assert.ok(v.notes.includes(want), want);
   }
+  assert.ok(v.notes.indexOf('App review') < v.notes.indexOf('review code'), 'the PIN-only way comes first');
   assert.ok(!v.notes.includes('12345678'), 'never a real number');
-  assert.ok(!v.notes.includes('only locks the app on this phone'), 'the step-2 PIN is not the one that unlocks after sign-in');
+  assert.ok(!v.notes.includes('Set any 4-digit PIN'), 'no PIN of their own needed first');
   assert.match(reviewNotes({ accounts: [], code: null }), /<no code yet/);
 });
 

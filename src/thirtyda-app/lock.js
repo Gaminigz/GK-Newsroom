@@ -371,7 +371,72 @@ function enterBody() {
   return pinFrame(el('div', { class: 'pin-body' },
     el('h1', { class: 'pin-title', id: 'pin-title' }, t('pin_enter_title')),
     el('p', { class: 'pin-text' }, t('pin_enter_text')),
-    pad.node, err.node), forgot);
+    pad.node, err.node), [forgot, reviewLink()]);
+}
+
+// ---------------------------------------------------------------- "App review" (owner 2026-10-14)
+
+// Store reviewers sign in with the demo account's PIN ONLY ("it's just 1122 3344"): a quiet "App review" link under
+// the PIN screens a visitor sees first (#/pin and the lock), shown ONLY while GET /auth/methods says review:true (the
+// admin's "Review sign-in" switch). Never a global PIN match: the server compares review accounts' PINs only
+// (POST /auth/review/pin, src/lib/thirtyda-review.mjs), so a real person's own 1122 never lands in a demo account.
+let reviewOn = null; // { at, value } — GET /auth/methods, kept a minute
+async function reviewShown() {
+  if (reviewOn && Date.now() - reviewOn.at < 60e3) return reviewOn.value;
+  try {
+    const m = await api.get('/auth/methods', { redirect: false });
+    reviewOn = { at: Date.now(), value: m?.review === true };
+  } catch {
+    reviewOn = null;
+    return false;
+  }
+  return reviewOn.value;
+}
+
+/** The quiet "App review" link: an empty slot that fills only when review sign-in is on. → the node. */
+export function reviewLink() {
+  const slot = el('div', { class: 'pin-review' });
+  reviewShown().then((on) => {
+    if (!on) return;
+    slot.append(el('button', { type: 'button', class: 'link pin-review-link', on: { click: reviewSheet } }, t('review_link')));
+  });
+  return slot;
+}
+
+/** "Sign in for app review": the app's 4 boxes, Cancel. Right PIN → signed in and OPEN (no second PIN) → Nearby. */
+function reviewSheet() {
+  const err = errorLine('field-error pin-sheet-error');
+  const pad = pinPad({ onFull, light: true, label: t('review_title') });
+  const cancel = el('button', { type: 'button', class: 'btn btn-secondary pin-review-cancel', on: { click: () => sheet.close() } }, t('review_cancel'));
+  const sheet = modal(el('div', { class: 'sheet-body pin-sheet', 'aria-labelledby': 'review-title' },
+    el('h2', { class: 'sheet-title', id: 'review-title' }, t('review_title')),
+    el('p', { class: 'help' }, t('review_text')),
+    pad.node, err.node, cancel), { sheet: true, label: t('review_title') });
+  async function onFull(pin) {
+    pad.setBusy(true);
+    err.show('');
+    try {
+      const r = await api.post('/auth/review/pin', { pin }, { redirect: false });
+      clearPinFlags(); // the demo account keeps its own PIN: nothing waits on this phone any more
+      sheet.close();
+      if (lock.covered) opened(r);
+      else {
+        applyLockInfo(r?.lock);
+        if (Array.isArray(r?.notices)) state.notices = r.notices;
+        setMe(r.user);
+      }
+      activity.lastInputAt = Date.now();
+      go('/nearby', { replace: true });
+    } catch (e) {
+      pad.setBusy(false);
+      pad.clear();
+      pad.shake();
+      if (e.status === 404) { reviewOn = null; sheet.close(); return; } // switched off meanwhile
+      err.show(e.code === 'not_review' ? t('review_wrong') : errorText(e));
+      pad.focus();
+    }
+  }
+  pad.focus();
 }
 
 // A visitor with a waiting PIN and no profile yet (owner 2026-10-14): the app opens again on "Enter your PIN", checked
@@ -644,6 +709,11 @@ export function changePinSheet() {
 
 registerStrings({
   en: {
+    review_link: 'App review',
+    review_title: 'Sign in for app review',
+    review_text: 'Type the demo account\'s 4-digit PIN.',
+    review_wrong: 'That PIN is not a review account.',
+    review_cancel: 'Cancel',
     pin_aria: 'PIN, 4 numbers',
     pin_set_title: 'Set your PIN',
     pin_new_title: 'Set a new PIN',
@@ -670,6 +740,11 @@ registerStrings({
     pin_idle_note: 'Locks after 30 seconds without touch or movement.',
   },
   km: {
+    review_link: 'ការពិនិត្យកម្មវិធី',
+    review_title: 'ចូលសម្រាប់ការពិនិត្យកម្មវិធី',
+    review_text: 'វាយលេខ PIN 4 ខ្ទង់ របស់គណនីសាកល្បង។',
+    review_wrong: 'លេខ PIN នេះមិនមែនជាគណនីសម្រាប់ពិនិត្យទេ។',
+    review_cancel: 'បោះបង់',
     pin_aria: 'លេខ PIN 4 ខ្ទង់',
     pin_set_title: 'កំណត់លេខ PIN របស់អ្នក',
     pin_new_title: 'កំណត់លេខ PIN ថ្មី',
@@ -696,6 +771,11 @@ registerStrings({
     pin_idle_note: 'ចាក់សោក្រោយ 30 វិនាទី បើគ្មានការប៉ះ ឬចលនា។',
   },
   zh: {
+    review_link: '应用审核',
+    review_title: '应用审核登录',
+    review_text: '输入演示账号的 4 位 PIN 码。',
+    review_wrong: '这个 PIN 码不是审核账号。',
+    review_cancel: '取消',
     pin_aria: 'PIN 码，4 位数字',
     pin_set_title: '设置你的 PIN 码',
     pin_new_title: '设置新的 PIN 码',
@@ -722,6 +802,11 @@ registerStrings({
     pin_idle_note: '30 秒没有触摸或移动就会锁定。',
   },
   ko: {
+    review_link: '앱 심사',
+    review_title: '앱 심사용 로그인',
+    review_text: '데모 계정의 4자리 PIN을 입력하세요.',
+    review_wrong: '이 PIN은 심사용 계정이 아니에요.',
+    review_cancel: '취소',
     pin_aria: 'PIN, 숫자 4개',
     pin_set_title: 'PIN 설정',
     pin_new_title: '새 PIN 설정',
@@ -748,6 +833,11 @@ registerStrings({
     pin_idle_note: '30초 동안 터치나 움직임이 없으면 잠겨요.',
   },
   ja: {
+    review_link: 'アプリ審査',
+    review_title: 'アプリ審査用ログイン',
+    review_text: 'デモアカウントの4桁のPINを入力してください。',
+    review_wrong: 'このPINは審査用アカウントではありません。',
+    review_cancel: 'キャンセル',
     pin_aria: 'PIN、数字4桁',
     pin_set_title: 'PINを設定',
     pin_new_title: '新しいPINを設定',

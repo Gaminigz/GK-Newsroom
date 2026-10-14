@@ -30,7 +30,7 @@
 
 import crypto from "node:crypto";
 import { SETTINGS_COLLECTION, saveSecret, readSecret, secretSaved, sealSecret, openSecret, settingsKey, keyReady } from "./thirtyda-settings.mjs";
-import { hashPin, checkNewPin } from "./thirtyda-pin.mjs";
+import { hashPin, checkNewPin, verifyPin, pinDigits, PIN_LENGTH } from "./thirtyda-pin.mjs";
 import { PHOTO_MAX } from "../thirtyda-app/shared/rules.js";
 
 export const REVIEW = "review"; // users.demo
@@ -48,6 +48,7 @@ export const REVIEW_CODE = "review_code"; // the sealed code (thirtyda_settings,
 export const REVIEW_SWITCH = "review_signin"; // { on, updatedAt, updatedBy } in thirtyda_settings
 export const REVIEW_TRIES = 5; // wrong review codes per number per 15 minutes
 export const REVIEW_WRONG_MAX = 50; // wrong review codes per code, ever: then only a New code works
+export const REVIEW_PIN_TRIES = 5; // wrong review PINs per address per 15 minutes (the "App review" link)
 const WINDOW_MS = 15 * 60e3;
 const USERS = "thirtyda_users";
 const SESSIONS = "thirtyda_user_sessions";
@@ -117,27 +118,36 @@ export function profileRow(u) {
   };
 }
 
-/** "1122 / 3344": the review accounts' PINs, for step 4 of the notes. */
+/** "1122 / 3344": the review accounts' PINs. */
 const pinList = (accounts) => accounts.map((a) => a.pin).filter(Boolean).join(" / ") || "shown above";
+/** "1122 for Dara or 3344 for Sophea" (step 3 of the notes). */
+const pinFor = (accounts) => accounts.filter((a) => a.pin).map((a) => `${a.pin} for ${a.name}`).join(" or ") || "the demo account's PIN shown above";
 
 /**
- * The text for App Store Connect / Play Console review notes: each review account's app name, mock number and PIN,
- * the code, and the steps. `code` null → "<no code yet>".
+ * The text for App Store Connect / Play Console review notes (owner 2026-10-14: "we don't need phone to log in, it's
+ * just 1122 3344"): the PIN-only way first ("App review" on the PIN screen), then each review account's app name, PIN
+ * and mock number, and the number + code way as a second way. `code` null → "<no code yet>".
  */
 export function reviewNotes({ accounts, code }) {
   const lines = ["30+DA demo accounts for app review", ""];
-  accounts.forEach((a, i) => {
-    lines.push(`Demo account ${i + 1}: ${a.name} · phone ${spacedPhone(a.phone)} · PIN ${a.pin ?? "(not readable: save it again)"}`);
-  });
-  lines.push(`Review code (for every demo account): ${code ?? "<no code yet: press New code>"}`, "");
   lines.push(
-    "Steps:",
+    "Sign in (no phone number, no code):",
     "1. Open the app and pick a language.",
-    "2. Set any 4-digit PIN (used only until you sign in).",
-    "3. Tap the profile icon (top right). In the phone number box keep +855, type the demo number (for example 10 000 1122) and tap Telegram. No Telegram app is needed.",
-    `4. Enter the review code, then the demo account's PIN. From then on the app unlocks with the demo account's PIN (${pinList(accounts)}), not the one from step 2.`,
+    "2. On the PIN screen (\"Set your PIN\") tap \"App review\" at the bottom.",
+    `3. Type ${pinFor(accounts)}.`,
+    "4. You are signed in: Nearby shows the other demo account, and your conversation with it is open (Level 3 chat). To report a message, tap it in the chat.",
+    `When the app locks itself (30 seconds without a touch), unlock it with the same PIN (${pinList(accounts)}).`,
+    "",
   );
+  accounts.forEach((a, i) => {
+    lines.push(`Demo account ${i + 1}: ${a.name} · PIN ${a.pin ?? "(not readable: save it again)"} · phone ${spacedPhone(a.phone)}`);
+  });
   lines.push("");
+  lines.push(
+    "Second way (not needed): tap the profile icon (top right), keep +855, type the demo number (for example 10 000 1122), tap Telegram (no Telegram app is needed), enter the review code, then the demo account's PIN.",
+    `Review code (for every demo account): ${code ?? "<no code yet: press New code>"}`,
+    "",
+  );
   if (accounts.length > 1) {
     lines.push(`The demo accounts see only each other${accounts.some((a) => a.talks?.length) ? " and already have a conversation with each other" : ""}.`);
   }
@@ -239,6 +249,49 @@ export async function checkReviewCode(d, typed) {
   if (sameCode(String(typed ?? ""), code)) return { ok: true };
   await d.collection(SETTINGS_COLLECTION).updateOne({ _id: REVIEW_CODE, box: { $exists: true } }, { $inc: { wrong: 1 } });
   return { ok: false, reason: "wrong" };
+}
+
+// ---------------------------------------------------------------- the PIN-only way (owner 2026-10-14: "it's just 1122 3344")
+
+/**
+ * Which review account this PIN signs into: only while "Review sign-in" is ON and only CURRENT review accounts (demo
+ * 'review' with the admin's mock number, not blocked, not being deleted; REVIEW_MAX at most). The query asks for review
+ * accounts only, so a real profile's PIN is never even compared: a real person who chose 1122 never lands in Dara.
+ * Every account is checked with the app's own PIN check (verifyPin: scrypt + timingSafeEqual), all of them every time,
+ * so a right and a wrong PIN cost the same. Two accounts with the same PIN → the one made first. → the profile, or null.
+ */
+export async function reviewAccountForPin(d, pin) {
+  const digits = pinDigits(String(pin ?? ""));
+  if (digits.length !== PIN_LENGTH) return null;
+  if (!(await reviewSwitch(d)).on) return null;
+  const ms = (t) => (t ? new Date(t).getTime() || 0 : 0);
+  const list = (await d.collection(USERS).find({ demo: REVIEW, phoneVia: REVIEW }).toArray())
+    .filter((u) => !u.blocked && !u.deleting && u.pinHash && u.phone)
+    .sort((x, y) => ms(x.reviewAt) - ms(y.reviewAt) || String(x._id).localeCompare(String(y._id)))
+    .slice(0, REVIEW_MAX);
+  const ok = await Promise.all(list.map((u) => verifyPin(digits, u.pinHash).catch(() => false)));
+  return list.find((_, i) => ok[i]) ?? null;
+}
+
+/**
+ * POST /auth/review/pin's checks, in order: the switch OFF → 404 (like an unknown route); not 4 digits → 422; then a
+ * try is counted on `tries` under `key` (the address) BEFORE any await — REVIEW_PIN_TRIES per 15 minutes → 429; a PIN
+ * that is no current review account's → 400 not_review (the try stays counted); a right one gives its try back.
+ * → the review profile (the caller signs this browser into it).
+ */
+export async function reviewPinCheck(d, { pin, key, tries, now = Date.now() }) {
+  if (!(await reviewSwitch(d)).on) throw new ReviewError(404, "not_found", "No such endpoint.");
+  const digits = pinDigits(String(pin ?? ""));
+  if (digits.length !== PIN_LENGTH) throw new ReviewError(422, "bad_pin", "A PIN is 4 digits.");
+  if (!tries.take(key, REVIEW_PIN_TRIES, now)) throw new ReviewError(429, "too_many_attempts", "Too many tries. Try again in 15 minutes.");
+  const user = await reviewAccountForPin(d, digits);
+  if (!user) {
+    const err = new ReviewError(400, "not_review", "That PIN is not a review account.");
+    err.attemptsLeft = tries.left(key, REVIEW_PIN_TRIES, now);
+    throw err;
+  }
+  tries.giveBack(key, now);
+  return user;
 }
 
 // ---------------------------------------------------------------- turning a profile into a review account
