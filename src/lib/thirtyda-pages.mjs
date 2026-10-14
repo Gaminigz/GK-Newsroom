@@ -8,8 +8,10 @@
  *   the admin's "Try sign-in" result (the end of GET /30da/api/auth/<provider>/callback for a test)
  *   GET /30da/back           where GKVerify's big "⬅️ Back to 30+DA" Telegram button lands (backPage): opens the app
  *                            on an iPhone / Android phone, else the web app
- *   GET /30da/home           the home page (homePage): what 30+DA is, how it works (the 3 levels), safety, the way in
- *                            (the web app); its own look in pages.css under .page-home, photo slots (HOME_SLOTS)
+ *   GET /30da/home           the home page (homePage), laid out like the owner's template (ggmt.sg/newsfeed/3una5aha):
+ *                            the phone-shaped card + sign-in pills, the store icons (App Store / Google Play coming
+ *                            soon, Windows = the web app), the headline, the reminder, how it works in words, support &
+ *                            contact, hashtags, SEO + JSON-LD; its own look in pages.css under .page-home (HOME_SLOTS)
  *
  * Short and sweet (owner 2026-10-13): a few plain one-line points, in the app's 5 languages, with the same small
  * flag row as the app's Me page at the top. The language: ?lang=en|km|zh|ko|ja, else the browser's
@@ -157,34 +159,39 @@ export const PAGE_STRINGS = {
     // GKVerify's back button page (backPage): the big button says app_open.
     back_lede: "If 30+DA did not open by itself, tap the big button.",
     back_web: "Open 30+DA in the browser",
-    // The home page (homePage). home_tagline / home_headline are the app's opening screen's own (op_tagline,
-    // op_headline); the levels follow the code (src/thirtyda-app/shared/questions.js LEVEL_RULES, shared/rules.js).
+    // The home page (homePage), laid out like the owner's template (ggmt.sg/newsfeed/3una5aha). home_tagline /
+    // home_headline are the app's opening screen's own (op_tagline, op_headline); the levels follow the code
+    // (src/thirtyda-app/shared/questions.js LEVEL_RULES: Level 2 = a few picked + a couple you write) told in words, no
+    // numbers (owner 2026-10-14). home_soon / home_win: the store icons' labels. In zh / ja a "|" marks where a line may
+    // break (between phrases, never inside a word): the page turns it into <wbr>, and drops it from the title, the
+    // description and the labels.
     home_tagline: "Safe and calm dating for 30+",
     home_headline: "Don’t make the same mistake again.",
-    home_desc: "30+DA: safe and calm dating for people aged 30 and over. Get to know someone slowly, in your own language. Free.",
+    home_desc: "30+DA: safe and calm dating for people aged 30 and over in Phnom Penh. Get to know someone slowly, in your own language. Free.",
+    home_place: "Phnom Penh",
+    home_card: "Meet someone slowly, in your own language. Every message translated.",
+    home_alt: "A woman on a rooftop above the city lights at dusk",
+    home_signin: "Sign in",
+    home_guest: "Guest",
+    home_soon: "coming soon",
+    home_win: "Windows PC — open 30+DA in your browser",
     home_line: "Somewhere in this city, someone is looking for you too.",
-    home_free: "Free · 5 languages",
+    home_lead: "Get to know them slowly, in your own language — calm, kind, and only for 30+.",
+    home_remind_h: "Reminder",
+    home_remind: "30+DA is free — there is nothing to pay. We never ask for money, bank or card details. Never send money to someone you met online.",
+    home_how_h: "How it works",
+    home_l1_h: "Say hello",
+    home_l1: "A few easy questions. One tap to answer.",
+    home_l2_h: "Go deeper",
+    home_l2: "Then a few more — a couple you write yourself. Another photo opens.",
+    home_l3_h: "Chat",
+    home_l3: "Every message translated into your language. Real names, at last.",
+    home_verify: "Look around freely. Verify your number only when you want to chat.",
+    home_contact_h: "Support & Contact",
     home_string: "They say an invisible red string ties you to someone.",
     home_frame_2: "A city full of strangers.",
     home_frame_3: "One face comes into focus.",
     home_frame_4: "This time, don’t walk past.",
-    home_how_h: "How it works",
-    home_how_lede: "Look around freely. When someone catches your eye:",
-    home_level: "Level {n}",
-    home_l1_h: "Say hello",
-    home_l1: "5 easy questions. One tap to answer.",
-    home_l2_h: "Go deeper",
-    home_l2: "A little more, in your own words. Another photo opens.",
-    home_l3_h: "Chat",
-    home_l3: "Every message translated into your language. Real names, at last.",
-    home_safe_h: "Safe and calm",
-    home_safe_age: "30 and over only.",
-    home_safe_verify: "Everyone verifies before they can talk.",
-    home_safe_contact: "No phone numbers, emails or links. Not at any level.",
-    home_safe_report: "Report any chat message. We check every report.",
-    home_safe_money: "We never ask for money or card details.",
-    home_soon: "Coming soon to the App Store and Google Play.",
-    home_photo: "30+DA photo {n}",
     home_terms: "Terms",
     home_help: "Help",
   },
@@ -279,30 +286,31 @@ export const PAGE_STRINGS = {
     // The home page (homePage).
     home_tagline: "ការណាត់ជួបប្រកបដោយសុវត្ថិភាព និងភាពស្ងប់ស្ងាត់ សម្រាប់វ័យ 30+",
     home_headline: "កុំធ្វើខុសដដែលម្ដងទៀត។",
-    home_desc: "30+DA៖ ការណាត់ជួបប្រកបដោយសុវត្ថិភាព និងភាពស្ងប់ស្ងាត់ សម្រាប់អ្នកដែលមានអាយុពី 30 ឆ្នាំឡើងទៅ។ ស្គាល់គ្នាបន្តិចម្ដងៗ ជាភាសារបស់អ្នក។ ឥតគិតថ្លៃ។",
+    home_desc: "30+DA៖ ការណាត់ជួបប្រកបដោយសុវត្ថិភាព និងភាពស្ងប់ស្ងាត់ សម្រាប់អ្នកដែលមានអាយុពី 30 ឆ្នាំឡើងទៅ នៅភ្នំពេញ។ ស្គាល់គ្នាបន្តិចម្ដងៗ ជាភាសារបស់អ្នក។ ឥតគិតថ្លៃ។",
+    home_place: "ភ្នំពេញ",
+    home_card: "ស្គាល់នរណាម្នាក់បន្តិចម្ដងៗ ជាភាសារបស់អ្នក។ សារនីមួយៗត្រូវបានបកប្រែ។",
+    home_alt: "នារីម្នាក់នៅលើដំបូលអគារ ពីលើពន្លឺភ្លើងទីក្រុងពេលព្រលប់",
+    home_signin: "ចូលគណនី",
+    home_guest: "ភ្ញៀវ",
+    home_soon: "ឆាប់ៗនេះ",
+    home_win: "កុំព្យូទ័រ Windows — បើក 30+DA ក្នុងកម្មវិធីរុករក",
     home_line: "នៅកន្លែងណាមួយក្នុងទីក្រុងនេះ មាននរណាម្នាក់កំពុងស្វែងរកអ្នកដែរ។",
-    home_free: "ឥតគិតថ្លៃ · 5 ភាសា",
+    home_lead: "ស្គាល់គ្នាបន្តិចម្ដងៗ ជាភាសារបស់អ្នក — ស្ងប់ស្ងាត់ សុភាព និងសម្រាប់តែវ័យ 30+។",
+    home_remind_h: "ការរំលឹក",
+    home_remind: "30+DA ឥតគិតថ្លៃ — គ្មានអ្វីត្រូវបង់ទេ។ យើងមិនដែលសុំលុយ ព័ត៌មានធនាគារ ឬកាតឡើយ។ កុំផ្ញើលុយទៅអ្នកដែលអ្នកស្គាល់តាមអនឡាញ។",
+    home_how_h: "របៀបប្រើ",
+    home_l1_h: "និយាយសួស្ដី",
+    home_l1: "សំណួរងាយៗមួយចំនួន។ ចុចតែម្ដងដើម្បីឆ្លើយ។",
+    home_l2_h: "ស្គាល់គ្នាឲ្យជ្រៅជាងនេះ",
+    home_l2: "បន្ទាប់មក សំណួរមួយចំនួនទៀត ខ្លះអ្នកសរសេរដោយខ្លួនឯង។ រូបថតមួយទៀតបើក។",
+    home_l3_h: "ជជែក",
+    home_l3: "សារនីមួយៗត្រូវបានបកប្រែជាភាសារបស់អ្នក។ ទីបំផុត ឃើញឈ្មោះពិត។",
+    home_verify: "មើលដោយសេរី។ ផ្ទៀងផ្ទាត់លេខទូរស័ព្ទរបស់អ្នក តែពេលអ្នកចង់ជជែកប៉ុណ្ណោះ។",
+    home_contact_h: "ជំនួយ និងទំនាក់ទំនង",
     home_string: "គេថា មានខ្សែក្រហមមួយដែលមើលមិនឃើញ ចងអ្នកជាប់នឹងនរណាម្នាក់។",
     home_frame_2: "ទីក្រុងដែលពោរពេញដោយមនុស្សមិនស្គាល់គ្នា។",
     home_frame_3: "មុខមួយស្រាប់តែច្បាស់ឡើង។",
     home_frame_4: "លើកនេះ កុំដើរហួសគ្នាទៀត។",
-    home_how_h: "របៀបប្រើ",
-    home_how_lede: "មើលដោយសេរី។ ពេលអ្នកចាប់អារម្មណ៍នរណាម្នាក់៖",
-    home_level: "កម្រិត {n}",
-    home_l1_h: "និយាយសួស្ដី",
-    home_l1: "សំណួរងាយៗចំនួន 5។ ចុចតែម្ដងដើម្បីឆ្លើយ។",
-    home_l2_h: "ស្គាល់គ្នាឲ្យជ្រៅជាងនេះ",
-    home_l2: "បន្ថែមបន្តិចទៀត ជាពាក្យរបស់អ្នកផ្ទាល់។ រូបថតមួយទៀតបើក។",
-    home_l3_h: "ជជែក",
-    home_l3: "សារនីមួយៗត្រូវបានបកប្រែជាភាសារបស់អ្នក។ ទីបំផុត ឃើញឈ្មោះពិត។",
-    home_safe_h: "សុវត្ថិភាព និងស្ងប់ស្ងាត់",
-    home_safe_age: "សម្រាប់តែអ្នកដែលមានអាយុពី 30 ឆ្នាំឡើងទៅ។",
-    home_safe_verify: "អ្នករាល់គ្នាត្រូវផ្ទៀងផ្ទាត់ មុននឹងអាចនិយាយគ្នាបាន។",
-    home_safe_contact: "គ្មានលេខទូរស័ព្ទ អ៊ីមែល ឬតំណភ្ជាប់ទេ។ គ្រប់កម្រិតទាំងអស់។",
-    home_safe_report: "រាយការណ៍សារណាមួយក្នុងការជជែក។ យើងពិនិត្យរាល់របាយការណ៍។",
-    home_safe_money: "យើងមិនដែលសុំលុយ ឬព័ត៌មានកាតឡើយ។",
-    home_soon: "នឹងមានក្នុង App Store និង Google Play ឆាប់ៗនេះ។",
-    home_photo: "រូបថត 30+DA ទី {n}",
     home_terms: "លក្ខខណ្ឌប្រើប្រាស់",
     home_help: "ជំនួយ",
   },
@@ -394,33 +402,34 @@ export const PAGE_STRINGS = {
     // GKVerify's back button page (backPage): the big button says app_open.
     back_lede: "如果 30+DA 没有自动打开，请点大按钮。",
     back_web: "在浏览器中打开 30+DA",
-    // The home page (homePage).
+    // The home page (homePage). "|" = where a line may break (between phrases).
     home_tagline: "30+ 的安全、从容交友",
-    home_headline: "别再犯同样的错误。",
-    home_desc: "30+DA：为 30 岁及以上人士打造的安全、从容的交友应用。用你自己的语言，慢慢认识一个人。免费。",
-    home_line: "在这座城市的某个角落，也有人在找你。",
-    home_free: "免费 · 5 种语言",
-    home_string: "传说，一根看不见的红线，把你和某个人系在一起。",
-    home_frame_2: "满城都是陌生人。",
-    home_frame_3: "有一张脸，忽然清晰起来。",
-    home_frame_4: "这一次，别再擦肩而过。",
+    home_headline: "别再犯|同样的错误。",
+    home_desc: "30+DA：为金边 30 岁及以上人士打造的安全、从容的交友应用。用你自己的语言，慢慢认识一个人。免费。",
+    home_place: "金边",
+    home_card: "用你自己的语言，|慢慢|认识一个人。|每条消息|都会翻译。",
+    home_alt: "黄昏时分，屋顶上的女子望着城市灯火",
+    home_signin: "登录",
+    home_guest: "游客",
+    home_soon: "即将上线",
+    home_win: "Windows 电脑——在浏览器中打开 30+DA",
+    home_line: "在这座城市的|某个角落，|也有人|在找你。",
+    home_lead: "用你自己的语言，|慢慢|认识对方——|从容、|友善，|只为 30+。",
+    home_remind_h: "提醒",
+    home_remind: "30+DA 完全免费——|没有任何|需要付钱的地方。|我们|绝不会|向你要钱、|银行或|银行卡信息。|永远不要|给网上|认识的人|汇钱。",
     home_how_h: "怎么用",
-    home_how_lede: "随意看看。遇到心动的人：",
-    home_level: "等级 {n}",
     home_l1_h: "打个招呼",
-    home_l1: "5 个简单的问题，点一下就能回答。",
+    home_l1: "几个|简单的问题，|点一下|就能回答。",
     home_l2_h: "再深入一点",
-    home_l2: "多说一点，用你自己的话。还能多看到一张照片。",
+    home_l2: "接着|再来几个，|有的|由你|自己写。|还能|多看到|一张照片。",
     home_l3_h: "聊天",
-    home_l3: "每条消息都翻译成你的语言。终于，看到真名。",
-    home_safe_h: "安全、从容",
-    home_safe_age: "仅限 30 岁及以上人士。",
-    home_safe_verify: "每个人都要先验证，才能聊天。",
-    home_safe_contact: "不允许手机号、邮箱或链接。任何等级都不行。",
-    home_safe_report: "任何聊天消息都可以举报。每一份举报我们都会查看。",
-    home_safe_money: "我们绝不会向你要钱或银行卡信息。",
-    home_soon: "即将登陆 App Store 和 Google Play。",
-    home_photo: "30+DA 照片 {n}",
+    home_l3: "每条消息|都翻译成|你的语言。|终于，|看到真名。",
+    home_verify: "随意看看。|只有在|想聊天的时候，|才需要|验证手机号。",
+    home_contact_h: "支持与联系",
+    home_string: "传说，|一根|看不见的红线，|把你|和某个人|系在一起。",
+    home_frame_2: "满城|都是陌生人。",
+    home_frame_3: "有一张脸，|忽然|清晰起来。",
+    home_frame_4: "这一次，|别再|擦肩而过。",
     home_terms: "使用条款",
     home_help: "帮助",
   },
@@ -515,30 +524,31 @@ export const PAGE_STRINGS = {
     // The home page (homePage).
     home_tagline: "30+를 위한 안전하고 차분한 만남",
     home_headline: "같은 실수를 반복하지 마세요.",
-    home_desc: "30+DA: 30세 이상을 위한 안전하고 차분한 데이트 앱. 내 언어로 천천히 알아 가요. 무료예요.",
+    home_desc: "30+DA: 프놈펜의 30세 이상을 위한 안전하고 차분한 데이트 앱. 내 언어로 천천히 알아 가요. 무료예요.",
+    home_place: "프놈펜",
+    home_card: "내 언어로, 천천히 누군가를 알아 가요. 모든 메시지가 번역돼요.",
+    home_alt: "해 질 녘 옥상에서 도시의 불빛을 바라보는 여자",
+    home_signin: "로그인",
+    home_guest: "게스트",
+    home_soon: "출시 예정",
+    home_win: "Windows PC — 브라우저에서 30+DA 열기",
     home_line: "이 도시 어딘가에서, 누군가도 당신을 찾고 있어요.",
-    home_free: "무료 · 5개 언어",
+    home_lead: "내 언어로 천천히 알아 가요 — 차분하고 다정한, 30+만을 위한 곳.",
+    home_remind_h: "주의",
+    home_remind: "30+DA는 무료예요 — 낼 돈이 없어요. 돈, 은행이나 카드 정보를 절대 묻지 않아요. 온라인에서 만난 사람에게 절대 돈을 보내지 마세요.",
+    home_how_h: "이용 방법",
+    home_l1_h: "인사하기",
+    home_l1: "쉬운 질문 몇 가지. 한 번 눌러 답해요.",
+    home_l2_h: "조금 더 깊이",
+    home_l2: "이어서 몇 가지 더, 그중 몇 개는 직접 써요. 사진이 한 장 더 열려요.",
+    home_l3_h: "채팅",
+    home_l3: "모든 메시지가 내 언어로 번역돼요. 드디어 실명도요.",
+    home_verify: "자유롭게 둘러보세요. 전화번호 인증은 채팅하고 싶을 때만 해요.",
+    home_contact_h: "지원 및 문의",
     home_string: "보이지 않는 붉은 실이 당신과 누군가를 이어 준대요.",
     home_frame_2: "낯선 사람들로 가득한 도시.",
     home_frame_3: "한 얼굴이 또렷해져요.",
     home_frame_4: "이번에는 스쳐 지나가지 마세요.",
-    home_how_h: "이용 방법",
-    home_how_lede: "자유롭게 둘러보세요. 마음이 가는 사람이 있다면:",
-    home_level: "레벨 {n}",
-    home_l1_h: "인사하기",
-    home_l1: "쉬운 질문 5개. 한 번 눌러 답해요.",
-    home_l2_h: "조금 더 깊이",
-    home_l2: "조금 더, 내 말로. 사진이 한 장 더 열려요.",
-    home_l3_h: "채팅",
-    home_l3: "모든 메시지가 내 언어로 번역돼요. 드디어 실명도요.",
-    home_safe_h: "안전하고 차분하게",
-    home_safe_age: "30세 이상만 이용할 수 있어요.",
-    home_safe_verify: "누구나 인증해야 대화할 수 있어요.",
-    home_safe_contact: "전화번호, 이메일, 링크는 안 돼요. 어느 단계에서도요.",
-    home_safe_report: "어떤 채팅 메시지든 신고할 수 있어요. 모든 신고를 확인해요.",
-    home_safe_money: "돈이나 카드 정보를 절대 묻지 않아요.",
-    home_soon: "App Store와 Google Play에 곧 나와요.",
-    home_photo: "30+DA 사진 {n}",
     home_terms: "이용약관",
     home_help: "도움말",
   },
@@ -630,33 +640,34 @@ export const PAGE_STRINGS = {
     // GKVerify's back button page (backPage): the big button says app_open.
     back_lede: "30+DA が自動で開かない場合は、大きなボタンを押してください。",
     back_web: "ブラウザで 30+DA を開く",
-    // The home page (homePage).
+    // The home page (homePage). "|" = where a line may break (between phrases).
     home_tagline: "30+のための、安心で穏やかな出会い",
-    home_headline: "同じ過ちを、もう繰り返さない。",
-    home_desc: "30+DA：30歳以上の方のための、安心で穏やかな出会いアプリ。自分の言葉で、ゆっくり知り合えます。無料です。",
-    home_line: "この街のどこかで、誰かもあなたを探しています。",
-    home_free: "無料 · 5言語",
-    home_string: "見えない赤い糸が、あなたと誰かを結んでいるといいます。",
-    home_frame_2: "見知らぬ人であふれる街。",
-    home_frame_3: "ひとつの顔に、ふとピントが合う。",
-    home_frame_4: "今度こそ、すれ違わないで。",
+    home_headline: "同じ過ちを、|もう|繰り返さない。",
+    home_desc: "30+DA：プノンペンの30歳以上の方のための、安心で穏やかな出会いアプリ。自分の言葉で、ゆっくり知り合えます。無料です。",
+    home_place: "プノンペン",
+    home_card: "自分の言葉で、|ゆっくり|知り合えます。|メッセージは|すべて翻訳。",
+    home_alt: "夕暮れの屋上から街の灯りを見つめる女性",
+    home_signin: "ログイン",
+    home_guest: "ゲスト",
+    home_soon: "近日公開",
+    home_win: "Windows PC — ブラウザで 30+DA を開く",
+    home_line: "この街の|どこかで、|誰かも|あなたを|探しています。",
+    home_lead: "自分の言葉で、|ゆっくり|知り合える。|穏やかで|やさしい、|30+だけの|場所です。",
+    home_remind_h: "ご注意",
+    home_remind: "30+DAは|無料です。|お支払いは|一切|ありません。|お金や|銀行・カードの|情報を|求めることは|決して|ありません。|ネットで|知り合った人に|お金を|送らないでください。",
     home_how_h: "使い方",
-    home_how_lede: "自由に見てまわって。気になる人がいたら：",
-    home_level: "レベル{n}",
     home_l1_h: "あいさつ",
-    home_l1: "かんたんな質問を5つ。答えはワンタップ。",
+    home_l1: "かんたんな|質問を|いくつか。|答えは|ワンタップ。",
     home_l2_h: "もう少し深く",
-    home_l2: "もう少し、自分の言葉で。写真がもう一枚見られます。",
+    home_l2: "続けて|もういくつか。|そのうち|いくつかは|自分で書く質問。|写真が|もう一枚|見られます。",
     home_l3_h: "チャット",
-    home_l3: "メッセージはすべてあなたの言語に翻訳。やっと本名も。",
-    home_safe_h: "安心で穏やか",
-    home_safe_age: "30歳以上の方のみ。",
-    home_safe_verify: "話す前に、全員が認証を済ませます。",
-    home_safe_contact: "電話番号・メール・リンクは禁止。どのレベルでも。",
-    home_safe_report: "チャットのメッセージはどれでも報告できます。すべての報告を確認します。",
-    home_safe_money: "お金やカード情報を聞くことは決してありません。",
-    home_soon: "App Store と Google Play に近日登場。",
-    home_photo: "30+DA の写真 {n}",
+    home_l3: "メッセージは|すべて|あなたの言語に|翻訳。|やっと|本名も。",
+    home_verify: "自由に|見てまわって。|電話番号の|確認は、|チャットしたい|ときだけ。",
+    home_contact_h: "サポート・|お問い合わせ",
+    home_string: "見えない|赤い糸が、|あなたと|誰かを|結んでいると|いいます。",
+    home_frame_2: "見知らぬ人で|あふれる街。",
+    home_frame_3: "ひとつの顔に、|ふと|ピントが合う。",
+    home_frame_4: "今度こそ、|すれ違わないで。",
     home_terms: "利用規約",
     home_help: "ヘルプ",
   },
@@ -700,8 +711,9 @@ ${body}
   </div>`;
 }
 
-function page({ title, lang, inner, robots = "index", kind = "doc", script = null, description = null }) {
-  // A description (the home page): the search result's line and the card a shared link shows (Telegram, Facebook).
+function page({ title, lang, inner, robots = "index", kind = "doc", script = null, description = null, head = "" }) {
+  // A description (the home page): the search result's line and the card a shared link shows (Telegram, Facebook);
+  // `head`: more of the home page's <head> (keywords, canonical, the share picture, JSON-LD — homeHead).
   const about = description ? `
   <meta name="description" content="${esc(description)}">
   <meta property="og:type" content="website">
@@ -714,7 +726,7 @@ function page({ title, lang, inner, robots = "index", kind = "doc", script = nul
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b1c3f">
-  <meta name="robots" content="${robots}">${about}
+  <meta name="robots" content="${robots}">${about}${head}
   <title>${esc(title)}</title>
   <link rel="icon" href="data:,">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -836,12 +848,11 @@ ${backToApp(t)}`;
 /**
  * The home page's photos (owner 2026-10-14): stills from the 30+DA teaser — AI-made, nobody real — in
  * src/thirtyda-app/home/img/ (its README names them), served at /30da/home/img/<slot>.<ext> (src/lib/thirtyda-home.mjs):
- *   hero        16:9 (1600 × 900): the rooftop over the lit city at dusk, the woman low right (the words stay clear of her)
- *   people-1    tall (893 × 1600): a woman on a rooftop terrace at dusk, beside "How it works"
+ *   hero        16:9 (768 × 432): the rooftop over the lit city at dusk — the share picture (Open Graph, JSON-LD)
+ *   people-1    tall (768 × 1376): a woman on a rooftop terrace at dusk — fills the phone-shaped card
  *   people-2…4  tall, ONE sequence in this order, the red thread through each: the evening street, one woman sharp in a
- *               blurred crowd, a man and a woman walking past each other
- * A slot with no file shows a night-city placeholder in the app's colours (navy, soft bokeh lights, the thin red
- * thread): never a stock or made-up face.
+ *               blurred crowd, a man and a woman walking past each other — the strip under the two columns
+ * A slot with no file shows a night-city placeholder in the app's colours (navy, soft bokeh lights): never a made-up face.
  */
 export const HOME_HERO = "hero";
 export const HOME_PORTRAIT = "people-1";
@@ -851,33 +862,50 @@ export const HOME_SLOTS = Object.freeze([HOME_HERO, ...HOME_PEOPLE]);
 export const HOME_IMG_PATH = "/30da/home/img/";
 /** The photo kinds a slot may have, in the order a <picture> offers them (webp first, jpg the fallback). */
 export const HOME_IMG_EXTS = Object.freeze(["webp", "jpg"]);
-const HOME_SIZE = { [HOME_HERO]: [1600, 900], tall: [893, 1600] };
+const HOME_SIZE = { [HOME_HERO]: [768, 432], tall: [768, 1376] };
+
+/** Where the page lives, and the picture a shared link shows (absolute: Telegram, Facebook and search engines fetch it). */
+export const HOME_URL = "https://ecom.ggmt.sg/30da/home";
+export const HOME_SHARE_IMG = `https://ecom.ggmt.sg${HOME_IMG_PATH}${HOME_HERO}.jpg`;
+/** Support & Contact, as on the owner's template (the same three ways in to GK SMART's support). */
+export const SUPPORT_TELEGRAM = "https://t.me/GKSmartbiz";
+export const SUPPORT_WHATSAPP = "https://wa.me/6585565977";
+const SUPPORT_WHATSAPP_SHOWN = "+65 8556 5977";
+export const HOME_TAGS = Object.freeze(["#30DA", "#DatingFor30Plus", "#SafeDating", "#CalmDating", "#PhnomPenh", "#Cambodia",
+  "#MeetSomeone", "#SecondChance", "#ការណាត់ជួប"]);
+const HOME_KEYWORDS = "30+DA, dating for 30+, dating over 30, safe dating, calm dating, Phnom Penh dating, Cambodia dating app, "
+  + "meet someone, second chance, ការណាត់ជួប, 金边交友, 프놈펜 데이트, プノンペン 出会い";
+const OG_LOCALE = { en: "en_US", km: "km_KH", zh: "zh_CN", ko: "ko_KR", ja: "ja_JP" };
 
 /**
- * The red string (the teaser's: "an invisible red string touches everyone but is tied to no one"): one fine line in
- * the app's red. Each piece is an SVG that stretches with its box while the line stays 1.5 px (non-scaling-stroke);
- * pieces marked hm-on-phone / hm-on-wide show only on phones / from 900 px. Constant markup, decoration only.
+ * zh / ja strings mark with "|" where a line may break (between phrases): <wbr> on the page (homeText), nothing anywhere
+ * else (plain). On the page "30+" also stays on the line of the word before it (a no-break space), so it never hangs alone.
  */
-const thread = (cls, viewBox, paths) => `<svg class="hm-thread ${cls}" viewBox="${viewBox}" preserveAspectRatio="none" aria-hidden="true" focusable="false">`
-  + paths.map(([c, d]) => `<path${c ? ` class="${c}"` : ""} d="${d}" vector-effect="non-scaling-stroke"/>`).join("") + "</svg>";
-// The hero: in from the side, down to the middle of its bottom edge, where the page's thread goes on.
-const HERO_THREAD = [
-  ["hm-on-phone", "M-2,77 C18,79 38,84 46,92 C49.5,95.5 50,97 50,100"],
-  ["hm-on-wide", "M102,14 C78,20 61,30 59,48 C57,68 50,84 50,100"],
-];
-// The sequence (people-2, -3, -4). Phones: a zigzag of 3 frames 47 wide (box 100 × 204.2); the thread runs down the
-// middle, dipping behind each frame. Wide: a row of 3 frames 31.33 wide (the middle one higher); the thread runs
-// across behind all three (box -8…108 × 62.15). The points where it goes behind a frame are where the frame's own
-// placeholder thread (PH_THREADS) comes in and goes out, so with no photo yet it reads as one line.
-const SEQ_PHONE = [["", "M50,0 C50,8 49,12 47,12 L44,30 L47,48 C50,48 50,75 53,75 L56,90 L53,105 C50,105 50,135 47,135 L44,150 L47,175 C49.5,175 50,186 50,204.2"]];
-const SEQ_WIDE = [["", "M-8,29 C-4,29 -3,32 0,32 L31.33,36 C32.5,36 33.2,38 34.33,38 L65.67,30 C66.8,30 67.5,28 68.67,28 L100,34 C103,34 105,36 108,36"]];
-// Inside a tall placeholder (box 100 × 179.2, the frame's own shape).
-const PH_THREADS = {
-  "people-1": [["", "M50,0 C50,40 18,62 28,92 C38,122 50,140 50,179.2"]],
-  "people-2": [["hm-on-phone", "M100,25.5 C66,25.5 30,38 36,62 C42,88 74,102.1 100,102.1"], ["hm-on-wide", "M0,83 C30,83 35,135 58,128 C78,122 82,95.8 100,95.8"]],
-  "people-3": [["hm-on-phone", "M0,31.9 C34,31.9 70,44 64,66 C58,88 26,95.7 0,95.7"], ["hm-on-wide", "M0,121.3 C25,121.3 30,60 55,62 C78,64 80,95.8 100,95.8"]],
-  "people-4": [["hm-on-phone", "M100,31.9 C66,31.9 30,46 36,72 C42,100 74,117 100,117"], ["hm-on-wide", "M0,70.2 C22,70.2 28,120 52,118 C76,116 80,89.4 100,89.4"]],
+const plain = (s) => String(s).replaceAll("|", "");
+export const homeText = (s) => esc(s).replace(/ (?=30\+)/g, "\u00a0").replaceAll("|", "<wbr>");
+const say = homeText;
+
+const svg = (viewBox, inner) => `<svg viewBox="${viewBox}" aria-hidden="true" focusable="false">${inner}</svg>`;
+/** The Google Play mark's own four colours (a brand mark: the one place on the page with colours outside the app's). */
+export const PLAY_COLOURS = Object.freeze(["#00b0ff", "#ffc400", "#ff3a44", "#00d26a"]);
+/** The store row's marks: the Apple logo and the 4-pane Windows logo in white (currentColor), Google Play in its colours. */
+const STORE_MARK = {
+  apple: svg("0 0 24 24", '<path fill="currentColor" d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.57-2.987 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.572-2.27 1.206-2.98.804-.94 2.142-1.64 3.248-1.68.03.13.05.28.05.43zm4.565 15.71c-.03.07-.463 1.58-1.518 3.12-.945 1.34-1.94 2.71-3.43 2.71-1.517 0-1.9-.88-3.63-.88-1.698 0-2.302.91-3.67.91-1.377 0-2.332-1.26-3.428-2.8-1.287-1.82-2.257-4.63-2.257-7.28 0-4.28 2.79-6.55 5.532-6.55 1.406 0 2.576.9 3.457.9.84 0 2.147-.95 3.734-.95.633 0 2.91.06 4.404 2.21-.114.07-2.628 1.53-2.628 4.63 0 3.7 3.24 5.01 3.434 5.02z"/>'),
+  play: svg("0 0 512 512", `<path fill="${PLAY_COLOURS[0]}" d="M104 40c-8 7-13 18-13 32v336c0 14 5 25 13 32l4 3 189-189v-4l-15-15z"/>`
+    + `<path fill="${PLAY_COLOURS[1]}" d="M356 271l-63-63v-4l63-63 4 2 75 43c21 12 21 32 0 44l-75 43z"/>`
+    + `<path fill="${PLAY_COLOURS[2]}" d="M360 269l-64-64-193 193c7 8 19 9 32 2z"/>`
+    + `<path fill="${PLAY_COLOURS[3]}" d="M296 209l64-64-225-129c-13-7-25-6-32 2z"/>`),
+  windows: svg("0 0 24 24", '<path fill="currentColor" d="M2 2h9.4v9.4H2zm10.6 0H22v9.4h-9.4zM2 12.6h9.4V22H2zm10.6 0H22V22h-9.4z"/>'),
 };
+/** The sign-in pills' marks, white (currentColor): the ways 30+DA really signs people in on the web. */
+const PILL_MARK = {
+  tiktok: svg("0 0 24 24", '<path fill="currentColor" d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/>'),
+  telegram: svg("0 0 24 24", '<path fill="currentColor" d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>'),
+  google: svg("0 0 24 24", '<path fill="currentColor" d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/>'),
+  facebook: svg("0 0 24 24", '<path fill="currentColor" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>'),
+};
+/** The sign-in pills, in this order (owner: "TikTok · Telegram · Google · Facebook · 👀 Guest"). */
+export const HOME_SIGNINS = Object.freeze([["tiktok", "TikTok"], ["telegram", "Telegram"], ["google", "Google"], ["facebook", "Facebook"]]);
 const ARROW = '<svg class="hm-i" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"'
   + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
 
@@ -887,10 +915,7 @@ const ARROW = '<svg class="hm-i" viewBox="0 0 24 24" width="24" height="24" fill
  */
 function homePhoto(slot, exts, alt, { eager = false } = {}) {
   const have = HOME_IMG_EXTS.filter((x) => Array.isArray(exts) && exts.includes(x));
-  if (!have.length) {
-    const inner = PH_THREADS[slot] ? thread("hm-ph-thread", "0 0 100 179.2", PH_THREADS[slot]) : "";
-    return `<span class="hm-ph hm-ph-${slot}" aria-hidden="true">${inner}</span>`;
-  }
+  if (!have.length) return `<span class="hm-ph hm-ph-${slot}" aria-hidden="true"></span>`;
   const [width, height] = HOME_SIZE[slot] || HOME_SIZE.tall;
   const src = (x) => `${HOME_IMG_PATH}${slot}.${x}`;
   const img = `<img src="${src(have.at(-1))}" alt="${esc(alt)}" width="${width}" height="${height}" `
@@ -899,98 +924,156 @@ function homePhoto(slot, exts, alt, { eager = false } = {}) {
 }
 
 /**
- * GET /30da/home[?lang=] — a dating app's front door (owner 2026-10-14: "it's a date app", "follow the app colours",
- * "numbers for what?"). The night hero (the wordmark, one warm line, "Safe and calm dating for 30+", Open 30+DA → the
- * web app /30da/), the teaser's photo sequence on the red string, how it works told as a path in words, safe and calm
- * in a few plain lines, the app's own headline and the button again, a quiet footer. True to the code:
- *   Level 1   5 lines each — yes/no questions (4 picked + 1 written), answered with one tap (shared/questions.js
- *             LEVEL_RULES, SYSTEM_QUESTIONS[1], replyOptions) — the page's ONE count
- *   Level 2   more lines, 2 of them in your own words; photo 2 opens (shared/rules.js PHOTO_SLOT_LEVELS)
- *   Level 3   the chat once both chose it, every line translated (src/lib/thirtyda-translate.mjs), real names
- *   safety    30+ only; talking needs one verified way (src/lib/thirtyda-verify.mjs); contact details refused at every
- *             level; a chat line can be reported; nothing to pay. Not in the stores yet: one plain line, no badge or link.
- * No script, no inline style (the page CSP). `photos` = homePhotos(); none → every slot is its placeholder.
+ * The template's store icons, plus Windows (owner 2026-10-14: "and windows"): App Store and Google Play are not open yet
+ * — no link, "— coming soon" — and Windows is 30+DA on a PC, the web app (/30da/). Shown twice: in the top bar next to
+ * the flags, and on the card's top right.
+ */
+function storeRow(t, where) {
+  const soon = (key, name) => {
+    const label = esc(`${name} — ${plain(t.home_soon)}`);
+    return `<span class="hm-store hm-store-${key}" role="img" aria-label="${label}" title="${label}">${STORE_MARK[key]}</span>`;
+  };
+  const win = esc(plain(t.home_win));
+  return `<div class="hm-stores hm-stores-${where}">${soon("apple", "App Store")}${soon("play", "Google Play")}`
+    + `<a class="hm-store hm-store-windows" href="${WEB_APP_PATH}" aria-label="${win}" title="${win}">${STORE_MARK.windows}</a></div>`;
+}
+
+/** The <head> extras of the home page: keywords, the address, the share card, and the app as JSON-LD (data, not a script). */
+function homeHead(t, lang, title) {
+  const desc = esc(plain(t.home_desc));
+  const ld = {
+    "@context": "https://schema.org",
+    "@type": "MobileApplication",
+    name: "30+DA",
+    alternateName: "30+DA App",
+    description: plain(t.home_desc),
+    url: HOME_URL,
+    image: HOME_SHARE_IMG,
+    applicationCategory: "LifestyleApplication",
+    applicationSubCategory: "Dating",
+    operatingSystem: "iOS, Android",
+    inLanguage: [...LANGS],
+    audience: { "@type": "PeopleAudience", suggestedMinAge: 30 },
+    offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+    publisher: { "@type": "Organization", name: OPERATOR, email: CONTACT_EMAIL },
+  };
+  // "<" never appears raw inside the JSON, so nothing in it can close the element.
+  const json = JSON.stringify(ld).replace(/</g, "\\u003c");
+  return `
+  <meta name="keywords" content="${esc(HOME_KEYWORDS)}">
+  <link rel="canonical" href="${HOME_URL}">
+  <meta property="og:url" content="${HOME_URL}">
+  <meta property="og:locale" content="${OG_LOCALE[lang]}">
+  <meta property="og:image" content="${HOME_SHARE_IMG}">
+  <meta property="og:image:width" content="${HOME_SIZE[HOME_HERO][0]}">
+  <meta property="og:image:height" content="${HOME_SIZE[HOME_HERO][1]}">
+  <meta property="og:image:alt" content="${esc(plain(t.home_alt))}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${esc(title)}">
+  <meta name="twitter:description" content="${desc}">
+  <meta name="twitter:image" content="${HOME_SHARE_IMG}">
+  <script type="application/ld+json">${json}</script>`;
+}
+
+/**
+ * GET /30da/home[?lang=] — the front door, laid out like the owner's template (ggmt.sg/newsfeed/3una5aha, 2026-10-14:
+ * "I give you the example of what MUST be on the home page"), in the app's own colours (navy, white, the soft greys; the
+ * app's red only as the thin red string). Top bar: the wordmark, the flags, the store icons. PC: a phone-shaped card
+ * left (people-1, the store icons top right, "30+DA App" + a line + two lines + the sign-in pills at the bottom) and the
+ * words right; phones: the card first. The words: an eyebrow, the app's headline as the h1 with 💞, the same in Khmer
+ * (on the other 4 languages), the lead, Open 30+DA (/30da/), the ⚠️ Reminder (free; never money, bank or card details;
+ * never send money), how it works in words, Support & Contact (email, Telegram, WhatsApp), the hashtags. Then the
+ * teaser's strip (people-2 → 3 → 4 on one taut red thread) and the footer. True to the code:
+ *   Say hello  a few questions, answered with one tap (shared/questions.js LEVEL_RULES[1], replyOptions)
+ *   Go deeper  a few more, a couple you write yourself (LEVEL_RULES[2]: 3 picked + 2 written); photo 2 opens
+ *              (shared/rules.js PHOTO_SLOT_LEVELS)
+ *   Chat       every line translated (src/lib/thirtyda-translate.mjs), real names; verify only to chat
+ * No numbers for show (owner: "no numbers — it's 30+ year olds' dating life"): only the brand (30+DA, 30+), the hashtags
+ * and the WhatsApp number carry digits. No script but the JSON-LD data block; no inline style (the page CSP).
+ * `photos` = homePhotos(); none → every slot is its placeholder.
  */
 export function homePage({ lang: want, photos = {} } = {}) {
   const lang = ok(want);
   const t = PAGE_STRINGS[lang];
+  const km = PAGE_STRINGS.km;
   const q = `?lang=${lang}`;
-  const has = (slot) => HOME_IMG_EXTS.some((x) => photos?.[slot]?.includes?.(x));
-  // Alt text: the hero says what the page is; the others "30+DA photo 1" … "4" (the frames' lines are beside them).
-  const alt = (slot) => (slot === HOME_HERO ? `30+DA · ${t.home_tagline}` : fill(t.home_photo, { n: HOME_PEOPLE.indexOf(slot) + 1 }));
-  const photo = (slot, opts) => homePhoto(slot, photos?.[slot], alt(slot), opts);
-  const letters = [..."30+DA"].map((c) => `<span>${c}</span>`).join("");
-  const frame = (slot, i) => `      <li class="hm-fr hm-fr-${i + 1}">
-        <figure class="hm-fr-ph">${photo(slot)}</figure>
-        <p class="hm-cap">${t[`home_frame_${i + 2}`]}</p>
+  const cjk = lang === "zh" || lang === "ja";
+  const photo = (slot, alt, opts) => homePhoto(slot, photos?.[slot], alt, opts);
+  const title = `30+DA · ${plain(t.home_tagline)}`;
+  const pills = HOME_SIGNINS.map(([key, name]) => `<a class="hm-pill" href="${WEB_APP_PATH}">${PILL_MARK[key]}<span>${name}</span></a>`).join("")
+    + `<a class="hm-pill hm-pill-guest" href="${WEB_APP_PATH}"><span aria-hidden="true">👀</span><span>${say(t.home_guest)}</span></a>`;
+  const step = (n) => `          <li><b>${say(t[`home_l${n}_h`])}</b> ${say(t[`home_l${n}`])}</li>`;
+  const frame = (slot, i) => `      <li class="hm-fr">
+        <figure>
+          <div class="hm-fr-box"><div class="hm-fr-ph">${photo(slot, "")}</div></div>
+          <figcaption>${say(t[`home_frame_${i + 2}`])}</figcaption>
+        </figure>
       </li>`;
-  const level = (n) => `          <li class="hm-block hm-knot hm-lv">
-            <p class="hm-lv-tag">${fill(t.home_level, { n })}</p>
-            <h3>${t[`home_l${n}_h`]}</h3>
-            <p class="hm-lv-text">${t[`home_l${n}`]}</p>
-          </li>`;
-  const button = (cls) => `<p class="hm-cta"><a class="${cls}" href="${WEB_APP_PATH}">${t.app_open}${ARROW}</a></p>`;
-  const inner = `<header class="hm-hero${has(HOME_HERO) ? " has-photo" : ""}">
-  <div class="hm-hero-bg">${photo(HOME_HERO, { eager: true })}</div>
-  ${thread("hm-thread-hero", "0 0 100 100", HERO_THREAD)}
-  <div class="hm-wrap hm-bar">
+  // The local language under the headline, as the template has Sinhala: Khmer, on the other 4 languages' pages.
+  const khmerSub = lang === "km" ? "" : `
+      <p class="hm-km" lang="km">${say(km.home_headline)}<span>${say(km.home_tagline)}</span></p>`;
+  const khmerRemind = lang === "km" ? "" : `
+        <p class="hm-remind-km" lang="km">${say(km.home_remind)}</p>`;
+  const tags = HOME_TAGS.map((tag) => (/[ក-៿]/.test(tag) ? `<span lang="km">${tag}</span>` : tag)).join(" ");
+  const inner = `<header class="hm-top">
+  <div class="hm-wrap hm-top-in">
+    <a class="hm-logo" href="${WEB_APP_PATH}">30+DA</a>
     ${flagRow(lang, (c) => `/30da/home?lang=${c}`)}
-  </div>
-  <div class="hm-wrap hm-hero-text">
-    <p class="hm-mark" role="img" aria-label="30+DA">${letters}</p>
-    <span class="hm-rule" aria-hidden="true"><span></span></span>
-    <p class="hm-line">${t.home_line}</p>
-    <h1 class="hm-h1">${t.home_tagline}</h1>
-    ${button("hm-btn")}
-    <p class="hm-free">${t.home_free}</p>
+    ${storeRow(t, "top")}
   </div>
 </header>
-<main>
-  <section class="hm-sec hm-story" aria-labelledby="hm-string">
-    <div class="hm-wrap">
-      <p class="hm-block hm-knot hm-string" id="hm-string">${t.home_string}</p>
-      <ol class="hm-seq">
-      ${thread("hm-seq-line hm-on-phone", "0 0 100 204.2", SEQ_PHONE)}
-      ${thread("hm-seq-string hm-on-wide", "-8 0 116 62.15", SEQ_WIDE)}
-${HOME_SEQUENCE.map(frame).join("\n")}
-      </ol>
-    </div>
-  </section>
-  <section class="hm-sec hm-how" aria-labelledby="hm-how-h">
-    <div class="hm-wrap hm-how-grid">
-      <figure class="hm-how-photo">${photo(HOME_PORTRAIT)}</figure>
-      <div class="hm-how-text">
-        <div class="hm-block hm-knot hm-how-head">
-          <h2 id="hm-how-h">${t.home_how_h}</h2>
-          <p class="hm-lede">${t.home_how_lede}</p>
+<main class="hm-wrap hm-main">
+  <div class="hm-cols">
+    <div class="hm-left">
+      <div class="hm-card">
+        ${photo(HOME_PORTRAIT, plain(t.home_alt), { eager: true })}
+        ${storeRow(t, "card")}
+        <div class="hm-card-over">
+          <p class="hm-card-h">30+DA App</p>
+          <p class="hm-card-sub">${say(t.home_tagline)}</p>
+          <p class="hm-card-desc">${say(t.home_card)}</p>
+          <nav class="hm-pills" aria-label="${esc(plain(t.home_signin))}">${pills}</nav>
         </div>
-        <ol class="hm-levels">
-${[1, 2, 3].map(level).join("\n")}
+      </div>
+    </div>
+    <div class="hm-text">
+      <p class="hm-eyebrow">30+DA · ${say(t.home_place)}</p>
+      <h1 class="hm-h1"><span class="hm-emoji" aria-hidden="true">💞</span> ${say(t.home_headline)}</h1>${khmerSub}
+      <p class="hm-lead">${say(t.home_line)}${cjk ? "<wbr>" : " "}${say(t.home_lead)}</p>
+      <p class="hm-cta"><a class="hm-btn" href="${WEB_APP_PATH}">${t.app_open}${ARROW}</a></p>
+      <div class="hm-remind" role="note">
+        <p class="hm-remind-h"><span aria-hidden="true">⚠️</span> ${say(t.home_remind_h)}</p>
+        <p class="hm-remind-text">${say(t.home_remind)}</p>${khmerRemind}
+      </div>
+      <div class="hm-how">
+        <h2 class="hm-how-h">${say(t.home_how_h)}</h2>
+        <ol class="hm-path">
+${[1, 2, 3].map(step).join("\n")}
         </ol>
+        <p class="hm-how-fine">${say(t.home_verify)}</p>
       </div>
+      <div class="hm-contact">
+        <h2 class="hm-contact-h">${say(t.home_contact_h)}</h2>
+        <a href="mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("30+DA support")}"><span aria-hidden="true">✉️</span> ${CONTACT_EMAIL}</a>
+        <a href="${SUPPORT_TELEGRAM}" target="_blank" rel="noopener"><span aria-hidden="true">✈️</span> Telegram · @GKSmartbiz</a>
+        <a href="${SUPPORT_WHATSAPP}" target="_blank" rel="noopener"><span aria-hidden="true">💬</span> WhatsApp · ${SUPPORT_WHATSAPP_SHOWN}</a>
+      </div>
+      <p class="hm-tags">${tags}</p>
     </div>
-  </section>
-  <section class="hm-sec hm-safe" aria-labelledby="hm-safe-h">
-    <div class="hm-wrap">
-      <div class="hm-safe-thread">
-        <div class="hm-block hm-knot hm-safe-box">
-          <h2 id="hm-safe-h">${t.home_safe_h}</h2>
-          <ul class="hm-safe-list">
-${["age", "verify", "contact", "report", "money"].map((k) => `            <li>${t[`home_safe_${k}`]}</li>`).join("\n")}
-          </ul>
-        </div>
-      </div>
-      <div class="hm-end">
-        <p class="hm-end-line">${t.home_headline}</p>
-        ${button("hm-btn hm-btn-navy")}
-        <p class="hm-soon">${t.home_soon}</p>
-      </div>
-    </div>
-  </section>
+  </div>
 </main>
+<section class="hm-story" aria-labelledby="hm-string">
+  <div class="hm-wrap">
+    <h2 class="hm-string" id="hm-string">${say(t.home_string)}</h2>
+    <ol class="hm-seq">
+${HOME_SEQUENCE.map(frame).join("\n")}
+    </ol>
+  </div>
+</section>
 <footer class="hm-foot">
   <div class="hm-wrap">
-    <p class="hm-foot-run">${t.run_by} <b>${OPERATOR}</b> · ${mailLink}</p>
+    <p class="hm-foot-brand">30+DA · GK Newsroom · ggmt.sg</p>
+    <p class="hm-foot-run">${t.run_by} <b>${OPERATOR}</b></p>
     <nav class="hm-foot-links" aria-label="30+DA">
       <a href="/30da/privacy${q}">${t.priv_title}</a>
       <a href="/30da/terms${q}">${t.home_terms}</a>
@@ -999,7 +1082,7 @@ ${["age", "verify", "contact", "report", "money"].map((k) => `            <li>${
     </nav>
   </div>
 </footer>`;
-  return page({ title: `30+DA · ${t.home_tagline}`, lang, inner, kind: "home", description: t.home_desc });
+  return page({ title, lang, inner, kind: "home", description: plain(t.home_desc), head: homeHead(t, lang, title) });
 }
 
 // ---------- the admin's "Try sign-in" result ----------

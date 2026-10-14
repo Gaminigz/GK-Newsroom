@@ -110,43 +110,179 @@ p { margin: 0 0 10px; }
 :lang(ko) .doc-body { word-break: keep-all; overflow-wrap: break-word; }
 
 /* ==========================================================================================================
-   The home page (/30da/home, src/lib/thirtyda-pages.mjs homePage): a dating page in the app's own colours —
-   the navy night, white, the soft greys — with ONE accent, the app's red, as a fine thread (the teaser's red
-   string) that runs down the page: out of the hero, through the photo sequence, along the levels, into a knot.
-   Everything is under .page-home, so the other pages do not change. Phones first (360 / 390), wide from 900 px.
+   The home page (/30da/home, src/lib/thirtyda-pages.mjs homePage): laid out like the owner's template
+   (ggmt.sg/newsfeed/3una5aha) in the app's own colours — the navy night, white, the soft greys — with ONE accent,
+   the app's red, as a fine thread (the teaser's red string). The template's gold is gone: navy and white instead.
+   Phones: the top bar (wordmark + store icons, the flags under them), the phone-shaped card, the words, the strip.
+   PC (900 px and up): the card left (it stays in view), the words right, like the template.
+   Everything is under .page-home, so the other pages do not change.
    ========================================================================================================== */
 .page-home {
   --navy-2: #13285a;
   --on-dark-muted: #aab4cf;
   --on-dark-soft: #d8def0;
-  --sec-bg: #ffffff;
+  --hm-rule: rgb(255 255 255 / 0.14);
   --hm-gutter: 16px;
   background: var(--navy);
-  font-size: 17px;
+  color: #fff;
+  font-size: 16px;
   line-height: 1.55;
 }
-.page-home p, .page-home h1, .page-home h2, .page-home h3, .page-home ul, .page-home ol, .page-home figure { margin: 0; }
+.page-home p, .page-home h1, .page-home h2, .page-home ul, .page-home ol, .page-home figure { margin: 0; }
 .page-home ul, .page-home ol { padding: 0; list-style: none; }
-.page-home a { overflow-wrap: normal; }
+.page-home a { color: inherit; overflow-wrap: normal; }
 .page-home .hm-i { display: block; flex: none; }
-.page-home .hm-wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding: 0 var(--hm-gutter); }
+.page-home .hm-wrap { width: 100%; max-width: 1080px; margin: 0 auto; padding: 0 var(--hm-gutter); }
 @media (min-width: 600px) { .page-home { --hm-gutter: 28px; } }
-.page-home .hm-on-wide { display: none; }
+/* Chinese / Japanese: never break inside a word — only between phrases (the page's <wbr>s) and after punctuation.
+   Korean keeps its words whole too. Khmer (its own lines on every page) breaks by its dictionary as usual. */
+.page-home:lang(zh), .page-home:lang(ja), .page-home:lang(ko) { word-break: keep-all; line-break: strict; overflow-wrap: break-word; }
+.page-home [lang="km"] { word-break: normal; line-break: auto; }
+
+/* ---- Top bar: the wordmark, the flags, the store icons (phones: the icons beside the wordmark, the flags under). */
+.page-home .hm-top { border-bottom: 1px solid var(--hm-rule); }
+.page-home .hm-top-in {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "logo stores" "flags flags";
+  align-items: center; column-gap: 12px; padding-top: 10px;
+}
+.page-home .hm-logo { grid-area: logo; font-size: 27px; line-height: 44px; font-weight: 900; font-stretch: 125%; letter-spacing: -0.01em; text-decoration: none; color: #fff; }
+.page-home .hm-stores-top { grid-area: stores; justify-self: end; }
+.page-home .langs { grid-area: flags; padding: 6px 0 8px; border-bottom: 0; }
+.page-home .langs a { min-height: 44px; color: #fff; }
+.page-home .langs a[aria-current="true"] { background: #fff; color: var(--navy); }
 @media (min-width: 900px) {
-  .page-home .hm-on-phone { display: none; }
-  .page-home .hm-on-wide { display: inline; }
+  .page-home .hm-top-in { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "logo flags stores"; column-gap: 24px; padding-top: 0; }
+  .page-home .langs { justify-self: end; gap: 4px; padding: 12px 0; }
+  .page-home .hm-stores-top { padding-left: 24px; border-left: 1px solid var(--hm-rule); }
 }
 
-/* ---- The thread: 1.5 px of the app's red, whatever its box's size. Knots tie it to each block of words. */
-.page-home .hm-thread path { fill: none; stroke: var(--red); stroke-width: 1.5px; stroke-linecap: round; }
-.page-home .hm-knot::before {
-  content: ""; position: absolute; left: 50%; top: -20px; width: 9px; height: 9px; margin-left: -4.5px;
-  border-radius: 50%; background: var(--red); box-shadow: 0 0 0 4px var(--sec-bg);
+/* ---- The store icons (the template's): rounded squares, 44 px. App Store dark, Google Play white (both "coming
+   soon": no link), Windows dark — the one that opens 30+DA (the web app). */
+.page-home .hm-stores { display: flex; gap: 8px; }
+.page-home .hm-store {
+  display: grid; place-items: center; width: 44px; height: 44px; border-radius: 10px;
+  background: rgb(11 28 63 / 0.82); border: 1px solid rgb(255 255 255 / 0.24); color: #fff;
+}
+.page-home .hm-store svg { display: block; width: 22px; height: 22px; }
+.page-home .hm-store-play { background: #fff; border-color: #fff; }
+.page-home span.hm-store { cursor: default; }
+.page-home .hm-stores-top .hm-store-apple, .page-home .hm-stores-top .hm-store-windows { background: var(--navy-2); }
+.page-home a.hm-store:hover { border-color: #fff; }
+.page-home a.hm-store:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+
+/* ---- The two columns. */
+.page-home .hm-main { padding-top: 22px; padding-bottom: 56px; }
+.page-home .hm-cols { display: flex; flex-direction: column; gap: 30px; }
+.page-home .hm-left { display: flex; justify-content: center; }
+.page-home .hm-text { min-width: 0; }
+@media (min-width: 900px) {
+  .page-home .hm-main { padding-top: 44px; padding-bottom: 88px; }
+  .page-home .hm-cols { flex-direction: row; align-items: flex-start; justify-content: center; gap: 72px; }
+  .page-home .hm-left { flex: 0 0 380px; position: sticky; top: 24px; }
+  .page-home .hm-text { flex: 0 1 560px; padding-top: 8px; }
 }
 
-/* ---- Photos and their night-city placeholders (navy sky, soft bokeh lights, a low skyline, the red thread). */
-.page-home picture { display: block; width: 100%; height: 100%; }
-.page-home .hm-hero-bg img, .page-home .hm-fr-ph img, .page-home .hm-how-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* ---- The phone-shaped card: the photo fills it, the store icons top right, a navy fade at the bottom with the name,
+   a line, two lines, and the sign-in pills (each opens the web app). */
+.page-home .hm-card {
+  position: relative; isolation: isolate; width: 100%; max-width: 340px; aspect-ratio: 9 / 16; border-radius: 24px; overflow: hidden;
+  background: var(--navy-2); border: 1px solid rgb(255 255 255 / 0.12); box-shadow: 0 18px 44px rgb(0 0 0 / 0.45);
+}
+@media (min-width: 900px) { .page-home .hm-card { max-width: 380px; } }
+.page-home .hm-card > img, .page-home .hm-card > picture, .page-home .hm-card > .hm-ph { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; }
+.page-home .hm-card img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 60% 50%; }
+.page-home .hm-stores-card { position: absolute; top: 14px; right: 14px; z-index: 2; }
+.page-home .hm-card-over {
+  position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: 20px 18px 18px;
+  background: linear-gradient(180deg, rgb(11 28 63 / 0) 36%, rgb(11 28 63 / 0.72) 52%, rgb(11 28 63 / 0.93) 66%, rgb(11 28 63 / 0.97) 100%);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
+}
+.page-home .hm-card-h { font-size: 22px; line-height: 1.2; font-weight: 900; font-stretch: 112%; letter-spacing: -0.01em; }
+.page-home .hm-card-sub { margin-top: 2px; font-size: 14.5px; line-height: 1.4; font-weight: 600; color: var(--on-dark-soft); }
+.page-home .hm-card-desc { margin-top: 6px; font-size: 14px; line-height: 1.45; color: rgb(255 255 255 / 0.84); }
+.page-home .hm-pills { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+.page-home .hm-pill {
+  display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; padding: 6px 10px; border-radius: 12px;
+  background: rgb(255 255 255 / 0.1); border: 1px solid rgb(255 255 255 / 0.26); color: #fff;
+  font-size: 15px; font-weight: 600; line-height: 1.2; text-decoration: none;
+}
+.page-home .hm-pill svg { display: block; flex: none; width: 17px; height: 17px; }
+.page-home .hm-pill:hover { background: rgb(255 255 255 / 0.18); }
+.page-home .hm-pill:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.page-home .hm-pill-guest { grid-column: 1 / -1; }
+
+/* ---- The words. */
+.page-home .hm-eyebrow { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--on-dark-muted); }
+.page-home .hm-h1 { margin-top: 8px; font-size: 31px; line-height: 1.14; font-weight: 900; font-stretch: 106%; letter-spacing: -0.015em; text-wrap: balance; overflow-wrap: break-word; }
+.page-home .hm-emoji { font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; font-weight: 400; }
+.page-home .hm-km { margin-top: 12px; font-size: 17px; line-height: 1.7; font-weight: 600; color: var(--on-dark-soft); }
+.page-home .hm-km span { display: block; font-size: 14.5px; font-weight: 400; color: var(--on-dark-muted); }
+.page-home .hm-lead { margin-top: 14px; font-size: 17px; line-height: 1.6; color: var(--on-dark-soft); }
+.page-home .hm-cta { margin-top: 22px; }
+.page-home .hm-btn {
+  display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; min-height: 60px; padding: 12px 28px;
+  border-radius: 14px; background: #fff; color: var(--navy); text-decoration: none; text-align: center;
+  font-size: 21px; font-weight: 800; font-stretch: 108%; box-shadow: 0 14px 34px rgb(0 0 0 / 0.3);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+.page-home .hm-btn:hover { background: var(--desk); transform: translateY(-1px); }
+.page-home .hm-btn:active { transform: none; }
+.page-home .hm-btn:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+@media (min-width: 900px) {
+  .page-home .hm-h1 { font-size: 46px; line-height: 1.07; }
+  .page-home .hm-km { font-size: 19px; }
+  .page-home .hm-lead { font-size: 18px; }
+  .page-home .hm-btn { display: inline-flex; width: auto; min-width: 300px; }
+}
+
+/* The ⚠️ Reminder (the template's amber box, here navy-2 with a soft white edge) and how it works (a quieter box:
+   the three stops on a thin red thread, told in words). */
+.page-home .hm-remind, .page-home .hm-how { margin-top: 24px; padding: 16px 18px; border-radius: 14px; }
+.page-home .hm-remind { background: var(--navy-2); border: 1px solid rgb(255 255 255 / 0.18); }
+.page-home .hm-how { margin-top: 14px; background: rgb(255 255 255 / 0.04); border: 1px solid var(--hm-rule); }
+.page-home .hm-remind-h, .page-home .hm-how-h { font-size: 15px; line-height: 1.4; font-weight: 800; color: #fff; }
+.page-home .hm-remind-text { margin-top: 6px; font-size: 15px; line-height: 1.55; color: var(--on-dark-soft); }
+.page-home .hm-remind-km { margin-top: 8px; font-size: 14px; line-height: 1.75; color: var(--on-dark-muted); }
+.page-home .hm-path { position: relative; display: grid; gap: 12px; margin-top: 12px; }
+.page-home .hm-path::before { content: ""; position: absolute; left: 4px; top: 8px; bottom: 12px; width: 1.5px; background: var(--red); }
+.page-home .hm-path li { position: relative; padding-left: 24px; font-size: 15px; line-height: 1.5; color: var(--on-dark-soft); }
+.page-home .hm-path li::before {
+  content: ""; position: absolute; left: 0; top: 6px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--red); box-shadow: 0 0 0 3px var(--navy);
+}
+.page-home .hm-path b { display: block; font-size: 16px; font-weight: 800; color: #fff; }
+.page-home .hm-how-fine { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--hm-rule); font-size: 14px; line-height: 1.5; color: var(--on-dark-muted); }
+
+/* Support & Contact (the template's), the hashtags. */
+.page-home .hm-contact { display: flex; flex-direction: column; margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--hm-rule); }
+.page-home .hm-contact-h { font-size: 12px; line-height: 1.5; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--on-dark-muted); }
+.page-home .hm-contact a { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 16px; font-weight: 600; text-decoration: none; color: #fff; }
+.page-home .hm-contact a:hover { text-decoration: underline; }
+.page-home .hm-tags { margin-top: 14px; font-size: 13px; line-height: 1.8; color: var(--on-dark-muted); overflow-wrap: anywhere; }
+
+/* ---- The teaser's strip: people-2 → 3 → 4 side by side, in order, on ONE taut red thread that runs across the page
+   behind them (each frame's box carries the same straight line at the same height, so it never breaks into loose
+   pieces; the photos' own red threads do the rest). */
+.page-home .hm-story { overflow: hidden; padding: 52px 0 60px; border-top: 1px solid var(--hm-rule); background: linear-gradient(180deg, var(--navy) 0%, var(--navy-2) 100%); }
+.page-home .hm-string { max-width: 19em; margin: 0 auto; text-align: center; font-size: 22px; line-height: 1.3; font-weight: 800; font-stretch: 104%; text-wrap: balance; }
+.page-home .hm-seq { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; max-width: 760px; margin: 26px auto 0; }
+.page-home .hm-fr-box { position: relative; }
+.page-home .hm-fr-box::before { content: ""; position: absolute; top: 50%; left: -10px; right: -10px; height: 1.5px; margin-top: -0.75px; background: var(--red); }
+.page-home .hm-fr:first-child .hm-fr-box::before { left: -100vw; }
+.page-home .hm-fr:last-child .hm-fr-box::before { right: -100vw; }
+.page-home .hm-fr-ph { position: relative; aspect-ratio: 768 / 1376; border-radius: 12px; overflow: hidden; background: var(--navy-2); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.1); }
+.page-home .hm-fr-ph img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.page-home .hm-fr figcaption { margin-top: 10px; font-size: 14px; line-height: 1.35; font-weight: 600; text-align: center; color: var(--on-dark-soft); text-wrap: balance; }
+@media (min-width: 900px) {
+  .page-home .hm-story { padding: 80px 0 88px; }
+  .page-home .hm-string { font-size: 32px; }
+  .page-home .hm-seq { gap: 28px; margin-top: 40px; }
+  .page-home .hm-fr-box::before { left: -28px; right: -28px; }
+  .page-home .hm-fr-ph { border-radius: 16px; }
+  .page-home .hm-fr figcaption { margin-top: 14px; font-size: 17px; }
+}
+
+/* ---- A slot with no photo yet: a night-city placeholder (navy sky, soft bokeh lights, a low skyline). */
 .page-home .hm-ph {
   position: relative; display: block; width: 100%; height: 100%; overflow: hidden;
   background:
@@ -162,235 +298,51 @@ p { margin: 0 0 10px; }
     radial-gradient(circle at 58% 82%, rgb(170 180 207 / 0.22) 0 7%, rgb(170 180 207 / 0) 7.8%),
     radial-gradient(circle at 71% 58%, rgb(255 255 255 / 0.2) 0 3%, rgb(255 255 255 / 0) 3.6%),
     radial-gradient(circle at 86% 74%, rgb(216 222 240 / 0.24) 0 4.6%, rgb(216 222 240 / 0) 5.3%),
-    radial-gradient(circle at 94% 52%, rgb(255 255 255 / 0.12) 0 2%, rgb(255 255 255 / 0) 2.6%),
-    radial-gradient(circle at 6% 44%, rgb(170 180 207 / 0.14) 0 2.6%, rgb(170 180 207 / 0) 3.2%),
     radial-gradient(circle at 35% 40%, rgb(255 255 255 / 0.08) 0 1.6%, rgb(255 255 255 / 0) 2.2%),
-    radial-gradient(circle at 64% 30%, rgb(216 222 240 / 0.1) 0 2.2%, rgb(216 222 240 / 0) 2.8%),
-    radial-gradient(circle at 80% 90%, rgb(255 255 255 / 0.14) 0 3.8%, rgb(255 255 255 / 0) 4.4%),
-    radial-gradient(circle at 20% 92%, rgb(255 255 255 / 0.18) 0 2.6%, rgb(255 255 255 / 0) 3.2%);
+    radial-gradient(circle at 64% 30%, rgb(216 222 240 / 0.1) 0 2.2%, rgb(216 222 240 / 0) 2.8%);
 }
 .page-home .hm-ph::after {
   content: ""; position: absolute; left: -4%; right: -4%; bottom: 0; height: 34%; filter: blur(0.6px);
   background:
     radial-gradient(circle at 6% 70%, rgb(255 255 255 / 0.55) 0 1.1%, rgb(255 255 255 / 0) 1.6%),
-    radial-gradient(circle at 15% 52%, rgb(216 222 240 / 0.45) 0 0.8%, rgb(216 222 240 / 0) 1.3%),
     radial-gradient(circle at 23% 80%, rgb(255 255 255 / 0.4) 0 1.3%, rgb(255 255 255 / 0) 1.9%),
-    radial-gradient(circle at 31% 60%, rgb(255 255 255 / 0.5) 0 0.7%, rgb(255 255 255 / 0) 1.2%),
     radial-gradient(circle at 39% 74%, rgb(170 180 207 / 0.5) 0 1%, rgb(170 180 207 / 0) 1.5%),
-    radial-gradient(circle at 47% 48%, rgb(255 255 255 / 0.35) 0 0.6%, rgb(255 255 255 / 0) 1.1%),
     radial-gradient(circle at 54% 84%, rgb(255 255 255 / 0.45) 0 1.2%, rgb(255 255 255 / 0) 1.8%),
-    radial-gradient(circle at 62% 64%, rgb(216 222 240 / 0.5) 0 0.9%, rgb(216 222 240 / 0) 1.4%),
     radial-gradient(circle at 70% 76%, rgb(255 255 255 / 0.4) 0 0.8%, rgb(255 255 255 / 0) 1.3%),
-    radial-gradient(circle at 78% 54%, rgb(255 255 255 / 0.5) 0 0.7%, rgb(255 255 255 / 0) 1.2%),
     radial-gradient(circle at 86% 82%, rgb(170 180 207 / 0.5) 0 1.3%, rgb(170 180 207 / 0) 1.9%),
-    radial-gradient(circle at 94% 66%, rgb(255 255 255 / 0.45) 0 0.9%, rgb(255 255 255 / 0) 1.4%),
     linear-gradient(180deg, rgb(216 222 240 / 0) 0%, rgb(216 222 240 / 0.1) 70%, rgb(216 222 240 / 0.04) 100%);
 }
-.page-home .hm-ph-people-2::before { transform: scaleX(-1); }
-.page-home .hm-ph-people-3::before { transform: translateY(-5%); }
-.page-home .hm-ph-people-4::before { transform: scaleX(-1) translateY(4%); }
-.page-home .hm-ph-people-3::after, .page-home .hm-ph-people-1::after { transform: scaleX(-1); }
-.page-home .hm-ph-hero::after { height: 40%; }
-.page-home .hm-ph-thread { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; }
+.page-home .hm-ph-people-2::before, .page-home .hm-ph-people-4::before { transform: scaleX(-1); }
 
-/* ---- The hero: the night photo full-bleed, the words on the left / top, the woman (low right) left clear. */
-.page-home .hm-hero { position: relative; isolation: isolate; overflow: hidden; display: flex; flex-direction: column; min-height: 780px; background: var(--navy); color: #fff; }
-.page-home .hm-hero-bg { position: absolute; inset: 0; z-index: -2; }
-.page-home .hm-hero-bg img { object-position: 78% 50%; }
-.page-home .hm-hero-bg::after {
-  content: ""; position: absolute; inset: 0;
-  background: linear-gradient(180deg, rgb(11 28 63 / 0.9) 0%, rgb(11 28 63 / 0.74) 40%, rgb(11 28 63 / 0.3) 58%, rgb(11 28 63 / 0) 70%, rgb(11 28 63 / 0.2) 86%, rgb(11 28 63 / 1) 100%);
-}
-/* Phones with the real photo: it is 16:9 and the woman is low right, so it sits as a square under the words (cut
-   around her, never under the text); the placeholder fills the whole hero. 600–899 px: the whole 16:9 photo. */
-@media (max-width: 899.98px) {
-  .page-home .hm-hero.has-photo .hm-hero-bg { top: auto; aspect-ratio: 1 / 1; }
-  .page-home .hm-hero.has-photo .hm-hero-bg img { object-position: 85% 50%; }
-  .page-home .hm-hero.has-photo .hm-hero-bg::after {
-    background: linear-gradient(180deg, rgb(11 28 63 / 1) 0%, rgb(11 28 63 / 0.5) 14%, rgb(11 28 63 / 0) 32%, rgb(11 28 63 / 0) 84%, rgb(11 28 63 / 1) 100%);
-  }
-  .page-home .hm-hero.has-photo .hm-hero-text { padding-bottom: calc(100vw - 40px); }
-}
-@media (min-width: 600px) and (max-width: 899.98px) {
-  .page-home .hm-hero.has-photo .hm-hero-bg { aspect-ratio: 16 / 9; }
-  .page-home .hm-hero.has-photo .hm-hero-bg img { object-position: 50% 50%; }
-  .page-home .hm-hero.has-photo .hm-hero-text { padding-bottom: calc(56.25vw - 40px); }
-}
-.page-home .hm-thread-hero { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; animation: hm-fade 1.6s ease 1.2s both; }
-.page-home .hm-bar { display: flex; justify-content: center; }
-.page-home .langs { flex: 1 1 auto; max-width: 440px; padding: 10px 0; border-bottom: 0; }
-.page-home .langs a { min-height: 36px; color: #fff; }
-.page-home .langs a[aria-current="true"] { background: #fff; color: var(--navy); }
-.page-home .hm-hero-text { padding-top: 30px; padding-bottom: 300px; }
-.page-home .hm-mark {
-  display: flex; overflow: hidden; padding-bottom: 4px;
-  font-weight: 900; font-stretch: 125%; letter-spacing: -0.02em; line-height: 1;
-  font-size: min(84px, calc((100vw - 2 * var(--hm-gutter)) / 4.4));
-}
-.page-home .hm-mark > span { display: inline-block; animation: hm-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) 150ms both; }
-.page-home .hm-mark > span:nth-child(2) { animation-delay: 240ms; }
-.page-home .hm-mark > span:nth-child(3) { animation-delay: 330ms; }
-.page-home .hm-mark > span:nth-child(4) { animation-delay: 420ms; }
-.page-home .hm-mark > span:nth-child(5) { animation-delay: 510ms; }
-.page-home .hm-rule { display: block; width: min(100%, 300px); height: 2px; margin-top: 14px; }
-.page-home .hm-rule > span { display: block; height: 100%; border-radius: 1px; background: var(--red); transform-origin: left center; animation: hm-fill 0.9s cubic-bezier(0.6, 0, 0.2, 1) 0.9s both; }
-.page-home .hm-line { max-width: 13em; margin-top: 26px; font-size: 31px; line-height: 1.14; font-weight: 800; font-stretch: 104%; letter-spacing: -0.01em; text-wrap: balance; }
-.page-home .hm-h1 { margin-top: 16px; font-size: 19px; line-height: 1.4; font-weight: 600; color: var(--on-dark-soft); }
-.page-home .hm-cta { margin-top: 28px; }
-.page-home .hm-btn {
-  display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; max-width: 380px; min-height: 60px;
-  padding: 12px 28px; border-radius: 14px; text-decoration: none; text-align: center;
-  font-size: 21px; font-weight: 800; font-stretch: 108%; color: var(--navy); background: #fff;
-  box-shadow: 0 14px 34px rgb(11 28 63 / 0.4);
-  transition: transform 0.15s ease, background-color 0.15s ease;
-}
-.page-home .hm-btn:hover { background: var(--desk); transform: translateY(-1px); }
-.page-home .hm-btn:active { transform: none; }
-.page-home .hm-btn:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
-.page-home .hm-btn-navy { color: #fff; background: var(--navy); box-shadow: 0 14px 30px rgb(11 28 63 / 0.22); }
-.page-home .hm-btn-navy:hover { background: var(--navy-2); }
-.page-home .hm-btn-navy:focus-visible { outline-color: var(--navy); }
-.page-home .hm-free { margin-top: 14px; font-size: 15px; font-weight: 600; color: var(--on-dark-muted); }
-@media (min-width: 900px) {
-  .page-home .hm-hero { min-height: min(860px, max(660px, 56.25vw)); }
-  .page-home .hm-hero-bg img { object-position: 50% 50%; }
-  .page-home .hm-hero-bg::after {
-    background:
-      linear-gradient(90deg, rgb(11 28 63 / 0.92) 0%, rgb(11 28 63 / 0.76) 30%, rgb(11 28 63 / 0.22) 52%, rgb(11 28 63 / 0) 64%),
-      linear-gradient(180deg, rgb(11 28 63 / 0.35) 0%, rgb(11 28 63 / 0) 22%, rgb(11 28 63 / 0) 86%, rgb(11 28 63 / 1) 100%);
-  }
-  .page-home .hm-bar { justify-content: flex-end; }
-  .page-home .langs { flex: 0 1 auto; gap: 6px; padding-top: 16px; }
-  .page-home .hm-hero-text { padding-top: 60px; padding-bottom: 140px; }
-  .page-home .hm-mark { font-size: 104px; }
-  .page-home .hm-line { max-width: 11.5em; margin-top: 34px; font-size: 54px; line-height: 1.08; }
-  .page-home .hm-h1 { font-size: 23px; }
-  .page-home .hm-cta { margin-top: 36px; }
-  .page-home .hm-btn { display: inline-flex; width: auto; min-width: 300px; }
-}
+/* ---- Footer (the template's small line), who runs it, the small pages. */
+.page-home .hm-foot { padding: 26px 0 calc(26px + env(safe-area-inset-bottom)); border-top: 1px solid var(--hm-rule); text-align: center; font-size: 14px; color: var(--on-dark-muted); }
+.page-home .hm-foot-brand { font-size: 12.5px; letter-spacing: 0.02em; }
+.page-home .hm-foot-run { margin-top: 4px; }
+.page-home .hm-foot-run b { color: #fff; font-weight: 800; }
+.page-home .hm-foot-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 8px; margin-top: 4px; }
+.page-home .hm-foot-links a { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 0 6px; color: #fff; font-weight: 600; }
 
-/* ---- Sections: the thread runs down the middle of each; words sit on the section's own colour, so it passes behind. */
-.page-home .hm-sec { position: relative; padding: 76px 0; background: var(--sec-bg); }
-.page-home .hm-sec::before { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 1.5px; margin-left: -0.75px; background: var(--red); }
-.page-home .hm-block { position: relative; z-index: 1; width: fit-content; max-width: 100%; margin: 0 auto; padding: 10px 14px; background: var(--sec-bg); text-align: center; }
-.page-home h2 { font-size: 32px; line-height: 1.1; font-weight: 900; font-stretch: 108%; letter-spacing: -0.01em; }
-@media (min-width: 900px) {
-  .page-home .hm-sec { padding: 112px 0; }
-  .page-home h2 { font-size: 44px; }
-}
-
-/* ---- The red string: one line, then the teaser's three frames as ONE sequence, in order. */
-.page-home .hm-story { --sec-bg: var(--navy); overflow: hidden; padding-top: 64px; color: #fff; }
-.page-home .hm-string { max-width: 16em; font-size: 24px; line-height: 1.3; font-weight: 700; font-stretch: 104%; text-wrap: balance; }
-.page-home .hm-seq { position: relative; z-index: 1; max-width: 520px; margin: 40px auto 0; background: var(--navy); }
-.page-home .hm-seq .hm-thread { position: absolute; z-index: 0; }
-.page-home .hm-fr-ph { position: relative; z-index: 1; aspect-ratio: 893 / 1600; border-radius: 14px; overflow: hidden; background: var(--navy-2); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08); }
-.page-home .hm-cap { position: relative; z-index: 1; font-size: 19px; line-height: 1.3; font-weight: 700; color: #fff; text-wrap: balance; }
-/* Phones: a zigzag (box 100 × 204.2, the frames 47 wide), each line beside its frame, the thread down the middle. */
-@media (max-width: 899.98px) {
-  .page-home .hm-seq { aspect-ratio: 100 / 204.2; }
-  .page-home .hm-seq-line { inset: 0; width: 100%; height: 100%; }
-  .page-home .hm-fr-ph { position: absolute; width: 47%; }
-  .page-home .hm-fr-1 .hm-fr-ph { left: 0; top: 0; }
-  .page-home .hm-fr-2 .hm-fr-ph { left: 53%; top: 29.383%; }
-  .page-home .hm-fr-3 .hm-fr-ph { left: 0; top: 58.766%; }
-  .page-home .hm-cap { position: absolute; display: flex; align-items: center; }
-  .page-home .hm-fr-1 .hm-cap { left: 57%; right: 0; top: 0; height: 29.383%; }
-  .page-home .hm-fr-2 .hm-cap { left: 0; width: 43%; top: 41.234%; height: 17.532%; justify-content: flex-end; text-align: right; }
-  .page-home .hm-fr-3 .hm-cap { left: 57%; right: 0; top: 70.617%; height: 29.383%; }
-}
-/* Wide: a row of three (the middle one higher), each line under its frame, the thread across behind all three. */
-@media (min-width: 900px) {
-  .page-home .hm-string { font-size: 36px; }
-  .page-home .hm-seq { display: flex; align-items: flex-start; column-gap: 3%; max-width: 1040px; margin-top: 56px; }
-  .page-home .hm-seq-string { left: -8%; top: 0; width: 116%; height: auto; aspect-ratio: 116 / 62.15; }
-  .page-home .hm-fr { flex: 0 0 31.333%; }
-  .page-home .hm-fr-1, .page-home .hm-fr-3 { margin-top: 6%; }
-  .page-home .hm-fr-ph { border-radius: 18px; }
-  .page-home .hm-cap { margin-top: 18px; font-size: 22px; text-align: center; }
-}
-
-/* ---- How it works: the photo, then the levels as stops on the thread. Wide: photo | thread | words. */
-.page-home .hm-how { --sec-bg: #ffffff; }
-.page-home .hm-how-grid { position: relative; display: flex; flex-direction: column; align-items: center; gap: 64px; }
-.page-home .hm-how-photo { position: relative; z-index: 1; width: 62%; max-width: 300px; aspect-ratio: 893 / 1600; border-radius: 16px; overflow: hidden; background: var(--navy); box-shadow: 0 20px 48px rgb(11 28 63 / 0.22); }
-.page-home .hm-how-text, .page-home .hm-levels { display: flex; flex-direction: column; align-items: center; gap: 60px; }
-.page-home .hm-lede { max-width: 19em; margin: 10px auto 0; font-size: 18px; color: var(--muted); text-wrap: balance; }
-.page-home .hm-lv-tag { font-size: 13px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
-.page-home .hm-lv h3 { margin-top: 4px; font-size: 28px; line-height: 1.15; font-weight: 800; font-stretch: 106%; }
-.page-home .hm-lv-text { max-width: 18em; margin: 8px auto 0; font-size: 17px; text-wrap: balance; }
-@media (min-width: 900px) {
-  .page-home .hm-how-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 128px; align-items: center; max-width: 1040px; }
-  .page-home .hm-how-photo { justify-self: end; width: 100%; max-width: 380px; }
-  .page-home .hm-how-text, .page-home .hm-levels { align-items: flex-start; gap: 44px; }
-  .page-home .hm-how .hm-block { margin: 0; padding: 0; text-align: left; background: none; }
-  .page-home .hm-how .hm-knot::before { left: -64px; top: 18px; }
-  .page-home .hm-how .hm-lv.hm-knot::before { top: 36px; }
-  .page-home .hm-lede, .page-home .hm-lv-text { margin-left: 0; }
-  .page-home .hm-lv h3 { font-size: 32px; }
-  .page-home .hm-lv-text { font-size: 18px; }
-}
-
-/* ---- Safe and calm: a few plain lines; the thread ends in a knot above the last word and the button. */
-.page-home .hm-safe { --sec-bg: var(--desk); padding-top: 0; }
-.page-home .hm-safe::before { display: none; }
-.page-home .hm-safe-thread { position: relative; padding: 76px 0 64px; }
-.page-home .hm-safe-thread::before { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 1.5px; margin-left: -0.75px; background: var(--red); }
-.page-home .hm-safe-box { padding: 12px 16px; }
-.page-home .hm-safe-list { display: flex; flex-direction: column; gap: 14px; margin-top: 20px; }
-.page-home .hm-safe-list li { max-width: 21em; margin: 0 auto; font-size: 18px; line-height: 1.45; font-weight: 600; text-wrap: balance; }
-.page-home .hm-safe-list li + li::before { content: ""; display: block; width: 24px; height: 1px; margin: 0 auto 14px; background: var(--line); }
-.page-home .hm-end { position: relative; text-align: center; }
-.page-home .hm-end::before {
-  content: ""; position: absolute; left: 50%; top: -6px; width: 13px; height: 13px; margin-left: -6.5px;
-  border-radius: 50%; background: var(--desk); box-shadow: inset 0 0 0 2px var(--red);
-}
-.page-home .hm-end-line { max-width: 13em; margin: 0 auto; padding-top: 34px; font-size: 28px; line-height: 1.15; font-weight: 900; font-stretch: 106%; text-wrap: balance; }
-.page-home .hm-end .hm-cta { display: flex; justify-content: center; }
-.page-home .hm-soon { margin-top: 18px; font-size: 15px; color: var(--muted); }
-@media (min-width: 900px) {
-  .page-home .hm-safe { padding-top: 0; padding-bottom: 112px; }
-  .page-home .hm-safe-thread { padding: 112px 0 72px; }
-  .page-home .hm-safe-list li { max-width: 26em; font-size: 20px; }
-  .page-home .hm-end-line { font-size: 42px; }
-}
-
-/* ---- Footer: who runs it, the email, the small pages. Quiet. */
-.page-home .hm-foot { padding: 34px 0 calc(34px + env(safe-area-inset-bottom)); background: var(--navy); color: var(--on-dark-muted); font-size: 15px; text-align: center; }
-.page-home .hm-foot a { color: #fff; font-weight: 600; }
-.page-home .hm-foot b { color: #fff; font-weight: 800; }
-.page-home .hm-foot-run { line-height: 1.6; overflow-wrap: anywhere; }
-.page-home .hm-foot-run a { display: inline-block; padding: 10px 0; }
-.page-home .hm-foot-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 22px; margin-top: 6px; }
-.page-home .hm-foot-links a { display: inline-flex; align-items: center; min-height: 44px; }
-
-@keyframes hm-rise { from { transform: translateY(75%); opacity: 0; } to { transform: none; opacity: 1; } }
-@keyframes hm-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-@keyframes hm-fade { from { opacity: 0; } to { opacity: 1; } }
-
-/* ---- Khmer / CJK: Khmer needs more line height and a little less size; no capitals or tracking; Korean keeps words whole. */
+/* ---- Khmer: more line height, a little less size, no capitals or tracking (they break its shapes). CJK: no tracking. */
 .page-home:lang(km) { line-height: 1.7; }
-.page-home:lang(km) .hm-line { font-size: 25px; line-height: 1.55; }
-.page-home:lang(km) .hm-h1 { font-size: 17px; line-height: 1.7; }
+.page-home:lang(km) .hm-h1 { font-size: 26px; line-height: 1.5; }
+.page-home:lang(km) .hm-card-h { line-height: 1.3; }
+.page-home:lang(km) .hm-card-desc, .page-home:lang(km) .hm-card-sub { line-height: 1.6; }
+.page-home:lang(km) .hm-pill { font-size: 14px; }
 .page-home:lang(km) .hm-btn { font-size: 19px; }
-.page-home:lang(km) .hm-string { font-size: 20px; line-height: 1.65; }
-.page-home:lang(km) .hm-cap { font-size: 16px; line-height: 1.6; }
-.page-home:lang(km) h2 { font-size: 27px; line-height: 1.5; }
-.page-home:lang(km) .hm-lv h3 { font-size: 23px; line-height: 1.5; }
-.page-home:lang(km) .hm-safe-list li { font-size: 17px; line-height: 1.7; }
-.page-home:lang(km) .hm-end-line { font-size: 24px; line-height: 1.55; }
-.page-home:lang(km) .hm-lv-tag, .page-home:lang(zh) .hm-lv-tag, .page-home:lang(ko) .hm-lv-tag, .page-home:lang(ja) .hm-lv-tag { font-size: 14px; letter-spacing: 0.02em; text-transform: none; }
+.page-home:lang(km) .hm-string { font-size: 20px; line-height: 1.6; }
+.page-home:lang(km) .hm-fr figcaption { font-size: 13px; line-height: 1.6; }
+.page-home:lang(km) .hm-path li, .page-home:lang(km) .hm-remind-text { line-height: 1.7; }
+.page-home:lang(km) .hm-eyebrow, .page-home:lang(km) .hm-contact-h,
+.page-home:lang(zh) .hm-eyebrow, .page-home:lang(zh) .hm-contact-h,
+.page-home:lang(ko) .hm-eyebrow, .page-home:lang(ko) .hm-contact-h,
+.page-home:lang(ja) .hm-eyebrow, .page-home:lang(ja) .hm-contact-h { letter-spacing: 0.02em; text-transform: none; font-size: 14px; }
 @media (min-width: 900px) {
-  .page-home:lang(km) .hm-line { font-size: 40px; line-height: 1.45; }
-  .page-home:lang(km) .hm-string { font-size: 30px; }
-  .page-home:lang(km) .hm-cap { font-size: 19px; }
-  .page-home:lang(km) h2 { font-size: 36px; }
-  .page-home:lang(km) .hm-lv h3 { font-size: 27px; }
-  .page-home:lang(km) .hm-end-line { font-size: 34px; }
+  .page-home:lang(km) .hm-h1 { font-size: 38px; line-height: 1.45; }
+  .page-home:lang(km) .hm-string { font-size: 28px; }
+  .page-home:lang(km) .hm-fr figcaption { font-size: 15px; }
+  .page-home:lang(zh) .hm-h1, .page-home:lang(ja) .hm-h1 { font-size: 42px; line-height: 1.2; }
 }
-.page-home:lang(ko) { word-break: keep-all; overflow-wrap: break-word; }
 
 @media (prefers-reduced-motion: reduce) {
-  .page-home .hm-mark > span, .page-home .hm-rule > span, .page-home .hm-thread-hero { animation: none; }
   .page-home .hm-btn { transition: none; }
 }
