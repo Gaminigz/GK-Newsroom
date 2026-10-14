@@ -11,6 +11,8 @@ import {
 // Inside the iOS / Android app a blocked microphone is the app's own setting, never "your browser settings" (Apple 4.2).
 import { permissionOff } from '../in-app.js';
 import { shellPlatform, shellCanDictate, shellDictate } from '../shell.js';
+// Meetings (owner 2026-10-14): the calendar button next to the mic and the meeting cards in the thread (screens/meet.js).
+import { meetButton, meetRow, isMeet, meetChangedAt } from './meet.js';
 
 const POLL_MS = 3000;
 const POLL_MAX_MS = 20000; // back-off ceiling while offline
@@ -458,6 +460,7 @@ export function mountChat(root, { pair, data, gate, history = null, header: head
   }
 
   function msgRow(m) {
+    if (isMeet(m)) return meetRow(m, meetCtx);
     const mine = Boolean(m.mine);
     const bubble = el('div', { class: ['bubble', mine ? 'mine' : 'theirs'] }, bubbleText(m));
     const time = el('time', { class: 'bubble-time', datetime: m.at }, fmtTime(m.at));
@@ -478,7 +481,7 @@ export function mountChat(root, { pair, data, gate, history = null, header: head
       prev = null;
     }
     const r = msgRow(m);
-    if (prev && Boolean(prev.m.mine) === Boolean(m.mine) && ms(m.at) - ms(prev.m.at) < GROUP_MS) {
+    if (prev && !isMeet(m) && !isMeet(prev.m) && Boolean(prev.m.mine) === Boolean(m.mine) && ms(m.at) - ms(prev.m.at) < GROUP_MS) {
       prev.time.hidden = true;
       syncMeta(prev);
       r.row.classList.add('same');
@@ -505,8 +508,16 @@ export function mountChat(root, { pair, data, gate, history = null, header: head
     let reorder = false;
     for (const m of list || []) {
       if (!m?.id) continue;
-      lastAt = Math.max(lastAt, ms(m.at));
+      lastAt = Math.max(lastAt, ms(m.at), isMeet(m) ? meetChangedAt(m) : 0);
       const known = byId.get(m.id);
+      if (known && isMeet(m)) {
+        // A meeting that changed (accepted, declined, cancelled, replaced) comes again: the card follows the newest state.
+        if (meetChangedAt(m) >= meetChangedAt(known) && JSON.stringify(m.meet) !== JSON.stringify(known.meet)) {
+          Object.assign(known, m);
+          rows.get(m.id)?.update?.(known);
+        }
+        continue;
+      }
       if (known) {
         // The overlap re-reads recent messages: pick up a translation the server filled in late.
         if (!known.translated && m.translated) {
@@ -592,6 +603,12 @@ export function mountChat(root, { pair, data, gate, history = null, header: head
       mic.hidden = false;
     });
   }
+  // Set a meeting (screens/meet.js): the same round outline button, left of the mic.
+  const meetCtx = {
+    base, name, fmtTime, onMessages: (list) => addMessages(list), closed: () => !alive || Boolean(mode),
+    onClosed: (err) => sendFailed(err, ''),
+  };
+  const meetBtn = meetButton(meetCtx);
   const marker = el('span', { class: 'meter-marker', style: { left: '0%' } });
   const meter = el('div', { class: 'meter', 'aria-hidden': 'true' },
     el('span', {
@@ -606,7 +623,7 @@ export function mountChat(root, { pair, data, gate, history = null, header: head
   const status = el('p', { class: 'chat-status', role: 'status', hidden: true }, t('chat_reconnecting'));
   const composerNodes = [
     status,
-    el('div', { class: 'composer' }, mic, input, sendBtn),
+    el('div', { class: 'composer' }, meetBtn, mic, input, sendBtn),
     el('div', { class: 'chat-meter' }, el('span', { class: 'label' }, t('chat_range', { min: CHAT_MIN, max: CHAT_MAX })), meter, counter),
     hint,
     error,
@@ -821,7 +838,7 @@ export function mountChat(root, { pair, data, gate, history = null, header: head
 
   // --- mount
   for (const m of [...(data?.messages || [])].sort(byTime)) {
-    lastAt = Math.max(lastAt, ms(m.at));
+    lastAt = Math.max(lastAt, ms(m.at), isMeet(m) ? meetChangedAt(m) : 0);
     if (byId.has(m.id)) continue;
     byId.set(m.id, m);
     msgs.push(m);

@@ -50,6 +50,9 @@ const SAMPLES = [
   // Talking to someone: gated until the profile has a verified way.
   ['POST', '/pairs', true], ['POST', '/pairs/P-1/sets', true], ['PUT', '/pairs/P-1/replies', true],
   ['POST', '/pairs/P-1/answers', true], ['POST', '/pairs/P-1/decide', true], ['POST', '/pairs/P-1/messages', true],
+  // A meeting in the Level 3 chat (owner 2026-10-14): suggesting and answering one talks to the other person; the place
+  // search alone does not (a read, like the chat's).
+  ['POST', '/pairs/P-1/meet', true], ['POST', '/pairs/P-1/meet/M-1', true], ['GET', '/places', false],
   // Writes that do not reach the other person: my own reminder, a report to the admin (always open).
   ['POST', '/pairs/P-1/remind', false], ['POST', '/pairs/P-1/messages/M-1/report', false],
   // Block + report a person (store policy, owner 2026-10-14): safety, so never gated — a profile with nothing verified
@@ -60,7 +63,7 @@ const SAMPLES = [
   ['POST', '/guest/report', false],
 ];
 
-test('gate: every route of the real router has a sample, and only the 6 that talk to someone are gated', () => {
+test('gate: every route of the real router has a sample, and only the 8 that talk to someone are gated', () => {
   for (const { method, re } of API_ROUTES) {
     assert.ok(SAMPLES.some(([m, p]) => m === method && re.test(p)), `route ${method} ${re} has a sample (a new route must say whether it talks to someone)`);
   }

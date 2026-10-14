@@ -13,7 +13,8 @@
  * the cap are dropped and the caller keeps the quick answer.
  */
 
-const UA = "30DA/1.0 (gk.smart@ggmt.sg)";
+import { NOMINATIM_UA as UA, nominatimTurn } from "./thirtyda-nominatim.mjs";
+
 const GRID = 0.002; // degrees ≈ 220 m at Phnom Penh's latitude
 const CACHE_MAX = 5000;
 const FALLBACK = { area: "Phnom Penh", city: "Phnom Penh" };
@@ -24,8 +25,6 @@ const NEAREST_KM = 3; // a cached area this close stands in while the real one i
 
 const cache = new Map(); // "i:j" grid key -> { area, city }
 const inflight = new Map(); // grid key -> Promise<{ area, city } | null>
-let queue = Promise.resolve();
-let lastCall = 0;
 let pending = 0;
 
 // Nominatim spells sangkats out ("Sangkat Boeng Keng Kang Ti Muoy");
@@ -38,17 +37,11 @@ function tidy(name) {
   return s.replace(/^boe?u?ng\s+keng\s+kang\s+([123])$/i, "BKK$1");
 }
 
-/** Wait our turn so Nominatim sees at most one request a second from us. */
-function throttled(fn) {
-  const run = queue.then(async () => {
-    const wait = lastCall + 1000 - Date.now();
-    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-    lastCall = Date.now();
-    return fn();
-  });
-  queue = run.catch(() => {});
-  return run;
-}
+/**
+ * Wait our turn so Nominatim sees at most one request a second from us — the whole server: the meeting place search
+ * (src/lib/thirtyda-places.mjs) waits in the same queue (src/lib/thirtyda-nominatim.mjs).
+ */
+const throttled = nominatimTurn;
 
 const keyOf = (lat, lng) => `${Math.round(lat / GRID)}:${Math.round(lng / GRID)}`;
 

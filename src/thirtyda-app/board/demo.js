@@ -212,9 +212,9 @@
   const ready = Promise.all([
     import('/30da/shared/rules.js'), import('/30da/shared/questions.js'),
     import('/30da/shared/question-slots.js'), import('/30da/shared/conversation.js'), import('/30da/shared/pin.js'),
-    import('/30da/shared/terms.js'),
-  ]).then(([rules, questions, slots, conversation, pin, terms]) => {
-    R = { ...rules, ...questions, ...slots, ...conversation, ...pin, ...terms };
+    import('/30da/shared/terms.js'), import('/30da/shared/meet.js'),
+  ]).then(([rules, questions, slots, conversation, pin, terms, meet]) => {
+    R = { ...rules, ...questions, ...slots, ...conversation, ...pin, ...terms, ...meet };
     // Screen 2 (Create profile) starts after the community rules' "I agree" too (the API answers only after this).
     if (S === 2) {
       try { window.localStorage.setItem(R.TERMS_KEY, JSON.stringify(R.newAgreement())); } catch { /* storage blocked */ }
@@ -445,9 +445,13 @@
           const tr = fullTr({ [m.lang]: m.text, en: m.en ?? (m.lang === 'en' ? m.text : null), km: m.km ?? (m.lang === 'km' ? m.text : null) });
           log.push({ id: nextId('msg', 'M-'), from: m.from, at: iso(now - m.ago * 60e3), kind: 'chat', level: 3, text: m.text, lang: m.lang, translations: tr, flagId: null, stopped: false });
         }
-        const last = log[log.length - 1];
-        pair.lastChat = { from: last.from, at: last.at };
-        pair.updatedAt = last.at;
+        // Meetings (owner 2026-10-14, src/lib/thirtyda-meet.mjs): Sophea suggested a coffee tomorrow evening, Dara accepted.
+        const asked = now - 22 * 60e3;
+        const yes = now - 21 * 60e3;
+        const meetAt = R.ppInstant(R.ppDateValue(now + DAY), '18:30');
+        log.push(meetMessage(SOPHEA, asked, meetAt, DEMO_PLACES[0], { status: 'accepted', updatedAt: iso(yes), doneBy: DARA }));
+        pair.lastChat = { from: DARA, at: iso(yes) };
+        pair.updatedAt = iso(yes);
       }
     }
 
@@ -855,6 +859,84 @@
     }, BOT_MS + 800);
   }
 
+  // ------------------------------------------------------------------ meetings (src/lib/thirtyda-meet.mjs)
+
+  // The demo's place search: a few Phnom Penh places instead of OpenStreetMap (nothing leaves the browser). A place
+  // without a point opens Google Maps by its name, like "Use what I typed".
+  const DEMO_PLACES = [
+    { name: 'Brown Coffee Toul Kork', address: 'Russian Federation Blvd, Toul Kork, Phnom Penh', lat: null, lng: null },
+    { name: 'Brown Coffee BKK1', address: 'Street 57, BKK1, Phnom Penh', lat: null, lng: null },
+    { name: 'Aeon Mall Phnom Penh', address: 'Samdech Sothearos Blvd, Tonle Bassac, Phnom Penh', lat: null, lng: null },
+    { name: 'Wat Phnom', address: 'Daun Penh, Phnom Penh', lat: 11.5762, lng: 104.9231 },
+    { name: 'Independence Monument', address: 'Norodom Blvd, BKK1, Phnom Penh', lat: 11.5564, lng: 104.9282 },
+  ];
+
+  function meetMessage(from, atMs, meetAtMs, place, extra = {}) {
+    const at = iso(atMs);
+    const text = R.placeLine(place);
+    return {
+      id: nextId('msg', 'M-'), from, at, kind: 'meet', level: 3, text, lang: 'en', translations: { en: text }, flagId: null, stopped: false,
+      meet: { at: iso(meetAtMs), place, status: 'proposed', by: from, updatedAt: at, note: null, doneBy: null, ...extra },
+    };
+  }
+
+  function places({ url }) {
+    const u = me();
+    if ((u.level ?? 1) < 3) throw fail(403, 'chat_closed', 'Meetings are for a Level 3 chat.');
+    const q = String(url.searchParams.get('q') || '').trim().toLowerCase();
+    if (q.length < R.PLACE_QUERY_MIN) return { places: [] };
+    const words = q.split(/\s+/);
+    return { places: DEMO_PLACES.filter((p) => words.every((w) => `${p.name} ${p.address}`.toLowerCase().includes(w))) };
+  }
+
+  function proposeMeet(ctx) {
+    const { body, params } = ctx;
+    const u = me();
+    const { pair, other } = pairFor(u, params[0], { write: true });
+    chatGate(u, pair);
+    const p = R.checkPlace(body.place);
+    if (!p.ok) throw fail(422, 'invalid', 'Pick a place.', { field: 'place', part: p.field });
+    const when = R.checkMeetTime(body.at, Date.now());
+    if (!when.ok) throw fail(422, when.error, 'Pick another time.', { field: 'at' });
+    const log = chatLog(pair);
+    if (R.meetsLastHour(log, u.id, Date.now()) >= R.MEET_PER_PAIR_HOUR) throw fail(429, 'rate_limited', 'Too many meeting suggestions.');
+    const texts = R.placeTexts(p.place);
+    stopContactDetails(u, pair, other, texts, { level: 3, kind: 'meet' });
+    stopBadWords(u, pair, other, texts, { level: 3, kind: 'meet' });
+    const open = log.filter((m) => m.kind === 'meet' && !m.stopped && m.meet?.status === 'proposed');
+    const msg = meetMessage(u.id, Date.now(), Date.parse(when.at), p.place);
+    const replaced = { status: 'cancelled', note: 'replaced', updatedAt: msg.at, doneBy: u.id };
+    for (const m of open) Object.assign(m.meet, replaced);
+    log.push(msg);
+    Object.assign(pair, { updatedAt: msg.at, lastChat: { from: u.id, at: msg.at } });
+    // The other (simulated) person accepts a little later.
+    later(() => {
+      if (pair.stage !== 'l3_open' || msg.meet.status !== 'proposed') return;
+      const at = nowIso();
+      Object.assign(msg.meet, { status: 'accepted', updatedAt: at, doneBy: other.id });
+      Object.assign(pair, { updatedAt: at, lastChat: { from: other.id, at } });
+    }, BOT_MS + 1500);
+    ctx.status = 201;
+    return { message: R.meetView(msg, u.id), replaced: open.map((m) => R.meetView(m, u.id)) };
+  }
+
+  function actOnMeet({ body, params }) {
+    const u = me();
+    if (!R.MEET_ACTIONS.includes(body.action)) throw fail(422, 'invalid', 'Choose accept, decline or cancel.', { field: 'action' });
+    const { pair } = pairFor(u, params[0], { write: true });
+    chatGate(u, pair);
+    const m = chatLog(pair).find((x) => x.id === params[1]);
+    if (!m || m.kind !== 'meet' || m.stopped) throw fail(404, 'not_found', 'No such meeting.');
+    const v = R.meetActionCheck(m.meet, u.id, body.action, Date.now());
+    if (v.error) throw fail(v.error === 'not_yours' ? 403 : 409, v.error, 'This meeting cannot change now.', { message: R.meetView(m, u.id) });
+    if (!v.same) {
+      const at = nowIso();
+      Object.assign(m.meet, { status: v.status, updatedAt: at, doneBy: u.id });
+      Object.assign(pair, { updatedAt: at, lastChat: { from: u.id, at } });
+    }
+    return { message: R.meetView(m, u.id) };
+  }
+
   // ------------------------------------------------------------------ handlers
 
   // The app lock, as on the server (src/lib/thirtyda-pin.mjs): a profile's session is open after a sign-in or the
@@ -1123,6 +1205,7 @@
   const TALK_ROUTES = [
     ['POST', /^\/pairs$/], ['POST', /^\/pairs\/(P-\d+)\/sets$/], ['PUT', /^\/pairs\/(P-\d+)\/replies$/],
     ['POST', /^\/pairs\/(P-\d+)\/answers$/], ['POST', /^\/pairs\/(P-\d+)\/decide$/], ['POST', /^\/pairs\/(P-\d+)\/messages$/],
+    ['POST', /^\/pairs\/(P-\d+)\/meet$/], ['POST', /^\/pairs\/(P-\d+)\/meet\/(M-\d+)$/],
   ];
   const talksToSomeone = (method, sub) => TALK_ROUTES.some(([m, re]) => m === method && re.test(sub));
   /** A number another profile has, proved from a profile with nothing verified: refused, never a switch or a merge. */
@@ -1684,7 +1767,8 @@
     chatGate(u, pair);
     const after = Date.parse(url.searchParams.get('after') || '');
     const lang = u.lang ?? 'en';
-    const msgs = chatLog(pair).filter((m) => m.kind === 'chat' && !m.stopped && (Number.isNaN(after) || Date.parse(m.at) > after));
+    const changed = (m) => Math.max(Date.parse(m.at) || 0, Date.parse(m.meet?.updatedAt) || 0);
+    const msgs = chatLog(pair).filter((m) => (m.kind === 'chat' || m.kind === 'meet') && !m.stopped && (Number.isNaN(after) || changed(m) > after));
     return {
       other: other
         ? {
@@ -1692,7 +1776,7 @@
           ...(realNameFor(other, pair.stage) ? { realName: realNameFor(other, pair.stage) } : {}),
         }
         : null,
-      messages: msgs.map((m) => ({
+      messages: msgs.map((m) => (m.kind === 'meet' ? R.meetView(m, u.id) : {
         id: m.id, mine: m.from === u.id, at: m.at, text: m.text, lang: m.lang,
         translated: m.lang === lang ? null : m.translations?.[lang] ?? null,
       })),
@@ -1776,6 +1860,9 @@
     ['GET', /^\/pairs\/(P-\d+)\/messages$/, listMessages],
     ['POST', /^\/pairs\/(P-\d+)\/messages$/, postMessage],
     ['POST', /^\/pairs\/(P-\d+)\/messages\/(M-\d+)\/report$/, report],
+    ['GET', /^\/places$/, places],
+    ['POST', /^\/pairs\/(P-\d+)\/meet$/, proposeMeet],
+    ['POST', /^\/pairs\/(P-\d+)\/meet\/(M-\d+)$/, actOnMeet],
     ['GET', /^\/me\/blocks$/, () => ({ blocks: (W.blocks || []).filter((b) => b.by === me().id).map((b) => ({ id: b.who, name: W.users.get(b.who)?.name ?? '', at: b.at })) })],
     ['POST', /^\/people\/(U-\d+)\/block$/, blockPerson],
     ['DELETE', /^\/people\/(U-\d+)\/block$/, ({ params }) => {

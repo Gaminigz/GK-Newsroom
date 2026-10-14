@@ -1,0 +1,167 @@
+/**
+ * 30+DA · meetings in the Level 3 chat (owner 2026-10-14: "a small calendar icon to set an appointment … the other party
+ * accepts; the other party can see the location; clicking the location opens Google Maps"). The rules: shared/meet.js.
+ *
+ *   GET  /places?q=…[&near=lat,lng]  → { places: [{ name, address, lat, lng }], cached?, busy?, unavailable? }
+ *        the place search (src/lib/thirtyda-places.mjs → OpenStreetMap Nominatim). Only for someone with a Level 3 chat
+ *        (users.level 3); near = the asker's stored point when not given; 20 searches a minute each.
+ *   POST /pairs/:id/meet { place: { name, address?, lat?, lng? }, at: ISO }  → 201 { message, replaced: [message] }
+ *        suggests a meeting: a chat message { kind: 'meet', meet: { at, place, status: 'proposed', by, … } }. The place
+ *        name and address go through the chat's own contact-detail and bad-word checks (a hit is stopped and kept for
+ *        the admin like a chat line: 422 contact_detail | bad_word { index: 0 name / 1 address }). One open suggestion per
+ *        conversation: an older one still open becomes cancelled with note 'replaced'. 6 an hour per conversation
+ *        (stopped tries count), 20 a day in all → 429 rate_limited.
+ *   POST /pairs/:id/meet/:mid { action: 'accept' | 'decline' | 'cancel' }  → { message }
+ *        only the other person accepts / declines (while proposed), only the proposer cancels (proposed or accepted),
+ *        never after its time → 403 not_yours | 409 not_open | 409 past, each with the meeting as it is now.
+ *
+ * Level 3 only and like the chat in every other way: pairFor (my conversation; review accounts and real people never
+ * meet — sameWorld; a frozen one — blocked either way, or the other person left — refuses writes) and chatGate (the
+ * chat is open; a verified way). A suggestion or an answer is news for the other person exactly like a chat line
+ * (pairs.lastChat: their red dot, the heartbeat's actions). GET /pairs/:id/messages carries the meetings with the chat
+ * lines and again whenever one changed (its updatedAt passes the poll's `after`).
+ */
+import {
+  MEET_ACTIONS, MEET_MAX_DAYS, MEET_PER_PAIR_HOUR, MEET_PER_DAY, PLACE_SEARCHES_PER_MINUTE,
+  checkPlace, checkMeetTime, placeTexts, placeLine, meetActionCheck, meetsLastHour, meetView,
+} from "../thirtyda-app/shared/meet.js";
+import { createPlaceSearch, parseNear, cleanQuery } from "./thirtyda-places.mjs";
+import { windowLimiter } from "./thirtyda-telegram-bot.mjs";
+import { outboundFetch } from "./thirtyda-test-fetch.mjs";
+
+export const MEET_TEXT = Object.freeze({
+  place: "Pick a place.",
+  bad_time: "Pick a date and a time.",
+  past: "Pick a time that is still to come.",
+  too_far: `Pick a day within ${MEET_MAX_DAYS} days.`,
+  action: "Choose accept, decline or cancel.",
+  not_found: "No such meeting.",
+  not_yours: "This is not yours to answer.",
+  not_open: "This meeting was already answered.",
+  passed: "This meeting's time has passed.",
+  rate_limited: "Too many meeting suggestions. Try again later.",
+  searches: "Too many searches. Wait a minute.",
+  level3: "Meetings are for a Level 3 chat.",
+});
+
+/** When a meeting message last changed: a later accept / decline / cancel / replace shows up in the next poll. */
+export const changedAt = (m) => Math.max(Date.parse(m?.at) || 0, Date.parse(m?.meet?.updatedAt) || 0);
+
+/** The person's stored point { lat, lng } (GeoJSON [lng, lat]), or null. */
+function pointOf(me) {
+  const c = me?.location?.coordinates;
+  return Array.isArray(c) && Number.isFinite(c[0]) && Number.isFinite(c[1]) ? { lat: c[1], lng: c[0] } : null;
+}
+
+/**
+ * The three handlers, given the app's own pieces (src/lib/thirtyda-app.mjs): C (collection names), fail, nowIso,
+ * nextId, appendMessages, pairFor, chatGate, stopContactDetails, stopBadWords. placeSearch / now / limits: for tests.
+ */
+export function meetRoutes({
+  C, fail, nowIso, nextId, appendMessages, pairFor, chatGate, stopContactDetails, stopBadWords,
+  placeSearch = null, now = () => Date.now(), limits = {},
+}) {
+  const daily = limits.daily ?? windowLimiter(864e5);
+  const searches = limits.searches ?? windowLimiter(60e3);
+  let search = placeSearch;
+  const searcher = () => (search ??= createPlaceSearch({ fetchImpl: outboundFetch() }));
+
+  /** GET /places?q=…[&near=lat,lng] */
+  async function places(ctx) {
+    const { me, url } = ctx;
+    if ((Number(me?.level) || 1) < 3) throw fail(403, "chat_closed", MEET_TEXT.level3);
+    const q = cleanQuery(url.searchParams.get("q"));
+    if (!q) return { places: [] };
+    if (searches.over(me._id, PLACE_SEARCHES_PER_MINUTE)) throw fail(429, "rate_limited", MEET_TEXT.searches);
+    const near = parseNear(url.searchParams.get("near")) ?? pointOf(me);
+    return searcher().search({ q, lang: me.lang ?? "en", near });
+  }
+
+  /** POST /pairs/:id/meet { place, at } */
+  async function propose(ctx) {
+    const { d, me, body, params } = ctx;
+    const { pair, other } = await pairFor(ctx, params[0], { write: true });
+    chatGate(ctx, pair);
+    const p = checkPlace(body.place);
+    if (!p.ok) throw fail(422, "invalid", MEET_TEXT.place, { field: "place", part: p.field });
+    const t = now();
+    const when = checkMeetTime(body.at, t);
+    if (!when.ok) throw fail(422, when.error, MEET_TEXT[when.error], { field: "at" });
+
+    const chats = d.collection(C.chats);
+    const chat = await chats.findOne({ _id: pair._id }, { projection: { messages: 1 } });
+    if (meetsLastHour(chat?.messages, me._id, t) >= MEET_PER_PAIR_HOUR || daily.over(me._id, MEET_PER_DAY, t)) {
+      throw fail(429, "rate_limited", MEET_TEXT.rate_limited);
+    }
+    // The chat's own checks, stopped and kept for the admin like a chat line (kind 'meet').
+    const texts = placeTexts(p.place);
+    await stopContactDetails(ctx, pair, other, texts, { level: 3, kind: "meet" });
+    await stopBadWords(ctx, pair, other, texts, { level: 3, kind: "meet" });
+
+    const open = (chat?.messages || []).filter((m) => m.kind === "meet" && !m.stopped && m.meet?.status === "proposed");
+    const id = await nextId(d, "msg");
+    const at = nowIso();
+    const lang = me.lang ?? "en";
+    const text = placeLine(p.place);
+    const msg = {
+      id, from: me._id, at, kind: "meet", level: 3, text, lang, english: null, translations: { [lang]: text },
+      hit: null, flagId: null, stopped: false,
+      meet: {
+        at: when.at, place: p.place, status: "proposed", by: me._id, updatedAt: at, note: null, doneBy: null,
+        replaces: open.length ? open[open.length - 1].id : null,
+      },
+    };
+    await appendMessages(d, pair, [msg]);
+    // One open suggestion per conversation: every older one still open (theirs too) is cancelled as 'replaced'. Only
+    // older ones, so of two sent at the same moment the later one stays open.
+    const replaced = { status: "cancelled", note: "replaced", updatedAt: at, doneBy: me._id };
+    await chats.updateOne(
+      { _id: pair._id },
+      { $set: Object.fromEntries(Object.entries(replaced).map(([k, v]) => [`messages.$[m].meet.${k}`, v])) },
+      { arrayFilters: [{ "m.kind": "meet", "m.meet.status": "proposed", "m.id": { $ne: id }, "m.at": { $lte: at } }] },
+    );
+    await d.collection(C.pairs).updateOne({ _id: pair._id }, { $set: { updatedAt: at, lastChat: { from: me._id, at } } });
+    ctx.status = 201;
+    return {
+      message: meetView(msg, me._id),
+      replaced: open.map((m) => meetView({ ...m, meet: { ...m.meet, ...replaced } }, me._id)),
+    };
+  }
+
+  /** POST /pairs/:id/meet/:mid { action } */
+  async function act(ctx) {
+    const { d, me, body, params } = ctx;
+    const action = String(body.action ?? "");
+    if (!MEET_ACTIONS.includes(action)) throw fail(422, "invalid", MEET_TEXT.action, { field: "action" });
+    const { pair } = await pairFor(ctx, params[0], { write: true });
+    chatGate(ctx, pair);
+    const chats = d.collection(C.chats);
+    const read = async () => {
+      const chat = await chats.findOne({ _id: pair._id }, { projection: { messages: { $elemMatch: { id: params[1] } } } });
+      return (chat?.messages || []).find((x) => x.id === params[1]) ?? null;
+    };
+    const m = await read();
+    if (!m || m.kind !== "meet" || m.stopped || !m.meet) throw fail(404, "not_found", MEET_TEXT.not_found);
+    const v = meetActionCheck(m.meet, me._id, action, now());
+    if (v.error) {
+      throw fail(v.error === "not_yours" ? 403 : 409, v.error, MEET_TEXT[v.error === "past" ? "passed" : v.error], { message: meetView(m, me._id) });
+    }
+    if (v.same) return { message: meetView(m, me._id) };
+    const at = nowIso();
+    const patch = { status: v.status, updatedAt: at, doneBy: me._id };
+    // Only from the status it had when read: of a cancel and an accept at the same moment, one wins.
+    const done = await chats.updateOne(
+      { _id: pair._id },
+      { $set: Object.fromEntries(Object.entries(patch).map(([k, val]) => [`messages.$[m].meet.${k}`, val])) },
+      { arrayFilters: [{ "m.id": m.id, "m.meet.status": m.meet.status }] },
+    );
+    if (!done.modifiedCount) {
+      const now2 = await read();
+      throw fail(409, "not_open", MEET_TEXT.not_open, { message: now2 ? meetView(now2, me._id) : null });
+    }
+    await d.collection(C.pairs).updateOne({ _id: pair._id }, { $set: { updatedAt: at, lastChat: { from: me._id, at } } });
+    return { message: meetView({ ...m, meet: { ...m.meet, ...patch } }, me._id) };
+  }
+
+  return { places, propose, act };
+}

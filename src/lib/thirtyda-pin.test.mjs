@@ -251,6 +251,10 @@ const SAMPLES = [
   ['GET', '/pairs/P-1/messages', null],
   ['POST', '/pairs/P-1/messages', null],
   ['POST', '/pairs/P-1/messages/M-1/report', null],
+  // Meetings in the Level 3 chat (owner 2026-10-14, src/lib/thirtyda-meet.mjs): data routes, so locked like the chat.
+  ['GET', '/places', null],
+  ['POST', '/pairs/P-1/meet', null],
+  ['POST', '/pairs/P-1/meet/M-1', null],
   // Block + report a person (store policy, owner 2026-10-14): data routes, so locked like the rest.
   ['GET', '/me/blocks', null],
   ['POST', '/people/U-10231/block', null],

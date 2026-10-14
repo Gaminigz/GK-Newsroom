@@ -102,6 +102,11 @@
  *
  * A guest's report (store policy, owner 2026-10-14): POST /guest/report { id, reason } — a guest sees members' cards,
  * so a guest can report one: an admin flag "Reported by a guest", rate-limited per address.
+ *
+ * Meetings (owner 2026-10-14, src/lib/thirtyda-meet.mjs + src/thirtyda-app/shared/meet.js): in an open Level 3 chat,
+ * GET /places?q= (OpenStreetMap search through the server), POST /pairs/:id/meet { place, at } (a 'meet' message in the
+ * chat stream: the place through the chat's contact-detail and bad-word checks, one open suggestion per pair) and
+ * POST /pairs/:id/meet/:mid { action: accept | decline | cancel }. Times are Phnom Penh time (UTC+7).
  */
 
 import crypto from "node:crypto";
@@ -167,6 +172,9 @@ import {
   LEVEL_RULES, L1_ANSWERS, ROLES, questionText, answerText,
 } from "../thirtyda-app/shared/questions.js";
 import { questionConfig, slotsView, flatView } from "./thirtyda-questions.mjs";
+// Meetings in the Level 3 chat (owner 2026-10-14): the place search and the meeting routes (src/lib/thirtyda-meet.mjs).
+import { meetRoutes, changedAt } from "./thirtyda-meet.mjs";
+import { meetView } from "../thirtyda-app/shared/meet.js";
 import {
   convStage, L1_STAGES, openSetLevel, currentSetLevel, levelState, repliedCount, allReplied, levelComplete,
   nextStep, isMyTurn, decisionOf, afterDecisions, replyOrders, writtenOrders, chatOrders, withReply,
@@ -3178,10 +3186,11 @@ async function listMessages(ctx) {
   chatGate(ctx, pair);
   const after = Date.parse(url.searchParams.get("after") || "");
   const chat = await d.collection(C.chats).findOne({ _id: pair._id }, { projection: { messages: 1 } });
+  // Chat lines and meetings (src/lib/thirtyda-meet.mjs); a meeting comes again whenever it changed (accepted, …).
   const msgs = (chat?.messages || []).filter((m) =>
-    m.kind === "chat" && !m.stopped && (Number.isNaN(after) || Date.parse(m.at) > after));
+    (m.kind === "chat" || m.kind === "meet") && !m.stopped && (Number.isNaN(after) || changedAt(m) > after));
   const lang = me.lang ?? "en";
-  await backfillMessages(d, pair._id, msgs, lang);
+  await backfillMessages(d, pair._id, msgs.filter((m) => m.kind === "chat"), lang);
   return {
     other: other
       // A blocked partner's photos are gone (the pair is frozen; GET /people says 404). The chat is open
@@ -3191,7 +3200,7 @@ async function listMessages(ctx) {
         ...(realNameFor(other, pair.stage) ? { realName: realNameFor(other, pair.stage) } : {}),
       }
       : null,
-    messages: msgs.map((m) => ({
+    messages: msgs.map((m) => (m.kind === "meet" ? meetView(m, me._id) : {
       id: m.id,
       mine: m.from === me._id,
       at: m.at,
@@ -3296,6 +3305,13 @@ async function report(ctx) {
   });
   return { ok: true };
 }
+
+// ---------------------------------------------------------------- meetings (owner 2026-10-14, src/lib/thirtyda-meet.mjs)
+
+const MEET_DEPS = { C, fail, nowIso, nextId, appendMessages, pairFor, chatGate, stopContactDetails, stopBadWords };
+/** The meeting handlers on this app's own pieces; `over` swaps some (the place search, the clock) in tests. */
+export const meetHandlers = (over = {}) => meetRoutes({ ...MEET_DEPS, ...over });
+const meet = meetHandlers();
 
 // ---------------------------------------------------------------- block + report a person (store policy, owner 2026-10-14)
 // The rules: src/thirtyda-app/shared/safety.js; the store and the admin's flags: src/lib/thirtyda-blocks.mjs.
@@ -3641,6 +3657,10 @@ const ROUTES = [
   ["GET", /^\/pairs\/(P-\d+)\/messages$/, listMessages],
   ["POST", /^\/pairs\/(P-\d+)\/messages$/, postMessage],
   ["POST", /^\/pairs\/(P-\d+)\/messages\/(M-\d+)\/report$/, report],
+  // Meetings in the Level 3 chat (owner 2026-10-14, src/lib/thirtyda-meet.mjs): the place search, suggest, answer.
+  ["GET", /^\/places$/, (ctx) => meet.places(ctx)],
+  ["POST", /^\/pairs\/(P-\d+)\/meet$/, (ctx) => meet.propose(ctx)],
+  ["POST", /^\/pairs\/(P-\d+)\/meet\/(M-\d+)$/, (ctx) => meet.act(ctx)],
   // Block + report a person (store policy, owner 2026-10-14): open to every profile, verified or not.
   ["GET", /^\/me\/blocks$/, listBlocks],
   ["POST", /^\/people\/(U-\d+)\/block$/, blockPerson],

@@ -76,6 +76,8 @@ const SAMPLES = [
   ['POST', '/pairs/P-1/remind', false], ['GET', '/pairs/P-1/messages', false], ['POST', '/pairs/P-1/messages', false],
   ['POST', '/pairs/P-1/messages/M-1/report', false], ['GET', '/me/blocks', false], ['POST', '/people/U-10231/block', false],
   ['DELETE', '/people/U-10231/block', false], ['POST', '/people/U-10231/report', false],
+  // Meetings in the Level 3 chat (owner 2026-10-14): wait for "I agree" like the chat.
+  ['GET', '/places', false], ['POST', '/pairs/P-1/meet', false], ['POST', '/pairs/P-1/meet/M-1', false],
 ];
 // The routes that need no profile (their `auth` in the router): the gate is for profiles only.
 const NO_PROFILE = new Set(['GET /auth/methods', 'POST /auth/send-code', 'POST /auth/verify-code', 'POST /auth/verify-social',

@@ -29,7 +29,9 @@
  */
 
 export const TEST_FETCH_COLLECTION = "thirtyda_test_fetch";
-const HOSTS = new Set(["oauth2.googleapis.com", "openidconnect.googleapis.com", "graph.facebook.com", "gatewayapi.telegram.org", "open.tiktokapis.com"]);
+// nominatim.openstreetmap.org: the meeting place search (src/lib/thirtyda-places.mjs), so the dev server can show a fixed
+// list instead of asking OpenStreetMap (the area names of src/lib/thirtyda-geo.mjs use the plain fetch, unchanged).
+const HOSTS = new Set(["oauth2.googleapis.com", "openidconnect.googleapis.com", "graph.facebook.com", "gatewayapi.telegram.org", "open.tiktokapis.com", "nominatim.openstreetmap.org"]);
 const BOT_HOST = "api.telegram.org";
 /** The fake bot's doc in thirtyda_test_fetch (see above). */
 export const FAKE_BOT_DOC = "telegram-bot";

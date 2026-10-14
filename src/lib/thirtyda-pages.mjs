@@ -119,6 +119,8 @@ export const PAGE_STRINGS = {
     priv_loc: "rounded to about 1 km and moved a little at random, to show distances. Others see only a distance and an area name.",
     priv_lines_k: "Lines and chat:",
     priv_lines: "what you write, with its translations, to pass it on.",
+    priv_meet_k: "Meetings:",
+    priv_meet: "the places you search for go to OpenStreetMap; a meeting place and time you send are seen by the other person and kept with the chat.",
     priv_safety_k: "Reports and blocks:",
     priv_safety: "who you report or block and why, to keep everyone safe.",
     priv_support_k: "Support:",
@@ -324,6 +326,8 @@ export const PAGE_STRINGS = {
     priv_loc: "បង្គត់ប្រហែល 1 គីឡូម៉ែត្រ ហើយផ្លាស់ទីបន្តិចដោយចៃដន្យ ដើម្បីបង្ហាញចម្ងាយ។ អ្នកដទៃឃើញតែចម្ងាយ និងឈ្មោះតំបន់ប៉ុណ្ណោះ។",
     priv_lines_k: "ឃ្លា និងការជជែក៖",
     priv_lines: "អ្វីដែលអ្នកសរសេរ និងការបកប្រែរបស់វា ដើម្បីផ្ញើទៅអ្នកម្ខាងទៀត។",
+    priv_meet_k: "ការជួប៖",
+    priv_meet: "ទីកន្លែងដែលអ្នកស្វែងរក ត្រូវបានផ្ញើទៅ OpenStreetMap។ ទីកន្លែង និងពេលវេលាជួបដែលអ្នកផ្ញើ អ្នកម្ខាងទៀតមើលឃើញ ហើយត្រូវបានរក្សាទុកជាមួយការជជែក។",
     priv_safety_k: "ការរាយការណ៍ និងការទប់ស្កាត់៖",
     priv_safety: "អ្នកណាដែលអ្នករាយការណ៍ ឬទប់ស្កាត់ និងមូលហេតុ ដើម្បីរក្សាសុវត្ថិភាពគ្រប់គ្នា។",
     priv_support_k: "ជំនួយ៖",
@@ -524,6 +528,8 @@ export const PAGE_STRINGS = {
     priv_loc: "精确到约 1 公里，并随机偏移一点，用来显示距离。别人只能看到距离和区域名称。",
     priv_lines_k: "简短的话和聊天：",
     priv_lines: "你写的内容及其翻译，用来传给对方。",
+    priv_meet_k: "见面：",
+    priv_meet: "你搜索的地点会发送到 OpenStreetMap；你发出的见面地点和时间对方可以看到，并与聊天一起保存。",
     priv_safety_k: "举报和屏蔽：",
     priv_safety: "你举报或屏蔽了谁、原因是什么，用来保障大家的安全。",
     priv_support_k: "客服：",
@@ -724,6 +730,8 @@ export const PAGE_STRINGS = {
     priv_loc: "약 1km 단위로 반올림하고 무작위로 조금 옮겨서, 거리를 보여 줄 때만 써요. 다른 사람은 거리와 지역 이름만 봐요.",
     priv_lines_k: "한마디와 채팅:",
     priv_lines: "내가 쓴 글과 그 번역. 상대에게 전하기 위해서예요.",
+    priv_meet_k: "만남 약속:",
+    priv_meet: "검색한 장소는 OpenStreetMap으로 전송돼요. 보낸 만남 장소와 시간은 상대가 볼 수 있고 채팅과 함께 보관돼요.",
     priv_safety_k: "신고와 차단:",
     priv_safety: "누구를 왜 신고하거나 차단했는지. 모두의 안전을 위해서예요.",
     priv_support_k: "고객 지원:",
@@ -924,6 +932,8 @@ export const PAGE_STRINGS = {
     priv_loc: "約1kmに丸め、さらに少しランダムにずらして、距離の表示に使います。ほかの人に見えるのは距離と地域名だけです。",
     priv_lines_k: "ひとこととチャット：",
     priv_lines: "あなたが書いた内容とその翻訳。相手に届けるためです。",
+    priv_meet_k: "待ち合わせ：",
+    priv_meet: "検索した場所は OpenStreetMap に送られます。送った待ち合わせの場所と日時は相手に表示され、チャットと一緒に保存されます。",
     priv_safety_k: "報告とブロック：",
     priv_safety: "誰をなぜ報告・ブロックしたか。みんなの安全のためです。",
     priv_support_k: "サポート：",
@@ -1172,7 +1182,7 @@ const factLine = (t, k, rest = "") => `        <li><b>${t[`${k}_k`]}</b> ${t[k]}
 
 /** The privacy policy's "what we keep and why", one point each, in page order (each a `<key>_k` + `<key>` pair). */
 export const PRIVACY_DATA = Object.freeze([
-  "priv_profile", "priv_real", "priv_birth", "priv_phone", "priv_social", "priv_loc", "priv_lines", "priv_safety",
+  "priv_profile", "priv_real", "priv_birth", "priv_phone", "priv_social", "priv_loc", "priv_lines", "priv_meet", "priv_safety",
   "priv_support", "priv_pin",
 ]);
 /** "Who sees what": guests, members, our team (moderators may read conversations). */

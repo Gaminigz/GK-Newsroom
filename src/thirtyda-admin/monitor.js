@@ -74,6 +74,41 @@ function rowLabel(m) {
   return '';
 }
 
+// ---------- meetings in the Level 3 chat (owner 2026-10-14, src/lib/thirtyda-meet.mjs) ----------
+// A meeting is a message { kind: 'meet', meet: { at, place: { name, address, lat, lng }, status, note, doneBy } }: shown as
+// what it is (when, where, the Google Maps link, how it stands), always in Phnom Penh time like the app shows it.
+function ppWhen(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Phnom_Penh', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    }).format(d);
+  } catch {
+    return new Date(d.getTime() + 7 * 3600e3).toISOString().slice(0, 16).replace('T', ' ');
+  }
+}
+
+function mapsLink(place) {
+  const point = Number.isFinite(place?.lat) && Number.isFinite(place?.lng);
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(point ? `${place.lat},${place.lng}` : String(place?.name ?? ''))}`;
+}
+
+function meetHtml(m, people) {
+  const x = m.meet || {};
+  const p = x.place || {};
+  const by = x.doneBy ? people?.[x.doneBy] ?? x.doneBy : '';
+  const status = x.status === 'accepted' ? `Accepted by ${by}`
+    : x.status === 'declined' ? `Declined by ${by}`
+      : x.status === 'cancelled' && x.note === 'replaced' ? `Replaced by a new suggestion (${by})`
+        : x.status === 'cancelled' ? `Cancelled by ${by}`
+          : 'Waiting for an answer';
+  return `<div class="bubble meet"><b>Meeting</b> · ${esc(ppWhen(x.at))} (Phnom Penh time)<br>
+    <b>${esc(p.name)}</b>${p.address ? ` · ${esc(p.address)}` : ''}${Number.isFinite(p.lat) ? '' : ' <span class="en">(no map pin: typed name)</span>'}
+    · <a href="${esc(mapsLink(p))}" target="_blank" rel="noopener noreferrer">Google Maps</a>
+    <span class="en"> · ${esc(status)}</span></div>`;
+}
+
 const levelBars = (n) =>
   `<span class="level" aria-label="Level ${n}">${[1, 2, 3].map((i) => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}<span>L${n}</span></span>`;
 
@@ -203,9 +238,12 @@ function logHtml() {
       ? `<div class="note">${m.flag.kind === 'stopped' ? 'Stopped by the app · not delivered' : 'Delivered · reported'} · ${esc(m.flag.reason)}${m.flag.status !== 'open' ? ` · ${esc(m.flag.status)}` : ''}</div>`
       : '';
     // After Level 2: each person's choice (open the chat / forget it), shown as a note, not a message.
+    // A meeting (delivered): when, where, the map link and how it stands. A stopped one shows the place text it tried.
+    const body = m.kind === 'meet' && m.meet && !m.stopped ? meetHtml(m, c.people) : bubble(m);
+    const what = m.kind === 'meet' ? ' · meeting' : '';
     return `<div class="msg ${m.flag ? 'flagged' : ''} ${m.kind === 'decision' ? 'decision' : ''}">
-      <div class="msg-meta"><span><b>${esc(m.fromName)}</b>${rowLabel(m) ? ` <span class="tag row-tag">${esc(rowLabel(m))}</span>` : ''}</span><time datetime="${m.at}">${ago(m.at)}</time></div>
-      ${bubble(m)}${note}
+      <div class="msg-meta"><span><b>${esc(m.fromName)}${what}</b>${rowLabel(m) ? ` <span class="tag row-tag">${esc(rowLabel(m))}</span>` : ''}</span><time datetime="${m.at}">${ago(m.at)}</time></div>
+      ${body}${note}
     </div>`;
   }).join('');
   const ended = c.endedAt ? ` · <span class="tag ended">Ended ${ago(c.endedAt)}</span>` : '';
