@@ -67,6 +67,13 @@
  * "Delete my account" (owner 2026-10-13, src/lib/thirtyda-delete.mjs): POST /me/delete { pin? } (unlocked only, the PIN
  * checked by checkPinTry) deletes everything of the person at once and clears the cookie; every conversation with them
  * ends for the other person with PairView.endedReason 'left' ("This person left 30+DA").
+ *
+ * App review accounts (owner 2026-10-14, src/lib/thirtyda-review.mjs; the admin page "App review"): profiles the admin
+ * marked demo:'review' live in their own world — they see only each other, real people and guests never see them, and
+ * no conversation crosses (sameWorld: Nearby, guest cards, a profile, photos, conversations, the heartbeat, /me/pending).
+ * While "Review sign-in" is ON, GET /auth/methods says review:true and the phone step asks POST /auth/review/check
+ * { phone } → { review } before any way; a review number gets a 6-digit box: POST /auth/review/verify { phone, code } →
+ * the same answer as verify-code for that profile, its session LOCKED (the PIN lock asks the account's PIN).
  */
 
 import crypto from "node:crypto";
@@ -105,6 +112,9 @@ import {
   canTalk, talksToSomeone, SIGNUP_LIMITS, claimSignup, releaseSignup, verifyBackPath, ATTACH_FROM, phoneViaOf, withPhoneVia, signinsOf,
 } from "./thirtyda-verify.mjs";
 import { deleteMe, finishDeletesInBackground } from "./thirtyda-delete.mjs";
+import {
+  REVIEW_TRIES, isReview, sameWorld, worldFilter, pairsInWorld, reviewSwitch, reviewAccountFor, checkReviewCode, tryCounter,
+} from "./thirtyda-review.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
   PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
@@ -628,6 +638,8 @@ async function pairFor(ctx, id, { write = false } = {}) {
   if (!found || hiddenFrom(found, me)) throw fail(404, "not_found", "No such conversation.");
   const pair = await settle(d, found);
   const other = await d.collection(C.users).findOne({ _id: pair.a === me._id ? pair.b : pair.a });
+  // App review accounts and real people never meet (src/lib/thirtyda-review.mjs): such a pair is not there for either.
+  if (other && !sameWorld(me, other)) throw fail(404, "not_found", "No such conversation.");
   if (write && (!other || other.blocked)) throw fail(409, "other_blocked", "This conversation is closed.");
   return { pair, other };
 }
@@ -901,7 +913,10 @@ async function authMethods(ctx) {
     signin[provider] = real || DEV_AUTH;
     signinTest[provider] = !real && DEV_AUTH;
   }
-  return { code, telegram, signin, signinTest };
+  // App review (src/lib/thirtyda-review.mjs): while the admin's "Review sign-in" is ON the phone step asks
+  // POST /auth/review/check for the number typed before it starts any way.
+  const review = (await reviewSwitch(d).catch(() => ({ on: false }))).on;
+  return { code, telegram, signin, signinTest, review };
 }
 
 /**
@@ -925,6 +940,7 @@ async function sendCode(ctx) {
   if (!phone) throw invalid("That phone number does not look right.", { field: "phone" });
   const channel = body.channel == null || body.channel === "" ? DEFAULT_CHANNEL : body.channel;
   if (!CODE_CHANNELS.includes(channel)) throw invalid("Choose Telegram or WhatsApp.", { field: "channel" });
+  await refuseReviewNumber(d, phone);
   const name = CHANNEL_NAMES[channel];
   const otherKey = CODE_CHANNELS.find((c) => c !== channel);
   // Live AND offered (a test code went through since the keys were saved, no lasting failure since): see channelOffer.
@@ -1097,6 +1113,8 @@ async function signInWithPhone(ctx, phone, { newPin = null, newPinHash = null, v
   const { d, me } = ctx;
   const users = d.collection(C.users);
   let user = await users.findOne({ phone });
+  // An App review account's mock number signs in ONLY with the review code (reviewVerify), never by a code or Telegram.
+  if (isReview(user) && user._id !== me?._id) throw phoneInUse();
   // "Verify to chat" (owner 2026-10-13): a profile with no verified way yet ATTACHES the number it proves. A number
   // that already belongs to another profile is refused in plain words — never a switch to it, never a merge.
   if (user && me && user._id !== me._id && !canTalk(me)) throw phoneInUse();
@@ -1125,6 +1143,78 @@ async function signInWithPhone(ctx, phone, { newPin = null, newPinHash = null, v
 
 const phoneInUse = () => fail(409, "phone_in_use", "This phone number already has a profile.");
 
+// ---------------------------------------------------------------- App review sign-in (owner 2026-10-14, src/lib/thirtyda-review.mjs)
+
+const reviewTries = tryCounter(OTP_WINDOW_MS); // wrong review codes per number
+const reviewChecks = windowLimiter(OTP_WINDOW_MS); // POST /auth/review/check per address
+const REVIEW_CHECKS = 120; // per address per 15 minutes (loose: NAT; it says only yes / no for one number)
+
+/** A review number while "Review sign-in" is ON: the code and Telegram ways answer 409 review_code (the app shows the box). */
+async function refuseReviewNumber(d, phone) {
+  if (await reviewAccountFor(d, phone)) throw fail(409, "review_code", "Enter the review code.", { review: true });
+}
+
+/** POST /auth/review/check { phone } → { review }: true only while ON and for a current review account's mock number. */
+async function reviewCheck(ctx) {
+  const { d, body, req } = ctx;
+  if (reviewChecks.over(clientIp(req), REVIEW_CHECKS)) throw fail(429, "rate_limited", "Too many tries. Try again in 15 minutes.");
+  const phone = normalizePhone(body.phone);
+  return { review: Boolean(phone && (await reviewAccountFor(d, phone))) };
+}
+
+/**
+ * POST /auth/review/verify { phone, code } — the review code for a review account's mock number, only while ON
+ * (else 409 review_off: the app goes the normal way). 5 wrong per number per 15 minutes (429 too_many_attempts),
+ * the address limit of verify-code, REVIEW_WRONG_MAX per code. Right → this browser signs into that profile like a
+ * returning sign-in by its verified number (startSession; a waiting PIN is NOT taken: the account keeps its own), then
+ * the session is LOCKED so the PIN lock asks the account's PIN. Never switches a signed-in profile (409 phone_in_use).
+ * Each review sign-in is audited (ids only). → { ok, existing: true, user, locked: true }.
+ */
+async function reviewVerify(ctx) {
+  const { d, body, req, me } = ctx;
+  const phone = normalizePhone(body.phone);
+  const code = String(body.code ?? "").replace(/\D/g, "");
+  if (!phone || code.length !== 6) throw invalid("Enter the 6-digit code.", { field: "code" });
+  const now = Date.now();
+  const ip = clientIp(req);
+  const guesses = inWindowFor(ipGuesses, ip, now);
+  if (guesses.length >= IP_GUESSES) throw fail(429, "rate_limited", "Too many tries. Try again in 15 minutes.");
+  if (!reviewTries.take(phone, REVIEW_TRIES, now)) throw fail(429, "too_many_attempts", "Too many tries. Try again in 15 minutes.");
+  guesses.push(now); // both counted before any await, like verify-code
+  const giveBack = () => {
+    const k = guesses.indexOf(now);
+    if (k >= 0) guesses.splice(k, 1);
+    reviewTries.giveBack(phone, now);
+  };
+  const user = await reviewAccountFor(d, phone);
+  if (!user) {
+    giveBack(); // nothing was compared
+    throw fail(409, "review_off", "Review sign-in is off for this number.");
+  }
+  if (me && me._id !== user._id) {
+    giveBack();
+    throw phoneInUse();
+  }
+  const r = await checkReviewCode(d, code);
+  const audit = (extra) => d.collection("thirtyda_audit").insertOne({ at: new Date(), action: "review_signin", userId: user._id, ...extra }).catch(() => {});
+  if (!r.ok) {
+    await audit({ ok: false, reason: r.reason });
+    if (r.reason === "wrong") {
+      throw fail(400, "wrong_code", "That code is not right.", { attemptsLeft: reviewTries.left(phone, REVIEW_TRIES, now) });
+    }
+    throw fail(429, "too_many_attempts", "Too many tries. Ask for a new code.");
+  }
+  giveBack(); // a right code does not count
+  await startSession(ctx, {
+    userId: user._id, phone, phoneVerified: true, phoneVia: null, reviewSignin: true,
+    verified: { gmail: false, facebook: false, tiktok: false },
+  });
+  // The account's own PIN comes first (the PIN lock): locked, and no "new PIN without the old one".
+  await d.collection(C.sessions).updateOne({ _id: ctx.session._id }, { $set: { pinOk: false }, $unset: { pinResetUntil: "" } });
+  await audit({ ok: true });
+  return { ok: true, existing: true, user: meView(user), locked: true };
+}
+
 // ---------------------------------------------------------------- the free Telegram bot (owner 2026-10-13)
 
 const TG_STARTS = 30; // checks started per address per 15 minutes (loose, like send-code: NAT)
@@ -1144,6 +1234,7 @@ async function telegramStart(ctx) {
   const phone = normalizePhone(body.phone);
   if (!phone) throw invalid("That phone number does not look right.", { field: "phone" });
   const newPin = waitingPin(body);
+  await refuseReviewNumber(d, phone);
   const cfg = (await botOffered(d)) ? await botConfig(d) : null;
   if (!cfg) throw fail(503, "channel_unavailable", "Telegram is not available yet.", { channel: "telegram" });
   const now = Date.now();
@@ -1911,7 +2002,7 @@ async function heartbeat(ctx) {
   const { d, me } = ctx;
   await d.collection(C.users).updateOne({ _id: me._id }, { $set: { lastSeenAt: new Date() } });
   const pairs = await d.collection(C.pairs).find({ members: me._id }).sort({ updatedAt: -1 }).limit(100).toArray();
-  const views = await viewsFor(d, me, pairs.filter((p) => !hiddenFrom(p, me)));
+  const views = await viewsFor(d, me, await pairsInWorld(d, me, pairs.filter((p) => !hiddenFrom(p, me))));
   await syncLevel(d, me); // keeps users.level (the admin's column, the photo slots) on the pairs
   const actions = views.filter((v) => v.turn);
   return { actions, notices: unseenNotices(me) };
@@ -1925,7 +2016,7 @@ async function heartbeat(ctx) {
 async function pendingCount(ctx) {
   const { d, me } = ctx;
   const pairs = await d.collection(C.pairs).find({ members: me._id }).sort({ updatedAt: -1 }).limit(100).toArray();
-  const views = await viewsFor(d, me, pairs.filter((p) => !hiddenFrom(p, me)));
+  const views = await viewsFor(d, me, await pairsInWorld(d, me, pairs.filter((p) => !hiddenFrom(p, me))));
   return { count: views.filter((v) => v.turn).length };
 }
 
@@ -1941,10 +2032,12 @@ async function getPhoto(ctx) {
   const { d, me, params, res } = ctx;
   const id = params[0];
   if (!isPhotoId(id)) throw fail(404, "not_found", "No such photo.");
-  const owner = await d.collection(C.users).findOne({ photos: id }, { projection: { photos: 1, blocked: 1 } });
+  const owner = await d.collection(C.users).findOne({ photos: id }, { projection: { photos: 1, blocked: 1, demo: 1 } });
   // A blocked person has vanished: their photos go with them (as GET /people and Nearby already do).
   // A guest (no profile yet, the home screen before Create profile): photo 1 only, like any stranger.
   if (!owner || (owner.blocked && owner._id !== me?._id)) throw fail(404, "not_found", "No such photo.");
+  // App review accounts and real people (and guests) never see each other's photos.
+  if (owner._id !== me?._id && !sameWorld(me, owner)) throw fail(404, "not_found", "No such photo.");
   // Per person, bound to the slot: the owner sees all; anyone sees slot 1; slot 2 needs Level 2
   // opened together, slots 3–4 Level 3. Slots never move, so a photo keeps its level.
   const index = slotsOf(owner).indexOf(id);
@@ -1977,7 +2070,7 @@ async function nearby(ctx) {
         distanceField: "dist",
         maxDistance: km * 1000,
         spherical: true,
-        query: { _id: { $ne: me._id }, blocked: { $ne: true }, ...(gender ? { gender } : {}) },
+        query: { _id: { $ne: me._id }, blocked: { $ne: true }, ...worldFilter(me), ...(gender ? { gender } : {}) },
       },
     },
     { $limit: 300 },
@@ -2016,7 +2109,7 @@ async function guestNearby(ctx) {
         distanceField: "dist",
         maxDistance: km * 1000,
         spherical: true,
-        query: { blocked: { $ne: true }, ...(me ? { _id: { $ne: me._id } } : {}), ...(gender ? { gender } : {}) },
+        query: { blocked: { $ne: true }, ...worldFilter(me), ...(me ? { _id: { $ne: me._id } } : {}), ...(gender ? { gender } : {}) },
       },
     },
     { $limit: GUEST_LIMIT },
@@ -2037,6 +2130,7 @@ async function person(ctx) {
   const { d, me, params } = ctx;
   const u = await d.collection(C.users).findOne({ _id: params[0] });
   if (!u || (u.blocked && u._id !== me._id)) throw fail(404, "not_found", "This person is not here any more.");
+  if (u._id !== me._id && !sameWorld(me, u)) throw fail(404, "not_found", "This person is not here any more.");
   let pair = await d.collection(C.pairs).findOne({ members: { $all: [me._id, u._id] } });
   if (pair && hiddenFrom(pair, me)) pair = null;
   const view = pair && u._id !== me._id ? await viewOf(d, me, pair) : null;
@@ -2071,8 +2165,8 @@ async function createPair(ctx) {
   const { d, me, body } = ctx;
   const to = String(body.to ?? "");
   if (!/^U-\d+$/.test(to) || to === me._id) throw invalid("Choose someone to talk to.", { field: "to" });
-  const other = await d.collection(C.users).findOne({ _id: to }, { projection: { blocked: 1 } });
-  if (!other || other.blocked) throw fail(404, "not_found", "This person is not here any more.");
+  const other = await d.collection(C.users).findOne({ _id: to }, { projection: { blocked: 1, demo: 1 } });
+  if (!other || other.blocked || !sameWorld(me, other)) throw fail(404, "not_found", "This person is not here any more.");
 
   const pairs = d.collection(C.pairs);
   const key = [me._id, to].sort().join("|");
@@ -2104,7 +2198,7 @@ async function createPair(ctx) {
 async function listPairs(ctx) {
   const { d, me } = ctx;
   const pairs = await d.collection(C.pairs).find({ members: me._id }).toArray();
-  const views = await viewsFor(d, me, pairs.filter((p) => !hiddenFrom(p, me)));
+  const views = await viewsFor(d, me, await pairsInWorld(d, me, pairs.filter((p) => !hiddenFrom(p, me))));
   views.sort((x, y) => String(y.updatedAt).localeCompare(String(x.updatedAt)));
   return { pairs: views };
 }
@@ -2885,6 +2979,9 @@ const ROUTES = [
   // The free Telegram bot: start a check, then ask from the same browser until Telegram has the number.
   ["POST", /^\/auth\/telegram\/start$/, telegramStart, { auth: "none" }],
   ["GET", /^\/auth\/telegram\/status$/, telegramStatus, { auth: "none" }],
+  // App review (src/lib/thirtyda-review.mjs): does this number use the review code; then the code signs in (locked).
+  ["POST", /^\/auth\/review\/check$/, reviewCheck, { auth: "none" }],
+  ["POST", /^\/auth\/review\/verify$/, reviewVerify, { auth: "none" }],
   // The native apps (src/lib/thirtyda-signin.mjs): the web view begins a sign-in for its sheet (binder cookie + the
   // provider's address), then claims what the sheet did (a redirect, never JSON; the web callback's own lock rules).
   ["POST", /^\/auth\/app\/begin$/, appBegin, { auth: "none", blockedOk: true }],

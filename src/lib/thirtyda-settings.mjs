@@ -27,8 +27,8 @@
 import crypto from "node:crypto";
 
 export const SETTINGS_COLLECTION = "thirtyda_settings";
-/** Settings that hold ONE secret string (saveSecret / readSecret). */
-export const SECRET_NAMES = ["telegram"];
+/** Settings that hold ONE secret string (saveSecret / readSecret). review_code: the App review sign-in code (thirtyda-review.mjs). */
+export const SECRET_NAMES = ["telegram", "review_code"];
 /**
  * Settings that hold several fields in one sealed box (saveFields / readFields); secret:true → shown as last 4 only;
  * secret + hidden → never shown at all, not even its last 4 (the Telegram bot's webhook secret).

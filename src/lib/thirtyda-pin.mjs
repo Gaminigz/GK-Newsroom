@@ -206,6 +206,8 @@ export function whileLocked(method, sub) {
   // The native apps (src/lib/thirtyda-signin.mjs): begin a sign-in for the app's sheet, and claim what it did — the
   // claim applies the web callback's own lock rule to the session.
   if ((method === "POST" && path === "/auth/app/begin") || (method === "GET" && path === "/auth/app")) return "signin";
+  // App review (src/lib/thirtyda-review.mjs): the review code signs in like a code (its check says yes / no only: 'open').
+  if (method === "POST" && path === "/auth/review/verify") return "signin";
   if (/^\/auth\//.test(path)) return "open";
   if (method === "POST" && /^\/me\/(lock|unlock|pin|pin\/forgot)$/.test(path)) return "open";
   if (passiveCall(method, path)) return "open";

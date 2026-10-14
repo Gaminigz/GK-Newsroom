@@ -78,6 +78,8 @@ function render() {
   $('s-l3').textContent = d.stats.level3Chats;
   $('s-flags').textContent = d.stats.openFlags;
   $('s-blocked').textContent = d.stats.blocked;
+  // App review accounts are counted on their own (not in Online now / Level 3 chats).
+  $('s-review').textContent = d.stats.reviewAccounts ? `${d.stats.reviewAccounts} App review accounts (not counted above)` : '';
   $('q-count').textContent = d.stats.openFlags;
   $('nav-badge').textContent = d.stats.openFlags;
   $('nav-badge').hidden = !d.stats.openFlags;
@@ -117,7 +119,7 @@ function renderUsers() {
   $('user-rows').innerHTML = rows.map((u) => {
     const status = u.blocked ? 'blocked' : u.presence;
     return `<tr class="${u.blocked ? 'is-blocked' : ''}">
-      <td><span class="who">${avatar}<span><b>${esc(u.name)}</b><small>${esc(u.id)}</small></span></span></td>
+      <td><span class="who">${avatar}<span><b>${esc(u.name)}${u.review ? ' <span class="tag">App review</span>' : ''}</b><small>${esc(u.id)}</small></span></span></td>
       <td>${levelBars(u.level)}</td>
       <td class="born">${Number.isInteger(u.birthYear) ? u.birthYear : '<span class="muted">–</span>'}</td>
       <td>${esc(u.language)}</td>

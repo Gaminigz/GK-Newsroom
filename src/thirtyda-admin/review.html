@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>App review · 30+DA Super admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..900&family=JetBrains+Mono:wght@400..600&display=swap">
+  <link rel="stylesheet" href="/30da/admin/app.css">
+  <link rel="stylesheet" href="/30da/admin/review.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-row">
+      <span class="wordmark">30+DA</span>
+      <span class="pill">Super admin</span>
+    </div>
+    <button class="link signout" id="signout" type="button">Sign out</button>
+  </header>
+
+  <div class="shell">
+    <nav class="sidenav" aria-label="Sections">
+      <a class="navitem" href="/30da/admin/monitor">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="4.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="8" y="1.5" width="4.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="1.5" y="8" width="4.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="8" y="8" width="4.5" height="4.5" rx="1" stroke="currentColor" stroke-width="1.3"/></svg>
+        Live overview
+      </a>
+      <a class="navitem" href="/30da/admin/monitor#users">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="5" cy="4.5" r="2.3" stroke="currentColor" stroke-width="1.3"/><path d="M1 12c.4-2.2 2-3.4 4-3.4s3.6 1.2 4 3.4M9.5 2.4a2.2 2.2 0 0 1 0 4.2M10.8 8.8c1.2.4 2 1.5 2.2 3.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        Users
+      </a>
+      <a class="navitem" href="/30da/admin/monitor#monitor">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 11.8 2.8 9A5 5 0 1 1 5 11.3L2 11.8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        Chat monitor
+      </a>
+      <a class="navitem" href="/30da/admin/questions">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5.6" stroke="currentColor" stroke-width="1.3"/><path d="M5.4 5.5a1.7 1.7 0 1 1 2.4 1.5c-.5.3-.8.6-.8 1.2v.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="10.2" r=".75" fill="currentColor"/></svg>
+        Questions
+      </a>
+      <a class="navitem" href="/30da/admin/connections">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="4.6" cy="9.4" r="2.7" stroke="currentColor" stroke-width="1.3"/><path d="M6.5 7.5 12.2 1.8M10.4 3.6l1.5 1.5M8.8 5.2l1.2 1.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        Code
+      </a>
+      <a class="navitem" href="/30da/admin/support">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5.6" stroke="currentColor" stroke-width="1.3"/><circle cx="7" cy="7" r="2.3" stroke="currentColor" stroke-width="1.3"/><path d="m3 3 2.4 2.4M11 3 8.6 5.4M3 11l2.4-2.4M11 11 8.6 8.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        Support
+        <span class="badge" id="support-badge" hidden></span>
+      </a>
+      <a class="navitem active" href="/30da/admin/review" aria-current="page">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="3.2" y="1.2" width="7.6" height="11.6" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="m5.2 7 1.3 1.3 2.4-2.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        App review
+      </a>
+    </nav>
+
+    <main class="main rv-page">
+      <div class="head">
+        <h1>App review</h1>
+        <span class="label" id="state">Loading…</span>
+      </div>
+      <p class="rv-lede">
+        Demo accounts for the App Store and Google Play reviewers. They sign in with a mock number and one review code
+        (no Telegram needed), then the account's PIN. Review accounts see only each other; real people never see them.
+      </p>
+
+      <div class="rv-top">
+        <section class="panel rv-switch-panel" aria-labelledby="sw-title">
+          <div class="panel-head">
+            <h2 id="sw-title">Review sign-in</h2>
+            <span class="rv-pill" id="sw-pill">…</span>
+          </div>
+          <p class="rv-help" id="sw-help"></p>
+          <button type="button" class="btn" id="sw-btn" disabled>…</button>
+        </section>
+
+        <section class="panel rv-code-panel" aria-labelledby="code-title">
+          <div class="panel-head">
+            <h2 id="code-title">Review code</h2>
+            <span class="label" id="code-when"></span>
+          </div>
+          <div class="rv-code-row">
+            <output class="rv-code" id="code" aria-live="polite">––––––</output>
+            <button type="button" class="link" id="code-copy" hidden>Copy</button>
+          </div>
+          <p class="rv-help" id="code-help"></p>
+          <button type="button" class="btn" id="code-new">New code</button>
+        </section>
+      </div>
+
+      <section class="panel rv-notes-panel" aria-labelledby="notes-title">
+        <div class="panel-head">
+          <h2 id="notes-title">For App Store Connect / Play Console (review notes)</h2>
+          <button type="button" class="btn" id="notes-copy">Copy text</button>
+        </div>
+        <textarea class="input rv-notes" id="notes" rows="14" readonly aria-label="Review notes text"></textarea>
+      </section>
+
+      <section class="panel" aria-labelledby="acc-title">
+        <div class="panel-head">
+          <h2 id="acc-title">Review accounts</h2>
+          <span class="label" id="acc-count"></span>
+        </div>
+        <ul class="rv-accounts" id="accounts"></ul>
+        <p class="empty" id="no-accounts" hidden>No review account yet. Pick a profile below: "Use as review account".</p>
+      </section>
+
+      <section class="panel" aria-labelledby="all-title">
+        <div class="panel-head">
+          <h2 id="all-title">All profiles</h2>
+          <span class="label" id="all-count"></span>
+        </div>
+        <div class="table-wrap">
+          <table class="rv-table">
+            <thead>
+              <tr>
+                <th scope="col">Profile</th>
+                <th scope="col">Created</th>
+                <th scope="col">Level</th>
+                <th scope="col">Photos</th>
+                <th scope="col">Born</th>
+                <th scope="col">Verified</th>
+                <th scope="col">Kind</th>
+                <th scope="col"><span class="rv-sr">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody id="profiles"></tbody>
+          </table>
+        </div>
+        <p class="empty" id="no-profiles" hidden>No profiles.</p>
+      </section>
+    </main>
+  </div>
+
+  <dialog class="rv-dialog" id="form-dialog" aria-labelledby="form-title">
+    <form method="dialog" id="form" novalidate>
+      <h2 id="form-title">Use as review account</h2>
+      <p class="rv-help" id="form-who"></p>
+      <label class="field">
+        <span class="label">Mock phone number</span>
+        <input class="input" id="form-phone" type="tel" autocomplete="off" required>
+      </label>
+      <label class="field">
+        <span class="label">The account's PIN (4 digits)</span>
+        <input class="input" id="form-pin" type="text" inputmode="numeric" maxlength="4" autocomplete="off" required>
+      </label>
+      <p class="rv-help">Photos, birth year, level and conversations stay as they are. The number and PIN replace the profile's own until "Stop being a review account".</p>
+      <p class="form-error" id="form-error" role="alert" hidden></p>
+      <div class="rv-dialog-actions">
+        <button type="button" class="link" id="form-cancel">Cancel</button>
+        <button type="submit" class="btn-primary rv-save" id="form-save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script src="/30da/admin/support-badge.js" defer></script>
+  <script type="module" src="/30da/admin/review.js"></script>
+</body>
+</html>

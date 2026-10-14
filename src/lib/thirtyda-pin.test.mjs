@@ -208,6 +208,8 @@ const SAMPLES = [
   ['GET', '/auth/telegram/status', 'signin'],
   ['POST', '/auth/app/begin', 'signin'], // the native apps: begin a sign-in for the app's sheet
   ['GET', '/auth/app', 'signin'], // …and claim it (the web callback's own lock rule)
+  ['POST', '/auth/review/check', 'open'], // App review: does this number use the review code (yes / no only)
+  ['POST', '/auth/review/verify', 'signin'], // …the review code signs in like a code (as if signed out)
   ['POST', '/auth/signout', 'open'],
   ['POST', '/profile', null],
   ['GET', '/me', null],
@@ -266,6 +268,8 @@ test('423 gate: wrong methods and look-alike paths are not let through', () => {
   assert.equal(whileLocked('GET', '/auth/send-code'), 'open', 'not a real route (404 anyway), and not a sign-in');
   assert.equal(whileLocked('POST', ''), null);
   assert.equal(whileLocked('POST', undefined), null);
+  assert.equal(whileLocked('GET', '/auth/review/verify'), 'open', 'not a real route (404 anyway), and not a sign-in');
+  assert.equal(whileLocked('POST', '/auth/review/verify/x'), 'open', 'not a real route (404 anyway), and not a sign-in');
 });
 
 // ---------------------------------------------------------------- set / change

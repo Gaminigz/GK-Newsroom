@@ -331,6 +331,8 @@ registerStrings({
     cp_tg_safe: 'Safe: GKVerify (@ThirtyDa_bot) never messages you first and never asks for money, card details, passwords or codes.',
     cp_tg_expired: 'That took too long. Tap Telegram to try again.',
     cp_tg_match: 'Telegram shows the same sign:',
+    cp_review_code: 'Enter the review code',
+    cp_review_off: 'Review sign-in is off now. Tap the app again.',
   },
   km: {
     cp_tg_open_it: 'បើក Telegram',
@@ -342,6 +344,8 @@ registerStrings({
     cp_tg_safe: 'សុវត្ថិភាព៖ GKVerify (@ThirtyDa_bot) មិនដែលផ្ញើសារមកអ្នកមុន ហើយមិនដែលសុំលុយ ព័ត៌មានកាត ពាក្យសម្ងាត់ ឬលេខកូដឡើយ។',
     cp_tg_expired: 'ចំណាយពេលយូរពេក។ សូមចុច Telegram ដើម្បីសាកម្ដងទៀត។',
     cp_tg_match: 'Telegram បង្ហាញសញ្ញាដូចគ្នា៖',
+    cp_review_code: 'បញ្ចូលលេខកូដពិនិត្យ',
+    cp_review_off: 'ការចូលសម្រាប់ពិនិត្យត្រូវបានបិទ។ សូមចុចកម្មវិធីម្ដងទៀត។',
   },
   zh: {
     cp_tg_open_it: '打开 Telegram',
@@ -353,6 +357,8 @@ registerStrings({
     cp_tg_safe: '放心：GKVerify（@ThirtyDa_bot）从不主动给你发消息，也从不索要钱、银行卡信息、密码或验证码。',
     cp_tg_expired: '时间太久了。请再点一次 Telegram。',
     cp_tg_match: 'Telegram 会显示同样的标记：',
+    cp_review_code: '输入审核码',
+    cp_review_off: '审核登录已关闭。请再点一次应用。',
   },
   ko: {
     cp_tg_open_it: 'Telegram 열기',
@@ -364,6 +370,8 @@ registerStrings({
     cp_tg_safe: '안심하세요: GKVerify(@ThirtyDa_bot)는 먼저 메시지를 보내지 않고, 돈·카드 정보·비밀번호·코드를 절대 묻지 않아요.',
     cp_tg_expired: '시간이 너무 지났어요. Telegram을 다시 눌러 주세요.',
     cp_tg_match: 'Telegram에도 같은 표시가 나와요:',
+    cp_review_code: '심사 코드를 입력하세요',
+    cp_review_off: '심사용 로그인이 꺼졌어요. 앱을 다시 눌러 주세요.',
   },
   ja: {
     cp_tg_open_it: 'Telegram を開く',
@@ -375,6 +383,8 @@ registerStrings({
     cp_tg_safe: '安心：GKVerify（@ThirtyDa_bot）から先にメッセージを送ることはなく、お金・カード情報・パスワード・コードを聞くこともありません。',
     cp_tg_expired: '時間がかかりすぎました。もう一度 Telegram を押してください。',
     cp_tg_match: 'Telegram にも同じマークが出ます：',
+    cp_review_code: '審査用コードを入力してください',
+    cp_review_off: '審査用ログインはオフになりました。もう一度アプリを押してください。',
   },
 });
 
@@ -429,6 +439,11 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
   let methodsReady = null; // that call (set at the end): a tap before it answered waits for it
   let numberFlagged = false; // the error shown is flagNumber's: it goes as soon as the number is edited
   let alive = true;
+  // App review (src/lib/thirtyda-review.mjs): a review account's mock number gets a 6-digit review code box instead of
+  // Telegram / a code / Google… (only while the admin's "Review sign-in" is ON: GET /auth/methods → review: true).
+  model.review ||= null; // { phone } while the box is up
+  let reviewEl = null;
+  let reviewChecking = false;
 
   // An optional action (e.g. "Send by WhatsApp") sits right after the message.
   const showError = (text, action = null) => {
@@ -482,6 +497,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     if (sending || model.verified) return;
     if (!methodsAsked) await methodsReady; // which Telegram it is (the bot or codes): known in a moment
     if (!alive || sending) return;
+    if (await reviewFirst()) return;
     if (!codeOn(key)) {
       showError(null);
       showNote(t(otherWorks(key) ? 'cp_ch_off' : 'cp_ch_off_only', { channel: channelName(key), other: channelName(otherChannel(key)) }));
@@ -508,6 +524,8 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
 
   async function signIn(provider, key, name) {
     if (signingIn || signin?.verified?.()[key]) return;
+    if (!methodsAsked) await methodsReady;
+    if (!alive || signingIn || await reviewFirst()) return;
     showError(null);
     if (!signinOn(provider)) return showNote(signinSoonText(name));
     // One way at a time (owner): picking Google / Facebook / TikTok replaces a Telegram wait still on screen.
@@ -560,6 +578,86 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     render();
   }
 
+  /**
+   * App review: with "Review sign-in" ON, a tap on any way first asks whether the number typed is a review account's
+   * (POST /auth/review/check). Yes → the review code box, nothing else starts. → true when the box is up.
+   */
+  async function reviewFirst() {
+    if (!cpLayout || methods?.review !== true || reviewChecking) return Boolean(model.review);
+    const phone = fullPhone(model);
+    if (!phone) return false;
+    if (model.review?.phone === phone) { reviewEl?.querySelector('input')?.focus(); return true; }
+    reviewChecking = true;
+    try {
+      const r = await api.post('/auth/review/check', { phone }, { redirect: false });
+      if (!r.review || !alive) return false;
+      openReview(phone);
+      return true;
+    } catch {
+      return false; // unknown: the normal way (the server still answers a review number with review_code)
+    } finally {
+      reviewChecking = false;
+    }
+  }
+
+  function openReview(phone) {
+    if (model.tg) endTelegram();
+    Object.assign(model, { review: { phone }, codeSent: false, devCode: null, code: '', live: false, sentBy: null });
+    showError(null);
+    showNote(null);
+    render();
+    reviewEl?.querySelector('input')?.focus();
+  }
+
+  async function checkReview(input) {
+    if (checking || !model.review) return;
+    checking = true;
+    input.readOnly = true;
+    const { phone } = model.review;
+    try {
+      const r = await api.post('/auth/review/verify', { phone, code: input.value }, { redirect: false });
+      // The account keeps its own PIN: the PIN that waited on this phone is not used (the lock asks the account's).
+      clearPinFlags();
+      Object.assign(model, { review: null, verified: true, verifiedPhone: r.user?.phone || phone, verifiedBy: null, failed: [] });
+      showError(null);
+      render();
+      onChange?.();
+      onVerified?.(r);
+    } catch (err) {
+      input.value = '';
+      input.readOnly = false;
+      if (err.code === 'review_off') {
+        model.review = null;
+        render();
+        showNote(t('cp_review_off'));
+      } else {
+        showError(verifyErrorText(err));
+        input.focus();
+      }
+    } finally {
+      checking = false;
+    }
+  }
+
+  /** The review code box (App review): one 6-digit field under the buttons. */
+  function reviewBox() {
+    reviewEl = null;
+    if (!model.review) return null;
+    const input = el('input', {
+      class: 'input code', type: 'text', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: '6',
+      placeholder: t('cp_code_ph'), 'aria-label': t('cp_review_code'),
+      on: {
+        input: () => {
+          input.value = input.value.replace(/\D/g, '').slice(0, 6);
+          if (input.value.length === 6) checkReview(input);
+        },
+      },
+    });
+    reviewEl = el('div', { class: 'stack review-box', style: { '--gap': '8px' } },
+      el('p', { class: 'help' }, t('cp_review_code')), el('div', { class: 'code-row' }, input));
+    return reviewEl;
+  }
+
   async function send() {
     if (sending) return;
     if (model.channel === 'telegram' && botMode()) return startTelegram();
@@ -570,6 +668,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     showNote(null);
     render();
     let sent = false;
+    let review = false;
     try {
       const r = await api.post('/auth/send-code', { phone, channel });
       Object.assign(model, {
@@ -580,13 +679,16 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
       showError(null);
       sent = true;
     } catch (err) {
+      review = err.code === 'review_code'; // App review: this number uses the review code (the box below)
+      if (review) return;
       if (err.code === 'too_soon' && model.codeSent) model.resendAt = Date.now() + (Number(err.data?.resendIn) || 30) * 1000;
       const channelProblem = err.code === 'channel_failed' || err.code === 'channel_unavailable';
       if (channelProblem && !model.failed.includes(channel)) model.failed.push(channel);
       showError(sendErrorText(err, channel, otherWorks(channel)), channelProblem ? offerOther(channel) : null);
     } finally {
       sending = false;
-      render();
+      if (review) openReview(phone);
+      else render();
     }
     if (sent) codeEl?.focus();
   }
@@ -630,6 +732,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     if (model.tg?.phone === phone && model.tg.until > Date.now()) return openTelegram(model.tg.link);
     endTelegram();
     sending = true;
+    let review = false;
     showError(null);
     showNote(null);
     render();
@@ -643,12 +746,15 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
       openTelegram(r.link);
       waitForTelegram(Number(r.pollMs) || 2000);
     } catch (err) {
+      review = err.code === 'review_code'; // App review: this number uses the review code (the box below)
+      if (review) return;
       const off = err.code === 'channel_unavailable';
       if (off && !model.failed.includes('telegram')) model.failed.push('telegram');
       showError(sendErrorText(err, 'telegram', otherWorks('telegram')), off ? offerOther('telegram') : null);
     } finally {
       sending = false;
-      render();
+      if (review) openReview(phone);
+      else render();
     }
   }
 
@@ -792,6 +898,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
    * they open) or "Check WhatsApp for your code.". Brand names stay in Latin letters. '' = no line (hidden).
    */
   function stepText() {
+    if (model.review) return '';
     const signinName = SIGN_INS.find(([provider]) => provider === signingIn)?.[2];
     if (signinName) return t('cp_check_next', { app: signinName });
     if (model.tg) return t('cp_check_next', { app: channelName('telegram') });
@@ -866,6 +973,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
           if (model.tg && fullPhone(model) !== model.tg.phone) { endTelegram(); if (tgEl) tgEl.hidden = true; }
           if (model.codeSent && fullPhone(model) !== model.sentTo) Object.assign(model, { codeSent: false, devCode: null, code: '', live: false, sentBy: null });
           codeBox.hidden = !model.codeSent;
+          if (model.review && fullPhone(model) !== model.review.phone) { model.review = null; if (reviewEl) reviewEl.hidden = true; }
           // Nothing under way for this number any more: "Tap the app you want to verify with." again, no ring.
           if (step && stepText() !== said) {
             step.textContent = stepText();
@@ -917,13 +1025,14 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     const phoneRow = el('div', { class: 'phone-row' }, ccSel, phoneInput);
     // While it waits for Telegram (the free bot): its box under "Check Telegram for the next step.".
     const tgBox = tgWaitBox();
+    const rvBox = reviewBox();
     // Create profile: the number first (right under the label), then the round buttons, then the one line.
-    if (cpLayout) node.replaceChildren(...[phoneRow, waysRow(), hint, note, codeBox, tgBox, error].filter(Boolean));
+    if (cpLayout) node.replaceChildren(...[phoneRow, waysRow(), hint, note, codeBox, rvBox, tgBox, error].filter(Boolean));
     else {
       // #/me and the "Verify to chat" sheet too (owner 2026-10-13): the number on top, the apps under it.
       node.replaceChildren(...[phoneSoon
         ? el('p', { class: 'way-hint way-soon', role: 'note' }, t('cp_phone_soon'))
-        : phoneRow, waysRow(), phoneSoon ? null : hint, note, codeBox, tgBox, error].filter(Boolean));
+        : phoneRow, waysRow(), phoneSoon ? null : hint, note, codeBox, rvBox, tgBox, error].filter(Boolean));
     }
   }
 

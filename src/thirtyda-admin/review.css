@@ -1,0 +1,53 @@
+/* 30+DA admin · App review (review.html). Uses the tokens and panels of app.css. */
+.rv-page { display: flex; flex-direction: column; gap: 16px; }
+.rv-page .head { margin-bottom: 0; }
+.rv-lede { margin: 0; max-width: 760px; color: var(--muted); line-height: 1.5; }
+.rv-help { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.rv-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.rv-top { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.rv-pill { font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 999px; background: #eef1f6; color: var(--muted); }
+.rv-pill.on { background: #e3f5ea; color: var(--green); }
+.rv-switch-panel.is-off { outline: 2px solid var(--amber); outline-offset: -2px; }
+.btn.on { background: var(--navy); color: #fff; }
+
+.rv-code-row { display: flex; align-items: baseline; gap: 14px; margin-bottom: 8px; }
+.rv-code { font-family: var(--mono); font-size: 30px; font-weight: 600; letter-spacing: 0.18em; }
+.rv-code.is-blocked { color: var(--red); text-decoration: line-through; }
+
+.rv-notes { width: 100%; height: auto; min-height: 260px; padding: 12px; font-family: var(--mono); font-size: 12px; line-height: 1.55; resize: vertical; }
+
+.rv-accounts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.rv-account { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.rv-account-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.rv-account-head b { font-size: 15px; font-weight: 800; }
+.rv-account-head small { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.rv-facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 12px; }
+.rv-facts dt { color: var(--muted); }
+.rv-facts dd { margin: 0; font-weight: 600; }
+.rv-mono { font-family: var(--mono); }
+.rv-warn { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.rv-warn li { font-size: 11px; font-weight: 700; color: #8a4b00; background: #fdf1df; border-radius: 4px; padding: 3px 7px; }
+.rv-actions { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; }
+.rv-actions .danger, .rv-table .danger { color: var(--red); }
+
+.rv-table td.rv-num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.rv-table td.rv-ways { white-space: normal; min-width: 120px; }
+.rv-way { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: #eef1f6; margin: 1px 3px 1px 0; }
+.rv-kind { font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 4px; background: #eef1f6; }
+.rv-kind.review { background: var(--navy); color: #fff; }
+.rv-table td.rv-acts { white-space: normal; min-width: 120px; }
+.rv-table .row-actions { justify-content: flex-end; flex-wrap: wrap; gap: 4px 12px; text-align: right; }
+.rv-table .link { font-size: 12px; }
+.muted { color: var(--muted); }
+
+.rv-dialog { border: 0; border-radius: 10px; padding: 20px; width: min(420px, calc(100vw - 32px)); box-shadow: 0 20px 60px rgba(11, 28, 63, 0.25); }
+.rv-dialog::backdrop { background: rgba(11, 28, 63, 0.35); }
+.rv-dialog h2 { margin: 0 0 6px; font-size: 17px; font-weight: 900; }
+.rv-dialog .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.rv-dialog-actions { display: flex; justify-content: flex-end; align-items: center; gap: 16px; }
+.rv-save { width: auto; padding: 0 22px; margin-top: 0; }
+
+@media (max-width: 820px) {
+  .rv-top { grid-template-columns: 1fr; }
+}

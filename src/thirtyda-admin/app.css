@@ -241,6 +241,8 @@ a.navitem { text-decoration: none; color: inherit; }
 .stat.dark .label { color: #c9d1e6; }
 .stat.alert { background: var(--red-soft); }
 .stat.alert .label, .stat.alert .num { color: var(--red); }
+.stats .review-note { grid-column: 1 / -1; margin-top: -4px; color: var(--muted); text-decoration: none; }
+.stats .review-note:empty { display: none; }
 
 .cols { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
 .panel { background: var(--card); border-radius: var(--radius); padding: 16px; min-width: 0; }

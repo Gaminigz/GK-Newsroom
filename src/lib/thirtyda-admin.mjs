@@ -38,6 +38,14 @@
  *   GET  /30da/admin/api/support/:chatId      { chat, messages } — opening it marks it read
  *   POST /30da/admin/api/support/:chatId/reply { text } → the bot sends it to that chat (plain text ≤ 2000) and it is kept;
  *        Telegram refusing (they blocked the bot) comes back in plain words. Audited with ids and lengths only, never text.
+ *   GET  /30da/admin/review                   App review: demo accounts for the App Store / Google Play reviewers
+ *   GET  /30da/admin/api/review               { on, code, accounts, profiles, notes, … } (src/lib/thirtyda-review.mjs reviewView)
+ *   POST /30da/admin/api/review/switch        { on } "Review sign-in" ON / OFF
+ *   POST /30da/admin/api/review/code          New code (6 digits, sealed)
+ *   POST /30da/admin/api/review/accounts/:id  { phone, pin } "Use as review account" (or save it again)
+ *   POST /30da/admin/api/review/accounts/:id/stop   "Stop being a review account"
+ *   POST /30da/admin/api/review/profiles/:id/remove { confirm: id } "Remove": the whole account (thirtyda-delete.mjs deleteAccount)
+ *        Every answer is the page's fresh data. Audited with ids only (never a number, a PIN or the code).
  *
  * Secrets (src/lib/thirtyda-settings.mjs) are sealed with THIRTYDA_SECRET_KEY and never sent back:
  * only { set, last4, updatedAt, updatedBy }. The audit log never carries them either.
@@ -75,6 +83,10 @@ import {
 } from "./thirtyda-support.mjs";
 import { tryResultPage, requestLang } from "./thirtyda-pages.mjs";
 import { normalizePhone } from "./thirtyda-app.mjs";
+import {
+  reviewView, setReviewSwitch, newReviewCode, makeReviewAccount, stopReviewAccount, ReviewError, isReview,
+} from "./thirtyda-review.mjs";
+import { deleteAccount } from "./thirtyda-delete.mjs";
 import { QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS } from "../thirtyda-app/shared/question-slots.js";
 
 const BASE = "/30da/admin";
@@ -137,17 +149,22 @@ async function overview() {
   const byId = new Map(users.map((u) => [u.id, u]));
   const open = flags.filter((f) => f.status === "open").sort((a, b) => b.at.localeCompare(a.at));
   const live = users.filter((u) => !u.blocked);
+  // App review accounts (src/lib/thirtyda-review.mjs) are counted on their own, never in the real numbers.
+  const real = live.filter((u) => !isReview(u));
   return {
     updatedAt: new Date().toISOString(),
     stats: {
-      online: live.filter((u) => u.presence === "online").length,
-      level3Chats: chats.filter((c) => c.level === 3 && !byId.get(c.a)?.blocked && !byId.get(c.b)?.blocked).length,
+      online: real.filter((u) => u.presence === "online").length,
+      level3Chats: chats.filter((c) => c.level === 3 && !byId.get(c.a)?.blocked && !byId.get(c.b)?.blocked && !isReview(byId.get(c.a)) && !isReview(byId.get(c.b))).length,
       openFlags: open.length,
       blocked: users.length - live.length,
+      reviewAccounts: users.filter(isReview).length,
     },
-    // The PIN's hash and its wrong-try count never leave the server (the admin sees only whether one is set).
-    users: users.map(({ blockResolved, location, locOffset, locMoves, locAt, notices, pinHash, pinAt, pinTries, ...u }) => ({
+    // The PIN's hash and its wrong-try count never leave the server (the admin sees only whether one is set); nor does
+    // a review account's sealed PIN or the number it had before.
+    users: users.map(({ blockResolved, location, locOffset, locMoves, locAt, notices, pinHash, pinAt, pinTries, reviewPinBox, reviewWas, ...u }) => ({
       ...u,
+      review: isReview(u),
       pinSet: Boolean(pinHash),
       openFlags: open.filter((f) => f.from === u.id).length,
     })),
@@ -475,11 +492,57 @@ async function telegramBotRoute(req, res, isTry) {
   return json(res, 200, await connectionsView(d, req));
 }
 
+/**
+ * The App review page's writes (signed in, same-origin JSON: checked before this). Every answer is the page's fresh
+ * data; refusals are { error } in plain words. The audit carries ids and on/off only.
+ */
+async function reviewRoute(req, res, m) {
+  if (writeLimited(req)) {
+    req.resume();
+    return json(res, 429, { error: "Too many changes. Try again in a few minutes." });
+  }
+  const body = await readJsonBody(req, 1e4);
+  if (body.tooLarge || body.bad) return json(res, 400, { error: "Send JSON." });
+  const v = body.value;
+  const d = await db();
+  try {
+    if (m[1] === "switch") {
+      if (typeof v.on !== "boolean") return json(res, 400, { error: "Send { on: true | false }." });
+      await setReviewSwitch(d, v.on);
+      await audit(req, "review_switch", { on: v.on });
+    } else if (m[1] === "code") {
+      await newReviewCode(d);
+      await audit(req, "review_code_new");
+    } else if (m[2] && m[3]) {
+      const r = await stopReviewAccount(d, m[2]);
+      await audit(req, "review_account_stop", { user: m[2], sessionsEnded: r.sessionsEnded });
+    } else if (m[2]) {
+      const phone = normalizePhone(v.phone);
+      await makeReviewAccount(d, m[2], { phone, pin: typeof v.pin === "string" || typeof v.pin === "number" ? String(v.pin) : "" });
+      await audit(req, "review_account_save", { user: m[2] });
+    } else {
+      const id = m[4];
+      if (v.confirm !== id) return json(res, 400, { error: `Confirm with the profile's id (${id}).` });
+      const u = await d.collection("thirtyda_users").findOne({ _id: id }, { projection: { _id: 1 } });
+      if (!u) return json(res, 404, { error: "There is no such profile (it may be removed already)." });
+      await deleteAccount(d, id);
+      await audit(req, "review_profile_remove", { user: id });
+    }
+  } catch (err) {
+    if (err instanceof ReviewError) return json(res, err.status, { error: err.message, reason: err.code });
+    if (err instanceof SettingsError && err.code === "no_key") {
+      return json(res, 503, { error: "The server's lock key is missing, so the code cannot be kept. Ask your developer to set it.", reason: "no_key" });
+    }
+    throw err;
+  }
+  return json(res, 200, await reviewView(d));
+}
+
 export async function handleThirtyDaAdmin(req, res, url) {
   const path = url.pathname.replace(/\/+$/, "") || "/";
   const sub = path.slice(BASE.length) || "/";
 
-  const asset = sub.match(/^\/(app\.css|signin\.js|monitor\.js|questions\.js|connections\.js|support\.js|support\.css|support-badge\.js)$/);
+  const asset = sub.match(/^\/(app\.css|signin\.js|monitor\.js|questions\.js|connections\.js|support\.js|support\.css|support-badge\.js|review\.js|review\.css)$/);
   if (req.method === "GET" && asset) return serveFile(res, asset[1]);
 
   if (req.method !== "GET" && req.method !== "HEAD" && sub.startsWith("/api/")) {
@@ -543,6 +606,11 @@ export async function handleThirtyDaAdmin(req, res, url) {
     if (!me) return send(res, 302, "", { Location: BASE });
     await audit(req, "view_support");
     return serveFile(res, "support.html");
+  }
+  if (req.method === "GET" && sub === "/review") {
+    if (!me) return send(res, 302, "", { Location: BASE });
+    await audit(req, "view_review");
+    return serveFile(res, "review.html");
   }
 
   // "Try sign-in" (Google / Facebook / TikTok card): opened in a new tab, so it answers with pages and redirects, not JSON.
@@ -747,6 +815,11 @@ export async function handleThirtyDaAdmin(req, res, url) {
     if (!r.ok) return json(res, r.status, { error: r.error, reason: r.reason });
     return json(res, 200, { ok: true, message: r.message, ...(await supportThread(d, chatId, { markRead: false })) });
   }
+
+  // App review (src/lib/thirtyda-review.mjs): demo accounts for the App Store / Google Play reviewers.
+  if (req.method === "GET" && sub === "/api/review") return json(res, 200, await reviewView(await db()));
+  m = sub.match(/^\/api\/review\/(switch|code|accounts\/(U-\d+)(\/stop)?|profiles\/(U-\d+)\/remove)$/);
+  if (req.method === "POST" && m) return reviewRoute(req, res, m);
 
   m = sub.match(/^\/api\/users\/(U-\d+)\/(block|unblock)$/);
   if (req.method === "POST" && m) {
