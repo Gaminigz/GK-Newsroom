@@ -429,6 +429,11 @@ function reviewSheet() {
       }
       activity.lastInputAt = Date.now();
       go('/nearby', { replace: true });
+      // Boot fresh as the demo account (Android 2026-10-14: Nearby kept the guest's empty list until a reload). Our own
+      // reload: no PIN lock on the way back.
+      leaveWithoutLock();
+      history.replaceState(null, '', '/30da/#/nearby');
+      location.reload();
     } catch (e) {
       pad.setBusy(false);
       pad.clear();
