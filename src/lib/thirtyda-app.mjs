@@ -50,7 +50,7 @@
  * real activity → locked; the app itself covers after 30 s and POSTs /me/lock). While locked, every data
  * route answers 423 { error:'locked' }: POST /me/unlock { pin }, POST /me/pin { pin, old? } (set / change),
  * POST /me/pin/forgot (signs out) and /auth/* stay open. No try limit for people (a wrong PIN just asks again; only
- * a script guard: 429 after PIN_GUARD_TRIES checks per session in 10 minutes). GET /me/pending stays
+ * a script guard: 429 after PIN_GUARD_TRIES checks per session in a minute). GET /me/pending stays
  * open too: { count } only, never use, so a hidden, locked app can still say "something new is waiting".
  *
  * "Verify to chat" (owner 2026-10-13, src/lib/thirtyda-verify.mjs): POST /profile { …, unverified: true } makes a
@@ -1397,10 +1397,11 @@ const reviewFail = (err) => fail(err.status, err.code, err.message, err.attempts
  * → { ok, existing: true, user, locked: false, notices, lock }.
  *
  * { pin, probe: true } — "is this a demo PIN?" (owner 2026-10-14): the app asks when a PIN is typed on "Set your PIN"
- * or a visitor's "Enter your PIN" is wrong, then OFFERS the demo account ("Sign in to the App Review demo account
- * (Sophea)?") — nobody is signed in by a PIN alone without that tap. The same checks and the same review-PIN count
- * (reviewPinProbe), but it NEVER signs in, never makes or touches a session, and is not audited. Not on verify-code's
- * address limit: while the switch is ON every visitor's own new PIN is asked about. → { review: true, name } · 400 not_review.
+ * or a visitor's "Enter your PIN" (a wrong one, or the visitor's own when it is a demo PIN too), then OFFERS the demo
+ * account ("Sign in to the App Review demo account (Sophea)?") — nobody is signed in by a PIN alone without that tap.
+ * The same checks and the same review-PIN count (reviewPinProbe), but it NEVER signs in, never makes or touches a
+ * session, and is not audited. Not on verify-code's address limit: while the switch is ON every visitor's own new PIN
+ * is asked about. → { review: true, name } · 400 not_review.
  */
 async function reviewPin(ctx) {
   const { d, body, req, me } = ctx;
@@ -3260,7 +3261,7 @@ async function savePin(ctx, user, pin, hashed = null) {
 /**
  * One PIN check (owner 2026-10-14: no try limit for people — "they can punch it 1000 times, we do not care"). Counted
  * on the session's script guard BEFORE comparing (pinGuardUpdate, atomic: parallel guesses cannot get past it); past
- * PIN_GUARD_TRIES in 10 minutes → 429 too_many_tries, not compared. Right → the count is cleared. Wrong → 400
+ * PIN_GUARD_TRIES in a minute → 429 too_many_tries, not compared. Right → the count is cleared. Wrong → 400
  * wrong_pin, and the app asks again: never "n tries left", never a sign-out.
  */
 async function checkPinTry(ctx, pin) {

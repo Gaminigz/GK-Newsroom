@@ -235,11 +235,13 @@ export function pinSetPlan({ hasPin, locked, hasOld, resetUntil, now = Date.now(
 
 /**
  * PIN checks one session may make inside PIN_GUARD_MS (POST /me/unlock, Change PIN's old PIN, Delete my account's
- * PIN): the 31st inside the window → 429 "Too many tries. Wait a minute." until the window ends. Not a try limit for
- * people — nobody types 30 PINs in 10 minutes — only a brake on a script guessing all 10,000. A right PIN clears it.
+ * PIN): the 41st inside the window → 429 "Too many tries. Wait a minute." until the window ends. Not a try limit for
+ * people: a person punching one PIN every 1.5 s, 1000 times, is never stopped (owner 2026-10-14: "they can punch it
+ * 1000 times"); anyone faster waits less than a minute, so "Wait a minute" is always true (retryIn ≤ 60). Only a
+ * brake on a script guessing all 10,000 (40 a minute at most: over 4 hours). A right PIN clears it.
  */
-export const PIN_GUARD_TRIES = 30;
-export const PIN_GUARD_MS = 10 * 60e3;
+export const PIN_GUARD_TRIES = 40;
+export const PIN_GUARD_MS = 60e3;
 
 /**
  * One more PIN check on `session`: → { pinTries, pinTriesFrom } after it. A window older than PIN_GUARD_MS (or none)
@@ -273,5 +275,6 @@ export function pinGuardStop(guard, now = Date.now()) {
   if (!guard || (Number(guard.pinTries) || 0) <= PIN_GUARD_TRIES) return null;
   const from = time(guard.pinTriesFrom);
   const left = Number.isFinite(from) ? from + PIN_GUARD_MS - now : PIN_GUARD_MS;
-  return { retryIn: Math.max(1, Math.ceil(left / 1000)) };
+  // Never more than the window (a start time ahead of this server's clock): the app says "Wait a minute".
+  return { retryIn: Math.min(Math.ceil(PIN_GUARD_MS / 1000), Math.max(1, Math.ceil(left / 1000))) };
 }

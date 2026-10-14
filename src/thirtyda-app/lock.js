@@ -23,6 +23,7 @@ import { termsBody } from './terms.js';
 const WAIT_KEY = '30da_pin_wait'; // the PIN chosen before the account exists
 const RESET_KEY = '30da_pin_reset'; // "Forgot PIN": after the next sign-in, set a new PIN
 const BACK_KEY = '30da_back'; // the app left on purpose (a new version, the trip to Google / Facebook): no PIN on return
+const REVIEW_NO_KEY = '30da_review_no'; // demo PINs answered "No, this is my own PIN" on this phone: never offered again
 const BACK_MS = 10 * 60e3;
 
 const storageOf = (area) => ({
@@ -51,10 +52,27 @@ export const keepWaitingPin = (pin) => kept.set(WAIT_KEY, pin);
 /** After "Forgot PIN": the next sign-in is followed by "Set a new PIN". */
 export const pinResetPending = () => kept.get(RESET_KEY) === '1';
 const markPinReset = () => kept.set(RESET_KEY, '1');
-/** A PIN was saved on the profile: nothing waits any more. */
+/** A PIN was saved on the profile: nothing waits any more (nor any "No" to the demo offer: it never outlives the PIN). */
 export function clearPinFlags() {
   kept.del(WAIT_KEY);
   kept.del(RESET_KEY);
+  kept.del(REVIEW_NO_KEY);
+}
+
+/** The demo PINs this phone said "No, this is my own PIN" to (only demo PINs: the server named them so). */
+function reviewNos() {
+  try {
+    const list = JSON.parse(kept.get(REVIEW_NO_KEY) || '[]');
+    return Array.isArray(list) ? list.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+const reviewDeclined = (pin) => reviewNos().includes(pin);
+/** "No, this is my own PIN": that PIN is not offered the demo account again on this phone (a real person asked once). */
+function declineReview(pin) {
+  const list = reviewNos();
+  if (!list.includes(pin)) kept.set(REVIEW_NO_KEY, JSON.stringify([...list, pin].slice(-10)));
 }
 
 // ---------------------------------------------------------------- the 4 boxes
@@ -118,8 +136,18 @@ export function pinPad({ onFull, onDigit = null, light = false, show = false, st
 }
 
 const ruleText = (error) => t(error === 'same' ? 'pin_same' : error === 'run' ? 'pin_run' : 'pin_aria');
-/** A PIN check that failed: "Wrong PIN. Try again." (no count, ever), or the server's script brake (429). */
-const pinFailText = (e) => (e?.code === 'wrong_pin' ? t('pin_wrong') : e?.status === 429 ? t('pin_too_many') : errorText(e));
+/**
+ * A PIN check that failed: "Wrong PIN. Try again." (no count, ever), or the server's script brake (429 too_many_tries,
+ * which never lasts more than a minute: "Too many tries. Wait a minute.").
+ */
+const pinFailText = (e) => (e?.code === 'wrong_pin' ? t('pin_wrong') : e?.code === 'too_many_tries' ? t('pin_too_many') : errorText(e));
+/**
+ * The review sign-in failed (POST /auth/review/pin): not a demo PIN, or one of its 15-minute limits per address
+ * (too_many_attempts: too many wrong review PINs; rate_limited: verify-code's address limit) → "Wait 15 minutes".
+ */
+const reviewFailText = (e) => (e?.code === 'not_review' ? t('review_wrong')
+  : e?.code === 'too_many_attempts' || e?.code === 'rate_limited' ? t('review_too_many')
+    : pinFailText(e));
 
 /** The red line under the boxes; keeps its height so the screen never jumps. */
 function errorLine(cls = 'pin-error') {
@@ -461,7 +489,7 @@ function reviewSheet() {
       pad.clear();
       pad.shake();
       if (e.status === 404) { reviewOn = null; sheet.close(); return; } // switched off meanwhile
-      err.show(e.code === 'not_review' ? t('review_wrong') : pinFailText(e));
+      err.show(reviewFailText(e));
       pad.focus();
     }
   }
@@ -469,22 +497,30 @@ function reviewSheet() {
 }
 
 /**
- * A PIN typed on a visitor PIN screen ("Set your PIN", or a WRONG one on "Enter your PIN"): while review sign-in is
- * on, ask the server whether it is a demo account's PIN (POST /auth/review/pin { pin, probe: true } — never signs in,
- * never a session) and, if it is, offer that account (reviewOffer). Off, not a demo PIN, no answer, "No", or the
+ * A PIN typed on a visitor PIN screen ("Set your PIN", or "Enter your PIN" — a wrong one, and the visitor's own one
+ * too: a phone that already chose 1122 must still reach the demo): while review sign-in is on, ask the server whether
+ * it is a demo account's PIN (POST /auth/review/pin { pin, probe: true } — never signs in, never a session) and, if it
+ * is, offer that account (reviewOffer). Off, not a demo PIN, no answer, "No" (now or before, for this PIN), or the
  * sheet closed → false (the screen goes on as before); "Sign in" → true (the app reloads as the demo account).
+ * within (ms): give up on the question after that long → false (the visitor's own right PIN never waits on the network).
  */
-export async function offerReview(pin) {
-  if (!(await reviewShown())) return false; // switched off: nothing is asked
-  let probe = null;
-  try {
-    probe = await api.post('/auth/review/pin', { pin, probe: true }, { redirect: false });
-  } catch (e) {
-    if (e.status === 404) reviewOn = null; // switched off meanwhile
-    return false; // not a demo PIN (400 not_review), too many (429), offline: as before
-  }
-  if (probe?.review !== true) return false;
-  return reviewOffer(pin, String(probe.name || ''));
+export async function offerReview(pin, { within = 0 } = {}) {
+  if (reviewDeclined(pin)) return false; // "No, this is my own PIN" before, on this phone: asked once
+  const ask = (async () => {
+    if (!(await reviewShown())) return null; // switched off: nothing is asked
+    let probe = null;
+    try {
+      probe = await api.post('/auth/review/pin', { pin, probe: true }, { redirect: false });
+    } catch (e) {
+      if (e.status === 404) reviewOn = null; // switched off meanwhile
+      return null; // not a demo PIN (400 not_review), too many (429), offline: as before
+    }
+    if (probe?.review !== true) return null;
+    return String(probe.name || '');
+  })();
+  const name = await (within > 0 ? Promise.race([ask, new Promise((r) => { setTimeout(() => r(null), within); })]) : ask);
+  if (name == null) return false;
+  return reviewOffer(pin, name);
 }
 
 /** "Sign in to the App Review demo account (Sophea)?" [Sign in] [No, this is my own PIN]. → true only after "Sign in" worked. */
@@ -495,7 +531,9 @@ function reviewOffer(pin, name) {
     const title = t('review_offer_title', { name });
     const err = errorLine('field-error pin-sheet-error');
     const yes = el('button', { type: 'button', class: 'btn btn-primary pin-offer-yes', on: { click: signIn } }, t('review_offer_yes'));
-    const no = el('button', { type: 'button', class: 'btn btn-secondary pin-offer-no', on: { click: () => sheet.close() } }, t('review_offer_no'));
+    // "No, this is my own PIN": remembered for this PIN, so a real person who chose 1122 is asked only once.
+    const sayNo = () => { declineReview(pin); sheet.close(); };
+    const no = el('button', { type: 'button', class: 'btn btn-secondary pin-offer-no', on: { click: sayNo } }, t('review_offer_no'));
     const sheet = modal(el('div', { class: 'sheet-body pin-sheet pin-offer', 'aria-labelledby': 'review-offer-title' },
       el('h2', { class: 'sheet-title', id: 'review-offer-title' }, title),
       err.node,
@@ -516,7 +554,7 @@ function reviewOffer(pin, name) {
         yes.disabled = false;
         no.disabled = false;
         if (e.status === 404) { reviewOn = null; sheet.close(); return; } // switched off meanwhile
-        err.show(e.code === 'not_review' ? t('review_wrong') : pinFailText(e));
+        err.show(reviewFailText(e));
       }
     }
     yes.focus();
@@ -526,6 +564,11 @@ function reviewOffer(pin, name) {
 // A visitor with a waiting PIN and no profile yet (owner 2026-10-14): the app opens again on "Enter your PIN", checked
 // here against the PIN kept on this phone, then the home screen. A wrong one just asks again (no limit); "Forgot PIN?":
 // that PIN is forgotten and a new one is set (#/pin) — nothing stands behind it yet but the home screen.
+// While review sign-in is on, a demo PIN typed here is offered the demo account — a wrong one AND the visitor's own
+// (owner 2026-10-14: his iPhone already had visitor PIN 1122 and kept "landing on a fresh profile").
+
+/** How long the visitor's own right PIN waits for "is this a demo PIN?" before the home screen opens anyway. */
+const GUEST_ASK_MS = 4000;
 
 /** The right waiting PIN: the home screen. */
 function guestOpened() {
@@ -549,10 +592,16 @@ function guestBody() {
   async function onFull(pin) {
     const want = waitingPin();
     if (!want) return forgetGuestPin();
-    if (pin === want) return guestOpened();
-    // Not this phone's PIN: maybe a store reviewer typing the demo PIN (offered, never signed in without a tap).
     pad.setBusy(true);
     err.show('');
+    if (pin === want) {
+      // This phone's own PIN, and maybe a demo PIN too (a reviewer, or a phone that chose 1122 before the offer existed):
+      // offered once ("No" is remembered for this PIN); "No", no answer or switched off → the home screen as always.
+      const took = await offerReview(pin, { within: GUEST_ASK_MS }).catch(() => false);
+      if (took) return;
+      return guestOpened();
+    }
+    // Not this phone's PIN: maybe a store reviewer typing the demo PIN (offered, never signed in without a tap).
     const took = await offerReview(pin).catch(() => false);
     if (took) return;
     pad.setBusy(false);
@@ -636,6 +685,7 @@ async function afterUser() {
       return;
     } catch (e) {
       kept.del(WAIT_KEY); // used once: not a fresh sign-in any more, or refused
+      kept.del(REVIEW_NO_KEY);
       if (e.status === 423) return; // the 'locked' event covers the app
       lockNow(); // refused: this was no fresh sign-in, so the PIN it already has comes first
       return;
@@ -802,6 +852,7 @@ registerStrings({
     review_title: 'Sign in for app review',
     review_text: 'Type the demo account\'s 4-digit PIN.',
     review_wrong: 'That PIN is not a review account.',
+    review_too_many: 'Too many tries. Wait 15 minutes.',
     review_cancel: 'Cancel',
     pin_aria: 'PIN, 4 numbers',
     pin_set_title: 'Set your PIN',
@@ -836,6 +887,7 @@ registerStrings({
     review_title: 'ចូលសម្រាប់ការពិនិត្យកម្មវិធី',
     review_text: 'វាយលេខ PIN 4 ខ្ទង់ របស់គណនីសាកល្បង។',
     review_wrong: 'លេខ PIN នេះមិនមែនជាគណនីសម្រាប់ពិនិត្យទេ។',
+    review_too_many: 'ព្យាយាមច្រើនដងពេក។ សូមរង់ចាំ 15 នាទី។',
     review_cancel: 'បោះបង់',
     pin_aria: 'លេខ PIN 4 ខ្ទង់',
     pin_set_title: 'កំណត់លេខ PIN របស់អ្នក',
@@ -870,6 +922,7 @@ registerStrings({
     review_title: '应用审核登录',
     review_text: '输入演示账号的 4 位 PIN 码。',
     review_wrong: '这个 PIN 码不是审核账号。',
+    review_too_many: '尝试次数太多。请等 15 分钟。',
     review_cancel: '取消',
     pin_aria: 'PIN 码，4 位数字',
     pin_set_title: '设置你的 PIN 码',
@@ -904,6 +957,7 @@ registerStrings({
     review_title: '앱 심사용 로그인',
     review_text: '데모 계정의 4자리 PIN을 입력하세요.',
     review_wrong: '이 PIN은 심사용 계정이 아니에요.',
+    review_too_many: '시도가 너무 많아요. 15분 기다려 주세요.',
     review_cancel: '취소',
     pin_aria: 'PIN, 숫자 4개',
     pin_set_title: 'PIN 설정',
@@ -938,6 +992,7 @@ registerStrings({
     review_title: 'アプリ審査用ログイン',
     review_text: 'デモアカウントの4桁のPINを入力してください。',
     review_wrong: 'このPINは審査用アカウントではありません。',
+    review_too_many: '試行回数が多すぎます。15分待ってください。',
     review_cancel: 'キャンセル',
     pin_aria: 'PIN、数字4桁',
     pin_set_title: 'PINを設定',

@@ -306,40 +306,78 @@ test('pinSetPlan: first PIN, change with the old one, once after a sign-in, refu
 test('no try limit for people (owner 2026-10-14: "they can punch it 1000 times, we do not care")', () => {
   for (const gone of ['PIN_TRIES', 'pinTriesLeft', 'afterWrongPin']) assert.equal(gone in pinModule, false, `${gone} is gone`);
   assert.equal('tries' in lockInfo(), false, 'the app is never told a tries count');
-  // 1000 wrong PINs typed by a person (one every 25 s, about 7 hours): never stopped.
+  // A person punching wrong PINs as fast as a thumb can, 1000 times: one every 2 s (about 33 minutes), and even one
+  // every 1.5 s — never stopped.
   const t0 = 50_000_000;
-  let session = { ...freshSigninFields(t0) };
-  for (let i = 1; i <= 1000; i++) {
-    const at = t0 + i * 25_000;
-    session = { ...session, ...nextPinGuard(session, at) };
-    assert.equal(pinGuardStop(session, at), null, `wrong PIN #${i}`);
+  for (const every of [25_000, 2_000, 1_500]) {
+    let session = { ...freshSigninFields(t0) };
+    for (let i = 1; i <= 1000; i++) {
+      const at = t0 + i * every;
+      session = { ...session, ...nextPinGuard(session, at) };
+      assert.equal(pinGuardStop(session, at), null, `one PIN every ${every} ms: wrong PIN #${i}`);
+    }
   }
-  // Even 30 wrong in a row, fast (a person hammering the boxes): still asked again.
-  session = { ...freshSigninFields(t0) };
+  // The same through Mongo's own update (pinGuardUpdate), one every 2 s for 1000 PINs: never stopped.
+  let doc = { ...freshSigninFields(t0) };
+  for (let i = 1; i <= 1000; i++) {
+    const at = t0 + i * 2_000;
+    doc = runPipeline(doc, pinGuardUpdate(at));
+    assert.equal(pinGuardStop(doc, at), null, `Mongo, one PIN every 2 s: wrong PIN #${i}`);
+  }
+  // Even 40 wrong in a row, one a second (a person hammering the boxes): still asked again.
+  let session = { ...freshSigninFields(t0) };
   for (let i = 1; i <= PIN_GUARD_TRIES; i++) {
     session = { ...session, ...nextPinGuard(session, t0 + i * 1000) };
     assert.equal(pinGuardStop(session, t0 + i * 1000), null, `fast wrong PIN #${i}`);
   }
 });
 
-test('the one guard against scripts: the 31st PIN check on a session inside 10 minutes → stop (429), until the window ends', () => {
-  assert.equal(PIN_GUARD_TRIES, 30);
-  assert.equal(PIN_GUARD_MS, 10 * MIN);
+test('the one guard against scripts: the 41st PIN check on a session inside a minute → stop (429) until that minute ends', () => {
+  assert.equal(PIN_GUARD_TRIES, 40);
+  assert.equal(PIN_GUARD_MS, 60e3);
   const t0 = 70_000_000;
   let s = {};
   for (let i = 0; i < PIN_GUARD_TRIES; i++) s = { ...s, ...nextPinGuard(s, t0 + i) };
-  assert.deepEqual(s, { pinTries: 30, pinTriesFrom: new Date(t0) }, 'the window starts at the first check');
-  s = { ...s, ...nextPinGuard(s, t0 + 60e3) };
-  assert.deepEqual(pinGuardStop(s, t0 + 60e3), { retryIn: 540 }, 'the 31st: stopped until the window ends (9 minutes later)');
+  assert.deepEqual(s, { pinTries: 40, pinTriesFrom: new Date(t0) }, 'the window starts at the first check');
+  s = { ...s, ...nextPinGuard(s, t0 + 10e3) };
+  assert.deepEqual(pinGuardStop(s, t0 + 10e3), { retryIn: 50 }, 'the 41st: stopped until the minute ends (50 s later)');
   s = { ...s, ...nextPinGuard(s, t0 + PIN_GUARD_MS - 1) };
   assert.equal(pinGuardStop(s, t0 + PIN_GUARD_MS - 1)?.retryIn, 1, 'never a 0 s wait');
   s = { ...s, ...nextPinGuard(s, t0 + PIN_GUARD_MS) };
-  assert.deepEqual(s, { pinTries: 1, pinTriesFrom: new Date(t0 + PIN_GUARD_MS) }, '10 minutes on: a new window');
+  assert.deepEqual(s, { pinTries: 1, pinTriesFrom: new Date(t0 + PIN_GUARD_MS) }, 'a minute on: a new window');
   assert.equal(pinGuardStop(s, t0 + PIN_GUARD_MS), null);
   // A fresh sign-in (pinTries 0) or a session from before the guard (no window): counting starts again at 1.
   assert.deepEqual(nextPinGuard(freshSigninFields(t0), t0), { pinTries: 1, pinTriesFrom: new Date(t0) });
   assert.deepEqual(nextPinGuard({ pinTries: 4 }, t0), { pinTries: 1, pinTriesFrom: new Date(t0) }, 'an old 5-try count is not carried over');
   assert.equal(pinGuardStop(null), null);
+  // A script still gets at most 40 a minute: all 10,000 PINs take over 4 hours on one session.
+  let script = {};
+  let checked = 0;
+  for (let at = t0; at < t0 + 60 * 60e3; at += 50) {
+    script = { ...script, ...nextPinGuard(script, at) };
+    if (!pinGuardStop(script, at)) checked++;
+  }
+  assert.ok(checked <= 60 * PIN_GUARD_TRIES, `${checked} PINs compared in an hour`);
+});
+
+test('the guard\'s 429 says "Too many tries. Wait a minute." — so the wait is never longer than a minute', () => {
+  const t0 = 90_000_000;
+  // Whatever is stored (a window from before this version, a planted far-future start), the wait is ≤ 60 s.
+  const stored = [
+    { pinTries: 41, pinTriesFrom: new Date(t0) },
+    { pinTries: 999, pinTriesFrom: new Date(t0 - 59_999) },
+    { pinTries: 41, pinTriesFrom: new Date(t0 - 60e3 + 1) },
+    { pinTries: 50, pinTriesFrom: new Date(t0 + 60 * 60e3) }, // ahead of the clock (a server clock set back)
+    { pinTries: 50 }, // no start at all
+  ];
+  for (const g of stored) {
+    const stop = pinGuardStop(g, t0);
+    assert.ok(stop && stop.retryIn >= 1 && stop.retryIn <= 60, JSON.stringify({ g, stop }));
+  }
+  // A session the old 10-minute guard had stopped (window 2 minutes old): the next check starts a new window.
+  const old = { pinTries: 31, pinTriesFrom: new Date(t0 - 2 * 60e3) };
+  assert.deepEqual(nextPinGuard(old, t0), { pinTries: 1, pinTriesFrom: new Date(t0) }, 'an old 10-minute window is over at once');
+  assert.ok(PIN_GUARD_MS <= 60e3, 'the copy says "a minute"');
 });
 
 /** Just enough of Mongo's expression language to run pinGuardUpdate's pipeline on one document. */
