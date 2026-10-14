@@ -167,6 +167,16 @@ export function writtenOrders({ sets, me, written, chat = [] }) {
   return before.length && lines.length ? [[...before.map((x) => ({ text: x.text, fresh: false })), ...lines]] : [];
 }
 
+/**
+ * A new Level 3 chat line, read after everything the same person wrote in the pair before it: their written lines and
+ * replies (however old: replies "012" and "887", then the chat line "766 is my lucky number") and their last chat lines
+ * (`chat`, the recent ones the chat's own split check reads) → [order], the new line last and fresh.
+ */
+export function chatOrders({ sets, me, text, chat = [] }) {
+  const before = [...ownTexts(sets, me), ...(Array.isArray(chat) ? chat : []).filter((m) => m?.text)].sort(byTime);
+  return before.length && text ? [[...before.map((x) => ({ text: x.text, fresh: false })), { text, fresh: true }]] : [];
+}
+
 /** What I do next (the same in PairView.next and the conversation). */
 export const NEXT_STEPS = Object.freeze(['send', 'reply', 'send_reply', 'wait_them', 'wait_timer', 'decide', 'chat', 'ended', 'frozen']);
 

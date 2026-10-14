@@ -159,7 +159,7 @@ import {
 import { REVIEW_DEVICES, markReviewDevice, isReviewDevice, claimReviewSignup, releaseReviewSignup } from "./thirtyda-review-world.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
-  REPLY_MAX, cleanReply, checkReply, findReplyContactDetails, findSplitContactDetails,
+  REPLY_MAX, cleanReply, cleanText, checkReply, findReplyContactDetails, findSplitContactDetails,
   PHOTO_MAX, PHOTO_SLOT_LEVELS, photoSlotsFor, photoSlotLevel, stageOpenLevel, photoVisible,
   NAME_MIN, NAME_MAX, AGE_MIN, AGE_MAX, checkAppName, checkBirthYear, findBadWords, checkRealName,
 } from "../thirtyda-app/shared/rules.js";
@@ -169,7 +169,7 @@ import {
 import { questionConfig, slotsView, flatView } from "./thirtyda-questions.mjs";
 import {
   convStage, L1_STAGES, openSetLevel, currentSetLevel, levelState, repliedCount, allReplied, levelComplete,
-  nextStep, isMyTurn, decisionOf, afterDecisions, replyOrders, writtenOrders, withReply,
+  nextStep, isMyTurn, decisionOf, afterDecisions, replyOrders, writtenOrders, chatOrders, withReply,
 } from "../thirtyda-app/shared/conversation.js";
 
 const BASE = "/30da";
@@ -2625,7 +2625,9 @@ async function sendSet(ctx) {
 
   const list = Array.isArray(body.questions) ? body.questions : [];
   // A contact detail is recorded for the admin even when the rest of the set is incomplete.
-  const written = list.map((q) => (q?.source === "written" ? String(q.text ?? "").trim() : null));
+  // Written lines are checked and kept without direction controls (shared/rules.js cleanText: an override would show
+  // "margelet" as "telegram").
+  const written = list.map((q) => (q?.source === "written" ? cleanText(q.text) : null));
   await stopContactDetails(ctx, pair, other, written, { level, kind: "question" });
   await stopSplitContactDetails(ctx, pair, other, written, { level, kind: "question" });
   // …and read after everything I wrote in this pair before: replies "012" and "887", then a line "766 …".
@@ -2649,7 +2651,7 @@ async function sendSet(ctx) {
       chosen.set(i, { slot: picked + 1, choice });
       picked++;
     } else if (q?.source === "written") {
-      const r = checkWrittenQuestion(String(q.text ?? "").trim(), level);
+      const r = checkWrittenQuestion(written[i], level);
       if (!r.ok) throw invalid(ERROR_TEXT[r.error] || "Check this line.", { index: i, reason: r.error });
     } else {
       throw invalid("Unknown line.", { index: i });
@@ -2668,7 +2670,7 @@ async function sendSet(ctx) {
         topic: titles[slot - 1] || null, // the list's topic ("Communication") as it was when sent
       };
     }
-    const text = String(q.text).trim();
+    const text = written[i];
     const { translations } = await translateAll(text, lang);
     return { n: i + 1, source: "written", key: null, text, lang, translations };
   }));
@@ -2953,6 +2955,48 @@ async function checkedReply(ctx, pair, other, sets, { level, n, body, at }) {
   return { n, key: null, text, lang, translations, at };
 }
 
+// Replies to a set are saved one after another, never side by side: a save carries the set's `rev` as it was read
+// and checked, and lands only if no other reply was saved in between (otherwise it is read and checked again). So
+// "0128", "8776" and "6" sent at the same moment to three lines are each read with the others, as they would be one
+// after another, and the split check (checkedReply) stops the one that makes the number.
+const REPLY_TRIES = 5;
+const sameRev = (set) => ({ $expr: { $eq: [{ $ifNull: ["$rev", 0] }, set.rev ?? 0] } });
+const NEXT_REV = { $add: [{ $ifNull: ["$rev", 0] }, 1] };
+const savedTogether = () => fail(409, "busy", "Replies were saved at the same moment. Try again.");
+
+/**
+ * Line `n`'s reply into the set `setId`, in turn with every other save to that set: reads the pair's sets, `check(all)`
+ * gives the reply to keep (or throws: the split check reads `all`, the other replies as they are now), and the reply
+ * lands only if the set is still as it was read; otherwise all of it again (REPLY_TRIES). → the set after the save.
+ * `sets` = the sets collection (or anything with find().toArray() and findOneAndUpdate).
+ */
+export async function saveReplyInTurn(sets, { pairId, setId, n, check }) {
+  for (let tries = 0; tries < REPLY_TRIES; tries++) {
+    const all = await sets.find({ pairId }).toArray();
+    const now = all.find((s) => s._id === setId);
+    if (!now || now.completedAt) throw fail(409, "not_your_turn", "Your replies to these lines are already sent.");
+    const reply = await check(all);
+    // Replace this line's reply in one atomic update ($literal: the reply is data, never a field path).
+    const saved = await sets.findOneAndUpdate(
+      { _id: setId, completedAt: null, ...sameRev(now) },
+      [{
+        $set: {
+          answers: {
+            $concatArrays: [
+              { $filter: { input: { $ifNull: ["$answers", []] }, cond: { $ne: ["$$this.n", n] } } },
+              [{ $literal: reply }],
+            ],
+          },
+          rev: NEXT_REV,
+        },
+      }],
+      { returnDocument: "after" },
+    );
+    if (saved) return saved;
+  }
+  throw savedTogether();
+}
+
 /**
  * PUT /pairs/:id/replies { level, n, text } → { conversation }. One short typed reply (1–10 characters, owner
  * 2026-10-14) to line n of the set sent to me, at Level 1 and Level 2, checked by checkedReply. Saved on its own; it
@@ -2969,25 +3013,9 @@ async function saveReply(ctx) {
 
   const sets = d.collection(C.sets);
   const at = nowIso();
-  const reply = await checkedReply(ctx, pair, other, await sets.find({ pairId: pair._id }).toArray(), { level, n, body, at });
-
-  // Replace this line's reply in one atomic update, only while the set is still open ($literal: the
-  // reply is data, never a field path).
-  let saved = await sets.findOneAndUpdate(
-    { _id: set._id, completedAt: null },
-    [{
-      $set: {
-        answers: {
-          $concatArrays: [
-            { $filter: { input: { $ifNull: ["$answers", []] }, cond: { $ne: ["$$this.n", n] } } },
-            [{ $literal: reply }],
-          ],
-        },
-      },
-    }],
-    { returnDocument: "after" },
-  );
-  if (!saved) throw fail(409, "not_your_turn", "Your replies to these lines are already sent.");
+  let saved = await saveReplyInTurn(sets, {
+    pairId: pair._id, setId: set._id, n, check: (all) => checkedReply(ctx, pair, other, all, { level, n, body, at }),
+  });
   if (allReplied(saved)) {
     const done = await sets.findOneAndUpdate({ _id: set._id, completedAt: null }, { $set: { completedAt: at } }, { returnDocument: "after" });
     if (done) {
@@ -3022,22 +3050,29 @@ async function sendAnswers(ctx) {
   });
 
   const at = nowIso();
-  const all = await sets.find({ pairId: pair._id }).toArray();
-  const working = all.find((s) => s._id === set._id) ?? set;
-  working.answers = []; // the batch replaces whatever was saved one by one
   const order = list.map((a, i) => ({ a, i })).sort((x, y) => Number(x.a.n) - Number(y.a.n));
-  for (const { a, i } of order) {
-    try {
-      working.answers = withReply(working.answers, await checkedReply(ctx, pair, other, all, { level, n: Number(a.n), body: a, at }));
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 422) err.extra = { ...err.extra, index: i };
-      throw err;
+  let saved = null;
+  for (let tries = 0; !saved; tries++) { // one after another with single replies (see saveReply)
+    if (tries === REPLY_TRIES) throw savedTogether();
+    const all = await sets.find({ pairId: pair._id }).toArray();
+    const working = all.find((s) => s._id === set._id);
+    if (!working || working.completedAt) throw notYourTurn();
+    const read = working.rev ?? 0;
+    working.answers = []; // the batch replaces whatever was saved one by one
+    for (const { a, i } of order) {
+      try {
+        working.answers = withReply(working.answers, await checkedReply(ctx, pair, other, all, { level, n: Number(a.n), body: a, at }));
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 422) err.extra = { ...err.extra, index: i };
+        throw err;
+      }
     }
+    saved = await sets.findOneAndUpdate(
+      { _id: set._id, completedAt: null, ...sameRev({ rev: read }) },
+      { $set: { answers: working.answers, completedAt: at, rev: read + 1 } },
+      { returnDocument: "after" },
+    );
   }
-  const saved = await sets.findOneAndUpdate(
-    { _id: set._id, completedAt: null }, { $set: { answers: working.answers, completedAt: at } }, { returnDocument: "after" },
-  );
-  if (!saved) throw notYourTurn();
   await onSetComplete(d, pair, saved);
 
   const pairs = d.collection(C.pairs);
@@ -3166,37 +3201,55 @@ async function listMessages(ctx) {
   };
 }
 
+/** Hits that point into `joined` (texts joined by line breaks, `text` the last of them) → the same hits in `text`. */
+function hitsInLast(joined, text, hits) {
+  const offset = joined.length - text.length;
+  return hits.map((h) => {
+    const start = Math.max(0, h.start - offset), end = Math.max(start, h.end - offset);
+    return { type: h.type, match: text.slice(start, end), start, end };
+  });
+}
+
 /**
  * A contact detail spread over my last few chat lines and this one ("012 887" now, "766" next):
  * only hits that reach into the new line count, since the earlier lines were already delivered.
+ * Then the same over everything I wrote in this pair before the chat (shared/conversation.js chatOrders: my replies and
+ * written lines, however old, and these chat lines): replies "012" and "887", then "766 is my lucky number" here. That
+ * stop is kept as ONE stopped message, the pieces line by line (the admin sees the whole attempt).
  */
 async function stopSplitChat(ctx, pair, other, text) {
   const { d, me } = ctx;
   if (!text) return;
   const chat = await d.collection(C.chats).findOne({ _id: pair._id }, { projection: { messages: { $slice: -40 } } });
   const since = Date.now() - CHAT_SPLIT_MS;
-  const recent = (chat?.messages || [])
+  const recentLines = (chat?.messages || [])
     .filter((m) => m.kind === "chat" && m.from === me._id && !m.stopped && Date.parse(m.at) >= since)
-    .slice(-CHAT_SPLIT_LINES)
-    .map((m) => m.text);
-  if (!recent.length) return;
-  const c = findContactDetailsAcross([...recent, text]);
-  const offset = c.text.length - text.length;
-  const hits = c.hits.filter((h) => h.lastIndex === recent.length).map((h) => {
-    const start = Math.max(0, h.start - offset);
-    return { type: h.type, match: text.slice(start, h.end - offset), start, end: h.end - offset };
+    .slice(-CHAT_SPLIT_LINES);
+  const recent = recentLines.map((m) => m.text);
+  if (recent.length) {
+    const c = findContactDetailsAcross([...recent, text]);
+    const hits = hitsInLast(c.text, text, c.hits.filter((h) => h.lastIndex === recent.length));
+    if (hits.length) {
+      const reason = CONTACT_REASONS[hits[0].type] ?? c.reason;
+      await recordStopped(ctx, pair, other, { text, level: 3, kind: "chat", hits, reason });
+      throw fail(422, "contact_detail", reason || "Contact details are not allowed.", { hits, reason, count: charCount(text) });
+    }
+  }
+  const sets = await d.collection(C.sets).find({ pairId: pair._id }).toArray();
+  const lines = recentLines.map((m) => ({ text: m.text, at: m.at }));
+  const c = findSplitContactDetails(chatOrders({ sets, me: me._id, text, chat: lines }));
+  if (c.ok) return;
+  await recordStopped(ctx, pair, other, { text: c.text, level: 3, kind: "chat", hits: c.hits, reason: c.reason });
+  throw fail(422, "contact_detail", c.reason || "Contact details are not allowed.", {
+    split: true, hits: hitsInLast(c.text, text, c.hits), reason: c.reason, count: charCount(text),
   });
-  if (!hits.length) return;
-  const reason = CONTACT_REASONS[hits[0].type] ?? c.reason;
-  await recordStopped(ctx, pair, other, { text, level: 3, kind: "chat", hits, reason });
-  throw fail(422, "contact_detail", reason || "Contact details are not allowed.", { hits, reason, count: charCount(text) });
 }
 
 async function postMessage(ctx) {
   const { d, me, body, params } = ctx;
   const { pair, other } = await pairFor(ctx, params[0], { write: true });
   chatGate(ctx, pair);
-  const text = String(body.text ?? "").trim();
+  const text = cleanText(body.text);
   await stopContactDetails(ctx, pair, other, [text], { level: 3, kind: "chat" });
   await stopSplitChat(ctx, pair, other, text);
   await stopBadWords(ctx, pair, other, [text], { level: 3, kind: "chat" });

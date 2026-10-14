@@ -179,11 +179,12 @@ const KM_NUMBER_WORDS = [['សាមសិប', '30'], ['សែសិប', '40']
   ['សូន្យ', '0'], ['មួយ', '1'], ['ពីរ', '2'], ['បី', '3'], ['បួន', '4']];
 // A Khmer vowel/sign/coeng glued on means a different word (ពីរ "two" vs ពីរោះ "lovely").
 const KHMER_DEPENDENT = /[ា-៓៝]/;
-const CJK_DIGITS = '零〇一二三四五六七八九幺壹贰貳叁參肆伍陆陸柒捌玖';
-const CJK_VALUES = '001234567891122334566789';
-// Hangul digit syllables and one-kana digits are also everyday words, so runs of them need more.
-const HANGUL_DIGITS = '공영일이삼사오육륙칠팔구';
-const HANGUL_VALUES = '001234566789';
+// Phone-reading forms too: 幺 1, 两/兩 2, 洞 0, 拐 7, 勾 9 ("洞幺两拐", how a number is read out in Chinese).
+const CJK_DIGITS = '零〇一二三四五六七八九幺壹贰貳叁參肆伍陆陸柒捌玖两兩洞拐勾';
+const CJK_VALUES = '00123456789112233456678922079';
+// Hangul digit syllables and one-kana digits are also everyday words, so runs of them need more. 빵 = a spoken 0.
+const HANGUL_DIGITS = '공영빵일이삼사오육륙칠팔구';
+const HANGUL_VALUES = '0001234566789';
 const KANA_NUMBER_WORDS = [['きゅう', '9'], ['きゅー', '9'], ['キュウ', '9'], ['キュー', '9'], ['ぜろ', '0'], ['ゼロ', '0'],
   ['れい', '0'], ['レイ', '0'], ['まる', '0'], ['マル', '0'], ['いち', '1'], ['イチ', '1'], ['さん', '3'], ['サン', '3'],
   ['よん', '4'], ['ヨン', '4'], ['ろく', '6'], ['ロク', '6'], ['なな', '7'], ['ナナ', '7'], ['しち', '7'], ['シチ', '7'],
@@ -320,6 +321,11 @@ function validDate(a, b) {
 
 const TIME = '\\d{1,2}[:.h]\\d{2}';
 const TIME_RE = new RegExp(`^${TIME}(?:-${TIME})?$`); // 10:30, open 8.30-17.30, 10:30 - 11:45
+// A time only when it is one on a clock: "7:66" or "28:87" is digits dressed up as a time.
+const validTimes = (r) => r.split('-').every((p) => {
+  const [h, m] = p.split(/[:.h]/).map(Number);
+  return h <= 24 && m <= 59;
+});
 
 // One digit-only piece that reads as a date, year, time, decimal or an amount of money.
 function harmlessPiece(raw, near) {
@@ -330,7 +336,7 @@ function harmlessPiece(raw, near) {
   if (m && validDate(+m[1], +m[3])) return true; // 12/10/2024
   m = /^(?:19|20)\d{2}([/.-])(\d{1,2})\1(\d{1,2})(?: ?\d{1,2}[.:]\d{2})?$/.exec(r);
   if (m && validDate(+m[2], +m[3])) return true; // 2024-10-12
-  if (TIME_RE.test(r)) return true;
+  if (TIME_RE.test(r) && validTimes(r)) return true;
   if (/^(?:0|[1-9]\d{0,2})[.,]\d{1,2}$/.test(r)) return true; // 0.5 km, 2.50
   if (/^[1-9]\d{0,2}([,.])\d{3}(?:\1\d{3})*(?:[.,]\d{1,2})?$/.test(r)) return true; // 1,000,000
   return /^(?:[1-9]\d{0,2}(?: \d{3})+|[1-9]\d{5,})$/.test(raw) && MONEY.test(near); // 1 000 000 riel
@@ -602,6 +608,16 @@ const MY_BEFORE = /(?:^|[^a-z])(?:my|your|follow)\s+$/;
 const LINE_AFTER = /^\s*(?:(?:app|id|account|acc|username|user\s?name|qr)(?![a-z])|me(?![a-z])(?!\s+up)|[:]|号|號|아이디|の?id)/;
 const LINE_NOT_APP_AFTER = /^\s+(?:(?:with|for|of|up)(?![a-z])|\d)/;
 const APP_AFTER = /^\s*(?:(?:app|id|account|acc|username|user\s?name|number|chat|call|group|contact|handle|qr)(?![a-z])|[:]|号|號|아이디|の?id)/;
+// "ig dara88", "ig.dara88", "ig @ dara", "dara88 ig": Instagram's short name next to a handle (as "ig:" already is).
+const IG_HANDLE_AFTER = /^\s*(?:[.:=-]\s*)?(@\s*[a-z0-9_]{2,}|[a-z0-9_][a-z0-9_.]{2,30}[a-z0-9_])/;
+const IG_HANDLE_BEFORE = /(?:^|[^a-z0-9_.])([a-z0-9_][a-z0-9_.]{2,30}[a-z0-9_])\s*(?:[.:=-]\s*)?$/;
+
+function igHandle(before, after) {
+  const a = IG_HANDLE_AFTER.exec(after);
+  if (a && (a[1].startsWith('@') || looksLikeHandle(a[1]))) return true;
+  const b = IG_HANDLE_BEFORE.exec(before);
+  return Boolean(b && looksLikeHandle(b[1]));
+}
 
 function isShouting(cased) {
   const letters = cased.match(/[A-Za-z]/g) || [];
@@ -619,6 +635,7 @@ function contextApp(f, fs, fe) {
   if (word.startsWith('we')) return APP_AFTER.test(after) || APP_VERB_BEFORE.test(before) || MY_BEFORE.test(before);
   if (word === 'line') return (cased === 'LINE' && !f.shouting) || LINE_AFTER.test(after);
   if (APP_AFTER.test(after) || APP_VERB_BEFORE.test(before)) return true;
+  if (word === 'ig' && igHandle(before, after)) return true;
   if (word === 'signal' || word === 'messenger') {
     // Capitalised mid-sentence or on its own; "Signal is weak here" just starts a sentence.
     const startsSentence = /(?:^|[.!?]\s+)$/.test(f.low.slice(0, fs).trimStart());
@@ -794,8 +811,10 @@ export function findContactDetailsAcross(texts) {
 
 export const REPLY_MIN = 1, REPLY_MAX = 10;
 const REPLY_DIGITS_MAX = 4; // "10:30", "1990", "2 or 3" pass; "0 1 2 8 8", "零一二八八", "oh 1 2 3 4" do not
-const REPLY_RAW_MAX = 64; // code points in all (marks that join a character count as nothing, so they cannot stack)
 const REPLY_CHAR_MAX = 12; // code points in one character: a Khmer stack, an emoji family with skin tones
+// Code points in all: ten of the widest characters fit (ten family emoji are 70), so a reply the counter shows as
+// 10/10 is never "too long"; marks that join a character count as nothing, so this is what stops them stacking.
+export const REPLY_RAW_MAX = REPLY_MAX * REPLY_CHAR_MAX;
 
 // All the digits one reply carries, however they are written. Hangul digit syllables and one-kana digits are also
 // everyday words (일이 "work", に a particle), so they count only in a run of four number words or more.
@@ -811,11 +830,17 @@ function replyDigitHit(f) {
   return total > REPLY_DIGITS_MAX ? { type: 'phone', fs, fe } : null;
 }
 
-// "@ab", "@x_1": a reply has no use for an @name of any length ("@home", "@5pm" are just "at").
-const REPLY_HANDLE_RE = /@([a-z0-9_][a-z0-9_.]*)/g;
+// "@ab", "@x_1", "@ dara": a reply has no use for an @name of any length, spaced or not ("@home", "@5pm", "@ my place"
+// are just "at").
+const REPLY_HANDLE_RE = /@\s*([a-z0-9_][a-z0-9_.]*)/g;
+const AT_WORDS = new Set(['my', 'your', 'his', 'her', 'our', 'their', 'a', 'an', 'this', 'that', 'it', 'me', 'us', 'them',
+  'least', 'last', 'first', 'once', 'times', 'ease', 'best', 'most']);
 function replyHandleHits(f) {
-  return scan(REPLY_HANDLE_RE, f.low, (m) => (NOT_HANDLES.has(m[1]) || TIME_WORD.test(m[1])
-    ? null : { type: 'handle', fs: m.index, fe: m.index + m[0].length }));
+  return scan(REPLY_HANDLE_RE, f.low, (m) => {
+    const name = m[1], spaced = m[0].length > name.length + 1;
+    if (NOT_HANDLES.has(name) || TIME_WORD.test(name) || (spaced && AT_WORDS.has(name))) return null;
+    return { type: 'handle', fs: m.index, fe: m.index + m[0].length };
+  });
 }
 
 /**
@@ -869,20 +894,124 @@ function splitHits(items, glue) {
 
 const GLUE_WINDOW = 6; // texts glued together at most ("te" / "le" / "gr" / "am"); one letter each is read line by line
 
+// ---- Digits added up, however far apart (owner 2026-10-14: "can not write numbers like a phone … even if they write
+// them vertically or horizontally"). Read line by line, a number split down the replies hides behind ordinary replies
+// between its pieces ("0" … "Not really" … "1288" … "ថ្ងៃនេះខ្ញុំរវល់ណាស់" … "7766"); so the digits one person typed
+// are also simply added up, in any form, over everything in the order. A phone number needs 8 or more (a Cambodian
+// number without its 0; a Chinese mobile has 11), and short replies with a number in them stay well under it.
+export const SPLIT_DIGITS = 8;
+
+/**
+ * The digits a text carries for that sum, in any form (digits in any script, number words in the five languages) →
+ * { n, fs, fe } (folded places of the first and last counted run). A number word that is also an everyday word (一 in
+ * 一点点, さん in ダラさん, 일이 "work", "oh", "no one") counts only in a run of number words (Hangul / one-kana digits:
+ * 4 or more) or in a text that is nothing but numbers ("零", "공일", "oh"). A date, year, time or sum of money reads
+ * as one inside a sentence (a written line, a chat line); a reply is too short for that, so all its digits count.
+ */
+function splitDigits(f) {
+  const t = f.low;
+  const runs = numberRuns(t);
+  if (!runs.length) return { n: 0, fs: -1, fe: -1 };
+  let rest = '', at = 0;
+  for (const r of runs) { rest += t.slice(at, r.start); at = r.end; }
+  const bare = !NOT_GAP.test(rest + t.slice(at));
+  const sentence = charCount(f.s) > REPLY_MAX;
+  let n = 0, fs = -1, fe = -1;
+  for (const r of runs) {
+    if (sentence && r.harmless) continue;
+    const k = r.toks.reduce((sum, tok) => sum + (tok.digit || bare || r.toks.length >= (tok.weak ? 4 : 2) ? tok.n : 0), 0);
+    if (!k) continue;
+    n += k;
+    if (fs < 0) fs = r.start;
+    fe = r.end;
+  }
+  return { n, fs, fe };
+}
+
+/** SPLIT_DIGITS or more over two texts or more of `items`, a fresh one among them → the split hit (the pieces), or null. */
+function digitSumHit(items) {
+  const pieces = [];
+  let total = 0;
+  items.forEach((x, i) => {
+    const f = fold(x.text);
+    const d = splitDigits(f);
+    if (d.n) { total += d.n; pieces.push({ i, f, ...d }); }
+  });
+  if (total < SPLIT_DIGITS || pieces.length < 2 || !pieces.some((p) => items[p.i].fresh)) return null;
+  // What the admin sees: only the texts that carry the digits, one per line, the hit from the first digit to the last.
+  const text = pieces.map((p) => items[p.i].text).join('\n');
+  const first = pieces[0], last = pieces[pieces.length - 1];
+  const start = first.f.from[first.fs];
+  const end = text.length - items[last.i].text.length + last.f.to[last.fe - 1];
+  return {
+    ok: false, hits: [{ type: 'phone', match: text.slice(start, end), start, end, index: first.i, lastIndex: last.i }],
+    reason: CONTACT_REASONS.phone, text, items: pieces.map((p) => items[p.i]),
+  };
+}
+
+// ---- Chat-app names spelt over short replies with other replies between the pieces ("wh" … "ok" … "atsapp",
+// "tel" … "Yes" … "eg" … "Yes" … "ram", "微" … "好" … "信"). Neighbours are read by the glued windows; here a piece may
+// skip up to CHAIN_SKIP texts, as long as the letters so far are still part of an app's name (so "ok" between "we"
+// and "chat" is skipped, not glued in). Names that are everyday
+// words (line, signal, messenger) are left to the context rules.
+const CHAIN_APPS = [
+  'telegram', 'tele', 'tg', 'whatsapp', 'whatsap', 'watsapp', 'wechat', 'weixin', 'wx', 'vx', 'viber', 'zalo', 'skype',
+  'discord', 'botim', 'facetime', 'snapchat', 'tiktok', 'douyin', 'instagram', 'insta', 'kakaotalk', 'kakao', 'katalk',
+  'facebook', 'fb', 'twitter', 'qq', 'weibo', 'xiaohongshu', 'tinder', 'bumble', 'badoo', 'okcupid', 'tantan',
+  '微信', '微信号', '威信', '薇信', '徽信', '电报', '電報', '纸飞机', '紙飛機', '飞机号', '飛機號', '脸书', '臉書', '推特', '抖音',
+  '小红书', '小紅書', '微博', '陌陌', '钉钉', '釘釘',
+  '카카오톡', '카톡', '텔레그램', '텔레', '왓츠앱', '위챗', '인스타그램', '인스타', '페이스북', '페북', '틱톡', '바이버', '스냅챗',
+  '디스코드', '오픈채팅', '오픈톡',
+  'តេឡេក្រាម', 'តេលេក្រាម', 'ថេឡេក្រាម', 'ថេលេក្រាម', 'តេឡេ', 'វីឆាត', 'វ៉ីឆាត', 'វ៉ាត់សាប់', 'វ៉ាតសាប', 'វាត់សាប់',
+  'ហ្វេសប៊ុក', 'ហ្វេសបុក', 'ទិកតុក', 'តិកតុក', 'តិចតុក', 'អ៊ីនស្តាក្រាម', 'អ៊ីនស្ដាក្រាម', 'អ៊ីនស្តា', 'អ៊ីនស្ដា',
+  'テレグラム', 'ワッツアップ', 'ウィーチャット', 'インスタグラム', 'インスタ', 'フェイスブック', 'ティックトック', 'カカオトーク',
+  'スナップチャット', 'バイバー', 'ツイッター', 'ディスコード', 'スカイプ',
+];
+const CHAIN_SKIP = 9; // texts that may sit between two pieces: a reply in Level 1 and the next in Level 2
+const CHAIN_PIECES = 8;
+const letterKey = (text) => fold(text).low.replace(/[^\p{L}\p{M}]/gu, '');
+let chainKeys = null; // CHAIN_APPS folded like the texts, made on first use
+
+/** An app name spelt over short texts of `items` (pieces in order, others skipped), a fresh one among them → the split hit, or null. */
+function chainHit(items) {
+  chainKeys ??= CHAIN_APPS.map(letterKey);
+  const keys = items.map((x) => (charCount(x.text) <= REPLY_MAX ? letterKey(x.text) : ''));
+  const part = (s) => chainKeys.some((w) => w.includes(s));
+  let found = null;
+  const walk = (chain, glued) => {
+    if (chain.length >= 2 && chainKeys.includes(glued) && chain.some((k) => items[k].fresh)) {
+      const r = splitHits(chain.map((k) => items[k]), '');
+      if (r) {
+        found = { ...r, hits: r.hits.map((h) => ({ ...h, index: chain[h.index], lastIndex: chain[h.lastIndex] })) };
+        return;
+      }
+    }
+    if (chain.length >= CHAIN_PIECES) return;
+    const last = chain[chain.length - 1];
+    for (let j = last + 1; j < items.length && j <= last + 1 + CHAIN_SKIP && !found; j++) {
+      if (keys[j] && part(glued + keys[j])) walk([...chain, j], glued + keys[j]);
+    }
+  };
+  for (let i = 0; i < items.length && !found; i++) if (keys[i] && part(keys[i])) walk([i], keys[i]);
+  return found;
+}
+
 /**
  * Contact details written down (or across) several texts of one person that each pass alone: a reply per line read
  * top to bottom ("012" / "887" / "766", "zero" / "one" / "two" …, "tele" / "gram", "we" / "chat", "@" / "dara"), a
- * reply that finishes what a written line began. `orders` = lists of { text, fresh, id? }, each read as one, line by
- * line (like findContactDetailsAcross), and every 2–6 neighbouring texts with a fresh one among them glued together
- * (letters only: "we" + "chat"). Only a hit that spans two texts or more, one of them fresh, counts: what was let
- * through before stays let through.
+ * reply that finishes what a written line began, a chat line that finishes what the replies began. `orders` = lists of
+ * { text, fresh, id? }, each read four ways: as one, line by line (like findContactDetailsAcross); every 2–6
+ * neighbouring texts with a fresh one among them glued together (letters only: "we" + "chat"); the digits of all of
+ * them added up, whatever sits between (SPLIT_DIGITS: "0" … "Yes I do" … "1288" … "Sunday" … "7766"); and app names
+ * spelt over short texts with others between ("wh" … "ok" … "atsapp"). Only a hit that spans two texts or more, one of
+ * them fresh, counts: what was let through before stays let through.
  * → { ok, hits:[{ type, match, start, end, index, lastIndex }], reason, text, items } — text = the spanned texts joined
  *   by line breaks (what the admin sees; hits point into it), items = the spanned { text, fresh, id }.
  */
 export function findSplitContactDetails(orders) {
   for (const order of Array.isArray(orders) ? orders : []) {
     const items = (Array.isArray(order) ? order : [])
-      .map((x) => ({ text: String(x?.text ?? '').trim(), fresh: Boolean(x?.fresh), id: x?.id ?? null }))
+      .map((x) => ({ text: stripBidi(String(x?.text ?? '')).trim(), fresh: Boolean(x?.fresh), id: x?.id ?? null }))
       .filter((x) => x.text);
     if (items.length < 2 || !items.some((x) => x.fresh)) continue;
     const found = splitHits(items, '\n');
@@ -894,6 +1023,8 @@ export function findSplitContactDetails(orders) {
         if (glued) return glued;
       }
     }
+    const summed = digitSumHit(items) || chainHit(items);
+    if (summed) return summed;
   }
   return { ok: true, hits: [], reason: null, text: '', items: [] };
 }
@@ -1044,9 +1175,24 @@ export function checkWrittenAnswer(text) {
   return checkWritten(text, ANSWER_LIMITS);
 }
 
-/** A reply as it is kept: trimmed, one line (any run of spaces or line breaks is one space). */
+// Direction controls (LRM / RLM, the embeddings and overrides U+202A–U+202E, the isolates U+2066–U+2069, ALM): none of
+// the five languages needs them, and an override shows typed text backwards — "\u202emargelet" shows as "telegram",
+// "\u202e88arad@" as "@dara88" — while every check reads it forwards. So they are taken out of whatever is kept.
+const BIDI_CONTROLS = /[\u200e\u200f\u202a-\u202e\u2066-\u2069\u061c]/g;
+
+/** `text` without direction controls (BIDI_CONTROLS): what is kept reads on screen as it was checked. */
+export function stripBidi(text) {
+  return String(text ?? '').replace(BIDI_CONTROLS, '');
+}
+
+/** A written line or a chat line as it is checked and kept: no direction controls, trimmed. */
+export function cleanText(text) {
+  return stripBidi(text).trim();
+}
+
+/** A reply as it is kept: no direction controls, trimmed, one line (any run of spaces or line breaks is one space). */
 export function cleanReply(text) {
-  return String(text ?? '').replace(/\s+/g, ' ').trim();
+  return stripBidi(text).replace(/\s+/g, ' ').trim();
 }
 
 const NOTHING_SEEN = /[\p{M}\p{C}\p{Z}]/gu;
@@ -1119,7 +1265,7 @@ export function checkBirthYear(value, now = Date.now()) {
  * too_long also covers a name over the raw caps (NAME_RAW_MAX code points, NAME_CHAR_MAX in one character).
  */
 export function checkAppName(text) {
-  const name = String(text ?? '').trim().replace(/\s+/g, ' ');
+  const name = stripBidi(text).trim().replace(/\s+/g, ' ');
   const { count, widest } = scanChars(name);
   const { ok: clean, hits, reason } = findContactDetails(name);
   const result = (error) => ({ ok: !error, name, count, error, hits, reason });
@@ -1139,7 +1285,7 @@ export const REAL_NAME_MIN = 2, REAL_NAME_MAX = 60;
  * 'word', hits, reason } (name = trimmed, single spaces). 2–60 characters and no bad word (reported first).
  */
 export function checkRealName(text) {
-  const name = String(text ?? '').trim().replace(/\s+/g, ' ');
+  const name = stripBidi(text).trim().replace(/\s+/g, ' ');
   const count = charCount(name);
   const words = findBadWords(name);
   const result = (error) => ({ ok: !error, name, count, error, hits: words.hits, reason: words.reason });

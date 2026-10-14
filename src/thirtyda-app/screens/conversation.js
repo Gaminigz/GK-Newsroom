@@ -20,7 +20,7 @@
 // choice with POST /decide.
 import {
   screen, el, icon, t, go, api, toast, modal, topBar, levelBar, countdown, errorText, registerStrings, heartbeat,
-  stageLevel, nextKind, answerText, reportTarget, REPLY_MAX, checkReply,
+  stageLevel, nextKind, answerText, reportTarget, REPLY_MAX, REPLY_RAW_MAX, checkReply,
 } from '../core.js';
 import { sendPanel, translateNote, redirected, myLang, enc, ruleMessage, showError } from './level-ask.js';
 import { mountChat, ensureStyles, partnerHeader, fmtTime, dayLabel } from './chat.js';
@@ -35,7 +35,9 @@ const POLL_MAX_MS = 30000; // back-off ceiling while offline
 // Survive leaving the screen (not a reload).
 const panelOpen = new Map(); // pairId → the send panel opened (true) or folded (false) by hand
 const replyDrafts = new Map(); // `${pairId}|${setId}|${n}` → a reply being typed
-const REPLY_INPUT_MAX = 64; // code units: a 10-character Khmer reply is far under it; the server counts characters
+// Code units: the reply's raw cap in code points (shared/rules.js REPLY_RAW_MAX: ten family emoji fit), a code point
+// up to 2 units, so the box never cuts a reply the server would take; the server counts characters.
+const REPLY_INPUT_MAX = 2 * REPLY_RAW_MAX;
 const SPLIT_TYPES = ['phone', 'email', 'handle', 'app', 'link'];
 
 const unwrap = (r) => (r && typeof r === 'object' && r.conversation ? r.conversation : r);

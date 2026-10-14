@@ -659,24 +659,39 @@
     });
   }
 
+  /** Hits that point into `joined` (texts joined by line breaks, `text` the last of them) → the same hits in `text`. */
+  function hitsInLast(joined, text, hits) {
+    const offset = joined.length - text.length;
+    return hits.map((h) => {
+      const start = Math.max(0, h.start - offset), end = Math.max(start, h.end - offset);
+      return { type: h.type, match: text.slice(start, end), start, end };
+    });
+  }
+
+  /** The server's stopSplitChat: my last chat lines with this one, then everything I wrote in the pair (chatOrders). */
   function stopSplitChat(u, pair, other, text) {
     if (!text) return;
     const since = Date.now() - 10 * 60e3;
-    const recent = chatLog(pair)
+    const recentLines = chatLog(pair)
       .filter((m) => m.kind === 'chat' && m.from === u.id && !m.stopped && Date.parse(m.at) >= since)
-      .slice(-3)
-      .map((m) => m.text);
-    if (!recent.length) return;
-    const c = R.findContactDetailsAcross([...recent, text]);
-    const offset = c.text.length - text.length;
-    const hits = c.hits.filter((h) => h.lastIndex === recent.length).map((h) => {
-      const start = Math.max(0, h.start - offset);
-      return { type: h.type, match: text.slice(start, h.end - offset), start, end: h.end - offset };
+      .slice(-3);
+    const recent = recentLines.map((m) => m.text);
+    if (recent.length) {
+      const c = R.findContactDetailsAcross([...recent, text]);
+      const hits = hitsInLast(c.text, text, c.hits.filter((h) => h.lastIndex === recent.length));
+      if (hits.length) {
+        const reason = R.CONTACT_REASONS[hits[0].type] ?? c.reason;
+        recordStopped(u, pair, other, { text, level: 3, kind: 'chat', hits, reason });
+        throw fail(422, 'contact_detail', reason || 'Contact details are not allowed.', { hits, reason, count: R.charCount(text) });
+      }
+    }
+    const lines = recentLines.map((m) => ({ text: m.text, at: m.at }));
+    const c = R.findSplitContactDetails(R.chatOrders({ sets: setsOf(pair), me: u.id, text, chat: lines }));
+    if (c.ok) return;
+    recordStopped(u, pair, other, { text: c.text, level: 3, kind: 'chat', hits: c.hits, reason: c.reason });
+    throw fail(422, 'contact_detail', c.reason || 'Contact details are not allowed.', {
+      split: true, hits: hitsInLast(c.text, text, c.hits), reason: c.reason, count: R.charCount(text),
     });
-    if (!hits.length) return;
-    const reason = R.CONTACT_REASONS[hits[0].type] ?? c.reason;
-    recordStopped(u, pair, other, { text, level: 3, kind: 'chat', hits, reason });
-    throw fail(422, 'contact_detail', reason || 'Contact details are not allowed.', { hits, reason, count: R.charCount(text) });
   }
 
   /** My last chat lines in the pair (not stopped), as { text, at }: read together with a new text of mine. */
@@ -1378,7 +1393,7 @@
     if (R.openSetLevel(pair.stage) !== level || findSet(pair, level, u.id)) throw notYourTurn();
 
     const list = Array.isArray(body.questions) ? body.questions : [];
-    const written = list.map((q) => (q?.source === 'written' ? String(q.text ?? '').trim() : null));
+    const written = list.map((q) => (q?.source === 'written' ? R.cleanText(q.text) : null)); // no direction controls
     stopContactDetails(u, pair, other, written, { level, kind: 'question' });
     stopSplitContactDetails(u, pair, other, written, { level, kind: 'question' });
     stopSplitOrders(u, pair, other, R.writtenOrders({ sets: setsOf(pair), me: u.id, written, chat: myChat(u, pair) }), {
@@ -1396,7 +1411,7 @@
         if (!slots[picked].some((c) => c.key === q.key)) throw invalid(`Pick line ${picked + 1} from its own list.`, { index: i, slot: picked + 1 });
         picked++;
       } else if (q?.source === 'written') {
-        const r = R.checkWrittenQuestion(String(q.text ?? '').trim(), level);
+        const r = R.checkWrittenQuestion(written[i], level);
         if (!r.ok) throw invalid(ERROR_TEXT[r.error] || 'Check this line.', { index: i, reason: r.error });
       } else {
         throw invalid('Unknown line.', { index: i });
@@ -1408,7 +1423,7 @@
     let k = 0;
     const qs = list.map((q, i) => (q.source === 'system'
       ? { ...bankQ(level, q.key, i + 1, lang), slot: ++k }
-      : writtenQ(i + 1, { [lang]: String(q.text).trim() }, lang)));
+      : writtenQ(i + 1, { [lang]: written[i] }, lang)));
     const at = nowIso();
     newSet(pair.id, level, u.id, other.id, qs, at);
     if (!pair.startedAt) Object.assign(pair, { stage: 'l1', startedAt: at, a: u.id, b: other.id, members: [u.id, other.id] });
@@ -1689,7 +1704,7 @@
     const u = me();
     const { pair, other } = pairFor(u, params[0], { write: true });
     chatGate(u, pair);
-    const text = String(body.text ?? '').trim();
+    const text = R.cleanText(body.text); // no direction controls (shared/rules.js)
     stopContactDetails(u, pair, other, [text], { level: 3, kind: 'chat' });
     stopSplitChat(u, pair, other, text);
     stopBadWords(u, pair, other, [text], { level: 3, kind: 'chat' });
