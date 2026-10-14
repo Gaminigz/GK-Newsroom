@@ -157,39 +157,33 @@ export const PAGE_STRINGS = {
     // GKVerify's back button page (backPage): the big button says app_open.
     back_lede: "If 30+DA did not open by itself, tap the big button.",
     back_web: "Open 30+DA in the browser",
-    // The home page (homePage). The tagline and headline are the app's opening screen's own (op_tagline, op_headline);
-    // the level lines follow the conversation screen (cv_intro_1, cv_intro_2) and src/thirtyda-app/shared/questions.js.
+    // The home page (homePage). home_tagline / home_headline are the app's opening screen's own (op_tagline,
+    // op_headline); the levels follow the code (src/thirtyda-app/shared/questions.js LEVEL_RULES, shared/rules.js).
     home_tagline: "Safe and calm dating for 30+",
     home_headline: "Don’t make the same mistake again.",
-    home_desc: "30+DA is a safe and calm dating app for people aged 30 and over. Get to know someone in 3 levels, in your own language. Free.",
-    home_free: "Free · nothing to pay · 5 languages",
-    home_what_h: "What is 30+DA?",
-    home_what_1: "A calm dating app for people aged 30 and over.",
-    home_what_2: "You get to know someone in 3 levels. No rush.",
-    home_what_3: "Write in your language. 30+DA translates.",
+    home_desc: "30+DA: safe and calm dating for people aged 30 and over. Get to know someone slowly, in your own language. Free.",
+    home_line: "Somewhere in this city, someone is looking for you too.",
+    home_free: "Free · 5 languages",
+    home_string: "They say an invisible red string ties you to someone.",
+    home_frame_2: "A city full of strangers.",
+    home_frame_3: "One face comes into focus.",
+    home_frame_4: "This time, don’t walk past.",
     home_how_h: "How it works",
-    home_start_1: "Pick your language and a 4-digit PIN.",
-    home_start_2: "Look at people near you. No profile needed.",
-    home_start_3: "Make your profile: a face photo, an app name and your birth year (30+).",
-    home_levels_h: "3 levels. No rush.",
+    home_how_lede: "Look around freely. When someone catches your eye:",
     home_level: "Level {n}",
-    home_lines: "short lines",
-    home_chat: "Chat",
-    home_l1: "Send 5 short lines. They reply with one tap, and can send you 5 too.",
-    home_l2: "Opens after a wait. 5 new lines each: 3 picked + 2 of your own.",
-    home_l3: "You both choose: open the chat, or forget it. Every message is translated.",
-    home_l1_gets: "One-tap replies",
-    home_l2_gets: "Photo 2 opens",
-    home_l3_gets: "Real names + photos 3–4",
-    home_verify: "Look around freely. To talk with someone, verify one way first: Telegram, Google, Facebook or TikTok.",
+    home_l1_h: "Say hello",
+    home_l1: "5 easy questions. One tap to answer.",
+    home_l2_h: "Go deeper",
+    home_l2: "A little more, in your own words. Another photo opens.",
+    home_l3_h: "Chat",
+    home_l3: "Every message translated into your language. Real names, at last.",
     home_safe_h: "Safe and calm",
     home_safe_age: "30 and over only.",
-    home_safe_contact: "No phone numbers, emails, @handles, chat-app names or links. Not at any level.",
+    home_safe_verify: "Everyone verifies before they can talk.",
+    home_safe_contact: "No phone numbers, emails or links. Not at any level.",
     home_safe_report: "Report any chat message. We check every report.",
-    home_safe_money: "We never ask for money, bank or card details.",
-    home_get_h: "Get the app",
+    home_safe_money: "We never ask for money or card details.",
     home_soon: "Coming soon to the App Store and Google Play.",
-    home_browser: "Use it now in your browser",
     home_photo: "30+DA photo {n}",
     home_terms: "Terms",
     home_help: "Help",
@@ -285,35 +279,29 @@ export const PAGE_STRINGS = {
     // The home page (homePage).
     home_tagline: "ការណាត់ជួបប្រកបដោយសុវត្ថិភាព និងភាពស្ងប់ស្ងាត់ សម្រាប់វ័យ 30+",
     home_headline: "កុំធ្វើខុសដដែលម្ដងទៀត។",
-    home_desc: "30+DA ជាកម្មវិធីណាត់ជួបប្រកបដោយសុវត្ថិភាព និងភាពស្ងប់ស្ងាត់ សម្រាប់អ្នកដែលមានអាយុពី 30 ឆ្នាំឡើងទៅ។ ស្គាល់គ្នាតាម 3 កម្រិត ជាភាសារបស់អ្នក។ ឥតគិតថ្លៃ។",
-    home_free: "ឥតគិតថ្លៃ · មិនមានអ្វីត្រូវបង់ · 5 ភាសា",
-    home_what_h: "30+DA ជាអ្វី?",
-    home_what_1: "កម្មវិធីណាត់ជួបដ៏ស្ងប់ស្ងាត់ សម្រាប់អ្នកដែលមានអាយុពី 30 ឆ្នាំឡើងទៅ។",
-    home_what_2: "ស្គាល់គ្នាតាម 3 កម្រិត។ មិនបាច់ប្រញាប់ទេ។",
-    home_what_3: "សរសេរជាភាសារបស់អ្នក។ 30+DA បកប្រែឲ្យ។",
+    home_desc: "30+DA៖ ការណាត់ជួបប្រកបដោយសុវត្ថិភាព និងភាពស្ងប់ស្ងាត់ សម្រាប់អ្នកដែលមានអាយុពី 30 ឆ្នាំឡើងទៅ។ ស្គាល់គ្នាបន្តិចម្ដងៗ ជាភាសារបស់អ្នក។ ឥតគិតថ្លៃ។",
+    home_line: "នៅកន្លែងណាមួយក្នុងទីក្រុងនេះ មាននរណាម្នាក់កំពុងស្វែងរកអ្នកដែរ។",
+    home_free: "ឥតគិតថ្លៃ · 5 ភាសា",
+    home_string: "គេថា មានខ្សែក្រហមមួយដែលមើលមិនឃើញ ចងអ្នកជាប់នឹងនរណាម្នាក់។",
+    home_frame_2: "ទីក្រុងដែលពោរពេញដោយមនុស្សមិនស្គាល់គ្នា។",
+    home_frame_3: "មុខមួយស្រាប់តែច្បាស់ឡើង។",
+    home_frame_4: "លើកនេះ កុំដើរហួសគ្នាទៀត។",
     home_how_h: "របៀបប្រើ",
-    home_start_1: "ជ្រើសរើសភាសា និងលេខ PIN 4 ខ្ទង់។",
-    home_start_2: "មើលមនុស្សនៅជិតអ្នក។ មិនចាំបាច់មានប្រវត្តិរូបទេ។",
-    home_start_3: "បង្កើតប្រវត្តិរូប៖ រូបថតមុខ ឈ្មោះក្នុងកម្មវិធី និងឆ្នាំកំណើត (30+)។",
-    home_levels_h: "3 កម្រិត។ មិនបាច់ប្រញាប់ទេ។",
+    home_how_lede: "មើលដោយសេរី។ ពេលអ្នកចាប់អារម្មណ៍នរណាម្នាក់៖",
     home_level: "កម្រិត {n}",
-    home_lines: "ឃ្លាខ្លីៗ",
-    home_chat: "ជជែក",
-    home_l1: "ផ្ញើឃ្លាខ្លីៗ 5។ គេឆ្លើយតបដោយចុចតែម្ដង ហើយក៏អាចផ្ញើឃ្លា 5 មកអ្នកវិញដែរ។",
-    home_l2: "បើកក្រោយពេលរង់ចាំ។ ម្នាក់ៗផ្ញើឃ្លាថ្មី 5៖ ជ្រើស 3 និងសរសេរខ្លួនឯង 2។",
-    home_l3: "អ្នកទាំងពីរជ្រើសរើស៖ បើកការជជែក ឬឈប់ត្រឹមនេះ។ សារនីមួយៗត្រូវបានបកប្រែ។",
-    home_l1_gets: "ឆ្លើយតបដោយចុចតែម្ដង",
-    home_l2_gets: "រូបថតទី 2 បើក",
-    home_l3_gets: "ឈ្មោះពិត + រូបថតទី 3–4",
-    home_verify: "មើលបានដោយសេរី។ ដើម្បីនិយាយជាមួយនរណាម្នាក់ សូមផ្ទៀងផ្ទាត់មួយវិធីជាមុនសិន៖ Telegram, Google, Facebook ឬ TikTok។",
+    home_l1_h: "និយាយសួស្ដី",
+    home_l1: "សំណួរងាយៗចំនួន 5។ ចុចតែម្ដងដើម្បីឆ្លើយ។",
+    home_l2_h: "ស្គាល់គ្នាឲ្យជ្រៅជាងនេះ",
+    home_l2: "បន្ថែមបន្តិចទៀត ជាពាក្យរបស់អ្នកផ្ទាល់។ រូបថតមួយទៀតបើក។",
+    home_l3_h: "ជជែក",
+    home_l3: "សារនីមួយៗត្រូវបានបកប្រែជាភាសារបស់អ្នក។ ទីបំផុត ឃើញឈ្មោះពិត។",
     home_safe_h: "សុវត្ថិភាព និងស្ងប់ស្ងាត់",
     home_safe_age: "សម្រាប់តែអ្នកដែលមានអាយុពី 30 ឆ្នាំឡើងទៅ។",
-    home_safe_contact: "គ្មានលេខទូរស័ព្ទ អ៊ីមែល @ឈ្មោះគណនី ឈ្មោះកម្មវិធីជជែក ឬតំណភ្ជាប់ទេ។ គ្រប់កម្រិតទាំងអស់។",
+    home_safe_verify: "អ្នករាល់គ្នាត្រូវផ្ទៀងផ្ទាត់ មុននឹងអាចនិយាយគ្នាបាន។",
+    home_safe_contact: "គ្មានលេខទូរស័ព្ទ អ៊ីមែល ឬតំណភ្ជាប់ទេ។ គ្រប់កម្រិតទាំងអស់។",
     home_safe_report: "រាយការណ៍សារណាមួយក្នុងការជជែក។ យើងពិនិត្យរាល់របាយការណ៍។",
-    home_safe_money: "យើងមិនដែលសុំលុយ ព័ត៌មានធនាគារ ឬកាតឡើយ។",
-    home_get_h: "ទាញយកកម្មវិធី",
+    home_safe_money: "យើងមិនដែលសុំលុយ ឬព័ត៌មានកាតឡើយ។",
     home_soon: "នឹងមានក្នុង App Store និង Google Play ឆាប់ៗនេះ។",
-    home_browser: "ប្រើឥឡូវនេះក្នុង browser",
     home_photo: "រូបថត 30+DA ទី {n}",
     home_terms: "លក្ខខណ្ឌប្រើប្រាស់",
     home_help: "ជំនួយ",
@@ -409,35 +397,29 @@ export const PAGE_STRINGS = {
     // The home page (homePage).
     home_tagline: "30+ 的安全、从容交友",
     home_headline: "别再犯同样的错误。",
-    home_desc: "30+DA 是一款为 30 岁及以上人士打造的安全、从容的交友应用。分 3 个等级慢慢认识，用你自己的语言。免费。",
-    home_free: "免费 · 无需付款 · 5 种语言",
-    home_what_h: "30+DA 是什么？",
-    home_what_1: "一款为 30 岁及以上人士打造的安心交友应用。",
-    home_what_2: "分 3 个等级慢慢认识一个人，不用着急。",
-    home_what_3: "用你的语言写，30+DA 帮你翻译。",
+    home_desc: "30+DA：为 30 岁及以上人士打造的安全、从容的交友应用。用你自己的语言，慢慢认识一个人。免费。",
+    home_line: "在这座城市的某个角落，也有人在找你。",
+    home_free: "免费 · 5 种语言",
+    home_string: "传说，一根看不见的红线，把你和某个人系在一起。",
+    home_frame_2: "满城都是陌生人。",
+    home_frame_3: "有一张脸，忽然清晰起来。",
+    home_frame_4: "这一次，别再擦肩而过。",
     home_how_h: "怎么用",
-    home_start_1: "选择语言，设一个 4 位数 PIN。",
-    home_start_2: "看看你附近的人，不用先建资料。",
-    home_start_3: "建立资料：一张正脸照、应用名和出生年份（30+）。",
-    home_levels_h: "3 个等级，不用着急。",
+    home_how_lede: "随意看看。遇到心动的人：",
     home_level: "等级 {n}",
-    home_lines: "句简短的话",
-    home_chat: "聊天",
-    home_l1: "发 5 句简短的话。对方点一下就能回复，也可以给你发 5 句。",
-    home_l2: "等待之后开启。各自再发 5 句新的话：选 3 句，自己写 2 句。",
-    home_l3: "你们俩都要选：开始聊天，还是算了。每条消息都会翻译。",
-    home_l1_gets: "点一下就能回复",
-    home_l2_gets: "可看第 2 张照片",
-    home_l3_gets: "真实姓名 + 第 3–4 张照片",
-    home_verify: "可以随便看看。想和别人聊天，请先完成一种验证：Telegram、Google、Facebook 或 TikTok。",
+    home_l1_h: "打个招呼",
+    home_l1: "5 个简单的问题，点一下就能回答。",
+    home_l2_h: "再深入一点",
+    home_l2: "多说一点，用你自己的话。还能多看到一张照片。",
+    home_l3_h: "聊天",
+    home_l3: "每条消息都翻译成你的语言。终于，看到真名。",
     home_safe_h: "安全、从容",
     home_safe_age: "仅限 30 岁及以上人士。",
-    home_safe_contact: "不允许手机号、邮箱、@账号、聊天软件名或链接。任何等级都不行。",
+    home_safe_verify: "每个人都要先验证，才能聊天。",
+    home_safe_contact: "不允许手机号、邮箱或链接。任何等级都不行。",
     home_safe_report: "任何聊天消息都可以举报。每一份举报我们都会查看。",
-    home_safe_money: "我们绝不会索要钱、银行或银行卡信息。",
-    home_get_h: "获取应用",
+    home_safe_money: "我们绝不会向你要钱或银行卡信息。",
     home_soon: "即将登陆 App Store 和 Google Play。",
-    home_browser: "现在就在浏览器中使用",
     home_photo: "30+DA 照片 {n}",
     home_terms: "使用条款",
     home_help: "帮助",
@@ -533,35 +515,29 @@ export const PAGE_STRINGS = {
     // The home page (homePage).
     home_tagline: "30+를 위한 안전하고 차분한 만남",
     home_headline: "같은 실수를 반복하지 마세요.",
-    home_desc: "30+DA는 30세 이상을 위한 안전하고 차분한 데이트 앱이에요. 3단계로 천천히, 내 언어로 알아 가요. 무료예요.",
-    home_free: "무료 · 결제할 것 없음 · 5개 언어",
-    home_what_h: "30+DA는 어떤 앱인가요?",
-    home_what_1: "30세 이상을 위한 차분한 데이트 앱이에요.",
-    home_what_2: "3단계로 천천히 알아 가요. 서두를 필요 없어요.",
-    home_what_3: "내 언어로 쓰면 30+DA가 번역해요.",
+    home_desc: "30+DA: 30세 이상을 위한 안전하고 차분한 데이트 앱. 내 언어로 천천히 알아 가요. 무료예요.",
+    home_line: "이 도시 어딘가에서, 누군가도 당신을 찾고 있어요.",
+    home_free: "무료 · 5개 언어",
+    home_string: "보이지 않는 붉은 실이 당신과 누군가를 이어 준대요.",
+    home_frame_2: "낯선 사람들로 가득한 도시.",
+    home_frame_3: "한 얼굴이 또렷해져요.",
+    home_frame_4: "이번에는 스쳐 지나가지 마세요.",
     home_how_h: "이용 방법",
-    home_start_1: "언어를 고르고 4자리 PIN을 정해요.",
-    home_start_2: "내 주변 사람들을 둘러봐요. 프로필은 필요 없어요.",
-    home_start_3: "프로필 만들기: 얼굴 사진, 앱 이름, 출생 연도(30+).",
-    home_levels_h: "3단계. 서두르지 않아요.",
+    home_how_lede: "자유롭게 둘러보세요. 마음이 가는 사람이 있다면:",
     home_level: "레벨 {n}",
-    home_lines: "짧은 한마디",
-    home_chat: "채팅",
-    home_l1: "짧은 한마디 5개를 보내요. 상대는 한 번 눌러 답하고, 5개를 보낼 수도 있어요.",
-    home_l2: "기다린 뒤에 열려요. 서로 새 한마디 5개씩: 3개 고르고 2개 직접 써요.",
-    home_l3: "두 분 모두 골라요: 채팅 열기 또는 그만두기. 모든 메시지가 번역돼요.",
-    home_l1_gets: "한 번 눌러 답장",
-    home_l2_gets: "사진 2 공개",
-    home_l3_gets: "실명 + 사진 3–4",
-    home_verify: "자유롭게 둘러보세요. 다른 사람과 이야기하려면 먼저 한 가지 방법으로 인증해요: Telegram, Google, Facebook, TikTok.",
+    home_l1_h: "인사하기",
+    home_l1: "쉬운 질문 5개. 한 번 눌러 답해요.",
+    home_l2_h: "조금 더 깊이",
+    home_l2: "조금 더, 내 말로. 사진이 한 장 더 열려요.",
+    home_l3_h: "채팅",
+    home_l3: "모든 메시지가 내 언어로 번역돼요. 드디어 실명도요.",
     home_safe_h: "안전하고 차분하게",
     home_safe_age: "30세 이상만 이용할 수 있어요.",
-    home_safe_contact: "전화번호, 이메일, @아이디, 메신저 이름, 링크는 안 돼요. 어느 단계에서도요.",
+    home_safe_verify: "누구나 인증해야 대화할 수 있어요.",
+    home_safe_contact: "전화번호, 이메일, 링크는 안 돼요. 어느 단계에서도요.",
     home_safe_report: "어떤 채팅 메시지든 신고할 수 있어요. 모든 신고를 확인해요.",
-    home_safe_money: "돈, 은행·카드 정보를 절대 묻지 않아요.",
-    home_get_h: "앱 받기",
+    home_safe_money: "돈이나 카드 정보를 절대 묻지 않아요.",
     home_soon: "App Store와 Google Play에 곧 나와요.",
-    home_browser: "지금 브라우저에서 쓰기",
     home_photo: "30+DA 사진 {n}",
     home_terms: "이용약관",
     home_help: "도움말",
@@ -657,35 +633,29 @@ export const PAGE_STRINGS = {
     // The home page (homePage).
     home_tagline: "30+のための、安心で穏やかな出会い",
     home_headline: "同じ過ちを、もう繰り返さない。",
-    home_desc: "30+DA は、30歳以上の方のための安心で穏やかな出会いアプリです。3つのレベルで、自分の言葉で、ゆっくり知り合えます。無料です。",
-    home_free: "無料 · 支払いなし · 5言語",
-    home_what_h: "30+DA とは？",
-    home_what_1: "30歳以上の方のための、落ち着いた出会いアプリです。",
-    home_what_2: "3つのレベルで、ゆっくり知り合えます。急ぐ必要はありません。",
-    home_what_3: "自分の言葉で書けば、30+DA が翻訳します。",
+    home_desc: "30+DA：30歳以上の方のための、安心で穏やかな出会いアプリ。自分の言葉で、ゆっくり知り合えます。無料です。",
+    home_line: "この街のどこかで、誰かもあなたを探しています。",
+    home_free: "無料 · 5言語",
+    home_string: "見えない赤い糸が、あなたと誰かを結んでいるといいます。",
+    home_frame_2: "見知らぬ人であふれる街。",
+    home_frame_3: "ひとつの顔に、ふとピントが合う。",
+    home_frame_4: "今度こそ、すれ違わないで。",
     home_how_h: "使い方",
-    home_start_1: "言語を選んで、4桁の PIN を決めます。",
-    home_start_2: "近くの人を見てみましょう。プロフィールは不要です。",
-    home_start_3: "プロフィールを作成：顔写真、アプリ名、生まれ年（30+）。",
-    home_levels_h: "3つのレベル。急がなくて大丈夫。",
+    home_how_lede: "自由に見てまわって。気になる人がいたら：",
     home_level: "レベル{n}",
-    home_lines: "短いひとこと",
-    home_chat: "チャット",
-    home_l1: "短いひとことを5つ送ります。返信はワンタップ。相手からも5つ届きます。",
-    home_l2: "待ち時間のあとに開きます。お互いに新しいひとことを5つずつ：3つ選んで2つ書きます。",
-    home_l3: "ふたりとも選びます：チャットを開くか、やめておくか。メッセージはすべて翻訳されます。",
-    home_l1_gets: "ワンタップで返信",
-    home_l2_gets: "写真2が見られる",
-    home_l3_gets: "本名 + 写真3–4",
-    home_verify: "自由に見て回れます。相手と話すには、まずどれか1つで確認します：Telegram・Google・Facebook・TikTok。",
+    home_l1_h: "あいさつ",
+    home_l1: "かんたんな質問を5つ。答えはワンタップ。",
+    home_l2_h: "もう少し深く",
+    home_l2: "もう少し、自分の言葉で。写真がもう一枚見られます。",
+    home_l3_h: "チャット",
+    home_l3: "メッセージはすべてあなたの言語に翻訳。やっと本名も。",
     home_safe_h: "安心で穏やか",
     home_safe_age: "30歳以上の方のみ。",
-    home_safe_contact: "電話番号・メール・@ID・チャットアプリ名・リンクは禁止。どのレベルでも。",
+    home_safe_verify: "話す前に、全員が認証を済ませます。",
+    home_safe_contact: "電話番号・メール・リンクは禁止。どのレベルでも。",
     home_safe_report: "チャットのメッセージはどれでも報告できます。すべての報告を確認します。",
-    home_safe_money: "お金、銀行・カード情報を聞くことは決してありません。",
-    home_get_h: "アプリを入手",
+    home_safe_money: "お金やカード情報を聞くことは決してありません。",
     home_soon: "App Store と Google Play に近日登場。",
-    home_browser: "今すぐブラウザで使う",
     home_photo: "30+DA の写真 {n}",
     home_terms: "利用規約",
     home_help: "ヘルプ",
@@ -864,44 +834,64 @@ ${backToApp(t)}`;
 // ---------- the home page: GET /30da/home ----------
 
 /**
- * The home page's photo slots (owner 2026-10-14: "flashy, with 30-year-old men and women"; real stills come from the
- * Yai Media Director): the hero (16:9) and a strip of 6 (4:5). Each is src/thirtyda-app/home/img/<slot>.jpg or .webp,
- * served at /30da/home/img/<slot>.<ext> (src/lib/thirtyda-home.mjs). A slot with no file shows a soft 30+DA mark on a
- * navy / warm gradient instead: never a stock or made-up face.
+ * The home page's photos (owner 2026-10-14): stills from the 30+DA teaser — AI-made, nobody real — in
+ * src/thirtyda-app/home/img/ (its README names them), served at /30da/home/img/<slot>.<ext> (src/lib/thirtyda-home.mjs):
+ *   hero        16:9 (1600 × 900): the rooftop over the lit city at dusk, the woman low right (the words stay clear of her)
+ *   people-1    tall (893 × 1600): a woman on a rooftop terrace at dusk, beside "How it works"
+ *   people-2…4  tall, ONE sequence in this order, the red thread through each: the evening street, one woman sharp in a
+ *               blurred crowd, a man and a woman walking past each other
+ * A slot with no file shows a night-city placeholder in the app's colours (navy, soft bokeh lights, the thin red
+ * thread): never a stock or made-up face.
  */
 export const HOME_HERO = "hero";
-export const HOME_PEOPLE = Object.freeze(["people-1", "people-2", "people-3", "people-4", "people-5", "people-6"]);
+export const HOME_PORTRAIT = "people-1";
+export const HOME_SEQUENCE = Object.freeze(["people-2", "people-3", "people-4"]);
+export const HOME_PEOPLE = Object.freeze([HOME_PORTRAIT, ...HOME_SEQUENCE]);
 export const HOME_SLOTS = Object.freeze([HOME_HERO, ...HOME_PEOPLE]);
 export const HOME_IMG_PATH = "/30da/home/img/";
 /** The photo kinds a slot may have, in the order a <picture> offers them (webp first, jpg the fallback). */
 export const HOME_IMG_EXTS = Object.freeze(["webp", "jpg"]);
+const HOME_SIZE = { [HOME_HERO]: [1600, 900], tall: [893, 1600] };
 
-// 24×24 stroke icons, the app's own (src/thirtyda-app/core.js ICONS) plus a few for this page. Constant markup.
-const HOME_ICONS = {
-  arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
-  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
-  heart: '<path fill="currentColor" stroke="none" d="M12 20.6s-7.6-4.6-9.3-9.5C1.5 7.6 3.9 4.4 7.3 4.4c2 0 3.6 1.1 4.7 2.8 1.1-1.7 2.7-2.8 4.7-2.8 3.4 0 5.8 3.2 4.6 6.7-1.7 4.9-9.3 9.5-9.3 9.5z"/>',
-  steps: '<path d="M4 20h4.5v-5H4zM9.75 20h4.5v-9.5h-4.5zM15.5 20H20V5h-4.5z"/>',
-  translate: '<path d="M3.5 5.5h9M8 3.5v2M10.8 5.5c-.8 3.4-3 6.2-6.3 8M5.8 8.6c1.3 2 3.1 3.6 5.2 4.6"/><path d="M12.5 20.5l4-10 4 10M14 17h5"/>',
-  chat: '<path d="M4 5.5h16v10.5H9.5L5 20v-4H4z"/>',
-  image: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M4 18l5-5 4 4 3-3 4 4"/>',
-  eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
-  shield: '<path d="M12 3l7 3v5.5c0 4.4-3 8.2-7 9.5-4-1.3-7-5.1-7-9.5V6z"/><path d="M9 12l2.2 2.2L15.5 10"/>',
-  flag: '<path d="M5 21V4M5 4.5h11l-2 3.5 2 3.5H5"/>',
-  nophone: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 17.5h2M3.5 3.5l17 17"/>',
-  nocard: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M3.5 3.5l17 17"/>',
-  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
+/**
+ * The red string (the teaser's: "an invisible red string touches everyone but is tied to no one"): one fine line in
+ * the app's red. Each piece is an SVG that stretches with its box while the line stays 1.5 px (non-scaling-stroke);
+ * pieces marked hm-on-phone / hm-on-wide show only on phones / from 900 px. Constant markup, decoration only.
+ */
+const thread = (cls, viewBox, paths) => `<svg class="hm-thread ${cls}" viewBox="${viewBox}" preserveAspectRatio="none" aria-hidden="true" focusable="false">`
+  + paths.map(([c, d]) => `<path${c ? ` class="${c}"` : ""} d="${d}" vector-effect="non-scaling-stroke"/>`).join("") + "</svg>";
+// The hero: in from the side, down to the middle of its bottom edge, where the page's thread goes on.
+const HERO_THREAD = [
+  ["hm-on-phone", "M-2,77 C18,79 38,84 46,92 C49.5,95.5 50,97 50,100"],
+  ["hm-on-wide", "M102,14 C78,20 61,30 59,48 C57,68 50,84 50,100"],
+];
+// The sequence (people-2, -3, -4). Phones: a zigzag of 3 frames 47 wide (box 100 × 204.2); the thread runs down the
+// middle, dipping behind each frame. Wide: a row of 3 frames 31.33 wide (the middle one higher); the thread runs
+// across behind all three (box -8…108 × 62.15). The points where it goes behind a frame are where the frame's own
+// placeholder thread (PH_THREADS) comes in and goes out, so with no photo yet it reads as one line.
+const SEQ_PHONE = [["", "M50,0 C50,8 49,12 47,12 L44,30 L47,48 C50,48 50,75 53,75 L56,90 L53,105 C50,105 50,135 47,135 L44,150 L47,175 C49.5,175 50,186 50,204.2"]];
+const SEQ_WIDE = [["", "M-8,29 C-4,29 -3,32 0,32 L31.33,36 C32.5,36 33.2,38 34.33,38 L65.67,30 C66.8,30 67.5,28 68.67,28 L100,34 C103,34 105,36 108,36"]];
+// Inside a tall placeholder (box 100 × 179.2, the frame's own shape).
+const PH_THREADS = {
+  "people-1": [["", "M50,0 C50,40 18,62 28,92 C38,122 50,140 50,179.2"]],
+  "people-2": [["hm-on-phone", "M100,25.5 C66,25.5 30,38 36,62 C42,88 74,102.1 100,102.1"], ["hm-on-wide", "M0,83 C30,83 35,135 58,128 C78,122 82,95.8 100,95.8"]],
+  "people-3": [["hm-on-phone", "M0,31.9 C34,31.9 70,44 64,66 C58,88 26,95.7 0,95.7"], ["hm-on-wide", "M0,121.3 C25,121.3 30,60 55,62 C78,64 80,95.8 100,95.8"]],
+  "people-4": [["hm-on-phone", "M100,31.9 C66,31.9 30,46 36,72 C42,100 74,117 100,117"], ["hm-on-wide", "M0,70.2 C22,70.2 28,120 52,118 C76,116 80,89.4 100,89.4"]],
 };
-const homeIcon = (name, size = 24) => `<svg class="hm-i" viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor"`
-  + ` stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${HOME_ICONS[name]}</svg>`;
+const ARROW = '<svg class="hm-i" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"'
+  + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
 
 /**
  * One photo slot: an <img> (a <picture> with the webp first when both kinds are there) when its file is on disk —
- * `exts` = the kinds there, from homePhotos() — else the soft placeholder (decoration only: hidden from screen readers).
+ * `exts` = the kinds there, from homePhotos() — else the night-city placeholder (decoration: hidden from screen readers).
  */
-function homePhoto(slot, exts, alt, { width, height, eager = false }) {
+function homePhoto(slot, exts, alt, { eager = false } = {}) {
   const have = HOME_IMG_EXTS.filter((x) => Array.isArray(exts) && exts.includes(x));
-  if (!have.length) return `<span class="hm-ph" aria-hidden="true"><span class="hm-ph-mark">30+DA</span></span>`;
+  if (!have.length) {
+    const inner = PH_THREADS[slot] ? thread("hm-ph-thread", "0 0 100 179.2", PH_THREADS[slot]) : "";
+    return `<span class="hm-ph hm-ph-${slot}" aria-hidden="true">${inner}</span>`;
+  }
+  const [width, height] = HOME_SIZE[slot] || HOME_SIZE.tall;
   const src = (x) => `${HOME_IMG_PATH}${slot}.${x}`;
   const img = `<img src="${src(have.at(-1))}" alt="${esc(alt)}" width="${width}" height="${height}" `
     + `${eager ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async">`;
@@ -909,106 +899,92 @@ function homePhoto(slot, exts, alt, { width, height, eager = false }) {
 }
 
 /**
- * GET /30da/home[?lang=] — what 30+DA is, how it works, and the way in (the web app, /30da/). Owner 2026-10-14: "it
- * explains how the app works: Level 1 ask 5, then 3, then chat, and 5 languages, safe and calm". True to the code:
- *   start     language → a 4-digit PIN (screens/pin.js) → people near you as a guest (guest.js) → a profile: a face
- *             photo, an app name, a birth year of 30+ (shared/rules.js checkBirthYear)
- *   Level 1   each sends ONE set of 5 lines (4 picked + 1 written), the other replies with one tap (shared/questions.js
- *             LEVEL_RULES, replyOptions)
- *   Level 2   opens after a wait; 5 new lines each — 3 picked (Intentions, Time of Comfort, Venue Vibe) + 2 written;
- *             a viewer at Level 2 sees photo 2 (shared/rules.js PHOTO_SLOT_LEVELS)
- *   Level 3   the chat, once BOTH chose it ("Forget it" ends it for both: shared/conversation.js afterDecisions);
- *             real names and photos 3–4; every line translated (src/lib/thirtyda-translate.mjs)
- *   verify    talking to someone needs one verified way (src/lib/thirtyda-verify.mjs TALK_ROUTES); looking does not
- *   safety    30+ only; contact details refused at every level (findContactDetails); a chat line can be reported;
- *             nothing to pay. The app is not in the stores yet: plain text, no badge, no store link.
- * `photos` = homePhotos() (which slots have a file); none → every slot is the soft placeholder.
+ * GET /30da/home[?lang=] — a dating app's front door (owner 2026-10-14: "it's a date app", "follow the app colours",
+ * "numbers for what?"). The night hero (the wordmark, one warm line, "Safe and calm dating for 30+", Open 30+DA → the
+ * web app /30da/), the teaser's photo sequence on the red string, how it works told as a path in words, safe and calm
+ * in a few plain lines, the app's own headline and the button again, a quiet footer. True to the code:
+ *   Level 1   5 lines each — yes/no questions (4 picked + 1 written), answered with one tap (shared/questions.js
+ *             LEVEL_RULES, SYSTEM_QUESTIONS[1], replyOptions) — the page's ONE count
+ *   Level 2   more lines, 2 of them in your own words; photo 2 opens (shared/rules.js PHOTO_SLOT_LEVELS)
+ *   Level 3   the chat once both chose it, every line translated (src/lib/thirtyda-translate.mjs), real names
+ *   safety    30+ only; talking needs one verified way (src/lib/thirtyda-verify.mjs); contact details refused at every
+ *             level; a chat line can be reported; nothing to pay. Not in the stores yet: one plain line, no badge or link.
+ * No script, no inline style (the page CSP). `photos` = homePhotos(); none → every slot is its placeholder.
  */
 export function homePage({ lang: want, photos = {} } = {}) {
   const lang = ok(want);
   const t = PAGE_STRINGS[lang];
   const q = `?lang=${lang}`;
+  const has = (slot) => HOME_IMG_EXTS.some((x) => photos?.[slot]?.includes?.(x));
+  // Alt text: the hero says what the page is; the others "30+DA photo 1" … "4" (the frames' lines are beside them).
+  const alt = (slot) => (slot === HOME_HERO ? `30+DA · ${t.home_tagline}` : fill(t.home_photo, { n: HOME_PEOPLE.indexOf(slot) + 1 }));
+  const photo = (slot, opts) => homePhoto(slot, photos?.[slot], alt(slot), opts);
   const letters = [..."30+DA"].map((c) => `<span>${c}</span>`).join("");
-  const point = (icon, text) => `        <li><span class="hm-ico">${homeIcon(icon, 26)}</span><span>${text}</span></li>`;
-  const step = (n, text) => `        <li><span class="hm-n" aria-hidden="true">${n}</span><span>${text}</span></li>`;
-  const bar = (n) => `<span class="hm-lvbar" aria-hidden="true">${[1, 2, 3].map((i) => (i <= n ? '<span class="on"></span>' : "<span></span>")).join("")}</span>`;
-  const level = (n, big, text, gets, icon) => `        <li class="hm-lv hm-lv${n}">
-          <p class="hm-lv-top"><span class="hm-lv-tag">${fill(t.home_level, { n })}</span>${bar(n)}</p>
-          <p class="hm-lv-big">${big}</p>
-          <p class="hm-lv-text">${text}</p>
-          <p class="hm-lv-gets">${homeIcon(icon, 18)}<span>${gets}</span></p>
-        </li>`;
-  const safe = (icon, text) => `        <li><span class="hm-ico">${icon}</span><span>${text}</span></li>`;
-  // The strip is decoration until a photo is there (then each photo has its own alt text).
-  const anyPeople = HOME_PEOPLE.some((slot) => HOME_IMG_EXTS.some((x) => photos?.[slot]?.includes?.(x)));
-  const people = HOME_PEOPLE.map((slot, i) => `        <li>${homePhoto(slot, photos?.[slot], fill(t.home_photo, { n: i + 1 }), { width: 800, height: 1000 })}</li>`).join("\n");
-  const inner = `<header class="hm-top">
+  const frame = (slot, i) => `      <li class="hm-fr hm-fr-${i + 1}">
+        <figure class="hm-fr-ph">${photo(slot)}</figure>
+        <p class="hm-cap">${t[`home_frame_${i + 2}`]}</p>
+      </li>`;
+  const level = (n) => `          <li class="hm-block hm-knot hm-lv">
+            <p class="hm-lv-tag">${fill(t.home_level, { n })}</p>
+            <h3>${t[`home_l${n}_h`]}</h3>
+            <p class="hm-lv-text">${t[`home_l${n}`]}</p>
+          </li>`;
+  const button = (cls) => `<p class="hm-cta"><a class="${cls}" href="${WEB_APP_PATH}">${t.app_open}${ARROW}</a></p>`;
+  const inner = `<header class="hm-hero${has(HOME_HERO) ? " has-photo" : ""}">
+  <div class="hm-hero-bg">${photo(HOME_HERO, { eager: true })}</div>
+  ${thread("hm-thread-hero", "0 0 100 100", HERO_THREAD)}
   <div class="hm-wrap hm-bar">
     ${flagRow(lang, (c) => `/30da/home?lang=${c}`)}
   </div>
-  <div class="hm-wrap hm-hero">
-    <div class="hm-hero-text">
-      <p class="hm-mark" role="img" aria-label="30+DA">${letters}</p>
-      <span class="hm-rule" aria-hidden="true"><span></span></span>
-      <h1 class="hm-h1">${t.home_tagline}</h1>
-      <p class="hm-head">${t.home_headline}</p>
-      <p class="hm-cta"><a class="hm-btn" href="${WEB_APP_PATH}">${t.app_open}${homeIcon("arrow", 26)}</a></p>
-      <p class="hm-free">${t.home_free}</p>
-    </div>
-    <figure class="hm-hero-photo">${homePhoto(HOME_HERO, photos?.[HOME_HERO], `30+DA · ${t.home_tagline}`, { width: 1600, height: 900, eager: true })}</figure>
+  <div class="hm-wrap hm-hero-text">
+    <p class="hm-mark" role="img" aria-label="30+DA">${letters}</p>
+    <span class="hm-rule" aria-hidden="true"><span></span></span>
+    <p class="hm-line">${t.home_line}</p>
+    <h1 class="hm-h1">${t.home_tagline}</h1>
+    ${button("hm-btn")}
+    <p class="hm-free">${t.home_free}</p>
   </div>
 </header>
 <main>
-  <section class="hm-sec hm-what" aria-labelledby="hm-what-h">
+  <section class="hm-sec hm-story" aria-labelledby="hm-string">
     <div class="hm-wrap">
-      <h2 id="hm-what-h">${t.home_what_h}</h2>
-      <ul class="hm-points">
-${point("heart", t.home_what_1)}
-${point("steps", t.home_what_2)}
-${point("translate", t.home_what_3)}
-      </ul>
-    </div>
-  </section>
-  <section class="hm-people">
-    <div class="hm-wrap">
-      <ul class="hm-strip"${anyPeople ? "" : ' aria-hidden="true"'}>
-${people}
-      </ul>
+      <p class="hm-block hm-knot hm-string" id="hm-string">${t.home_string}</p>
+      <ol class="hm-seq">
+      ${thread("hm-seq-line hm-on-phone", "0 0 100 204.2", SEQ_PHONE)}
+      ${thread("hm-seq-string hm-on-wide", "-8 0 116 62.15", SEQ_WIDE)}
+${HOME_SEQUENCE.map(frame).join("\n")}
+      </ol>
     </div>
   </section>
   <section class="hm-sec hm-how" aria-labelledby="hm-how-h">
-    <div class="hm-wrap">
-      <h2 id="hm-how-h">${t.home_how_h}</h2>
-      <ol class="hm-steps">
-${step(1, t.home_start_1)}
-${step(2, t.home_start_2)}
-${step(3, t.home_start_3)}
-      </ol>
-      <h3 class="hm-levels-h">${t.home_levels_h}</h3>
-      <ol class="hm-path">
-${level(1, `<span class="hm-lv-num">5</span><span class="hm-lv-unit">${t.home_lines}</span>`, t.home_l1, t.home_l1_gets, "check")}
-${level(2, `<span class="hm-lv-num">3<span class="hm-lv-plus">+</span>2</span><span class="hm-lv-unit">${t.home_lines}</span>`, t.home_l2, t.home_l2_gets, "image")}
-${level(3, `<span class="hm-lv-chat">${homeIcon("chat", 34)}</span><span class="hm-lv-word">${t.home_chat}</span>`, t.home_l3, t.home_l3_gets, "eye")}
-      </ol>
-      <p class="hm-verify">${homeIcon("shield", 24)}<span>${t.home_verify}</span></p>
+    <div class="hm-wrap hm-how-grid">
+      <figure class="hm-how-photo">${photo(HOME_PORTRAIT)}</figure>
+      <div class="hm-how-text">
+        <div class="hm-block hm-knot hm-how-head">
+          <h2 id="hm-how-h">${t.home_how_h}</h2>
+          <p class="hm-lede">${t.home_how_lede}</p>
+        </div>
+        <ol class="hm-levels">
+${[1, 2, 3].map(level).join("\n")}
+        </ol>
+      </div>
     </div>
   </section>
   <section class="hm-sec hm-safe" aria-labelledby="hm-safe-h">
     <div class="hm-wrap">
-      <h2 id="hm-safe-h">${t.home_safe_h}</h2>
-      <ul class="hm-safe-list">
-${safe('<span class="hm-age">30+</span>', t.home_safe_age)}
-${safe(homeIcon("nophone", 26), t.home_safe_contact)}
-${safe(homeIcon("flag", 26), t.home_safe_report)}
-${safe(homeIcon("nocard", 26), t.home_safe_money)}
-      </ul>
-    </div>
-  </section>
-  <section class="hm-sec hm-get" aria-labelledby="hm-get-h">
-    <div class="hm-wrap">
-      <h2 id="hm-get-h">${t.home_get_h}</h2>
-      <p class="hm-soon">${homeIcon("clock", 20)}<span>${t.home_soon}</span></p>
-      <p class="hm-cta2"><a class="hm-btn2" href="${WEB_APP_PATH}"><span>${t.home_browser}</span>${homeIcon("arrow", 22)}</a></p>
+      <div class="hm-safe-thread">
+        <div class="hm-block hm-knot hm-safe-box">
+          <h2 id="hm-safe-h">${t.home_safe_h}</h2>
+          <ul class="hm-safe-list">
+${["age", "verify", "contact", "report", "money"].map((k) => `            <li>${t[`home_safe_${k}`]}</li>`).join("\n")}
+          </ul>
+        </div>
+      </div>
+      <div class="hm-end">
+        <p class="hm-end-line">${t.home_headline}</p>
+        ${button("hm-btn hm-btn-navy")}
+        <p class="hm-soon">${t.home_soon}</p>
+      </div>
     </div>
   </section>
 </main>

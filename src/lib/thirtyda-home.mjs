@@ -1,7 +1,7 @@
 /**
  * 30+DA home page photos (owner 2026-10-14), next to the page itself (src/lib/thirtyda-pages.mjs homePage):
  *
- *   homePhotos()                      which photo slots (HOME_SLOTS: hero, people-1 … people-6) have a file in
+ *   homePhotos()                      which photo slots (HOME_SLOTS: hero, people-1 … people-4) have a file in
  *                                     src/thirtyda-app/home/img/ — read once per process (photos come with a deploy)
  *   GET /30da/home/img/<name>.<ext>   one photo: [a-z0-9-] names only, .jpg or .webp only, the right Content-Type,
  *                                     cached a day (sendHomeImage). Nothing else in that folder is served.
