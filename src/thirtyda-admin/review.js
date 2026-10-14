@@ -76,8 +76,8 @@ function render() {
   $('sw-pill').textContent = v.on ? 'ON' : 'OFF';
   $('sw-pill').classList.toggle('on', v.on);
   $('sw-help').textContent = v.on
-    ? `Reviewers sign in with a review account's PIN ("App review" on the app's PIN screen), or its mock number and the code. Turn it off after the review${v.switchedAt ? ` (on since ${whenOf(v.switchedAt)})` : ''}.`
-    : 'Off: "App review" is not shown in the app, the review PINs and the review code do not work, and the mock numbers act like any other number. Turn it on before you send the app for review.';
+    ? `Reviewers sign in with a review account's PIN (typed on the app's PIN screen, or "App review sign-in" there), or its mock number and the code. Turn it off after the review${v.switchedAt ? ` (on since ${whenOf(v.switchedAt)})` : ''}.`
+    : 'Off: "App review sign-in" is not shown in the app, a demo PIN is never offered, the review PINs and the review code do not work, and the mock numbers act like any other number. Turn it on before you send the app for review.';
   $('sw-btn').textContent = v.on ? 'Turn off' : 'Turn on';
   $('sw-btn').classList.toggle('on', !v.on);
   $('sw-btn').disabled = false;

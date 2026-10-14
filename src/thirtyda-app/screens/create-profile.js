@@ -1233,7 +1233,7 @@ screen('/create', ({ root, query }) => {
   root.classList.add('create');
   // Back from Google / Facebook: what was typed before leaving, and a word on how it went (said once).
   takeStashedDraft();
-  // After "Forgot PIN?" / 5 wrong PINs: a calm note at the top and by the sign-in buttons.
+  // After "Forgot PIN?": a calm note at the top and by the sign-in buttons.
   const pinAgain = pinResetPending();
   const notice = signinNotice(query) || (pinAgain ? { ok: false, icon: 'lock', text: t('pin_signin_again') } : null);
   if (query?.signin) {

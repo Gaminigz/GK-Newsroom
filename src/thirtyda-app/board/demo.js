@@ -824,7 +824,7 @@
   // PIN; POST /me/lock closes it; while closed every data route answers 423. On the board the phones never cover
   // themselves (coverMs 0: twelve frames left alone must stay readable); opened on its own (▷ Play) the demo
   // covers after 30 s like the app. The demo has no 2-minute server timer: nothing here runs on its own.
-  const lockInfo = () => ({ coverMs: IN_FRAME ? 0 : R.IDLE_COVER_MS, idleMs: R.LOCK_IDLE_MS, tries: R.PIN_TRIES });
+  const lockInfo = () => ({ coverMs: IN_FRAME ? 0 : R.IDLE_COVER_MS, idleMs: R.LOCK_IDLE_MS });
   const lockedNow = () => Boolean(me() && W.session && W.session.pinOk !== true);
   function whileLocked(method, sub) {
     if (method === 'POST' && /^\/auth\/(send-code|verify-code|verify-social)$/.test(sub)) return 'signin';
@@ -873,21 +873,10 @@
     if (u) u.pinTries = 0;
   }
 
-  /** One PIN check: both counts go up first; right → both cleared; the 5th wrong ends the session (401 pin_tries). */
+  /** One PIN check, as on the server: no try limit for people (owner 2026-10-14) — a wrong one just asks again. */
   function checkPinTry(u, pin) {
-    const s = W.session;
-    s.pinTries = (s.pinTries || 0) + 1;
-    u.pinTries = (u.pinTries || 0) + 1;
-    if (R.pinDigits(pin) === u.pin && s.pinTries <= R.PIN_TRIES && u.pinTries <= R.PIN_TRIES) {
-      s.pinTries = 0;
-      u.pinTries = 0;
-      return;
-    }
-    const left = R.pinTriesLeft(s.pinTries, u.pinTries);
-    if (left > 0) throw fail(400, 'wrong_pin', 'That PIN is not right.', { triesLeft: left });
-    u.pinTries = 0;
-    W.session = null;
-    throw fail(401, 'pin_tries', 'Too many wrong PINs. Sign in again to set a new PIN.', { signedOut: true });
+    if (R.pinDigits(pin) === u.pin) return;
+    throw fail(400, 'wrong_pin', 'That PIN is not right.');
   }
 
   function lockMe() {

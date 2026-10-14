@@ -5,16 +5,15 @@
 //  - accountFoot(): the bottom of #/me — those links and a red "Delete my account".
 //  - The sheet: what goes (profile, photos, sign-ins, phone, PIN, lines; people you talk to see "This person left
 //    30+DA"; cannot be undone; the little that stays: a bare note of reports, the Telegram support chat) → the PIN
-//    (checked like the lock screen: POST /me/unlock, a wrong one counts) → "Delete forever" (POST /me/delete { pin }).
+//    (checked like the lock screen: POST /me/unlock, a wrong one just asks again) → "Delete forever" (POST /me/delete { pin }).
 //    Then signed out, on the opening screen: "Your account was deleted."
 // The server: src/lib/thirtyda-delete.mjs.
 import {
-  el, icon, t, go, api, state, setMe, modal, toast, bus, errorText, registerStrings,
+  el, icon, t, go, api, state, setMe, modal, bus, errorText, registerStrings,
 } from '../core.js';
 import { pinPad, clearPinFlags, leaveWithoutLock } from '../lock.js';
 
 const NOTE_KEY = '30da_deleted'; // this tab: the opening screen says "Your account was deleted." once
-const RESET_KEY = '30da_pin_reset'; // lock.js: after 5 wrong PINs the next sign-in sets a new PIN
 
 const tab = {
   set(k, v) { try { sessionStorage.setItem(k, v); } catch { /* storage off: the note is skipped */ } },
@@ -111,16 +110,8 @@ function gone() {
   go('/opening', { replace: true });
 }
 
-/** 5 wrong PINs ended the session (401 pin_tries): sign in again and set a new PIN, as on the lock screen. */
-function pinTriesOut() {
-  tab.set(RESET_KEY, '1');
-  Object.assign(state, { pending: null, actions: [], notices: [] });
-  setMe(null);
-  toast(t('pin_signin_again'));
-  go('/create', { replace: true });
-}
-
-const wrongText = (left) => (Number(left) === 1 ? t('pin_wrong_one') : t('pin_wrong', { n: left }));
+/** A wrong PIN just asks again (owner 2026-10-14: no try limit, as on the lock screen). */
+const wrongText = () => t('pin_wrong');
 
 /** What goes → (the PIN) → Delete forever. */
 export function deleteSheet() {
@@ -136,7 +127,6 @@ export function deleteSheet() {
 
   /** A call failed in a way the sheet cannot fix here: → true when it moved the person on. */
   function movedOn(e) {
-    if (e.status === 401 && (e.code === 'pin_tries' || e.data?.signedOut)) { close(); pinTriesOut(); return true; }
     if (e.status === 401) {
       // No profile behind this session any more, or signed out after a delete whose answer never came: it is done.
       close();
@@ -153,7 +143,8 @@ export function deleteSheet() {
     if (e.code === 'blocked') { close(); go('/blocked', { replace: true }); return true; }
     return false;
   }
-  const failText = (e) => (e.code === 'rate_limited' ? t('da_too_many') : errorText(e));
+  // rate_limited: the delete route's own limit; any other 429 is the PIN check's script brake.
+  const failText = (e) => (e.code === 'rate_limited' ? t('da_too_many') : e.status === 429 ? t('pin_too_many') : errorText(e));
 
   function stepWhat() {
     const keep = el('button', { type: 'button', class: 'btn btn-primary', on: { click: close } }, t('da_keep'));
@@ -179,7 +170,7 @@ export function deleteSheet() {
       pad.setBusy(true);
       err.textContent = '';
       try {
-        // The lock screen's own check: a wrong PIN counts as one of its 5 tries.
+        // The lock screen's own check: a wrong PIN just asks again (no limit).
         await api.post('/me/unlock', { pin: typed }, { redirect: false });
         pin = typed;
         stepFinal();
@@ -187,7 +178,7 @@ export function deleteSheet() {
         pad.setBusy(false);
         pad.clear();
         if (movedOn(e)) return;
-        if (e.code === 'wrong_pin') { pad.shake(); err.textContent = wrongText(e.data?.triesLeft); } else err.textContent = failText(e);
+        if (e.code === 'wrong_pin') { pad.shake(); err.textContent = wrongText(); } else err.textContent = failText(e);
         pad.focus();
       }
     }
@@ -216,7 +207,7 @@ export function deleteSheet() {
       } catch (e) {
         if (e.status === 0 || e.status >= 500) lost = true;
         if (movedOn(e)) return;
-        if (e.code === 'wrong_pin') return stepPin(wrongText(e.data?.triesLeft)); // the PIN changed meanwhile
+        if (e.code === 'wrong_pin') return stepPin(wrongText()); // the PIN changed meanwhile
         forever.disabled = false;
         keep.disabled = false;
         forever.lastChild.textContent = t('da_forever');

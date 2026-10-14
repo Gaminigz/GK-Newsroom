@@ -2,8 +2,9 @@
 // Imported by the server AND served to the browser unchanged, so: plain ES module, no Node imports, no DOM.
 
 export const PIN_LENGTH = 4;
-/** Wrong PINs before the session is ended (counted per session AND per person, on the server). */
-export const PIN_TRIES = 5;
+// No try limit for people (owner 2026-10-14: "they can punch it 1000 times, we do not care"): a wrong PIN just asks
+// again, never "n tries left", never a sign-out. The server alone keeps one invisible guard against scripts
+// (src/lib/thirtyda-pin.mjs PIN_GUARD_TRIES).
 /** No touch / mouse / key / scroll for this long → the app is covered by the PIN screen (client). */
 export const IDLE_COVER_MS = 30e3;
 /** No real activity for this long → the server treats the session as locked (backstop). */
@@ -41,9 +42,4 @@ export function checkNewPin(raw) {
   const steps = d.slice(1).map((x, i) => x - d[i]);
   if (steps.every((s) => s === 1) || steps.every((s) => s === -1)) return { ok: false, error: 'run' };
   return { ok: true, pin };
-}
-
-/** Tries left before the session ends: the larger of the two counts decides. */
-export function pinTriesLeft(sessionTries = 0, userTries = 0) {
-  return Math.max(0, PIN_TRIES - Math.max(Number(sessionTries) || 0, Number(userTries) || 0));
 }

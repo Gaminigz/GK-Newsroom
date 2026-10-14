@@ -14,7 +14,7 @@ const {
   REVIEW, REVIEW_MAX, REVIEW_DEFAULTS, REVIEW_SPOTS, REVIEW_PLACE, reviewSpotFor, REVIEW_CODE, REVIEW_SWITCH, REVIEW_WRONG_MAX, isReview, sameWorld, worldFilter, pairsInWorld,
   maskTail, spacedPhone, waysOf, profileRow, reviewNotes, reviewSwitch, setReviewSwitch, newReviewCode, reviewCodeView, sameCode,
   tryCounter, reviewAccountFor, checkReviewCode, makeReviewAccount, stopReviewAccount, reviewPinOf, reviewView, ReviewError,
-  reviewAccountForPin, reviewPinCheck, REVIEW_PIN_TRIES,
+  reviewAccountForPin, reviewPinCheck, reviewPinProbe, REVIEW_PIN_TRIES,
 } = await import('./thirtyda-review.mjs');
 const { verifyPin, hashPin, whileLocked } = await import('./thirtyda-pin.mjs');
 const { SETTINGS_COLLECTION, clearSettingsCache } = await import('./thirtyda-settings.mjs');
@@ -230,13 +230,68 @@ test('switch OFF ends every review sign-in session (code or PIN-only); ON ends n
   assert.deepEqual(d.docs('thirtyda_user_sessions').map((x) => x._id), ['S-real']);
 });
 
-test('the App review link sits under "Set your PIN" only, never on a signed-in profile\'s lock screen', () => {
-  const lockJs = readSource(new URL('../thirtyda-app/lock.js', import.meta.url), 'utf8');
-  const enter = lockJs.slice(lockJs.indexOf('function enterBody('), lockJs.indexOf('function reviewShown('));
-  assert.ok(enter.length > 0 && !enter.includes('reviewLink()'), 'not on the lock');
-  assert.match(readSource(new URL('../thirtyda-app/screens/pin.js', import.meta.url), 'utf8'), /reviewLink\(\)/);
+/** One function of the app's lock.js, from its line to the next top-level function. */
+const lockJs = readSource(new URL('../thirtyda-app/lock.js', import.meta.url), 'utf8');
+function lockFn(name) {
+  const i = lockJs.search(new RegExp(`\n(export )?(async )?function ${name}\\(`));
+  assert.ok(i >= 0, name);
+  const rest = lockJs.slice(i + 1);
+  const j = rest.search(/\n(export )?(async )?function |\n\/\/ -{10,}|\nregisterStrings\(/);
+  return rest.slice(0, j);
+}
+
+test('"App review sign-in" sits on the VISITOR PIN screens only ("Set your PIN" + a visitor\'s "Enter your PIN"), never on a signed-in profile\'s lock', () => {
+  assert.match(lockFn('guestBody'), /reviewLink\(\)/, 'a phone with no profile: "Enter your PIN" has it');
+  assert.match(readSource(new URL('../thirtyda-app/screens/pin.js', import.meta.url), 'utf8'), /pinFrame\(steps\.node, reviewLink\(\)\)/, '"Set your PIN" has it');
+  for (const f of ['enterBody', 'signinBody', 'setBody', 'changePinSheet']) {
+    assert.doesNotMatch(lockFn(f), /reviewLink|offerReview|reviewSheet|\/auth\/review/, `${f}: a signed-in profile never swaps to a demo one`);
+  }
+  // A visible small outlined button (not a faint link), only once GET /auth/methods says review:true.
+  const link = lockFn('reviewLink');
+  assert.match(link, /reviewShown\(\)\.then\(\(on\) => \{\s*if \(!on\) return;/);
+  assert.match(link, /class: 'btn btn-ghost-light btn-sm btn-auto pin-review-btn'/);
+  assert.doesNotMatch(link, /class: 'link/);
+  assert.match(lockJs, /review_link: 'App review sign-in'/);
 });
 
+test('typing a demo PIN OFFERS the demo account: probe first (only while ON), then [Sign in] / [No, this is my own PIN]', () => {
+  const offer = lockFn('offerReview');
+  // Switch OFF (GET /auth/methods review:false): nothing is asked, the screen goes on as before.
+  assert.ok(offer.indexOf('if (!(await reviewShown())) return false;') > 0
+    && offer.indexOf('if (!(await reviewShown())) return false;') < offer.indexOf("'/auth/review/pin'"), 'no probe while OFF');
+  assert.match(offer, /api\.post\('\/auth\/review\/pin', \{ pin, probe: true \}, \{ redirect: false \}\)/);
+  assert.doesNotMatch(offer, /termsBody|reviewSignedIn|location\.reload/, 'the probe itself never signs in');
+  assert.match(offer, /if \(probe\?\.review !== true\) return false;\s*return reviewOffer\(pin, String\(probe\.name \|\| ''\)\);/);
+  // The sheet: "Sign in" → the normal sign-in (and the fresh boot); "No" / closed → false (as before).
+  const sheet = lockFn('reviewOffer');
+  assert.match(sheet, /t\('review_offer_title', \{ name \}\)/);
+  assert.match(sheet, /on: \{ click: signIn \} \}, t\('review_offer_yes'\)/);
+  assert.match(sheet, /on: \{ click: \(\) => sheet\.close\(\) \} \}, t\('review_offer_no'\)/);
+  assert.match(sheet, /sheet\.close = \(\) => \{ close\(\); settle\(false\); \};/, 'closed any way but "Sign in": false');
+  assert.match(sheet, /const r = await api\.post\('\/auth\/review\/pin', \{ pin, \.\.\.termsBody\(\) \}, \{ redirect: false \}\);\s*settle\(true\);\s*close\(\);\s*reviewSignedIn\(r\);/,
+    'only the tap on "Sign in" signs in');
+  assert.match(lockFn('reviewSignedIn'), /clearPinFlags\(\);[\s\S]*leaveWithoutLock\(\);\s*history\.replaceState\(null, '', '\/30da\/#\/nearby'\);\s*location\.reload\(\);/, 'the existing fresh boot');
+  // "Set your PIN": asked about the first 4 before "Type it again"; true → stop, anything else → the steps go on.
+  const pinJs = readSource(new URL('../thirtyda-app/screens/pin.js', import.meta.url), 'utf8');
+  assert.match(pinJs, /checkFirst: offerReview,/);
+  const steps = lockFn('setPinSteps');
+  assert.match(steps, /if \(checkFirst\) \{[\s\S]*const took = await [^\n]*checkFirst\(pin\)[^\n]*\.catch\(\(\) => false\);[\s\S]*if \(took === true\) return;\s*\}\s*first = pin;/);
+  assert.ok(steps.indexOf('checkNewPin(pin)') < steps.indexOf('checkFirst(pin)'), 'only a PIN the app would take is asked about');
+  // A visitor's "Enter your PIN": the right PIN opens at once (never asked about); a WRONG one is asked about, and "No"
+  // is the plain "Wrong PIN. Try again." — no count, ever.
+  const guest = lockFn('guestBody');
+  assert.ok(guest.indexOf('if (pin === want) return guestOpened();') < guest.indexOf('offerReview(pin)'));
+  assert.match(guest, /const took = await offerReview\(pin\)\.catch\(\(\) => false\);\s*if \(took\) return;[\s\S]*err\.show\(t\('pin_wrong'\)\);/);
+  for (const lang of ['en', 'km', 'zh', 'ko', 'ja']) {
+    const at = lockJs.slice(lockJs.indexOf(`  ${lang}: {`));
+    for (const key of ['review_link', 'review_offer_title', 'review_offer_yes', 'review_offer_no', 'pin_wrong', 'pin_too_many']) {
+      assert.ok(at.match(new RegExp(`${key}: '([^']+)'`))?.[1], `${lang}.${key}`);
+    }
+    assert.ok(at.match(/review_offer_title: '([^']+)'/)[1].includes('{name}'), `${lang}: the demo account's name`);
+  }
+  assert.match(lockJs, /review_offer_title: 'Sign in to the App Review demo account \(\{name\}\)\?'/);
+  assert.match(lockJs, /review_offer_no: 'No, this is my own PIN'/);
+});
 test('a signed-in review account keeps its PIN, profile and photos and is not deleted from the app (409 review_account)', () => {
   const app = readSource(new URL('./thirtyda-app.mjs', import.meta.url), 'utf8');
   const body = (name) => app.slice(app.indexOf(`async function ${name}(`), app.indexOf('\n}\n', app.indexOf(`async function ${name}(`)));
@@ -348,6 +403,38 @@ test('PIN-only: 1122 → Dara, 3344 → Sophea; a wrong PIN → "That PIN is not
   await assert.rejects(reviewPinCheck(d, { pin: undefined, key: 'ip-1', tries }), (e) => e.status === 422);
 });
 
+test('probe ("is this a demo PIN?"): { review, name } for a review account\'s PIN, NEVER a session; OFF → 404; real PINs → not_review', async () => {
+  const d = await pinWorld();
+  const tries = tryCounter();
+  const sessionsBefore = d.docs('thirtyda_user_sessions').length;
+  await assert.rejects(reviewPinProbe(d, { pin: '1122', key: 'ip-1', tries }), (e) => e.status === 404 && e.code === 'not_found', 'OFF: nothing answers');
+  assert.equal(tries.left('ip-1', REVIEW_PIN_TRIES), REVIEW_PIN_TRIES, 'OFF: nothing counted');
+  await setReviewSwitch(d, true);
+  assert.deepEqual(await reviewPinProbe(d, { pin: '1122', key: 'ip-1', tries }), { review: true, name: 'Dara' });
+  assert.deepEqual(await reviewPinProbe(d, { pin: '3344', key: 'ip-1', tries }), { review: true, name: 'Sophea' });
+  assert.equal(tries.left('ip-1', REVIEW_PIN_TRIES), REVIEW_PIN_TRIES, 'a demo PIN gives its try back');
+  await assert.rejects(reviewPinProbe(d, { pin: '5678', key: 'ip-1', tries }), (e) => e.status === 400 && e.code === 'not_review', "kk's own PIN: only review accounts are compared");
+  await assert.rejects(reviewPinProbe(d, { pin: '2468', key: 'ip-1', tries }), (e) => e.code === 'not_review', 'a visitor\'s own new PIN');
+  assert.equal(tries.left('ip-1', REVIEW_PIN_TRIES), REVIEW_PIN_TRIES - 2, 'a wrong probe counts like a wrong sign-in');
+  assert.equal(d.docs('thirtyda_user_sessions').length, sessionsBefore, 'never a session');
+  assert.equal(d.docs('thirtyda_audit').length, 0, 'not audited: nobody signed in');
+  await setReviewSwitch(d, false);
+  await assert.rejects(reviewPinProbe(d, { pin: '1122', key: 'ip-1', tries }), (e) => e.status === 404, 'switched OFF: stops at once');
+});
+
+test('probe: the same review-PIN limit per address as the sign-in (429), shared with it', async () => {
+  const d = await pinWorld();
+  await setReviewSwitch(d, true);
+  const tries = tryCounter();
+  const t0 = 2_000_000;
+  for (let i = 0; i < REVIEW_PIN_TRIES - 1; i++) {
+    await assert.rejects(reviewPinProbe(d, { pin: '9999', key: 'ip-1', tries, now: t0 + i }), (e) => e.code === 'not_review');
+  }
+  await assert.rejects(reviewPinCheck(d, { pin: '9998', key: 'ip-1', tries, now: t0 + 40 }), (e) => e.code === 'not_review', 'the sign-in counts on the same limit');
+  await assert.rejects(reviewPinProbe(d, { pin: '1122', key: 'ip-1', tries, now: t0 + 50 }), (e) => e.status === 429 && e.code === 'too_many_attempts');
+  assert.deepEqual(await reviewPinProbe(d, { pin: '1122', key: 'ip-2', tries, now: t0 + 50 }), { review: true, name: 'Dara' }, 'another address');
+});
+
 test('PIN-only: a real profile\'s PIN never matches (a real person whose PIN is 1122 never lands in Dara, nor in themselves)', async () => {
   const d = await pinWorld();
   await setReviewSwitch(d, true);
@@ -369,7 +456,7 @@ test('PIN-only: a real profile\'s PIN never matches (a real person whose PIN is 
   assert.equal(await reviewAccountForPin(d, '3344'), null, 'switched OFF: stops at once');
 });
 
-test('PIN-only: 5 wrong per address per 15 minutes, then 429 even for a right PIN; another address is not affected', async () => {
+test('PIN-only: 30 wrong per address per 15 minutes (owner 2026-10-14, was 5), then 429 even for a right PIN; another address is not affected', async () => {
   const d = await pinWorld();
   await setReviewSwitch(d, true);
   const tries = tryCounter();
@@ -380,7 +467,7 @@ test('PIN-only: 5 wrong per address per 15 minutes, then 429 even for a right PI
   await assert.rejects(reviewPinCheck(d, { pin: '1122', key: 'ip-1', tries, now: t0 + 10 }), (e) => e.status === 429 && e.code === 'too_many_attempts');
   assert.equal((await reviewPinCheck(d, { pin: '1122', key: 'ip-2', tries, now: t0 + 10 }))._id, 'U-10001', 'another address');
   assert.equal((await reviewPinCheck(d, { pin: '1122', key: 'ip-1', tries, now: t0 + 15 * 60e3 + 1 }))._id, 'U-10001', '15 minutes later');
-  assert.equal(REVIEW_PIN_TRIES, 5);
+  assert.equal(REVIEW_PIN_TRIES, 30);
 });
 
 test('PIN-only route: POST /auth/review/pin is real, a sign-in while locked, signs in OPEN as that profile, audited with ids only', async () => {
@@ -400,6 +487,13 @@ test('PIN-only route: POST /auth/review/pin is real, a sign-in while locked, sig
   assert.match(body, /IP_GUESSES/, 'the address limit of verify-code too');
   assert.match(body, /const audit = \(extra\) => d\.collection\("thirtyda_audit"\)\.insertOne\(\{ at: new Date\(\), action: "review_signin", via: "pin", \.\.\.extra \}\)/);
   assert.deepEqual([...body.matchAll(/await audit\((\{[^}]*\})\)/g)].map((m) => m[1]), ['{ ok: false, reason: "wrong" }', '{ ok: true, userId: user._id }'], 'the audit carries ids only');
+  // { probe: true }: after the switch / signed-in checks, it answers and returns BEFORE any session, audit or address count.
+  const probeAt = body.indexOf('if (body.probe === true) {');
+  assert.ok(probeAt > body.indexOf('throw fail(404, "not_found"') && probeAt > body.indexOf('ctx.lockedSession?.userId'), 'OFF → 404 and a signed-in phone → 409 first');
+  const probe = body.slice(probeAt, body.indexOf('\n  }\n', probeAt));
+  assert.match(probe, /return await reviewPinProbe\(d, \{ pin: body\.pin, key: ip, tries: reviewPinTries, now \}\);/, 'the same review-PIN counter as the sign-in');
+  assert.doesNotMatch(probe, /startSession|audit|guesses|saveTerms|Set-Cookie/, 'a probe never signs in');
+  assert.ok(probeAt < body.indexOf('startSession(') && probeAt < body.indexOf('const audit') && probeAt < body.indexOf('IP_GUESSES'));
 });
 
 // ---------------------------------------------------------------- turning a profile into a review account and back
@@ -592,8 +686,8 @@ test('page: review accounts with number + PIN + their conversations, and the not
   assert.deepEqual(v.accounts[0].talks, [{ pairId: 'P-1', with: 'U-10002', withName: 'Sophea', stage: 'l3_open', level: 3 }], 'only the talk with the other review account');
   for (const want of ['Dara', '+855 10 000 1122', 'PIN 1122', 'Sophea', '+855 10 000 3344', 'PIN 3344', `Review code (for every demo account): ${code}`,
     'Sign in (no phone number, no code):', '1. Open the app and pick a language.', '2. Read the community rules and tap "I agree".',
-    '3. On the PIN screen ("Set your PIN") tap "App review" at the bottom.', '4. Type 1122 for Dara or 3344 for Sophea.',
-    '5. You are signed in: Nearby shows the other demo account, and your conversation with it is open (Level 3 chat).',
+    '3. On the PIN screen type the demo PIN (1122 or 3344) and tap "Sign in" — or tap "App review sign-in" first.',
+    '4. You are signed in: Nearby shows the other demo account, and your conversation with it is open (Level 3 chat).',
     'unlock it with the same PIN (1122 / 3344)', 'Second way (not needed)', 'tap Telegram', 'enter the review code',
     'The demo accounts stay in Phnom Penh, Cambodia: allowing location on your device does not move them.']) {
     assert.ok(v.notes.includes(want), want);

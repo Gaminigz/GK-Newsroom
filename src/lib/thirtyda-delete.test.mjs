@@ -555,7 +555,7 @@ const deps = (calls, photos) => ({
   fail,
   checkPinTry: async (ctx, pin) => {
     calls.push(pin);
-    if (pin !== '2580') throw fail(400, 'wrong_pin', 'That PIN is not right.', { triesLeft: 4 });
+    if (pin !== '2580') throw fail(400, 'wrong_pin', 'That PIN is not right.');
   },
   signedOutCookie: () => 'thirtyda_s=; Max-Age=0',
   deletePhoto: photos.deletePhoto,
@@ -567,8 +567,8 @@ test('POST /me/delete: Origin needed, the PIN checked like the lock screen, then
   const calls = [];
   await assert.rejects(deleteMe(routeCtx(d, me, { origin: null }), deps(calls, photos)), (e) => e.code === 'bad_origin' && e.status === 403);
   await assert.rejects(deleteMe(routeCtx(d, me), deps(calls, photos)), (e) => e.code === 'invalid' && e.extra.field === 'pin', 'a PIN profile must type it');
-  await assert.rejects(deleteMe(routeCtx(d, me, { pin: '1111' }), deps(calls, photos)), (e) => e.code === 'wrong_pin' && e.extra.triesLeft === 4);
-  assert.deepEqual(calls, ['1111'], 'the wrong PIN went through the lock screen\'s own check (it counts)');
+  await assert.rejects(deleteMe(routeCtx(d, me, { pin: '1111' }), deps(calls, photos)), (e) => e.code === 'wrong_pin' && e.status === 400);
+  assert.deepEqual(calls, ['1111'], 'the wrong PIN went through the lock screen\'s own check (no try limit, the script guard only)');
   assert.ok(d.docs(USERS).some((u) => u._id === A), 'a wrong PIN deletes nothing');
   const ctx = routeCtx(d, me, { pin: '២៥៨០' }); // typed on a Khmer keyboard
   const out = await deleteMe(ctx, deps(calls, photos));

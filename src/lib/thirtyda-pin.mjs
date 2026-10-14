@@ -11,18 +11,21 @@
  *     comes from the app's X-30DA-Input-Age header (seconds since the last touch / mouse / key / scroll), so
  *     the background heartbeat and polling never keep a session open.
  *   - While locked every data API answers 423 { error:'locked' }; only whileLocked() routes stay open.
- *   - 5 wrong PINs (per session AND per person) end the session: sign in again and set a new PIN.
+ *   - No try limit for people (owner 2026-10-14: "they can punch it 1000 times, we do not care"): a wrong PIN is
+ *     400 wrong_pin and the app just asks again — never "n tries left", never a sign-out. ONE invisible guard against
+ *     scripts: more than PIN_GUARD_TRIES PIN checks on one session inside PIN_GUARD_MS → 429 until that window ends.
  *
- * Sessions carry: pinOk (open), activeAt (last real activity), pinTries, pinResetUntil (a fresh sign-in may
- * set a new PIN without the old one until then, once). Profiles carry: pinHash, pinAt, pinTries.
+ * Sessions carry: pinOk (open), activeAt (last real activity), pinTries + pinTriesFrom (the script guard's count and
+ * when its window started), pinResetUntil (a fresh sign-in may set a new PIN without the old one until then, once).
+ * Profiles carry: pinHash, pinAt (and an old pinTries, no longer read).
  */
 
 import crypto from "node:crypto";
 import {
-  PIN_LENGTH, PIN_TRIES, IDLE_COVER_MS, LOCK_IDLE_MS, INPUT_AGE_HEADER, checkNewPin, pinDigits, pinTriesLeft,
+  PIN_LENGTH, IDLE_COVER_MS, LOCK_IDLE_MS, INPUT_AGE_HEADER, checkNewPin, pinDigits,
 } from "../thirtyda-app/shared/pin.js";
 
-export { PIN_LENGTH, PIN_TRIES, INPUT_AGE_HEADER, checkNewPin, pinDigits, pinTriesLeft };
+export { PIN_LENGTH, INPUT_AGE_HEADER, checkNewPin, pinDigits };
 
 /** A test override may only SHORTEN a time (a typo cannot switch the lock off in production). */
 function shorterFromEnv(name, fallback) {
@@ -36,8 +39,8 @@ export const COVER_MS = shorterFromEnv("THIRTYDA_IDLE_COVER_MS", IDLE_COVER_MS);
 /** After a sign-in, a new PIN may replace the old one without it for this long (once). */
 export const PIN_RESET_MS = 15 * 60e3;
 
-/** What the app is told about the lock (GET /me, 423 answers). Nothing secret. */
-export const lockInfo = () => ({ coverMs: COVER_MS, idleMs: SERVER_IDLE_MS, tries: PIN_TRIES });
+/** What the app is told about the lock (GET /me, 423 answers). Nothing secret; no tries count (there is none for people). */
+export const lockInfo = () => ({ coverMs: COVER_MS, idleMs: SERVER_IDLE_MS });
 
 // ---------------------------------------------------------------- hash
 
@@ -228,9 +231,47 @@ export function pinSetPlan({ hasPin, locked, hasOld, resetUntil, now = Date.now(
   return { refuse: locked ? { status: 423, code: "locked" } : { status: 403, code: "old_pin_needed" } };
 }
 
-/** After one more wrong PIN: { end: false, triesLeft } or { end: true, everywhere } (the person's count ran out → every session). */
-export function afterWrongPin(sessionTries, userTries) {
-  const left = pinTriesLeft(sessionTries, userTries);
-  if (left > 0) return { end: false, triesLeft: left };
-  return { end: true, everywhere: (Number(userTries) || 0) >= PIN_TRIES, triesLeft: 0 };
+// ---------------------------------------------------------------- the script guard (owner 2026-10-14)
+
+/**
+ * PIN checks one session may make inside PIN_GUARD_MS (POST /me/unlock, Change PIN's old PIN, Delete my account's
+ * PIN): the 31st inside the window → 429 "Too many tries. Wait a minute." until the window ends. Not a try limit for
+ * people — nobody types 30 PINs in 10 minutes — only a brake on a script guessing all 10,000. A right PIN clears it.
+ */
+export const PIN_GUARD_TRIES = 30;
+export const PIN_GUARD_MS = 10 * 60e3;
+
+/**
+ * One more PIN check on `session`: → { pinTries, pinTriesFrom } after it. A window older than PIN_GUARD_MS (or none)
+ * starts again at 1; inside it the count goes up. The same rule as pinGuardUpdate (which does it inside Mongo).
+ */
+export function nextPinGuard(session, now = Date.now()) {
+  const from = time(session?.pinTriesFrom);
+  if (Number.isFinite(from) && now - from < PIN_GUARD_MS) return { pinTries: (Number(session?.pinTries) || 0) + 1, pinTriesFrom: new Date(from) };
+  return { pinTries: 1, pinTriesFrom: new Date(now) };
+}
+
+/**
+ * The atomic Mongo update for nextPinGuard (an update pipeline: parallel checks each count, none can slip past the
+ * guard). Both fields are worked out from the session as it was.
+ */
+export function pinGuardUpdate(now = Date.now()) {
+  const fresh = { $gt: ["$pinTriesFrom", new Date(now - PIN_GUARD_MS)] };
+  return [{
+    $set: {
+      pinTries: { $cond: [fresh, { $add: [{ $ifNull: ["$pinTries", 0] }, 1] }, 1] },
+      pinTriesFrom: { $cond: [fresh, "$pinTriesFrom", new Date(now)] },
+    },
+  }];
+}
+
+/**
+ * After counting this check: null (go on and compare the PIN), or { retryIn } seconds until the window ends — the
+ * PIN is then not even compared (429).
+ */
+export function pinGuardStop(guard, now = Date.now()) {
+  if (!guard || (Number(guard.pinTries) || 0) <= PIN_GUARD_TRIES) return null;
+  const from = time(guard.pinTriesFrom);
+  const left = Number.isFinite(from) ? from + PIN_GUARD_MS - now : PIN_GUARD_MS;
+  return { retryIn: Math.max(1, Math.ceil(left / 1000)) };
 }

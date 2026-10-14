@@ -48,7 +48,9 @@ export const REVIEW_CODE = "review_code"; // the sealed code (thirtyda_settings,
 export const REVIEW_SWITCH = "review_signin"; // { on, updatedAt, updatedBy } in thirtyda_settings
 export const REVIEW_TRIES = 5; // wrong review codes per number per 15 minutes
 export const REVIEW_WRONG_MAX = 50; // wrong review codes per code, ever: then only a New code works
-export const REVIEW_PIN_TRIES = 5; // wrong review PINs per address per 15 minutes (the "App review" link)
+// Wrong review PINs per address per 15 minutes ("App review sign-in" and the probe; owner 2026-10-14: raised from 5 —
+// people are never limited, and a store reviewer behind a shared address must not be stopped).
+export const REVIEW_PIN_TRIES = 30;
 const WINDOW_MS = 15 * 60e3;
 const USERS = "thirtyda_users";
 const SESSIONS = "thirtyda_user_sessions";
@@ -120,13 +122,14 @@ export function profileRow(u) {
 
 /** "1122 / 3344": the review accounts' PINs. */
 const pinList = (accounts) => accounts.map((a) => a.pin).filter(Boolean).join(" / ") || "shown above";
-/** "<PIN> for Dara or <PIN> for Sophea" (step 4 of the notes). */
-const pinFor = (accounts) => accounts.filter((a) => a.pin).map((a) => `${a.pin} for ${a.name}`).join(" or ") || "the demo account's PIN shown above";
+/** "1122 or 3344" (step 3 of the notes). */
+const pinOr = (accounts) => accounts.map((a) => a.pin).filter(Boolean).join(" or ") || "shown below";
 
 /**
  * The text for App Store Connect / Play Console review notes (owner 2026-10-14: "we don't need phone to log in, it's
- * just 1122 3344"): the PIN-only way first ("App review" on the PIN screen), then each review account's app name, PIN
- * and mock number, and the number + code way as a second way. `code` null → "<no code yet>".
+ * just 1122 3344"): the PIN-only way first (type the demo PIN on the PIN screen and tap "Sign in" on the offer, or "App
+ * review sign-in" first), then each review account's app name, PIN and mock number, and the number + code way as a
+ * second way. `code` null → "<no code yet>".
  */
 export function reviewNotes({ accounts, code }) {
   const lines = ["30+DA demo accounts for app review", ""];
@@ -134,9 +137,8 @@ export function reviewNotes({ accounts, code }) {
     "Sign in (no phone number, no code):",
     "1. Open the app and pick a language.",
     "2. Read the community rules and tap \"I agree\".",
-    "3. On the PIN screen (\"Set your PIN\") tap \"App review\" at the bottom.",
-    `4. Type ${pinFor(accounts)}.`,
-    "5. You are signed in: Nearby shows the other demo account, and your conversation with it is open (Level 3 chat). To report a message, tap it in the chat.",
+    `3. On the PIN screen type the demo PIN (${pinOr(accounts)}) and tap "Sign in" — or tap "App review sign-in" first.`,
+    "4. You are signed in: Nearby shows the other demo account, and your conversation with it is open (Level 3 chat). To report a message, tap it in the chat.",
     `When the app locks itself (30 seconds without a touch), unlock it with the same PIN (${pinList(accounts)}).`,
     "",
   );
@@ -299,6 +301,17 @@ export async function reviewPinCheck(d, { pin, key, tries, now = Date.now() }) {
   }
   tries.giveBack(key, now);
   return user;
+}
+
+/**
+ * "Is this a demo PIN?" (POST /auth/review/pin { pin, probe: true }, owner 2026-10-14): exactly reviewPinCheck's checks
+ * and try count (OFF → 404, review accounts only, REVIEW_PIN_TRIES wrong per address → 429, not one → 400 not_review),
+ * but it NEVER signs in and never touches a session: the app only OFFERS the demo account and signs in after a tap.
+ * → { review: true, name } (the demo account's app name, for "Sign in to the App Review demo account (Sophea)?").
+ */
+export async function reviewPinProbe(d, opts) {
+  const user = await reviewPinCheck(d, opts);
+  return { review: true, name: String(user.name ?? "") };
 }
 
 // ---------------------------------------------------------------- turning a profile into a review account

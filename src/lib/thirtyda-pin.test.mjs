@@ -1,14 +1,17 @@
 // Run: npm run 30da:test (or node --test src/lib/thirtyda-pin.test.mjs)
 // The PIN lock's server rules (src/lib/thirtyda-pin.mjs): the salted scrypt hash, when a session is locked
 // (sign-in / PIN, the sliding 2-minute window, background calls that never count), what stays open while
-// locked (checked against EVERY real route of src/lib/thirtyda-app.mjs), setting / changing a PIN, and the
-// 5-try count. No database, no network.
+// locked (checked against EVERY real route of src/lib/thirtyda-app.mjs), setting / changing a PIN, and no try
+// limit for people (only the script guard). No database, no network.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import * as pinModule from './thirtyda-pin.mjs';
 import {
-  PIN_TRIES, SERVER_IDLE_MS, COVER_MS, PIN_RESET_MS, lockInfo, hashPin, verifyPin, lockState, freshSigninFields,
-  legacyLockFields, activityAt, backgroundCall, passiveCall, nextActiveAt, whileLocked, pinSetPlan, afterWrongPin,
+  SERVER_IDLE_MS, COVER_MS, PIN_RESET_MS, lockInfo, hashPin, verifyPin, lockState, freshSigninFields,
+  legacyLockFields, activityAt, backgroundCall, passiveCall, nextActiveAt, whileLocked, pinSetPlan,
+  PIN_GUARD_TRIES, PIN_GUARD_MS, nextPinGuard, pinGuardUpdate, pinGuardStop,
   pinHashStale, pepperFrom, PEPPER_MIN,
 } from './thirtyda-pin.mjs';
 import { API_ROUTES } from './thirtyda-app.mjs';
@@ -300,25 +303,100 @@ test('pinSetPlan: first PIN, change with the old one, once after a sign-in, refu
 
 // ---------------------------------------------------------------- tries
 
-test('5 wrong tries end the session; the person\'s own count ending it ends it everywhere', () => {
-  assert.equal(PIN_TRIES, 5);
-  const seen = [];
-  for (let n = 1; n <= 5; n++) seen.push(afterWrongPin(n, 0));
-  assert.deepEqual(seen.slice(0, 4).map((x) => x.triesLeft), [4, 3, 2, 1]);
-  assert.ok(seen.slice(0, 4).every((x) => x.end === false));
-  assert.deepEqual(seen[4], { end: true, everywhere: false, triesLeft: 0 }, 'this session\'s 5th');
-  assert.deepEqual(afterWrongPin(2, 5), { end: true, everywhere: true, triesLeft: 0 }, '3 here + 2 on another phone = the person\'s 5th');
-  assert.deepEqual(afterWrongPin(3, 2), { end: false, triesLeft: 2 }, 'the larger count decides');
-  assert.deepEqual(afterWrongPin(5, 5), { end: true, everywhere: true, triesLeft: 0 });
+test('no try limit for people (owner 2026-10-14: "they can punch it 1000 times, we do not care")', () => {
+  for (const gone of ['PIN_TRIES', 'pinTriesLeft', 'afterWrongPin']) assert.equal(gone in pinModule, false, `${gone} is gone`);
+  assert.equal('tries' in lockInfo(), false, 'the app is never told a tries count');
+  // 1000 wrong PINs typed by a person (one every 25 s, about 7 hours): never stopped.
+  const t0 = 50_000_000;
+  let session = { ...freshSigninFields(t0) };
+  for (let i = 1; i <= 1000; i++) {
+    const at = t0 + i * 25_000;
+    session = { ...session, ...nextPinGuard(session, at) };
+    assert.equal(pinGuardStop(session, at), null, `wrong PIN #${i}`);
+  }
+  // Even 30 wrong in a row, fast (a person hammering the boxes): still asked again.
+  session = { ...freshSigninFields(t0) };
+  for (let i = 1; i <= PIN_GUARD_TRIES; i++) {
+    session = { ...session, ...nextPinGuard(session, t0 + i * 1000) };
+    assert.equal(pinGuardStop(session, t0 + i * 1000), null, `fast wrong PIN #${i}`);
+  }
 });
 
+test('the one guard against scripts: the 31st PIN check on a session inside 10 minutes → stop (429), until the window ends', () => {
+  assert.equal(PIN_GUARD_TRIES, 30);
+  assert.equal(PIN_GUARD_MS, 10 * MIN);
+  const t0 = 70_000_000;
+  let s = {};
+  for (let i = 0; i < PIN_GUARD_TRIES; i++) s = { ...s, ...nextPinGuard(s, t0 + i) };
+  assert.deepEqual(s, { pinTries: 30, pinTriesFrom: new Date(t0) }, 'the window starts at the first check');
+  s = { ...s, ...nextPinGuard(s, t0 + 60e3) };
+  assert.deepEqual(pinGuardStop(s, t0 + 60e3), { retryIn: 540 }, 'the 31st: stopped until the window ends (9 minutes later)');
+  s = { ...s, ...nextPinGuard(s, t0 + PIN_GUARD_MS - 1) };
+  assert.equal(pinGuardStop(s, t0 + PIN_GUARD_MS - 1)?.retryIn, 1, 'never a 0 s wait');
+  s = { ...s, ...nextPinGuard(s, t0 + PIN_GUARD_MS) };
+  assert.deepEqual(s, { pinTries: 1, pinTriesFrom: new Date(t0 + PIN_GUARD_MS) }, '10 minutes on: a new window');
+  assert.equal(pinGuardStop(s, t0 + PIN_GUARD_MS), null);
+  // A fresh sign-in (pinTries 0) or a session from before the guard (no window): counting starts again at 1.
+  assert.deepEqual(nextPinGuard(freshSigninFields(t0), t0), { pinTries: 1, pinTriesFrom: new Date(t0) });
+  assert.deepEqual(nextPinGuard({ pinTries: 4 }, t0), { pinTries: 1, pinTriesFrom: new Date(t0) }, 'an old 5-try count is not carried over');
+  assert.equal(pinGuardStop(null), null);
+});
+
+/** Just enough of Mongo's expression language to run pinGuardUpdate's pipeline on one document. */
+function runPipeline(doc, pipeline) {
+  const ev = (x) => {
+    if (typeof x === 'string' && x.startsWith('$')) return doc[x.slice(1)] ?? null;
+    if (x instanceof Date || x === null || typeof x !== 'object' || Array.isArray(x)) return x;
+    const [[op, args]] = Object.entries(x);
+    const v = args.map(ev);
+    const ms = (y) => (y instanceof Date ? y.getTime() : y);
+    if (op === '$gt') return v[0] != null && ms(v[0]) > ms(v[1]); // null / missing sorts below a date
+    if (op === '$cond') return v[0] ? v[1] : v[2];
+    if (op === '$add') return v[0] + v[1];
+    if (op === '$ifNull') return v[0] ?? v[1];
+    throw new Error(`no ${op}`);
+  };
+  assert.equal(pipeline.length, 1);
+  const [stage] = pipeline;
+  assert.deepEqual(Object.keys(stage), ['$set']);
+  const out = Object.fromEntries(Object.entries(stage.$set).map(([k, e]) => [k, ev(e)])); // every field from the input doc
+  return { ...doc, ...out };
+}
+
+test('pinGuardUpdate: the same rule as nextPinGuard, inside Mongo (atomic: parallel checks each count)', () => {
+  const t0 = 80_000_000;
+  const cases = [
+    {}, { pinTries: 0 }, { pinTries: 7 }, { pinTries: 3, pinTriesFrom: new Date(t0 - 60e3) }, { pinTries: 30, pinTriesFrom: new Date(t0 - 1) },
+    { pinTries: 30, pinTriesFrom: new Date(t0 - PIN_GUARD_MS) }, { pinTries: 12, pinTriesFrom: new Date(t0 - PIN_GUARD_MS - 5) },
+  ];
+  for (const doc of cases) {
+    const got = runPipeline(doc, pinGuardUpdate(t0));
+    const want = nextPinGuard(doc, t0);
+    assert.equal(got.pinTries, want.pinTries, JSON.stringify(doc));
+    assert.equal(got.pinTriesFrom.getTime(), want.pinTriesFrom.getTime(), JSON.stringify(doc));
+  }
+});
+
+test('checkPinTry (src/lib/thirtyda-app.mjs): counted on the guard before comparing; wrong → 400 asking again, never a sign-out', () => {
+  const app = readFileSync(new URL('./thirtyda-app.mjs', import.meta.url), 'utf8');
+  const i = app.indexOf('async function checkPinTry(');
+  const body = app.slice(i, app.indexOf('\n}\n', i));
+  assert.ok(body.indexOf('pinGuardUpdate(now)') > 0 && body.indexOf('pinGuardUpdate(now)') < body.indexOf('verifyPin('), 'counted before the compare');
+  assert.match(body, /if \(stop\) throw fail\(429, "too_many_tries", "Too many tries\. Wait a minute\.", \{ retryIn: stop\.retryIn \}\);/);
+  assert.match(body, /throw fail\(400, "wrong_pin", "That PIN is not right\."\);\s*$/, 'a wrong PIN: 400, no tries count');
+  assert.match(body, /\$set: \{ pinTries: 0 \}, \$unset: \{ pinTriesFrom: "" \}/, 'a right PIN clears the guard');
+  assert.doesNotMatch(body, /pin_tries|deleteMany|deleteOne|triesLeft|Set-Cookie/, 'never signs anyone out');
+  assert.deepEqual([...body.matchAll(/fail\((\d+), "(\w+)"/g)].map((m) => `${m[1]} ${m[2]}`), ['401 signed_out', '429 too_many_tries', '400 wrong_pin'],
+    'the only 401 is a session that is already gone');
+  assert.doesNotMatch(app, /endForTries|afterWrongPin|"pin_tries"/, 'the 5-wrong rule is gone everywhere');
+});
 // ---------------------------------------------------------------- times
 
 test('defaults: the app covers after 30 s, the server locks after 2 minutes', () => {
   if (process.env.THIRTYDA_LOCK_IDLE_MS || process.env.THIRTYDA_IDLE_COVER_MS) return; // a shortened test run
   assert.equal(SERVER_IDLE_MS, 2 * MIN);
   assert.equal(COVER_MS, 30e3);
-  assert.deepEqual(lockInfo(), { coverMs: 30e3, idleMs: 2 * MIN, tries: 5 });
+  assert.deepEqual(lockInfo(), { coverMs: 30e3, idleMs: 2 * MIN });
 });
 
 test('the test overrides can only make the times SHORTER (a typo never switches the lock off)', () => {

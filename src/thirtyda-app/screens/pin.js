@@ -5,13 +5,16 @@
 // the app, and the app opens on "Enter your PIN") until the first sign-in or Create profile sends it once (lock.js). From
 // then on 30+DA asks for it every time. Once chosen, this screen is never shown again (app.js guard → home).
 import { screen, el, t, go, icon } from '../core.js';
-import { setPinSteps, keepWaitingPin, pinFrame, reviewLink } from '../lock.js';
+import { setPinSteps, keepWaitingPin, pinFrame, reviewLink, offerReview } from '../lock.js';
 
 screen('/pin', ({ root }) => {
   root.classList.add('dark', 'pin-route');
   const steps = setPinSteps({
     title: t('pin_set_title'),
     text: t('pin_set_text'),
+    // App review (owner 2026-10-14): a store reviewer who types the demo PIN here (1122) is OFFERED the demo account
+    // before "Type it again" (only while review sign-in is on; "No, this is my own PIN" goes on as before).
+    checkFirst: offerReview,
     async onDone(pin) {
       keepWaitingPin(pin);
       go('/nearby');
@@ -24,7 +27,7 @@ screen('/pin', ({ root }) => {
         type: 'button', class: 'icon-btn light', 'aria-label': t('core_back'),
         on: { click: () => go('/rules', { replace: true }) }, // the step before: the community rules
       }, icon('back', 18))),
-    // App review (owner 2026-10-14): a store reviewer signs in with the demo PIN right here (only while it is on).
+    // App review (owner 2026-10-14): "App review sign-in" right here too (only while it is on).
     pinFrame(steps.node, reviewLink()));
   steps.focus();
 });

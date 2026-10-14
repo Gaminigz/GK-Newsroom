@@ -49,7 +49,8 @@
  * is open only after a sign-in or the PIN, and only while the person really uses the app (2 minutes without
  * real activity → locked; the app itself covers after 30 s and POSTs /me/lock). While locked, every data
  * route answers 423 { error:'locked' }: POST /me/unlock { pin }, POST /me/pin { pin, old? } (set / change),
- * POST /me/pin/forgot (signs out) and /auth/* stay open. 5 wrong PINs end the session. GET /me/pending stays
+ * POST /me/pin/forgot (signs out) and /auth/* stay open. No try limit for people (a wrong PIN just asks again; only
+ * a script guard: 429 after PIN_GUARD_TRIES checks per session in 10 minutes). GET /me/pending stays
  * open too: { count } only, never use, so a hidden, locked app can still say "something new is waiting".
  *
  * "Verify to chat" (owner 2026-10-13, src/lib/thirtyda-verify.mjs): POST /profile { …, unverified: true } makes a
@@ -118,8 +119,8 @@ import {
 } from "./thirtyda-telegram-bot.mjs";
 import {
   PIN_LENGTH, INPUT_AGE_HEADER, checkNewPin, pinDigits, hashPin, verifyPin, lockState, lockInfo, freshSigninFields,
-  legacyLockFields, activityAt, backgroundCall, passiveCall, nextActiveAt, whileLocked, pinSetPlan, afterWrongPin,
-  pinHashStale,
+  legacyLockFields, activityAt, backgroundCall, passiveCall, nextActiveAt, whileLocked, pinSetPlan, pinGuardUpdate,
+  pinGuardStop, pinHashStale,
 } from "./thirtyda-pin.mjs";
 import {
   privacyPage, deleteDataPage, termsPage, supportPage, childSafetyPage, tryResultPage, appReturnPage, requestLang, backPage, backPlatform, backHref,
@@ -142,7 +143,7 @@ import {
 } from "./thirtyda-terms.mjs";
 import {
   REVIEW, REVIEW_TRIES, isReview, sameWorld, worldFilter, pairsInWorld, reviewSwitch, reviewAccountFor, checkReviewCode, tryCounter,
-  reviewPinCheck, ReviewError,
+  reviewPinCheck, reviewPinProbe, ReviewError,
 } from "./thirtyda-review.mjs";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
@@ -1381,15 +1382,25 @@ async function reviewVerify(ctx) {
 
 const reviewPinTries = tryCounter(OTP_WINDOW_MS); // wrong review PINs per address (REVIEW_PIN_TRIES)
 
+/** A ReviewError from src/lib/thirtyda-review.mjs as this router's API error. */
+const reviewFail = (err) => fail(err.status, err.code, err.message, err.attemptsLeft === undefined ? {} : { attemptsLeft: err.attemptsLeft });
+
 /**
  * POST /auth/review/pin { pin } — "App review" on the app's PIN screens (owner 2026-10-14: "we don't need phone to log
  * in, it's just 1122 3344"): only while "Review sign-in" is ON (else 404 like an unknown route). The PIN is compared
  * with the CURRENT review accounts' PIN hashes only (reviewPinCheck: timing-safe, every account every time), never
- * with a real profile's, so a real person whose own PIN is 1122 never lands in Dara. Wrong → 400 not_review; 5 wrong
- * per address per 15 minutes plus the address limit of verify-code (429). Right → this browser signs into that
- * profile like reviewVerify (startSession, reviewSignin), but OPEN: the PIN was just proven, so the app goes straight
- * to Nearby (no second PIN), and no "new PIN without the old one". Never switches a signed-in, open profile (409).
- * Audited with ids only (never the PIN, never the address). → { ok, existing: true, user, locked: false, notices, lock }.
+ * with a real profile's, so a real person whose own PIN is 1122 never lands in Dara. Wrong → 400 not_review;
+ * REVIEW_PIN_TRIES wrong per address per 15 minutes plus the address limit of verify-code (429). Right → this browser
+ * signs into that profile like reviewVerify (startSession, reviewSignin), but OPEN: the PIN was just proven, so the app
+ * goes straight to Nearby (no second PIN), and no "new PIN without the old one". Never switches a signed-in, open
+ * profile (409). Audited with ids only (never the PIN, never the address).
+ * → { ok, existing: true, user, locked: false, notices, lock }.
+ *
+ * { pin, probe: true } — "is this a demo PIN?" (owner 2026-10-14): the app asks when a PIN is typed on "Set your PIN"
+ * or a visitor's "Enter your PIN" is wrong, then OFFERS the demo account ("Sign in to the App Review demo account
+ * (Sophea)?") — nobody is signed in by a PIN alone without that tap. The same checks and the same review-PIN count
+ * (reviewPinProbe), but it NEVER signs in, never makes or touches a session, and is not audited. Not on verify-code's
+ * address limit: while the switch is ON every visitor's own new PIN is asked about. → { review: true, name } · 400 not_review.
  */
 async function reviewPin(ctx) {
   const { d, body, req, me } = ctx;
@@ -1403,6 +1414,13 @@ async function reviewPin(ctx) {
   }
   const now = Date.now();
   const ip = clientIp(req);
+  if (body.probe === true) {
+    try {
+      return await reviewPinProbe(d, { pin: body.pin, key: ip, tries: reviewPinTries, now });
+    } catch (err) {
+      throw err instanceof ReviewError ? reviewFail(err) : err;
+    }
+  }
   const guesses = inWindowFor(ipGuesses, ip, now);
   if (guesses.length >= IP_GUESSES) throw fail(429, "rate_limited", "Too many tries. Try again in 15 minutes.");
   guesses.push(now); // counted before any await, like verify-code
@@ -1417,7 +1435,7 @@ async function reviewPin(ctx) {
       const k = guesses.indexOf(now); // nothing was compared
       if (k >= 0) guesses.splice(k, 1);
     }
-    throw fail(err.status, err.code, err.message, err.attemptsLeft === undefined ? {} : { attemptsLeft: err.attemptsLeft });
+    throw reviewFail(err);
   }
   const k = guesses.indexOf(now); // a right PIN does not count
   if (k >= 0) guesses.splice(k, 1);
@@ -3240,50 +3258,30 @@ async function savePin(ctx, user, pin, hashed = null) {
 }
 
 /**
- * Wrong tries ran out: this session ends — every session of the profile when the profile's own count ran out —
- * and the answer is 401 pin_tries (the app goes to the sign-in step: "Sign in again to set a new PIN.").
- */
-async function endForTries(ctx, everywhere) {
-  const { d, session, me } = ctx;
-  if (everywhere) {
-    await d.collection(C.sessions).deleteMany({ userId: me._id });
-    await d.collection(C.users).updateOne({ _id: me._id }, { $set: { pinTries: 0 } });
-  } else {
-    await d.collection(C.sessions).deleteOne({ _id: session._id });
-  }
-  ctx.headers["Set-Cookie"] = cookieFor(ctx.req, "", 0);
-  throw fail(401, "pin_tries", "Too many wrong PINs. Sign in again to set a new PIN.", { signedOut: true });
-}
-
-/**
- * One PIN check, counted BEFORE comparing (parallel guesses cannot get past the limit): the session's and the
- * profile's wrong tries both go up, and a right PIN clears both. The 5th wrong one (either count) ends the
- * session (endForTries); a wrong one before that → 400 wrong_pin { triesLeft }.
+ * One PIN check (owner 2026-10-14: no try limit for people — "they can punch it 1000 times, we do not care"). Counted
+ * on the session's script guard BEFORE comparing (pinGuardUpdate, atomic: parallel guesses cannot get past it); past
+ * PIN_GUARD_TRIES in 10 minutes → 429 too_many_tries, not compared. Right → the count is cleared. Wrong → 400
+ * wrong_pin, and the app asks again: never "n tries left", never a sign-out.
  */
 async function checkPinTry(ctx, pin) {
   const { d, session, me } = ctx;
   const sessions = d.collection(C.sessions);
-  const users = d.collection(C.users);
-  const [s, u] = await Promise.all([
-    sessions.findOneAndUpdate({ _id: session._id }, { $inc: { pinTries: 1 } }, { returnDocument: "after", projection: { pinTries: 1 } }),
-    users.findOneAndUpdate({ _id: me._id }, { $inc: { pinTries: 1 } }, { returnDocument: "after", projection: { pinTries: 1, pinHash: 1 } }),
-  ]);
-  if (!s || !u) throw fail(401, "signed_out", "Please sign in.");
-  const over = afterWrongPin(s.pinTries - 1, u.pinTries - 1);
-  if (over.end) return endForTries(ctx, over.everywhere); // already out of tries: not even compared
-  if (await verifyPin(pin, u.pinHash)) {
+  const now = Date.now();
+  const s = await sessions.findOneAndUpdate({ _id: session._id }, pinGuardUpdate(now),
+    { returnDocument: "after", projection: { pinTries: 1, pinTriesFrom: 1 } });
+  if (!s) throw fail(401, "signed_out", "Please sign in.");
+  const stop = pinGuardStop(s, now);
+  if (stop) throw fail(429, "too_many_tries", "Too many tries. Wait a minute.", { retryIn: stop.retryIn });
+  if (await verifyPin(pin, me.pinHash)) {
     // A hash from before the server pepper (THIRTYDA_PIN_PEPPER) is made again with it, now that the PIN is known.
-    const better = pinHashStale(u.pinHash) ? await hashPin(pin) : null;
+    const better = pinHashStale(me.pinHash) ? await hashPin(pin) : null;
     await Promise.all([
-      sessions.updateOne({ _id: session._id }, { $set: { pinTries: 0 } }),
-      users.updateOne({ _id: me._id }, { $set: { pinTries: 0 } }),
-      better && users.updateOne({ _id: me._id, pinHash: u.pinHash }, { $set: { pinHash: better } }),
+      sessions.updateOne({ _id: session._id }, { $set: { pinTries: 0 }, $unset: { pinTriesFrom: "" } }),
+      better && d.collection(C.users).updateOne({ _id: me._id, pinHash: me.pinHash }, { $set: { pinHash: better } }),
     ]);
     return;
   }
-  const next = afterWrongPin(s.pinTries, u.pinTries);
-  if (next.end) return endForTries(ctx, next.everywhere);
-  throw fail(400, "wrong_pin", "That PIN is not right.", { triesLeft: next.triesLeft });
+  throw fail(400, "wrong_pin", "That PIN is not right.");
 }
 
 /** POST /me/lock — the app covered itself (30 s without a touch, hidden, closed): the PIN is needed again. */
@@ -3293,7 +3291,7 @@ async function lockMe(ctx) {
   return { ok: true, locked: true };
 }
 
-/** POST /me/unlock { pin } → open again { user, notices, lock } · 400 wrong_pin { triesLeft } · 401 pin_tries · 409 no_pin. */
+/** POST /me/unlock { pin } → open again { user, notices, lock } · 400 wrong_pin (ask again) · 429 too_many_tries (scripts) · 409 no_pin. */
 async function unlockMe(ctx) {
   const { d, session, me, body } = ctx;
   if (!me.pinHash) throw fail(409, "no_pin", "Sign in again to set a PIN.");

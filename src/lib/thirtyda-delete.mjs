@@ -6,8 +6,8 @@
  *     Only from the app's own page (an Origin header from this host: the router refuses other sites, this route also
  *     refuses none), only while the app is unlocked (the PIN lock answers 423 first: it is not a whileLocked route),
  *     DELETE_PER_IP per address and DELETE_PER_PROFILE per profile per 15 minutes (429 rate_limited). A profile with a
- *     PIN types it: checked exactly like the lock screen's PIN (the app's checkPinTry: a wrong one counts against the
- *     session's and the profile's tries, 400 wrong_pin { triesLeft }; the 5th ends the session, 401 pin_tries). A blocked
+ *     PIN types it: checked exactly like the lock screen's PIN (the app's checkPinTry: a wrong one is 400 wrong_pin and
+ *     the app asks again — no try limit; only the session's script guard, 429 too_many_tries). A blocked
  *     profile cannot delete itself here (403 blocked: it writes to the team, /30da/delete-data) — unless its own delete
  *     already started (the route is blockedOk only for that).
  *
@@ -461,7 +461,7 @@ const limits = windowLimiter(15 * 60e3);
 /**
  * POST /me/delete { pin? } — the route (src/lib/thirtyda-app.mjs registers it, blockedOk). `deps` come from the app's
  * router: fail(status, code, message, extra) makes its API errors, checkPinTry(ctx, pin) is the lock screen's own PIN
- * check (counts tries, ends the session on the 5th), signedOutCookie(req) the cleared session cookie.
+ * check (no try limit; 429 only for scripts), signedOutCookie(req) the cleared session cookie.
  */
 export async function deleteMe(ctx, { fail, checkPinTry, signedOutCookie, deletePhoto = deleteStoredPhoto, now = Date.now() }) {
   const { d, req, me, body } = ctx;
@@ -475,7 +475,7 @@ export async function deleteMe(ctx, { fail, checkPinTry, signedOutCookie, delete
   if (me.pinHash && !resuming) {
     const pin = pinDigits(body?.pin);
     if (pin.length !== PIN_LENGTH) throw fail(422, "invalid", "Enter your 4-digit PIN.", { field: "pin" });
-    await checkPinTry(ctx, pin); // 400 wrong_pin { triesLeft } · 401 pin_tries (the session ended) — like the lock screen
+    await checkPinTry(ctx, pin); // 400 wrong_pin (ask again) · 429 too_many_tries (scripts only) — like the lock screen
   }
   // Others' deletes that stopped half way finish now too (best effort, never in the way of this one).
   await resumeDeletions(d, { now, deletePhoto }).catch((err) => {

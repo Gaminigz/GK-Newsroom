@@ -1,15 +1,15 @@
 // Run: node --test src/thirtyda-app/shared/
 // The PIN rules the app and the server share (shared/pin.js): what a new PIN may be, typed digits in any of
-// the scripts a phone keyboard gives, and the tries count.
+// the scripts a phone keyboard gives, and no try limit for people.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  PIN_LENGTH, PIN_TRIES, IDLE_COVER_MS, LOCK_IDLE_MS, INPUT_AGE_HEADER, checkNewPin, pinDigits, pinTriesLeft,
-} from './pin.js';
+import { readFileSync } from 'node:fs';
+import * as shared from './pin.js';
 
-test('the owner\'s numbers: 4 digits, 5 tries, 30 s cover, 2 min server lock', () => {
+const { PIN_LENGTH, IDLE_COVER_MS, LOCK_IDLE_MS, INPUT_AGE_HEADER, checkNewPin, pinDigits } = shared;
+
+test('the owner\'s numbers: 4 digits, 30 s cover, 2 min server lock', () => {
   assert.equal(PIN_LENGTH, 4);
-  assert.equal(PIN_TRIES, 5);
   assert.equal(IDLE_COVER_MS, 30_000);
   assert.equal(LOCK_IDLE_MS, 120_000);
   assert.equal(INPUT_AGE_HEADER, 'X-30DA-Input-Age');
@@ -58,11 +58,18 @@ test('typed digits: Khmer and full-width digits count, everything else is droppe
   assert.deepEqual(checkNewPin(pinDigits('១២៣៤')), { ok: false, error: 'run' }, 'the rules apply after normalising');
 });
 
-test('tries left: the larger count decides, never below 0', () => {
-  assert.equal(pinTriesLeft(0, 0), 5);
-  assert.equal(pinTriesLeft(1, 3), 2);
-  assert.equal(pinTriesLeft(4, 0), 1);
-  assert.equal(pinTriesLeft(5, 0), 0);
-  assert.equal(pinTriesLeft(2, 9), 0);
-  assert.equal(pinTriesLeft(), 5);
+test('no try limit for people (owner 2026-10-14: "they can punch it 1000 times"): no tries count is shared any more', () => {
+  assert.equal('PIN_TRIES' in shared, false);
+  assert.equal('pinTriesLeft' in shared, false);
+  // The app's lock screens never say how many tries are left, and never end anything after N wrong.
+  const lock = readFileSync(new URL('../lock.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(lock, /triesLeft|PIN_TRIES|guestTries|pin_wrong_one/);
+  const strings = lock.slice(lock.indexOf('registerStrings({'));
+  const wrong = [...strings.matchAll(/pin_wrong: '([^']+)'/g)].map((m) => m[1]);
+  assert.equal(wrong.length, 5, 'pin_wrong in en / km / zh / ko / ja');
+  assert.ok(wrong.every((w) => !/\{n\}|\d/.test(w)), 'no count in "Wrong PIN. Try again."');
+  assert.equal(wrong[0], 'Wrong PIN. Try again.');
+  assert.equal([...strings.matchAll(/pin_too_many: '([^']+)'/g)].length, 5, 'the script brake (429) in 5 languages');
+  const del = readFileSync(new URL('../screens/delete-account.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(del, /triesLeft|pin_tries|pinTriesOut|pin_wrong_one/, 'Delete my account: the same, no count, no sign-out');
 });
