@@ -1,6 +1,6 @@
 // Run: npm run 30da:test (or node --test src/lib/thirtyda-demo.test.mjs)
 // "Create demo account" (owner 2026-10-14: "I need loaded 2 users with 4 photos each etc, login code 5566 7788 —
-// 1 woman 1 man", src/lib/thirtyda-demo.mjs): a NEW fully filled review account per preset, made with placeholders
+// 1 woman 1 man"; 2026-10-15: "code is 4455 and 6677", src/lib/thirtyda-demo.mjs): a NEW fully filled review account per preset, made with placeholders
 // until the Media Director's files are in the folder, idempotent, photos approved and slot-aligned, its PIN works on the
 // PIN-only way, it lives in the review world, and the notes list every demo account. In-memory Mongo stand-in and an
 // in-memory photo store: no database, no network, no files written in the repo.
@@ -154,12 +154,12 @@ const isJpeg = (buf) => buf[0] === 0xff && buf[1] === 0xd8;
 
 // ---------------------------------------------------------------- the presets and the placeholders
 
-test('presets: 1 woman (Sreypov, PIN 5566, +855 10 000 5566) and 1 man (Samnang, PIN 7788, +855 10 000 7788), 30+, real jobs', () => {
+test('presets: 1 woman (Sreypov, PIN 4455, +855 10 000 4455) and 1 man (Samnang, PIN 6677, +855 10 000 6677), 30+, real jobs', () => {
   assert.deepEqual(DEMO_PRESET_KEYS, ['woman', 'man']);
   const w = DEMO_PRESETS.woman;
   const m = DEMO_PRESETS.man;
-  assert.deepEqual([w.name, w.gender, w.birthYear, w.pin, w.phone], ['Sreypov', 'woman', 1991, '5566', '+855100005566']);
-  assert.deepEqual([m.name, m.gender, m.birthYear, m.pin, m.phone], ['Samnang', 'man', 1988, '7788', '+855100007788']);
+  assert.deepEqual([w.name, w.gender, w.birthYear, w.pin, w.phone], ['Sreypov', 'woman', 1991, '4455', '+855100004455']);
+  assert.deepEqual([m.name, m.gender, m.birthYear, m.pin, m.phone], ['Samnang', 'man', 1988, '6677', '+855100006677']);
   for (const p of [w, m]) {
     const f = checkDemoFields(p.preset, {}, { now: Date.parse('2026-10-14T00:00:00Z') });
     assert.equal(f.name, p.name, 'the app\'s own name rules take it');
@@ -204,11 +204,11 @@ test('C: Create demo woman with placeholders — a NEW fully filled review accou
     // A review account: mock number verified (phoneVia review), the PIN hashed like the app's and sealed for the notes.
     assert.equal(u.demo, REVIEW);
     assert.equal(u.demoPreset, 'woman');
-    assert.equal(u.phone, '+855100005566');
+    assert.equal(u.phone, '+855100004455');
     assert.equal(u.verified.phone, true);
     assert.equal(u.phoneVia, 'review');
-    assert.equal(await verifyPin('5566', u.pinHash), true);
-    assert.equal(reviewPinOf(u), '5566');
+    assert.equal(await verifyPin('4455', u.pinHash), true);
+    assert.equal(reviewPinOf(u), '4455');
     assert.equal(u.reviewWas, undefined, 'no profile of its own to go back to');
     // Pinned in Phnom Penh, on a spot no other review account has.
     assert.equal(u.area, REVIEW_PLACE.area);
@@ -365,18 +365,18 @@ test('C: a PIN another review account has → 409 pin_in_use (Create and "Use as
   const users = d.collection('thirtyda_users');
   const pinInUse = (e) => e instanceof ReviewError && e.status === 409 && e.code === 'pin_in_use' && e.field === 'pin';
   try {
-    const w = (await createDemoAccount(d, 'woman', {}, opts)).user; // 5566
+    const w = (await createDemoAccount(d, 'woman', {}, opts)).user; // 4455
     const before = structuredClone(d.docs('thirtyda_users'));
     const stored = new Set(store.files.keys());
-    // The finding: the demo man with the PIN field edited to Dara's 1122 (a typo) — and the woman's 5566, Sophea's 3344.
-    for (const pin of ['1122', '3344', '5566']) {
+    // The finding: the demo man with the PIN field edited to Dara's 1122 (a typo) — and the woman's 4455, Sophea's 3344.
+    for (const pin of ['1122', '3344', '4455']) {
       await assert.rejects(createDemoAccount(d, 'man', { pin }, opts), pinInUse, pin);
     }
     assert.deepEqual(d.docs('thirtyda_users'), before, 'no account made, none changed');
     assert.deepEqual(new Set(store.files.keys()), stored, 'no photo stored');
     assert.equal(await demoAccountOf(d, 'man'), null);
     // "Use as review account" and saving one again go through the same check (makeReviewAccount).
-    await assert.rejects(makeReviewAccount(d, 'U-10003', { phone: '+855100009900', pin: '5566' }), pinInUse);
+    await assert.rejects(makeReviewAccount(d, 'U-10003', { phone: '+855100009900', pin: '4455' }), pinInUse);
     assert.equal(isReview(await users.findOne({ _id: 'U-10003' })), false, 'still a real profile');
     await assert.rejects(makeReviewAccount(d, 'U-10002', { phone: '+855100003344', pin: '1122' }), pinInUse, 'Sophea → Dara\'s PIN');
     assert.equal(reviewPinOf(await users.findOne({ _id: 'U-10002' })), '3344');
@@ -390,17 +390,17 @@ test('C: a PIN another review account has → 409 pin_in_use (Create and "Use as
     await stopReviewAccount(d, 'U-10003');
     await users.updateOne({ _id: 'U-10001' }, { $unset: { deleting: '' } });
     await makeReviewAccount(d, 'U-10001', REVIEW_DEFAULTS[0]); // Dara's PIN sealed again
-    // The man with his own PIN; then saving him again with Dara's PIN is refused and he keeps 7788.
+    // The man with his own PIN; then saving him again with Dara's PIN is refused and he keeps 6677.
     const m = (await createDemoAccount(d, 'man', {}, opts)).user;
     const manBefore = await users.findOne({ _id: m._id });
     await assert.rejects(createDemoAccount(d, 'man', { pin: '1122' }, opts), pinInUse);
     assert.deepEqual(await users.findOne({ _id: m._id }), manBefore, 'unchanged');
-    assert.equal(reviewPinOf(await users.findOne({ _id: m._id })), '7788');
+    assert.equal(reviewPinOf(await users.findOne({ _id: m._id })), '6677');
     // Saving an account again with its OWN PIN is no clash.
-    assert.equal((await createDemoAccount(d, 'man', { pin: '7788' }, opts)).created, false);
+    assert.equal((await createDemoAccount(d, 'man', { pin: '6677' }, opts)).created, false);
     // Every PIN signs into its own account, and the notes name each once.
     await setReviewSwitch(d, true);
-    for (const [pin, id] of [['1122', 'U-10001'], ['3344', 'U-10002'], ['5566', w._id], ['7788', m._id]]) {
+    for (const [pin, id] of [['1122', 'U-10001'], ['3344', 'U-10002'], ['4455', w._id], ['6677', m._id]]) {
       assert.equal((await reviewAccountForPin(d, pin))?._id, id, pin);
     }
     const pins = (await reviewView(d)).accounts.map((a) => a.pin).filter(Boolean);
@@ -457,26 +457,26 @@ test('C: "Stop being a review account" is refused for a demo made here (409 made
 
 // ---------------------------------------------------------------- it signs in and lives in the review world
 
-test('C: the PIN works on the PIN-only way (POST /auth/review/pin): 1122 / 3344 / 5566 / 7788 → their own accounts, only while ON', async () => {
+test('C: the PIN works on the PIN-only way (POST /auth/review/pin): 1122 / 3344 / 4455 / 6677 → their own accounts, only while ON', async () => {
   const d = await world();
   const f = await folder();
   try {
     const w = (await createDemoAccount(d, 'woman', {}, { ...photoStore(), dir: f.url })).user;
     const m = (await createDemoAccount(d, 'man', {}, { ...photoStore(), dir: f.url })).user;
     const tries = tryCounter();
-    await assert.rejects(reviewPinCheck(d, { pin: '5566', key: 'ip', tries }), (e) => e.status === 404, 'OFF: like an unknown route');
-    assert.equal(await reviewAccountForPin(d, '5566'), null);
+    await assert.rejects(reviewPinCheck(d, { pin: '4455', key: 'ip', tries }), (e) => e.status === 404, 'OFF: like an unknown route');
+    assert.equal(await reviewAccountForPin(d, '4455'), null);
     await setReviewSwitch(d, true);
-    assert.equal((await reviewPinCheck(d, { pin: '5566', key: 'ip', tries }))._id, w._id);
-    assert.equal((await reviewPinCheck(d, { pin: '7788', key: 'ip', tries }))._id, m._id);
+    assert.equal((await reviewPinCheck(d, { pin: '4455', key: 'ip', tries }))._id, w._id);
+    assert.equal((await reviewPinCheck(d, { pin: '6677', key: 'ip', tries }))._id, m._id);
     assert.equal((await reviewPinCheck(d, { pin: '1122', key: 'ip', tries }))._id, 'U-10001');
     assert.equal((await reviewPinCheck(d, { pin: '3344', key: 'ip', tries }))._id, 'U-10002');
-    assert.deepEqual(await reviewPinProbe(d, { pin: '5566', key: 'ip', tries }), { review: true, name: 'Sreypov' });
-    assert.deepEqual(await reviewPinProbe(d, { pin: '7788', key: 'ip', tries }), { review: true, name: 'Samnang' });
+    assert.deepEqual(await reviewPinProbe(d, { pin: '4455', key: 'ip', tries }), { review: true, name: 'Sreypov' });
+    assert.deepEqual(await reviewPinProbe(d, { pin: '6677', key: 'ip', tries }), { review: true, name: 'Samnang' });
     await assert.rejects(reviewPinCheck(d, { pin: '5577', key: 'ip', tries }), (e) => e.status === 400 && e.code === 'not_review');
     // The mock number works the review-code way too (it is the account's verified phone).
     const { reviewAccountFor } = await import('./thirtyda-review.mjs');
-    assert.equal((await reviewAccountFor(d, '+855100005566'))._id, w._id);
+    assert.equal((await reviewAccountFor(d, '+855100004455'))._id, w._id);
   } finally {
     await f.done();
   }
@@ -517,24 +517,24 @@ test('C: the notes list every demo account with its PIN (the made ones too); the
     await createDemoAccount(d, 'woman', {}, { ...photoStore(), dir: f.url });
     await createDemoAccount(d, 'man', {}, { ...photoStore(), dir: f.url });
     const v = await reviewView(d);
-    assert.deepEqual(v.accounts.map((a) => [a.name, a.pin, a.made]), [['Dara', '1122', null], ['Sophea', '3344', null], ['Sreypov', '5566', 'woman'], ['Samnang', '7788', 'man']]);
+    assert.deepEqual(v.accounts.map((a) => [a.name, a.pin, a.made]), [['Dara', '1122', null], ['Sophea', '3344', null], ['Sreypov', '4455', 'woman'], ['Samnang', '6677', 'man']]);
     for (const want of [
       'Demo account 1: Dara (man) · PIN 1122 · phone +855 10 000 1122',
       'Demo account 2: Sophea (woman) · PIN 3344 · phone +855 10 000 3344',
-      'Demo account 3: Sreypov (woman) · PIN 5566 · phone +855 10 000 5566',
-      'Demo account 4: Samnang (man) · PIN 7788 · phone +855 10 000 7788',
-      '3. On "Set your PIN" type a demo PIN (1122, 3344, 5566 or 7788): you are signed in to that demo account at once, in the language you picked.',
+      'Demo account 3: Sreypov (woman) · PIN 4455 · phone +855 10 000 4455',
+      'Demo account 4: Samnang (man) · PIN 6677 · phone +855 10 000 6677',
+      '3. On "Set your PIN" type a demo PIN (1122, 3344, 4455 or 6677): you are signed in to that demo account at once, in the language you picked.',
       '4. Nearby shows the other demo accounts with their photos. Dara and Sophea already have a conversation (Level 3 chat).',
-      'unlock it with the same PIN (1122 / 3344 / 5566 / 7788)',
+      'unlock it with the same PIN (1122 / 3344 / 4455 / 6677)',
       'The demo accounts see only each other.',
     ]) assert.ok(v.notes.includes(want), want);
     assert.equal(v.counts.review, 4);
     const dm = await demoView(d, { dir: f.url });
     assert.deepEqual(dm.presets.map((p) => [p.preset, p.label, p.account?.pin, p.account?.photos, p.files.count]), [
-      ['woman', 'Demo woman', '5566', 4, 0], ['man', 'Demo man', '7788', 4, 0],
+      ['woman', 'Demo woman', '4455', 4, 0], ['man', 'Demo man', '6677', 4, 0],
     ]);
     assert.deepEqual(dm.presets[0].files.names, ['demo-w-1.jpg', 'demo-w-2.jpg', 'demo-w-3.jpg', 'demo-w-4.jpg']);
-    assert.equal(dm.presets[0].account.phone, '+855100005566');
+    assert.equal(dm.presets[0].account.phone, '+855100004455');
     assert.equal(dm.folder, 'src/thirtyda-admin/review/');
     assert.ok(dm.roles.some((r) => r.key === 'accountant' && r.text === 'Accountant'));
     assert.deepEqual(dm.langs.map((l) => l.key), ['en', 'km', 'zh', 'ko', 'ja']);
@@ -584,7 +584,7 @@ test('admin page: the Create panel with both presets, the photo status line, and
   const js = readFileSync(new URL('../thirtyda-admin/review.js', import.meta.url), 'utf8');
   assert.ok(!/innerHTML/.test(js));
   assert.match(js, /'Photos: placeholders — real demo photos not added yet'/);
-  assert.match(js, /`\$\{p\.label\} \(PIN \$\{pin\}\)`/, '"Demo woman (PIN 5566)" / "Demo man (PIN 7788)"');
+  assert.match(js, /`\$\{p\.label\} \(PIN \$\{pin\}\)`/, '"Demo woman (PIN 4455)" / "Demo man (PIN 6677)"');
   assert.match(js, /act\(`demo\/\$\{a\.id\}\/photos`/, 'Refresh photos');
   assert.match(js, /act\('demo', \{\s*preset: demoEditing,/, 'Create sends the edited fields');
 });

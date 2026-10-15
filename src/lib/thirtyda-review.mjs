@@ -8,7 +8,7 @@
  *     like the app's own PIN; the PIN itself is also kept SEALED on the profile, reviewPinBox, so the page can show it
  *     in the review notes). Photos, birth year, level and conversations stay exactly as they are. "Stop being a review
  *     account" puts the profile's own number / PIN back (reviewWas) and ends the sessions the review code made.
- *   - "Create demo account" (src/lib/thirtyda-demo.mjs, owner 2026-10-14: "1 woman 1 man", PINs 5566 / 7788) makes a NEW,
+ *   - "Create demo account" (src/lib/thirtyda-demo.mjs, owner 2026-10-14: "1 woman 1 man", PINs 4455 / 6677) makes a NEW,
  *     fully filled profile directly as a review account (users.demoPreset), with 4 approved photos; Remove deletes it.
  *   - A PINNED Phnom Penh location: a review account is put on a fixed point in central Phnom Penh (REVIEW_SPOTS, area
  *     "Phnom Penh") and keeps it — POST /me/location answers OK but changes nothing for it (src/lib/thirtyda-app.mjs
@@ -124,7 +124,7 @@ export function profileRow(u) {
 
 /** "1122 / 3344": the review accounts' PINs. */
 const pinList = (accounts) => accounts.map((a) => a.pin).filter(Boolean).join(" / ") || "shown above";
-/** "1122, 3344, 5566 or 7788" (step 3 of the notes). */
+/** "1122, 3344, 4455 or 6677" (step 3 of the notes). */
 function pinOr(accounts) {
   const pins = accounts.map((a) => a.pin).filter(Boolean);
   return pins.length > 1 ? `${pins.slice(0, -1).join(", ")} or ${pins.at(-1)}` : pins[0] ?? "shown below";
