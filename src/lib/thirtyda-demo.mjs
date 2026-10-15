@@ -1,10 +1,10 @@
 /**
  * 30+DA demo accounts MADE on the admin page (owner 2026-10-14: "I need loaded 2 users with 4 photos each etc, login
- * code 5566 7788 — 1 woman 1 man"; owner 2026-10-15: "code is 4455 and 6677"). "Use as review account" (src/lib/thirtyda-review.mjs) turns an EXISTING profile
+ * code 5566 7788 — 1 woman 1 man"). "Use as review account" (src/lib/thirtyda-review.mjs) turns an EXISTING profile
  * into a review account; "Create demo account" here makes a NEW, fully filled one directly as a review account:
  *
- *   - Two presets (DEMO_PRESETS): "Demo woman" (Sreypov, PIN 4455, +855 10 000 4455) and "Demo man" (Samnang, PIN 6677,
- *     +855 10 000 6677). The admin can change every field before Create: app name, real name (shown at Level 3),
+ *   - Two presets (DEMO_PRESETS): "Demo woman" (Sreypov, PIN 5566, +855 10 000 5566) and "Demo man" (Samnang, PIN 7788,
+ *     +855 10 000 7788). The admin can change every field before Create: app name, real name (shown at Level 3),
  *     gender, birth year (30+), job, language, mock number, PIN. Checked with the app's own rules (shared/rules.js).
  *   - Idempotent: users.demoPreset ('woman' | 'man') marks the account a preset made, so creating "Demo woman" again
  *     UPDATES that same account (its fields and its photos), never a second one.
@@ -40,17 +40,17 @@ import { ROLES } from "../thirtyda-app/shared/questions.js";
 const USERS = "thirtyda_users";
 const GENDERS = ["woman", "man", "other"];
 
-/** The two presets the admin page offers (owner 2026-10-14: "1 woman 1 man"; PINs 4455 / 6677 per owner 2026-10-15). */
+/** The two presets the admin page offers (owner 2026-10-14: "1 woman 1 man", PINs 5566 / 7788). */
 export const DEMO_PRESETS = Object.freeze({
   woman: Object.freeze({
     preset: "woman", label: "Demo woman", file: "w",
     name: "Sreypov", realName: "Heng Sreypov", gender: "woman", birthYear: 1991, role: "accountant", lang: "en",
-    phone: "+855100004455", pin: "4455",
+    phone: "+855100005566", pin: "5566",
   }),
   man: Object.freeze({
     preset: "man", label: "Demo man", file: "m",
     name: "Samnang", realName: "Keo Samnang", gender: "man", birthYear: 1988, role: "civil_engineering", lang: "en",
-    phone: "+855100006677", pin: "6677",
+    phone: "+855100007788", pin: "7788",
   }),
 });
 export const DEMO_PRESET_KEYS = Object.keys(DEMO_PRESETS);
@@ -187,7 +187,7 @@ export function checkDemoFields(preset, input = {}, { now = Date.now() } = {}) {
   if (!ROLES.some((r) => r.key === v.role)) throw bad("Choose a job from the list.", "role");
   if (!LANGS.includes(v.lang)) throw bad("Choose one of the five languages.", "lang");
   const phone = normalizePhone(v.phone);
-  if (!phone) throw bad("That number does not look right. Write it with the country code, e.g. +855 10 000 4455.", "phone");
+  if (!phone) throw bad("That number does not look right. Write it with the country code, e.g. +855 10 000 5566.", "phone");
   const pin = checkNewPin(String(v.pin ?? ""));
   if (!pin.ok) throw bad(pin.error === "format" ? "A PIN is 4 digits." : "The app does not take that PIN (like 1111 or 1234). Choose another.", "pin");
   return {
