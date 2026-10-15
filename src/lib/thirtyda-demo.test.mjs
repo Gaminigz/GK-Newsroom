@@ -154,12 +154,12 @@ const isJpeg = (buf) => buf[0] === 0xff && buf[1] === 0xd8;
 
 // ---------------------------------------------------------------- the presets and the placeholders
 
-test('presets: 1 woman (Sreypov, PIN 5566, +855 10 000 5566) and 1 man (Samnang, PIN 7788, +855 10 000 7788), 30+, real jobs', () => {
+test('presets: 1 woman (Sopal, PIN 5566, +855 10 000 5566) and 1 man (Meng, PIN 7788, +855 10 000 7788), 30+, real jobs', () => {
   assert.deepEqual(DEMO_PRESET_KEYS, ['woman', 'man']);
   const w = DEMO_PRESETS.woman;
   const m = DEMO_PRESETS.man;
-  assert.deepEqual([w.name, w.gender, w.birthYear, w.pin, w.phone], ['Sreypov', 'woman', 1991, '5566', '+855100005566']);
-  assert.deepEqual([m.name, m.gender, m.birthYear, m.pin, m.phone], ['Samnang', 'man', 1988, '7788', '+855100007788']);
+  assert.deepEqual([w.name, w.gender, w.birthYear, w.pin, w.phone], ['Sopal', 'woman', 1991, '5566', '+855100005566']);
+  assert.deepEqual([m.name, m.gender, m.birthYear, m.pin, m.phone], ['Meng', 'man', 1988, '7788', '+855100007788']);
   for (const p of [w, m]) {
     const f = checkDemoFields(p.preset, {}, { now: Date.parse('2026-10-14T00:00:00Z') });
     assert.equal(f.name, p.name, 'the app\'s own name rules take it');
@@ -200,7 +200,7 @@ test('C: Create demo woman with placeholders — a NEW fully filled review accou
     assert.equal(created, true);
     assert.equal(u._id, 'U-10004', 'the app\'s own id counter');
     assert.equal(u.id, u._id);
-    assert.deepEqual([u.name, u.realName, u.gender, u.birthYear, u.role, u.lang, u.language], ['Sreypov', 'Heng Sreypov', 'woman', 1991, 'accountant', 'en', 'English']);
+    assert.deepEqual([u.name, u.realName, u.gender, u.birthYear, u.role, u.lang, u.language], ['Sopal', 'Heng Sopal', 'woman', 1991, 'accountant', 'en', 'English']);
     // A review account: mock number verified (phoneVia review), the PIN hashed like the app's and sealed for the notes.
     assert.equal(u.demo, REVIEW);
     assert.equal(u.demoPreset, 'woman');
@@ -325,7 +325,7 @@ test('C: refusals — bad fields (422), a taken number, a review name in use, RE
     const bad = async (input, field) => {
       await assert.rejects(createDemoAccount(d, 'woman', input, opts), (e) => e instanceof ReviewError && e.status === 422 && e.field === field, field);
     };
-    await bad({ name: 'Sreypovvvv' }, 'name');
+    await bad({ name: 'Sopalvvv' }, 'name');
     await bad({ name: 'call 012345678' }, 'name');
     await bad({ realName: 'X' }, 'realName');
     await bad({ gender: 'robot' }, 'gender');
@@ -471,8 +471,8 @@ test('C: the PIN works on the PIN-only way (POST /auth/review/pin): 1122 / 3344 
     assert.equal((await reviewPinCheck(d, { pin: '7788', key: 'ip', tries }))._id, m._id);
     assert.equal((await reviewPinCheck(d, { pin: '1122', key: 'ip', tries }))._id, 'U-10001');
     assert.equal((await reviewPinCheck(d, { pin: '3344', key: 'ip', tries }))._id, 'U-10002');
-    assert.deepEqual(await reviewPinProbe(d, { pin: '5566', key: 'ip', tries }), { review: true, name: 'Sreypov' });
-    assert.deepEqual(await reviewPinProbe(d, { pin: '7788', key: 'ip', tries }), { review: true, name: 'Samnang' });
+    assert.deepEqual(await reviewPinProbe(d, { pin: '5566', key: 'ip', tries }), { review: true, name: 'Sopal' });
+    assert.deepEqual(await reviewPinProbe(d, { pin: '7788', key: 'ip', tries }), { review: true, name: 'Meng' });
     await assert.rejects(reviewPinCheck(d, { pin: '5577', key: 'ip', tries }), (e) => e.status === 400 && e.code === 'not_review');
     // The mock number works the review-code way too (it is the account's verified phone).
     const { reviewAccountFor } = await import('./thirtyda-review.mjs');
@@ -517,12 +517,12 @@ test('C: the notes list every demo account with its PIN (the made ones too); the
     await createDemoAccount(d, 'woman', {}, { ...photoStore(), dir: f.url });
     await createDemoAccount(d, 'man', {}, { ...photoStore(), dir: f.url });
     const v = await reviewView(d);
-    assert.deepEqual(v.accounts.map((a) => [a.name, a.pin, a.made]), [['Dara', '1122', null], ['Sophea', '3344', null], ['Sreypov', '5566', 'woman'], ['Samnang', '7788', 'man']]);
+    assert.deepEqual(v.accounts.map((a) => [a.name, a.pin, a.made]), [['Dara', '1122', null], ['Sophea', '3344', null], ['Sopal', '5566', 'woman'], ['Meng', '7788', 'man']]);
     for (const want of [
       'Demo account 1: Dara (man) · PIN 1122 · phone +855 10 000 1122',
       'Demo account 2: Sophea (woman) · PIN 3344 · phone +855 10 000 3344',
-      'Demo account 3: Sreypov (woman) · PIN 5566 · phone +855 10 000 5566',
-      'Demo account 4: Samnang (man) · PIN 7788 · phone +855 10 000 7788',
+      'Demo account 3: Sopal (woman) · PIN 5566 · phone +855 10 000 5566',
+      'Demo account 4: Meng (man) · PIN 7788 · phone +855 10 000 7788',
       '3. On "Set your PIN" type a demo PIN (1122, 3344, 5566 or 7788): you are signed in to that demo account at once, in the language you picked.',
       '4. Nearby shows the other demo accounts with their photos. Dara and Sophea already have a conversation (Level 3 chat).',
       'unlock it with the same PIN (1122 / 3344 / 5566 / 7788)',
