@@ -190,11 +190,14 @@ test('createProfile: a review device skips "one per phone" and the address day l
   assert.ok(body.indexOf('if (slot && !slot.ok)') < body.indexOf('storePhoto('));
   assert.ok(body.indexOf('reviewDevice') < body.indexOf('claimDevice('), 'decided before the phone is claimed');
   // The sign-ins that make a review device: both review ways, only after a right PIN / code (after the session starts).
-  for (const name of ['reviewPin', 'reviewVerify']) {
+  // The PIN-only way signs in through reviewPinSession (a demo account's lock-screen switch too, owner 2026-10-15).
+  for (const [name, id] of [['reviewPinSession', /markReviewDevice\(d, deviceId\)/], ['reviewVerify', /markReviewDevice\(d, body\.deviceId\)/]]) {
     const fn = fnBody(APP, name);
-    assert.match(fn, /markReviewDevice\(d, body\.deviceId\)/, name);
+    assert.match(fn, id, name);
     assert.ok(fn.indexOf('markReviewDevice') > fn.indexOf('await startSession('), `${name}: only after a right PIN / code`);
   }
+  assert.match(fnBody(APP, 'reviewPin'), /return reviewPinSession\(ctx, \{ pin: body\.pin, agreement: readAgreement\(body\.terms\), deviceId: body\.deviceId \}\);/);
+  assert.match(fnBody(APP, 'reviewLockSwitch'), /reviewPinSession\(ctx, \{ pin, agreement, deviceId: body\.deviceId, countWrong: false \}\)/);
   assert.match(APP, /d\.collection\(REVIEW_DEVICES\)\.createIndex\(\{ purgeAt: 1 \}, \{ expireAfterSeconds: 0 \}\)/);
 });
 

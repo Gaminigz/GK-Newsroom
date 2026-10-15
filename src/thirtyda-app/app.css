@@ -784,6 +784,18 @@ dialog.dialog[open] { animation: pop-in 0.18s ease-out; }
   box-shadow: 0 0 0 2px #fff;
 }
 .way.is-done .way-name { color: var(--green); font-weight: 700; }
+/* "Sign in to set a new PIN" (#/signin, owner 2026-10-15): the profile's own way, marked — a soft card behind it, its name bold. */
+.way.is-yours { background: var(--bubble); }
+.way.is-yours .way-name { color: var(--ink); font-weight: 800; }
+.signin-form { gap: 16px; }
+/* One or two own ways: round buttons of their usual size, centred (not one card across the whole screen). */
+.signin .ways { width: 100%; max-width: calc(var(--cols, 5) * 84px); margin-inline: auto; }
+.signin-yours { margin: 0; }
+.signin-number { margin: -2px 0 0; }
+/* "Use another way" and its warning: under the row, small. */
+.signin-more { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.signin-other { font-size: 14px; }
+.signin-warn { align-self: stretch; }
 /* The two sign-in buttons sit after a thin rule (they do not send a code). */
 /* No divider any more: the owner's order mixes the code apps and the sign-ins (TikTok, Telegram, Google, Facebook, WhatsApp). */
 .way-hint { font-size: 13px; color: var(--muted); }

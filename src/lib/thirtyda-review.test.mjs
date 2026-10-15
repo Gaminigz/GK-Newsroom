@@ -246,9 +246,15 @@ function lockFn(name) {
 test('"App review sign-in" sits on the VISITOR PIN screens only ("Set your PIN" + a visitor\'s "Enter your PIN"), never on a signed-in profile\'s lock', () => {
   assert.match(lockFn('guestBody'), /reviewLink\(\)/, 'a phone with no profile: "Enter your PIN" has it');
   assert.match(readSource(new URL('../thirtyda-app/screens/pin.js', import.meta.url), 'utf8'), /pinFrame\(steps\.node, reviewLink\(\)\)/, '"Set your PIN" has it');
-  for (const f of ['enterBody', 'signinBody', 'setBody', 'changePinSheet']) {
+  for (const f of ['signinBody', 'setBody', 'changePinSheet']) {
     assert.doesNotMatch(lockFn(f), /reviewLink|reviewPinSignIn|reviewSheet|reviewSignedIn|\/auth\/review/, `${f}: a signed-in profile never swaps to a demo one`);
   }
+  // The signed-in lock (enterBody) has no review button and never asks about a demo PIN itself. Only on a demo account's
+  // OWN lock may the SERVER switch it to another demo account (owner 2026-10-15, POST /me/unlock): it follows that answer.
+  const enter = lockFn('enterBody');
+  assert.doesNotMatch(enter, /reviewLink|reviewPinSignIn|reviewSheet|\/auth\/review/, 'enterBody: no demo button, no probe');
+  assert.match(enter, /if \(r\?\.switched === true\) return reviewSignedIn\(r\);\s*opened\(r\);/, 'only the server\'s switched answer');
+  assert.equal([...enter.matchAll(/reviewSignedIn\(/g)].length, 1);
   // A visible small outlined button (not a faint link), only once GET /auth/methods says review:true.
   const link = lockFn('reviewLink');
   assert.match(link, /reviewShown\(\)\.then\(\(on\) => \{\s*if \(!on\) return;/);
@@ -312,9 +318,11 @@ test('A: switch OFF → nothing changes (no probe, no sign-in, the screen goes o
   // Change PIN never reach it.
   const callers = [...lockJs.matchAll(/reviewPinSignIn\(/g)].length;
   assert.equal(callers, 3, 'its own definition + the two calls in guestBody');
-  for (const f of ['enterBody', 'signinBody', 'setBody', 'changePinSheet', 'afterUser', 'lockNow']) {
+  for (const f of ['signinBody', 'setBody', 'changePinSheet', 'afterUser', 'lockNow']) {
     assert.doesNotMatch(lockFn(f), /reviewPinSignIn|reviewSignedIn|\/auth\/review/, f);
   }
+  // The signed-in lock asks nothing about demo PINs itself (the server decides a demo account's switch: POST /me/unlock).
+  for (const f of ['enterBody', 'unlockBody']) assert.doesNotMatch(lockFn(f), /reviewPinSignIn|\/auth\/review/, f);
   // The server too: OFF → 404 before anything; a signed-in (or locked real) phone → 409, demo or not.
   const app = readSource(new URL('./thirtyda-app.mjs', import.meta.url), 'utf8');
   const i = app.indexOf('async function reviewPin(');
@@ -370,11 +378,13 @@ test('the review sign-in\'s 15-minute limits say 15 minutes; "Wait a minute" is 
   assert.match(lockFn('reviewSheet'), /err\.show\(reviewFailText\(e\)\);/);
   assert.match(lockFn('reviewPinSignIn'), /toast\(reviewFailText\(e\)\);/);
   for (const f of ['reviewSheet', 'reviewPinSignIn']) assert.doesNotMatch(lockFn(f), /pinFailText/, `${f}: never the PIN guard's "Wait a minute"`);
-  // The server's own words for those two codes on POST /auth/review/pin.
+  // A demo account's lock screen switching to another demo account meets the same limits (owner 2026-10-15): the same words.
+  assert.match(lockFn('enterBody'), /err\.show\(reviewFailText\(e\)\);/);
+  // The server's own words for those two codes on POST /auth/review/pin (its sign-in: reviewPinSession).
   const review = readSource(new URL('./thirtyda-review.mjs', import.meta.url), 'utf8');
   assert.match(review, /new ReviewError\(429, "too_many_attempts", "Too many tries\. Try again in 15 minutes\."\)/);
   const app = readSource(new URL('./thirtyda-app.mjs', import.meta.url), 'utf8');
-  const route = app.slice(app.indexOf('async function reviewPin('), app.indexOf('\n}\n', app.indexOf('async function reviewPin(')));
+  const route = app.slice(app.indexOf('async function reviewPinSession('), app.indexOf('\n}\n', app.indexOf('async function reviewPinSession(')));
   assert.match(route, /fail\(429, "rate_limited", "Too many tries\. Try again in 15 minutes\."\)/);
   const words = [...lockJs.matchAll(/review_too_many: '([^']+)'/g)].map((m) => m[1]);
   assert.equal(words.length, 5, 'en / km / zh / ko / ja');
@@ -567,24 +577,29 @@ test('PIN-only route: POST /auth/review/pin is real, a sign-in while locked, sig
   assert.ok(API_ROUTES.some((r) => r.method === 'POST' && r.re.test('/auth/review/pin')));
   assert.equal(whileLocked('POST', '/auth/review/pin'), 'signin');
   const src = readFileSync(new URL('./thirtyda-app.mjs', import.meta.url), 'utf8');
-  const i = src.indexOf('async function reviewPin(');
-  const body = src.slice(i, src.indexOf('\n}\n', i));
+  const fn = (name) => src.slice(src.indexOf(`async function ${name}(`), src.indexOf('\n}\n', src.indexOf(`async function ${name}(`)));
+  // The route's gates, then the sign-in itself: reviewPinSession (shared with a demo account's lock-screen switch).
+  const body = fn('reviewPin');
+  const sign = fn('reviewPinSession');
   assert.match(body, /if \(!\(await reviewSwitch\(d\)[^\n]*\.on\) throw fail\(404, "not_found"/, 'OFF → 404 first');
-  assert.match(body, /reviewPinCheck\(d, \{ pin: body\.pin, key: ip, tries: reviewPinTries, now \}\)/);
-  assert.match(body, /startSession\(ctx, \{\s*userId: user\._id, phone: user\.phone, phoneVerified: true, phoneVia: null, reviewSignin: true,/);
-  assert.match(body, /\$set: \{ pinOk: true \}, \$unset: \{ pinResetUntil: "" \}/, 'open, and no new PIN without the old one');
-  assert.doesNotMatch(body, /pinOk: false/, 'never locked after the PIN was just proven');
-  assert.match(body, /locked: false/);
-  assert.match(body, /IP_GUESSES/, 'the address limit of verify-code too');
-  assert.match(body, /const audit = \(extra\) => d\.collection\("thirtyda_audit"\)\.insertOne\(\{ at: new Date\(\), action: "review_signin", via: "pin", \.\.\.extra \}\)/);
-  assert.deepEqual([...body.matchAll(/await audit\((\{[^}]*\})\)/g)].map((m) => m[1]), ['{ ok: false, reason: "wrong" }', '{ ok: true, userId: user._id }'], 'the audit carries ids only');
+  assert.match(body, /return reviewPinSession\(ctx, \{ pin: body\.pin, agreement: readAgreement\(body\.terms\), deviceId: body\.deviceId \}\);\s*$/);
+  assert.match(sign, /reviewPinCheck\(d, \{ pin, key: ip, tries: reviewPinTries, now \}\)/);
+  assert.match(sign, /startSession\(ctx, \{\s*userId: user\._id, phone: user\.phone, phoneVerified: true, phoneVia: null, reviewSignin: true,/);
+  assert.match(sign, /\$set: \{ pinOk: true \}, \$unset: \{ pinResetUntil: "" \}/, 'open, and no new PIN without the old one');
+  assert.doesNotMatch(sign, /pinOk: false/, 'never locked after the PIN was just proven');
+  assert.match(sign, /locked: false/);
+  assert.match(sign, /IP_GUESSES/, 'the address limit of verify-code too');
+  assert.ok(sign.indexOf('IP_GUESSES') < sign.indexOf('await '), 'counted before any await');
+  assert.match(sign, /const audit = \(extra\) => d\.collection\("thirtyda_audit"\)\.insertOne\(\{ at: new Date\(\), action: "review_signin", via: "pin", \.\.\.extra \}\)/);
+  assert.deepEqual([...sign.matchAll(/await audit\((\{[^}]*\})\)/g)].map((m) => m[1]), ['{ ok: false, reason: "wrong" }', '{ ok: true, userId: user._id }'], 'the audit carries ids only');
   // { probe: true }: after the switch / signed-in checks, it answers and returns BEFORE any session, audit or address count.
   const probeAt = body.indexOf('if (body.probe === true) {');
   assert.ok(probeAt > body.indexOf('throw fail(404, "not_found"') && probeAt > body.indexOf('ctx.lockedSession?.userId'), 'OFF → 404 and a signed-in phone → 409 first');
   const probe = body.slice(probeAt, body.indexOf('\n  }\n', probeAt));
-  assert.match(probe, /return await reviewPinProbe\(d, \{ pin: body\.pin, key: ip, tries: reviewPinTries, now \}\);/, 'the same review-PIN counter as the sign-in');
-  assert.doesNotMatch(probe, /startSession|audit|guesses|saveTerms|Set-Cookie/, 'a probe never signs in');
-  assert.ok(probeAt < body.indexOf('startSession(') && probeAt < body.indexOf('const audit') && probeAt < body.indexOf('IP_GUESSES'));
+  assert.match(probe, /return await reviewPinProbe\(d, \{ pin: body\.pin, key: clientIp\(req\), tries: reviewPinTries, now: Date\.now\(\) \}\);/, 'the same review-PIN counter as the sign-in');
+  assert.doesNotMatch(probe, /startSession|audit|guesses|saveTerms|Set-Cookie|reviewPinSession/, 'a probe never signs in');
+  assert.ok(probeAt < body.indexOf('reviewPinSession('), 'the probe returns before the sign-in');
+  assert.doesNotMatch(body, /startSession|const audit|IP_GUESSES/, 'the route itself signs nobody in: reviewPinSession does');
 });
 
 // ---------------------------------------------------------------- turning a profile into a review account and back

@@ -8,7 +8,10 @@ import {
   PHOTO_SLOT_LEVELS, NAME_MAX, NAME_RAW_MAX, checkAppName, clipChars, birthYearOptions, checkBirthYear, checkRealName,
 } from '../core.js';
 // The PIN chosen right after the language waits on this phone; it goes with the sign-in / the new profile (lock.js).
-import { waitingPin, clearPinFlags, pinResetPending, leaveWithoutLock, backFromSheet } from '../lock.js';
+// After "Forgot PIN?" the profile's own ways back in wait there too (pinResetWays), for #/signin.
+import { waitingPin, clearPinFlags, pinResetPending, pinResetWays, pinForgotten, leaveWithoutLock, backFromSheet } from '../lock.js';
+// "Forgot PIN?": a way back in (names only) → its round buttons, and which of them #/signin shows (shared/ways.js).
+import { wayButtons, pickWays } from '../shared/ways.js';
 import { takeAfterCreate } from '../guest.js';
 // The community rules' "I agree" that waits on this phone goes with the sign-in / the new profile (terms.js).
 import { termsBody } from '../terms.js';
@@ -446,8 +449,13 @@ function verifyErrorText(err) {
  * "Verified with Google." or why not).
  * onMethods(methods) once GET /auth/methods has answered (not called when it failed), so the screen can word
  * its own notes from the same answer (see signinWorks).
+ * pick: { own, all, onRow } — "Sign in to set a new PIN" (#/signin, owner 2026-10-15): own = the round buttons that are
+ * the profile's own ways (wayButtons), shown first and marked (is-yours); all false → ONLY those, true → the rest after
+ * them ("Use another way": showAll()). None of them on this phone's row (unknown, or Apple outside the iPhone app) → every
+ * way, as on Create profile. The number box shows only while Telegram or WhatsApp is on the row (a Google-only profile
+ * types no number). onRow({ mine, numberShown }) after every drawing: the marked buttons' keys, whether the box shows.
  */
-export function phoneVerifier(model, { onVerified, onChange, onMethods, signin = null, notice = null } = {}) {
+export function phoneVerifier(model, { onVerified, onChange, onMethods, signin = null, notice = null, pick = null } = {}) {
   model.channel ||= 'telegram';
   model.failed ||= [];
   const uid = `pv${++verifierSeq}`;
@@ -962,7 +970,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
   /** One round button: brand mark, name under it, "Coming soon" under that while it does not work. */
   function wayButton({ key, name, on, pressed = null, done = false, busy = false, click, label = null }) {
     return el('button', {
-      type: 'button', class: ['way', !on && 'is-off', done && 'is-done', busy && 'is-busy'],
+      type: 'button', class: ['way', !on && 'is-off', done && 'is-done', busy && 'is-busy'], 'data-way': key,
       'aria-pressed': pressed == null ? null : String(pressed),
       'aria-disabled': on ? null : 'true',
       'aria-label': [label || name, done ? t('cp_verified') : null, on ? null : t('cp_soon')].filter(Boolean).join(' · '),
@@ -996,11 +1004,25 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     // Without sign-ins (no `signin` given): the two code apps.
     // Owner (2026-10-13): hide WhatsApp while it does not work (it comes back by itself once its test code goes through).
     const shown = (c) => c[0] !== 'whatsapp' || codeOn('whatsapp');
-    const row = signin
+    const full = signin
       ? [appleHere() ? signinBtn(sign.apple) : null, signinBtn(sign.tiktok), codeBtn(code.telegram), signinBtn(sign.google), signinBtn(sign.facebook),
         shown(code.whatsapp) ? codeBtn(code.whatsapp) : null].filter(Boolean)
       : CODE_CHANNELS.filter(shown).map(codeBtn);
+    const row = pickRow(full);
     return el('div', { class: ['ways', signin && 'with-signin', row.length > 5 && 'six'], role: 'group', 'aria-label': t('cp_ways'), style: { '--cols': String(row.length) } }, row);
+  }
+
+  /**
+   * #/signin (pick): the profile's own ways first, marked, in their own order (the way that proved the number before the
+   * other app to it) — alone until "Use another way", then the rest after them. None of them on this row → every way
+   * (shared/ways.js pickWays).
+   */
+  function pickRow(full) {
+    if (!pick) return full;
+    const byKey = new Map(full.map((b) => [b.dataset.way, b]));
+    const { show, mine } = pickWays([...byKey.keys()], pick.own, pick.all);
+    for (const key of mine) byKey.get(key).classList.add('is-yours');
+    return show.map((key) => byKey.get(key));
   }
 
   function render() {
@@ -1041,6 +1063,9 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     // next step." / "Check WhatsApp for your code.". Create profile and the sheet: "🔒 Only for verification — kept
     // safe and private." under it. Verified: "Number verified ✓" takes the line's place (#/me: with "Change number").
     const step = proved ? null : el('span', { class: 'way-step', hidden: !stepText() }, stepText());
+    const row = waysRow();
+    // #/signin (pick) with only Google / Facebook / TikTok / Apple on the row: no number to type, nothing to say about one.
+    const numberShown = !pick || [...row.children].some((b) => CODE_CHANNELS.some(([key]) => key === b.dataset.way));
     const hint = proved
       ? el('p', { class: 'way-hint way-watch way-verified', id: `${uid}-by`, role: 'status' },
         el('span', { class: 'verified-line' }, t('cp_phone_verified')),
@@ -1048,7 +1073,7 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
           : el('button', { type: 'button', class: 'link change-number', on: { click: changeNumber } }, t('cp_change_number')))
       : el('p', { class: ['way-hint', cpLayout && 'way-watch'], id: `${uid}-by`, role: 'status' }, step,
         // Owner: say the number is only for verification and stays private.
-        cpLayout ? el('span', { class: 'way-private' }, icon('lock', 12), t('cp_code_private')) : null);
+        cpLayout && numberShown ? el('span', { class: 'way-private' }, icon('lock', 12), t('cp_code_private')) : null);
     // #/me with no code channel offered at all (and no code out): no phone box (a tap could only fail), one calm
     // line. Create profile keeps the box (the number is saved unverified).
     const phoneSoon = !cpLayout && !anyCodeOn() && !model.codeSent && !proved;
@@ -1079,13 +1104,15 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
     const tgBox = tgWaitBox();
     const rvBox = reviewBox();
     // Create profile: the number first (right under the label), then the round buttons, then the one line.
-    if (cpLayout) node.replaceChildren(...[phoneRow, waysRow(), hint, note, codeBox, rvBox, tgBox, error].filter(Boolean));
+    if (cpLayout) node.replaceChildren(...[numberShown ? phoneRow : null, row, hint, note, codeBox, rvBox, tgBox, error].filter(Boolean));
     else {
       // #/me and the "Verify to chat" sheet too (owner 2026-10-13): the number on top, the apps under it.
       node.replaceChildren(...[phoneSoon
         ? el('p', { class: 'way-hint way-soon', role: 'note' }, t('cp_phone_soon'))
-        : phoneRow, waysRow(), phoneSoon ? null : hint, note, codeBox, rvBox, tgBox, error].filter(Boolean));
+        : phoneRow, row, phoneSoon ? null : hint, note, codeBox, rvBox, tgBox, error].filter(Boolean));
     }
+    // #/signin: what the row shows now (its own ways or every way, a number box or none) — the screen's words follow it.
+    pick?.onRow?.({ mine: [...row.children].filter((b) => b.classList.contains('is-yours')).map((b) => b.dataset.way), numberShown });
   }
 
   /** The box shows the proved number again (✓ back) or no longer (✓ gone): redraw, the cursor where it was. */
@@ -1169,6 +1196,12 @@ export function phoneVerifier(model, { onVerified, onChange, onMethods, signin =
       return { bad: true };
     },
     flagNumber,
+    /** #/signin "Use another way": the other ways too, after the profile's own (still marked). */
+    showAll: () => {
+      if (!pick || pick.all) return;
+      pick.all = true;
+      render();
+    },
     destroy: () => { alive = false; clearInterval(resendTimer); stopTelegram(); window.removeEventListener('pageshow', onShow); stopReturn(); },
   };
 
@@ -1272,13 +1305,23 @@ function languageSheet() {
   { sheet: true, label: t('cp_choose_language') });
 }
 
+/** A returning person is signed in (a code, the Telegram bot, the review code): "Welcome back", then Nearby. */
+function welcomeBack(user) {
+  draft = blankDraft();
+  setMe(user);
+  toast(t('cp_welcome_back', { name: user.name }));
+  go(takeAfterCreate() || '/nearby', { replace: true });
+}
+
 screen('/create', ({ root, query }) => {
   root.classList.add('create');
   // Back from Google / Facebook: what was typed before leaving, and a word on how it went (said once).
   takeStashedDraft();
-  // After "Forgot PIN?": a calm note at the top and by the sign-in buttons.
+  // After "Forgot PIN?" (owner 2026-10-15) signing in again is #/signin — app.js sends #/create there. This form shows only
+  // once that sign-in found NO profile (a different way, or a new person): the NEW profile #/signin warned of, said once
+  // more at the top, with the way back to sign in the way they signed up.
   const pinAgain = pinResetPending();
-  const notice = signinNotice(query) || (pinAgain ? { ok: false, icon: 'lock', text: t('pin_signin_again') } : null);
+  const notice = signinNotice(query);
   if (query?.signin) {
     try { history.replaceState(history.state, '', '#/create'); } catch { /* the address keeps its query */ }
   }
@@ -1310,7 +1353,8 @@ screen('/create', ({ root, query }) => {
         icon('globe', 15), LANG_CODES[state.lang] || state.lang.toUpperCase())),
     el('h1', { class: 'title' }, t('cp_title')),
     // root.append is the browser's own (no null-skipping like el()): '' adds nothing visible, null would print "null".
-    pinAgain ? el('p', { class: 'way-msg pin-again-note', role: 'status' }, icon('lock', 14), el('span', {}, t('pin_signin_again'))) : '');
+    pinAgain ? el('p', { class: 'way-msg pin-again-note', role: 'status' }, icon('alert', 14), el('span', {}, t('pin_new_profile'), ' ',
+      el('button', { type: 'button', class: 'link pin-back-signin', on: { click: () => go('/signin', { replace: true }) } }, t('pin_back_signin')))) : '');
 
   // --- photo
   // A tap asks first: "Take a selfie" (the front camera) or "Choose from photos" (owner 2026-10-14; photo-source.js).
@@ -1496,12 +1540,7 @@ screen('/create', ({ root, query }) => {
     onChange: () => update(),
     onMethods: (m) => { signinOk = signinWorks(m); update(); },
     onVerified: (r) => {
-      if (r.existing && r.user) {
-        draft = blankDraft();
-        setMe(r.user);
-        toast(t('cp_welcome_back', { name: r.user.name }));
-        go(takeAfterCreate() || '/nearby', { replace: true });
-      }
+      if (r.existing && r.user) welcomeBack(r.user);
     },
     signin: {
       verified: () => draft.verified,
@@ -1642,6 +1681,103 @@ screen('/create', ({ root, query }) => {
     el('div', { class: 'sticky-actions' }, cont, contNote));
   update();
 
+  return () => phone.destroy();
+});
+
+// ---------------------------------------------------------------- "Forgot PIN?": sign in again (owner 2026-10-15)
+
+// The number typed on #/signin (its own model: a language switch re-draws the screen and keeps it, the Telegram wait too),
+// and whether "Use another way" was tapped (kept the same way: the other buttons stay after a language switch).
+let signinModel = blankPhone();
+let signinAll = false;
+
+/**
+ * #/signin · "Sign in to set a new PIN" — where "Forgot PIN?" lands (lock.js signInAgain), never the Create profile form
+ * (owner 2026-10-15: "when click forgot pin it land on a new fresh profile page, supposed it should send a new login code
+ * to tiktok or fb or google or tg"). No profile fields: a title, one line and this step's own sign-in buttons
+ * (phoneVerifier — the very sign-ins a returning person makes on Create profile: Google / Facebook / TikTok, the Telegram
+ * bot or code to the same number, WhatsApp, Apple in the iPhone app; nothing of them is copied here).
+ *   - The profile's own way(s), kept on this phone by "Forgot PIN?" (pinResetWays), come first and alone, marked ("You
+ *     signed up with"); "Use another way" adds the rest, with the warning that another way may make a NEW profile.
+ *     Nothing kept (an older phone, cleared storage) → every way, still no profile fields.
+ *   - The same profile signed back in → "Welcome back", Nearby, and lock.js asks for the new PIN at once ("Set a new PIN":
+ *     afterUser, pinResetPending). Google & co. come back to #/nearby by themselves; a sign-in that did not work comes back
+ *     here with its note (app.js sends #/create?signin=…&error=… on to #/signin).
+ *   - A way with no profile behind it: the session proved it, so Create profile comes next — the NEW profile it warned of
+ *     (that form says so once more, with the way back here).
+ */
+screen('/signin', ({ root, query }) => {
+  root.classList.add('create', 'signin');
+  const own = wayButtons(pinResetWays() ?? []);
+  const notice = signinNotice(query);
+  if (query?.signin) {
+    try { history.replaceState(history.state, '', '#/signin'); } catch { /* the address keeps its query */ }
+  }
+  // "You signed up with" over the row, "Use another way" and its warning under it: only while the row shows the profile's
+  // own ways (nothing kept, or none of them on this phone: every way, and nothing to warn about). "Type the same phone
+  // number" only when its own way IS the number (Telegram / WhatsApp).
+  const yours = el('p', { class: 'label ink signin-yours', hidden: true }, t('pin_forgot_yours'));
+  const number = el('p', { class: 'help signin-number', hidden: true }, t('pin_forgot_number'));
+  const showAll = () => {
+    signinAll = true;
+    phone.showAll();
+  };
+  const other = el('button', { type: 'button', class: 'link signin-other', hidden: true, on: { click: showAll } }, t('pin_other_way'));
+  const warn = el('p', { class: 'way-msg signin-warn', role: 'note', hidden: true }, icon('alert', 14), el('span', {}, t('pin_other_warn')));
+  const pick = {
+    own,
+    all: signinAll,
+    onRow: ({ mine, numberShown }) => {
+      const marked = mine.length > 0;
+      yours.hidden = !marked;
+      number.hidden = !numberShown || !mine.some((key) => key === 'telegram' || key === 'whatsapp');
+      other.hidden = !marked || pick.all;
+      warn.hidden = !marked;
+    },
+  };
+  /** The sign-in found no profile (a number nobody has, test mode's instant sign-in): Create profile, with what it proved. */
+  const newProfile = () => {
+    const m = signinModel;
+    state.pending = {
+      ...(state.pending || {}),
+      ...(m.verified && m.verifiedPhone ? { phone: m.verifiedPhone, phoneVerified: true, phoneVia: m.verifiedBy } : {}),
+      verified: { ...(state.pending?.verified || {}), ...draft.verified },
+    };
+    signinModel = blankPhone();
+    signinAll = false;
+    go('/create', { replace: true });
+  };
+  const phone = phoneVerifier(signinModel, {
+    onVerified: (r) => {
+      if (r.existing && r.user) {
+        signinModel = blankPhone();
+        signinAll = false;
+        welcomeBack(r.user);
+      } else newProfile();
+    },
+    signin: {
+      // Nothing counts as done here: any way may be tapped (another Google account too).
+      verified: () => ({}),
+      onVerified: (verified) => { draft.verified = { ...draft.verified, ...verified }; newProfile(); },
+      beforeLeave: () => leaveWithoutLock(), // the trip to Google / Facebook / TikTok is not "closing" the app
+    },
+    pick,
+    notice,
+  });
+
+  root.append(
+    el('header', { class: 'brandbar' },
+      el('span', { class: 'wordmark brand' }, '30+DA'),
+      el('button', { type: 'button', class: 'globe-pill', 'aria-label': t('cp_choose_language'), on: { click: languageSheet } },
+        icon('globe', 15), LANG_CODES[state.lang] || state.lang.toUpperCase())),
+    el('h1', { class: 'title' }, t('pin_forgot_title')),
+    // "Forgot your PIN?" only after that button (lock.js signInAgain): a session that ended elsewhere, or a profile with no
+    // PIN, gets the same line without it.
+    el('p', { class: 'way-msg pin-again-note', role: 'status' }, icon('lock', 14),
+      el('span', {}, t(pinForgotten() ? 'pin_forgot_text' : 'pin_signin_text'))),
+    el('div', { class: 'form signin-form' },
+      el('div', { class: 'field' }, yours, number, phone.node),
+      el('div', { class: 'signin-more' }, other, warn)));
   return () => phone.destroy();
 });
 

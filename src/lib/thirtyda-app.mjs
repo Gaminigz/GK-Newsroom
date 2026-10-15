@@ -60,6 +60,9 @@
  * POST /me/pin/forgot (signs out) and /auth/* stay open. No try limit for people (a wrong PIN just asks again; only
  * a script guard: 429 after PIN_GUARD_TRIES checks per session in a minute). GET /me/pending stays
  * open too: { count } only, never use, so a hidden, locked app can still say "something new is waiting".
+ * "Forgot PIN?" (owner 2026-10-15): POST /me/pin/forgot also answers how to get back in — { ways } (names only, never a
+ * number, an email or an id: src/thirtyda-app/shared/ways.js), which the app's "Sign in to set a new PIN" (#/signin)
+ * offers first; an App review demo account answers { review: true } instead (back to the visitor "Set your PIN").
  *
  * "Verify to chat" (owner 2026-10-13, src/lib/thirtyda-verify.mjs): POST /profile { …, unverified: true } makes a
  * profile with nothing verified (and its own fresh session), a few per address per day. Such a profile browses
@@ -101,6 +104,9 @@
  * While "Review sign-in" is ON, GET /auth/methods says review:true and the phone step asks POST /auth/review/check
  * { phone } → { review } before any way; a review number gets a 6-digit box: POST /auth/review/verify { phone, code } →
  * the same answer as verify-code for that profile, its session LOCKED (the PIN lock asks the account's PIN).
+ * Test accounts switch by PIN (owner 2026-10-15): on a demo account's own lock screen (POST /me/unlock { pin, lockScreen:
+ * true }) ANOTHER demo account's PIN signs this phone into that one, exactly like POST /auth/review/pin (reviewLockSwitch);
+ * a real person's lock screen never compares a demo PIN.
  * For the reviewers (src/lib/thirtyda-review-world.mjs): MeView.review true on a demo account (the app words its kept
  * profile calmly); its "Delete my account" signs that session out with the usual answer and keeps the profile; a phone
  * that signed in to one is a review device, which Create profile's per-phone and per-address limits skip while ON.
@@ -171,6 +177,8 @@ import {
 } from "./thirtyda-review.mjs";
 // The reviewers' side (owner 2026-10-14, the iOS audit): review devices skip Create profile's phone / address limits.
 import { REVIEW_DEVICES, markReviewDevice, isReviewDevice, claimReviewSignup, releaseReviewSignup } from "./thirtyda-review-world.mjs";
+// "Forgot PIN?" (owner 2026-10-15): the ways that sign a profile back in, names only (POST /me/pin/forgot answers them).
+import { waysBackOf } from "../thirtyda-app/shared/ways.js";
 import {
   LANGS, LANG_ENGLISH, CONTACT_REASONS, findContactDetails, findContactDetailsAcross, charCount, checkChatMessage, checkWrittenQuestion,
   REPLY_MAX, cleanReply, cleanText, checkReply, findReplyContactDetails, findSplitContactDetails,
@@ -1496,35 +1504,54 @@ async function reviewPin(ctx) {
   if (lockedId && !isReview(await d.collection(C.users).findOne({ _id: lockedId }))) {
     throw fail(409, "signed_in", "This phone is signed in. Sign out first.");
   }
-  const now = Date.now();
-  const ip = clientIp(req);
   if (body.probe === true) {
     try {
-      return await reviewPinProbe(d, { pin: body.pin, key: ip, tries: reviewPinTries, now });
+      return await reviewPinProbe(d, { pin: body.pin, key: clientIp(req), tries: reviewPinTries, now: Date.now() });
     } catch (err) {
       throw err instanceof ReviewError ? reviewFail(err) : err;
     }
   }
+  // The "I agree" made on this phone before the sign-in (like signInWithPhone): straight to Nearby, not #/rules.
+  return reviewPinSession(ctx, { pin: body.pin, agreement: readAgreement(body.terms), deviceId: body.deviceId });
+}
+
+/**
+ * The PIN-only sign-in itself — POST /auth/review/pin, and a demo account's lock screen typing ANOTHER demo account's PIN
+ * (reviewLockSwitch, owner 2026-10-15): the address limit of verify-code (IP_GUESSES) and the review-PIN count per address
+ * (reviewPinCheck: REVIEW_PIN_TRIES per 15 minutes, review accounts only, the switch read again), both counted before any
+ * await; a wrong one is audited and stays counted, a right one gives both back. Then this browser signs into that profile
+ * like reviewVerify (startSession, reviewSignin: nothing of a session the caller moved to ctx.lockedSession carries over),
+ * but OPEN — the PIN was just proven, so the app goes straight to Nearby — with no "new PIN without the old one". The
+ * agreement (readAgreement's, or null) is kept on the profile; the phone's id makes it a review device. Audited with ids
+ * only. countWrong false (a demo account's lock screen): a wrong PIN is audited but gives both tries back — before the
+ * switch those PINs never counted, and they must not use up the reviewer's budget for the visitor screens (where a probe
+ * refused 429 would quietly make 1122 a visitor PIN); the session's own PIN_GUARD_TRIES still stops scripts.
+ * → { ok, existing: true, user, locked: false, notices, lock }.
+ */
+async function reviewPinSession(ctx, { pin, agreement = null, deviceId = null, countWrong = true }) {
+  const { d, req } = ctx;
+  const now = Date.now();
+  const ip = clientIp(req);
   const guesses = inWindowFor(ipGuesses, ip, now);
   if (guesses.length >= IP_GUESSES) throw fail(429, "rate_limited", "Too many tries. Try again in 15 minutes.");
   guesses.push(now); // counted before any await, like verify-code
   const audit = (extra) => d.collection("thirtyda_audit").insertOne({ at: new Date(), action: "review_signin", via: "pin", ...extra }).catch(() => {});
   let user;
   try {
-    user = await reviewPinCheck(d, { pin: body.pin, key: ip, tries: reviewPinTries, now });
+    user = await reviewPinCheck(d, { pin, key: ip, tries: reviewPinTries, now });
   } catch (err) {
     if (!(err instanceof ReviewError)) throw err;
-    if (err.code === "not_review") await audit({ ok: false, reason: "wrong" });
-    else {
-      const k = guesses.indexOf(now); // nothing was compared
+    const wrong = err.code === "not_review";
+    if (wrong) await audit({ ok: false, reason: "wrong" });
+    if (!wrong || !countWrong) {
+      const k = guesses.indexOf(now); // nothing was compared (or a lock screen's wrong PIN: not counted)
       if (k >= 0) guesses.splice(k, 1);
     }
+    if (wrong && !countWrong) reviewPinTries.giveBack(ip, now);
     throw reviewFail(err);
   }
   const k = guesses.indexOf(now); // a right PIN does not count
   if (k >= 0) guesses.splice(k, 1);
-  // The "I agree" made on this phone before the sign-in (like signInWithPhone): straight to Nearby, not #/rules.
-  const agreement = readAgreement(body.terms);
   if (agreement) user = { ...user, terms: await saveTerms(d.collection(C.users), user, agreement) };
   await startSession(ctx, {
     userId: user._id, phone: user.phone, phoneVerified: true, phoneVia: null, reviewSignin: true,
@@ -1533,7 +1560,7 @@ async function reviewPin(ctx) {
   // Open (startSession: pinOk true, active now): the PIN was just proven. No "new PIN without the old one".
   await d.collection(C.sessions).updateOne({ _id: ctx.session._id }, { $set: { pinOk: true }, $unset: { pinResetUntil: "" } });
   await audit({ ok: true, userId: user._id });
-  await markReviewDevice(d, body.deviceId).catch(() => {}); // this phone may make fresh profiles while ON (review-world)
+  await markReviewDevice(d, deviceId).catch(() => {}); // this phone may make fresh profiles while ON (review-world)
   return { ok: true, existing: true, user: meView(user), locked: false, notices: unseenNotices(user), lock: lockInfo() };
 }
 
@@ -3728,15 +3755,56 @@ async function lockMe(ctx) {
   return { ok: true, locked: true };
 }
 
-/** POST /me/unlock { pin } → open again { user, notices, lock } · 400 wrong_pin (ask again) · 429 too_many_tries (scripts) · 409 no_pin. */
+/**
+ * POST /me/unlock { pin, lockScreen? } → open again { user, notices, lock } · 400 wrong_pin (ask again) · 429 too_many_tries
+ * (scripts) · 409 no_pin. lockScreen: the lock screen's own check (Change PIN's check of the PIN now never sends it) — on
+ * an App review demo account, a PIN that is not its own may be ANOTHER demo account's: reviewLockSwitch.
+ */
 async function unlockMe(ctx) {
   const { d, session, me, body } = ctx;
   if (!me.pinHash) throw fail(409, "no_pin", "Sign in again to set a PIN.");
   const pin = pinDigits(body.pin);
   if (pin.length !== PIN_LENGTH) throw invalid("Enter your 4-digit PIN.", { field: "pin" });
-  await checkPinTry(ctx, pin);
+  try {
+    await checkPinTry(ctx, pin);
+  } catch (err) {
+    // Its own PIN always comes first (it unlocks as ever); only a PIN that is not this demo account's is asked about.
+    if (err?.code === "wrong_pin" && body.lockScreen === true && isReview(me)) return reviewLockSwitch(ctx, pin, err);
+    throw err;
+  }
   await d.collection(C.sessions).updateOne({ _id: session._id }, { $set: { pinOk: true, activeAt: new Date(), pinTries: 0 } });
   return { ok: true, user: meView(me), notices: unseenNotices(me), lock: lockInfo() };
+}
+
+/** The current rules' "I agree" a profile already made (users.terms), as readAgreement gives one; null when it has not. */
+const agreementOf = (u) => (termsCurrent(u?.terms) ? { version: u.terms.version, at: new Date(u.terms.at).getTime() || Date.now() } : null);
+
+/**
+ * Test accounts switch by PIN (owner 2026-10-15: he typed 7788 on the lock screen of a phone signed in as another test
+ * account and got "Wrong PIN"). Only from a demo account's own lock screen (unlockMe: users.demo 'review' + lockScreen),
+ * only after its own PIN did not match, and only while "Review sign-in" is ON: ANOTHER demo account's PIN signs this phone
+ * into that account exactly like POST /auth/review/pin (reviewPinSession: its address limits and audit, this session
+ * REPLACED — nothing of it carries over — the new one open), keeping the "I agree" the phone sent or this account made.
+ * Anything else answers the lock screen's own "Wrong PIN" (`wrong`): the switch OFF, a PIN that is no demo account's — so
+ * no more is said about which PINs exist than the visitor screens say; only the review limits' 429s show (15 minutes),
+ * and those wrong PINs never count towards them (countWrong false: the visitor screens' budget stays the reviewer's).
+ * A real person's lock screen never gets here (its wrong PIN is never compared with a demo PIN), and no review account's
+ * PIN is written (makeReviewAccount / stopReviewAccount stay its only writers).
+ * → reviewPinSession's answer + switched: true (the app boots afresh as that account, on Nearby).
+ */
+async function reviewLockSwitch(ctx, pin, wrong) {
+  const { d, session, me, body } = ctx;
+  if (!(await reviewSwitch(d).catch(() => ({ on: false }))).on) throw wrong;
+  const agreement = readAgreement(body.terms) ?? agreementOf(me);
+  // Like a sign-in on a locked phone (applyLock's 'signin'): this session only makes way for the new one.
+  Object.assign(ctx, { lockedSession: session, session: null, me: null });
+  try {
+    return { ...(await reviewPinSession(ctx, { pin, agreement, deviceId: body.deviceId, countWrong: false })), switched: true };
+  } catch (err) {
+    Object.assign(ctx, { session, me, lockedSession: null }); // nothing was replaced: still this account
+    if (err?.code === "not_review" || err?.code === "not_found") throw wrong;
+    throw err;
+  }
 }
 
 /**
@@ -3767,12 +3835,32 @@ async function setPin(ctx) {
   return { ok: true, user: meView(user), lock: lockInfo() };
 }
 
-/** POST /me/pin/forgot — "Forgot PIN?": this session ends; signing in again (Google / Facebook / phone) sets a new PIN. */
+/**
+ * POST /me/pin/forgot — "Forgot PIN?": this session ends; signing in again (Google / Facebook / TikTok / phone) sets a new
+ * PIN. The answer says how to get back in (owner 2026-10-15: "supposed it should send a new login code to tiktok or fb or
+ * google or tg"), and never anything personal:
+ *   ways   — this profile's own ways back in, as names only (waysBackOf: 'telegram' | 'whatsapp' | 'phone' | 'google' |
+ *            'facebook' | 'tiktok' | 'apple'; never the number, an email or an id), which "Sign in to set a new PIN"
+ *            (#/signin) offers first; [] when there is none or no profile;
+ *   review — an App review demo account: nothing to reset (its PIN is in the review notes; only the admin's page writes
+ *            it), the way back is a demo PIN on the visitor "Set your PIN" (#/pin); agreed: it had agreed to the current
+ *            rules, so the phone keeps that "I agree" and #/pin comes straight back.
+ * → { ok, signedOut, ways, review, agreed? }.
+ */
 async function forgotPin(ctx) {
+  const { me } = ctx;
   if (ctx.session) await ctx.d.collection(C.sessions).deleteOne({ _id: ctx.session._id });
   ctx.headers["Set-Cookie"] = cookieFor(ctx.req, "", 0);
-  return { ok: true, signedOut: true };
+  if (isReview(me)) return { ok: true, signedOut: true, ways: [], review: true, agreed: termsCurrent(me.terms) };
+  return { ok: true, signedOut: true, ways: me ? waysBackOf(meView(me)) : [], review: false };
 }
+
+/**
+ * The lock screen's routes, the App review PIN sign-in and the way back after "Forgot PIN?" (a code to the same number,
+ * then the new PIN), for src/lib/thirtyda-forgot-pin.test.mjs (run on an in-memory Mongo with the router's ctx:
+ * { d, req, headers, session, me, body, locked }).
+ */
+export const pinHandlers = Object.freeze({ unlockMe, forgotPin, reviewPin, verifyCode, setPin });
 
 /** A session made before the PIN lock gets its lock fields once (see legacyLockFields). */
 async function upgradeSession(d, session, me, now) {

@@ -212,9 +212,9 @@
   const ready = Promise.all([
     import('/30da/shared/rules.js'), import('/30da/shared/questions.js'),
     import('/30da/shared/question-slots.js'), import('/30da/shared/conversation.js'), import('/30da/shared/pin.js'),
-    import('/30da/shared/terms.js'), import('/30da/shared/meet.js'),
-  ]).then(([rules, questions, slots, conversation, pin, terms, meet]) => {
-    R = { ...rules, ...questions, ...slots, ...conversation, ...pin, ...terms, ...meet };
+    import('/30da/shared/terms.js'), import('/30da/shared/meet.js'), import('/30da/shared/ways.js'),
+  ]).then(([rules, questions, slots, conversation, pin, terms, meet, ways]) => {
+    R = { ...rules, ...questions, ...slots, ...conversation, ...pin, ...terms, ...meet, ...ways };
     // Screen 2 (Create profile) starts after the community rules' "I agree" too (the API answers only after this).
     if (S === 2) {
       try { window.localStorage.setItem(R.TERMS_KEY, JSON.stringify(R.newAgreement())); } catch { /* storage blocked */ }
@@ -1042,9 +1042,11 @@
     return { ok: true, user: meView(syncLevel(u)), lock: lockInfo() };
   }
 
+  // Server: the answer also names the profile's own ways back in (names only), for "Sign in to set a new PIN" (#/signin).
   function forgotPin() {
+    const u = me();
     W.session = null;
-    return { ok: true, signedOut: true };
+    return { ok: true, signedOut: true, ways: u ? R.waysBackOf(meView(u)) : [], review: false };
   }
 
   // "Delete my account" (server: src/lib/thirtyda-delete.mjs): the PIN checked like the lock screen's, then everything of

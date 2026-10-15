@@ -5,7 +5,7 @@
 import {
   state, api, bus, t, el, icon, go, modal, heartbeat, startRouter, setMe, registerStrings, actionLabel, pairRoute, khmerKeep, khmerPlain,
 } from './core.js';
-import { startLock, bootLock, applyLockInfo, waitingPin, pinResetPending, leaveWithoutLock, keepReviewLang } from './lock.js';
+import { startLock, bootLock, applyLockInfo, waitingPin, pinResetPending, reviewBackPending, leaveWithoutLock, keepReviewLang } from './lock.js';
 // The community rules' "I agree" (store policy, owner 2026-10-14): screens/rules.js, kept on the phone by terms.js.
 import { agreedHere, syncTerms, termsNeeded } from './terms.js';
 import { shellPlatform } from './shell.js';
@@ -37,7 +37,8 @@ const SCREENS = [
   ['verify-chat', () => import('./screens/verify-chat.js')],
 ];
 
-const OPEN_PATHS = new Set(['/opening', '/rules', '/pin', '/create']);
+// '/signin': "Sign in to set a new PIN" after "Forgot PIN?" (screens/create-profile.js, owner 2026-10-15).
+const OPEN_PATHS = new Set(['/opening', '/rules', '/pin', '/create', '/signin']);
 const BEAT_VISIBLE_MS = 30e3;
 const BEAT_HIDDEN_MS = 5 * 60e3; // only while notifications are allowed
 
@@ -74,17 +75,21 @@ async function loadSession() {
 }
 
 // No session → opening; session without profile → create; blocked → blocked; signed in never sees 1–2.
-// Create profile comes after the PIN step (#/pin), unless the person is signing in again after "Forgot PIN?".
+// Create profile comes after the PIN step (#/pin). After "Forgot PIN?" the person signs in again on #/signin (only the
+// sign-in buttons); Create profile only follows a way that has no profile behind it.
 // A guest (owner 2026-10-13: "Language → PIN → the home screen"): the PIN chosen, no profile yet → the home screen
 // (#/nearby) to look around; Me is Create profile; anything else goes back home (guest.js asks for a profile first).
 // The community rules (store policy, owner 2026-10-14): "Language → Community rules → PIN". Past the language nothing
 // opens before "I agree" on this phone (#/rules) — except the way back in after "Forgot PIN?" (that profile agreed
-// already; the server asks again if the rules changed). A profile without the current rules: #/rules before anything.
+// already; the server asks again if the rules changed), and "Set your PIN" right after "Forgot PIN?" on a demo account
+// that agreed (lock.js reviewBackPending: #/pin only — a visitor's next screen is #/rules; nothing is agreed on this phone).
+// A profile without the current rules: #/rules before anything.
 function guard(path) {
   if (state.me?.blocked) return path === '/blocked' ? null : '/blocked';
   if (!state.me) {
     const to = visitorRoute(path);
     const where = to ?? path;
+    if (where === '/pin' && reviewBackPending()) return to;
     if (where !== '/opening' && where !== '/rules' && !agreedHere() && !pinResetPending()) return '/rules';
     return to;
   }
@@ -93,12 +98,28 @@ function guard(path) {
   return null;
 }
 
+/** This browser's session proved a number or an account that has no profile yet (GET /me → state.pending). */
+const provedHere = () => Boolean(state.pending?.phoneVerified || Object.values(state.pending?.verified || {}).some(Boolean));
+/** The address's query ("?signin=google&error=cancelled"), or ''. */
+const hashQuery = () => {
+  const q = String(location.hash || '').split('?')[1];
+  return q ? `?${q}` : '';
+};
+
 /** Where someone with no profile may be (null = stay on `path`). */
 function visitorRoute(path) {
   // The PIN already chosen on this phone (kept when the app closes, lock.js): never "Set your PIN" again — home.
   if (path === '/pin' && waitingPin()) return '/nearby';
+  // "Forgot PIN?" (owner 2026-10-15): signing in again is #/signin, never the Create profile form — also when Google & co.
+  // send a sign-in that did not work back to #/create?signin=…&error=… (its note goes along). Only a way that found NO
+  // profile (this session proved it: the NEW profile #/signin warned of) goes on to Create profile.
+  if (path === '/create' && pinResetPending() && !provedHere()) return `/signin${hashQuery()}`;
+  // #/signin is only for that: anyone else goes the usual way (Create profile, or "Set your PIN" first).
+  if (path === '/signin' && !pinResetPending()) return visitorRoute('/create') ?? '/create';
   if (path === '/create' && !waitingPin() && !pinResetPending()) return '/pin';
   if (OPEN_PATHS.has(path)) return null;
+  // Still signing in again after "Forgot PIN?" (the back button, an old link): back to #/signin (or on to Create profile).
+  if (pinResetPending()) return provedHere() ? '/create' : '/signin';
   if (waitingPin()) return path === '/nearby' ? null : path === '/me' ? '/create' : '/nearby';
   return state.pending ? '/create' : '/opening';
 }

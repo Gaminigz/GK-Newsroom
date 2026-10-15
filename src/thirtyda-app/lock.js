@@ -9,19 +9,26 @@
 //    Covering takes the screen down (content removed, not blurred) and tells the server (POST /me/lock).
 //  - No try limit (owner 2026-10-14: "they can punch it 1000 times, we do not care"): a wrong PIN says "Wrong PIN. Try
 //    again." and asks again, never "n tries left", never a sign-out. (The server's only brake is for scripts: 429.)
-//  - "Forgot PIN?": signed out, back to the sign-in step to sign in again and set a new PIN.
+//  - "Forgot PIN?" (owner 2026-10-15): signed out, then "Sign in to set a new PIN" (#/signin, screens/create-profile.js) —
+//    only the sign-in buttons, the profile's own way first — never the Create profile form; signed back in, a new PIN.
+//    An App review demo account: signed out, back to the visitor "Set your PIN" (#/pin), where a demo PIN signs in.
 //  - A profile with no PIN yet sets one before anything else; #/me has "Change PIN".
 import {
   state, bus, api, t, el, icon, go, toast, modal, setMe, setLang, registerStrings, errorText, coverScreen, uncoverScreen,
-  activity, checkNewPin, pinDigits, PIN_LENGTH, IDLE_COVER_MS, LOCK_IDLE_MS, INPUT_AGE_HEADER, inputAge,
+  activity, checkNewPin, pinDigits, PIN_LENGTH, IDLE_COVER_MS, LOCK_IDLE_MS, INPUT_AGE_HEADER, inputAge, termsCurrent,
 } from './core.js';
 import { onAppReturn, deviceId } from './shell.js';
 import { termsBody } from './terms.js';
+// "Forgot PIN?": the ways that sign the profile back in, names only (the server's answer, or the profile on this phone).
+import { cleanWays, waysBackOf } from './shared/ways.js';
 
 // ---------------------------------------------------------------- what waits on this phone
 
 const WAIT_KEY = '30da_pin_wait'; // the PIN chosen before the account exists
 const RESET_KEY = '30da_pin_reset'; // "Forgot PIN": after the next sign-in, set a new PIN
+const WAYS_KEY = '30da_pin_ways'; // "Forgot PIN": the profile's own ways back in (names only), for #/signin
+const FORGOT_KEY = '30da_pin_forgot'; // #/signin came from the "Forgot PIN?" button (not a session that ended, no PIN)
+const REVIEW_BACK_KEY = '30da_review_back'; // "Forgot PIN?" on a demo account that agreed: #/pin before the rules (this tab)
 const BACK_KEY = '30da_back'; // the app left on purpose (a new version, the trip to Google / Facebook): no PIN on return
 const BACK_MS = 10 * 60e3;
 
@@ -52,11 +59,40 @@ export function waitingPin() {
 export const keepWaitingPin = (pin) => kept.set(WAIT_KEY, pin);
 /** After "Forgot PIN": the next sign-in is followed by "Set a new PIN". */
 export const pinResetPending = () => kept.get(RESET_KEY) === '1';
-const markPinReset = () => kept.set(RESET_KEY, '1');
+/** forgot: the "Forgot PIN?" button itself (#/signin then says "Forgot your PIN?"), not a session that ended or no PIN. */
+function markPinReset(forgot) {
+  kept.set(RESET_KEY, '1');
+  if (forgot) kept.set(FORGOT_KEY, '1');
+  else kept.del(FORGOT_KEY);
+}
+/** #/signin came from "Forgot PIN?" (else: signed out elsewhere, or a profile with no PIN — no "Forgot your PIN?"). */
+export const pinForgotten = () => kept.get(FORGOT_KEY) === '1';
+/**
+ * "Forgot PIN?" on an App review demo account that had agreed to the current rules (demoForgot): "Set your PIN" (#/pin)
+ * may open before the rules, in this tab only (app.js guard), so a demo PIN goes straight back in — that account's own
+ * agreement takes it to Nearby. Never an "I agree" on this phone: termsBody never carries it, and anyone who goes on as a
+ * visitor meets the rules on the next screen (the guard honours it for #/pin only). Gone with clearPinFlags.
+ */
+export const reviewBackPending = () => tab.get(REVIEW_BACK_KEY) === '1';
+/**
+ * After "Forgot PIN": the profile's own ways back in ('telegram', 'google'…: names only, shared/ways.js), kept on this phone
+ * like the "set a new PIN" flag so #/signin offers them first — also after the trip to Google & co. or a closed app. null:
+ * nothing kept (an older phone, cleared storage, a profile with none): #/signin offers every way.
+ */
+export function pinResetWays() {
+  let list = null;
+  try { list = JSON.parse(kept.get(WAYS_KEY) ?? 'null'); } catch { return null; }
+  const ways = cleanWays(list);
+  return ways.length ? ways : null;
+}
+const keepPinWays = (ways) => kept.set(WAYS_KEY, JSON.stringify(cleanWays(ways)));
 /** A PIN was saved on the profile: nothing waits any more. */
 export function clearPinFlags() {
   kept.del(WAIT_KEY);
   kept.del(RESET_KEY);
+  kept.del(WAYS_KEY);
+  kept.del(FORGOT_KEY);
+  tab.del(REVIEW_BACK_KEY);
 }
 
 // ---------------------------------------------------------------- the 4 boxes
@@ -341,16 +377,44 @@ function opened(r) {
   bus.dispatchEvent(new CustomEvent('unlocked'));
 }
 
-/** Signed out ("Forgot PIN?", a locked profile with no PIN, or the session ended elsewhere): to the sign-in step with a calm note. */
-async function signInAgain({ end = true } = {}) {
-  markPinReset();
+/**
+ * Signed out ("Forgot PIN?", a locked profile with no PIN, or the session ended elsewhere) → "Sign in to set a new PIN"
+ * (#/signin, owner 2026-10-15): only the sign-in buttons, never the Create profile form. The profile's own ways go along
+ * (pinResetWays): the server's answer to POST /me/pin/forgot (names only), else the profile this phone still knows (the
+ * lock covered a running app), else none (every way). "Set a new PIN" follows the sign-in (afterUser).
+ * An App review demo account (the answer's review, or the profile here): its PIN never changes in the app, so there is
+ * nothing to reset — demoForgot.
+ * forgot: the "Forgot PIN?" button itself — only then does #/signin say "Forgot your PIN?" (pinForgotten).
+ */
+async function signInAgain({ end = true, forgot = false } = {}) {
+  const here = state.me;
+  if (here?.review !== true) markPinReset(forgot); // first: a closed app still comes back to "sign in, then a new PIN"
+  let r = null;
   if (end) {
-    try { await api.post('/me/pin/forgot', {}, { redirect: false }); } catch { /* signed out either way */ }
+    try { r = await api.post('/me/pin/forgot', {}, { redirect: false }); } catch { /* signed out either way */ }
   }
+  const ways = Array.isArray(r?.ways) && r.ways.length ? r.ways : waysBackOf(here);
+  const agreed = r?.agreed === true || termsCurrent(here?.terms);
   Object.assign(state, { me: null, pending: null, actions: [], notices: [] });
   hideCover();
   state.locked = false;
-  go('/create', { replace: true });
+  if (r?.review === true || (!r && here?.review === true)) return demoForgot(agreed);
+  markPinReset(forgot); // (again: the profile here may have stopped being a demo account meanwhile)
+  if (cleanWays(ways).length) keepPinWays(ways); // nothing known now: what an earlier "Forgot PIN?" kept stays
+  go('/signin', { replace: true });
+}
+
+/**
+ * "Forgot PIN?" on an App review demo account (owner 2026-10-15): signed out of this phone and back to the visitor "Set
+ * your PIN" (#/pin), where a demo PIN signs straight in (reviewPinSignIn) — never the verify step, and the demo account's
+ * PIN stays as it is (only the admin's page writes it). Nothing waits for a new PIN. agreed (the demo account had agreed
+ * to the current rules): #/pin opens before the rules, in this tab only (reviewBackPending) — never an "I agree" made up
+ * on this phone: nobody tapped it, and Create profile / a sign-in would send it as that person's (termsBody).
+ */
+function demoForgot(agreed) {
+  clearPinFlags();
+  if (agreed) tab.set(REVIEW_BACK_KEY, '1');
+  go('/pin', { replace: true });
 }
 
 /** The PIN screen's frame: 30+DA, a lock, then the body, then the foot (also #/pin). */
@@ -363,14 +427,27 @@ export function pinFrame(body, foot = null) {
     foot ? el('div', { class: 'pin-foot' }, foot) : null);
 }
 
+/**
+ * What the lock screen sends with the PIN (POST /me/unlock): lockScreen — this screen's own check (Change PIN's check of
+ * the PIN now sends none), so on an App review demo account the server may answer another demo account's PIN by
+ * switching this phone to it (owner 2026-10-15). It always carries what the demo sign-in carries (reviewSignInBody: the
+ * "I agree" on this phone, this phone's id): an app opened on a locked session knows no profile here (GET /me answered
+ * 423, state.me null), so this screen cannot tell a demo account from a real one. The server reads them only inside
+ * that switch (reviewLockSwitch, after isReview); a real profile's unlock ignores them.
+ */
+async function unlockBody(pin) {
+  return { ...(await reviewSignInBody(pin)), lockScreen: true };
+}
+
 function enterBody() {
   const err = errorLine();
   const pad = pinPad({ onFull });
   async function onFull(pin) {
     pad.setBusy(true);
     err.show('');
+    let r;
     try {
-      opened(await api.post('/me/unlock', { pin }, { redirect: false }));
+      r = await api.post('/me/unlock', await unlockBody(pin), { redirect: false });
     } catch (e) {
       pad.setBusy(false);
       pad.clear();
@@ -383,13 +460,19 @@ function enterBody() {
       } else if (e.status === 401) {
         signInAgain({ end: false }); // the session ended elsewhere (signed out on another phone, deleted)
       } else {
-        err.show(pinFailText(e));
+        // (A demo account's switch can meet the review sign-in's own 15-minute limits: reviewFailText says so.)
+        err.show(reviewFailText(e));
         pad.focus();
       }
+      return;
     }
+    // App review (owner 2026-10-15): the server took this PIN as ANOTHER demo account's — this phone is that account now,
+    // signed in like the demo sign-in (same language, Nearby, a fresh boot).
+    if (r?.switched === true) return reviewSignedIn(r);
+    opened(r);
   }
   lock.focus = () => pad.focus();
-  const forgot = el('button', { type: 'button', class: 'link pin-forgot', on: { click: () => signInAgain() } }, t('pin_forgot'));
+  const forgot = el('button', { type: 'button', class: 'link pin-forgot', on: { click: () => signInAgain({ forgot: true }) } }, t('pin_forgot'));
   return pinFrame(el('div', { class: 'pin-body' },
     el('h1', { class: 'pin-title', id: 'pin-title' }, t('pin_enter_title')),
     el('p', { class: 'pin-text' }, t('pin_enter_text')),
@@ -409,6 +492,10 @@ function enterBody() {
 //    and the screen goes on as before.
 // Never a global PIN match: the server compares review accounts' PINs only (POST /auth/review/pin,
 // src/lib/thirtyda-review.mjs), so a real person's own PIN only ever reaches a demo account while the switch is ON.
+// One exception on a signed-in lock (owner 2026-10-15, "test accounts switch by PIN"): a demo account's OWN lock screen —
+// there another demo account's PIN switches this phone to that account. The server decides it inside POST /me/unlock
+// { lockScreen } (its own PIN first; a real profile's lock never compares a demo PIN); this screen asks nothing itself and
+// only follows the answer (enterBody: switched → reviewSignedIn).
 let reviewOn = null; // { at, value } — GET /auth/methods, kept a minute
 async function reviewShown() {
   if (reviewOn && Date.now() - reviewOn.at < 60e3) return reviewOn.value;
@@ -475,7 +562,8 @@ async function reviewSignInBody(pin) {
 }
 
 /**
- * Signed in as the demo account (POST /auth/review/pin answered): nothing waits on this phone any more (the demo account
+ * Signed in as the demo account (POST /auth/review/pin answered, or POST /me/unlock switched a demo account's lock screen
+ * to another demo account): nothing waits on this phone any more (the demo account
  * keeps its own PIN). The demo account takes the language picked on the opening screen (iOS session 2026-10-14, owner
  * agreed: a reviewer who picked English never lands in Khmer) — saved on it (PATCH /me { lang }: a language-only change
  * is the one a demo account allows; one retry) BEFORE the fresh boot, which reads it back. Not saved even then: the
@@ -886,7 +974,15 @@ registerStrings({
     pin_wrong: 'Wrong PIN. Try again.',
     pin_too_many: 'Too many tries. Wait a minute.',
     pin_forgot: 'Forgot PIN?',
-    pin_signin_again: 'Sign in again to set a new PIN.',
+    pin_forgot_title: 'Sign in to set a new PIN',
+    pin_forgot_text: 'Forgot your PIN? Sign in again the way you signed up, then set a new PIN.',
+    pin_signin_text: 'Sign in again the way you signed up, then set a new PIN.',
+    pin_forgot_yours: 'You signed up with',
+    pin_forgot_number: 'Type the same phone number, then tap the app.',
+    pin_other_way: 'Use another way',
+    pin_other_warn: 'A different way may make a NEW profile.',
+    pin_new_profile: 'No profile uses this way yet, so this makes a NEW profile. Not you?',
+    pin_back_signin: 'Sign in the way you signed up',
     pin_signin_btn: 'Sign in again',
     pin_no_pin_text: 'Sign in again to open 30+DA.',
     pin_change: 'Change PIN',
@@ -918,7 +1014,15 @@ registerStrings({
     pin_wrong: 'លេខ PIN ខុស។ សូមព្យាយាមម្ដងទៀត។',
     pin_too_many: 'ព្យាយាមច្រើនដងពេក។ សូមរង់ចាំមួយនាទី។',
     pin_forgot: 'ភ្លេចលេខ PIN?',
-    pin_signin_again: 'សូមចូលម្ដងទៀត ដើម្បីកំណត់លេខ PIN ថ្មី។',
+    pin_forgot_title: 'ចូលដើម្បីកំណត់លេខ PIN ថ្មី',
+    pin_forgot_text: 'ភ្លេចលេខ PIN? សូមចូលម្ដងទៀតតាមវិធីដែលអ្នកបានចុះឈ្មោះ រួចកំណត់លេខ PIN ថ្មី។',
+    pin_signin_text: 'សូមចូលម្ដងទៀតតាមវិធីដែលអ្នកបានចុះឈ្មោះ រួចកំណត់លេខ PIN ថ្មី។',
+    pin_forgot_yours: 'អ្នកបានចុះឈ្មោះដោយប្រើ',
+    pin_forgot_number: 'វាយលេខទូរស័ព្ទដដែល រួចចុចកម្មវិធី។',
+    pin_other_way: 'ប្រើវិធីផ្សេង',
+    pin_other_warn: 'វិធីផ្សេងអាចបង្កើតប្រវត្តិរូបថ្មី។',
+    pin_new_profile: 'មិនទាន់មានប្រវត្តិរូបណាប្រើវិធីនេះទេ ដូច្នេះវានឹងបង្កើតប្រវត្តិរូបថ្មី។ មិនមែនអ្នកទេ?',
+    pin_back_signin: 'ចូលតាមវិធីដែលអ្នកបានចុះឈ្មោះ',
     pin_signin_btn: 'ចូលម្ដងទៀត',
     pin_no_pin_text: 'សូមចូលម្ដងទៀត ដើម្បីបើក 30+DA។',
     pin_change: 'ប្ដូរលេខ PIN',
@@ -950,7 +1054,15 @@ registerStrings({
     pin_wrong: 'PIN 码不对。请再试一次。',
     pin_too_many: '尝试次数太多。请等一分钟。',
     pin_forgot: '忘记 PIN 码？',
-    pin_signin_again: '请重新登录，设置新的 PIN 码。',
+    pin_forgot_title: '登录以设置新的 PIN 码',
+    pin_forgot_text: '忘记 PIN 码？请用注册时的方式重新登录，然后设置新的 PIN 码。',
+    pin_signin_text: '请用注册时的方式重新登录，然后设置新的 PIN 码。',
+    pin_forgot_yours: '你注册时用的是',
+    pin_forgot_number: '输入同一个手机号码，然后点应用。',
+    pin_other_way: '用其他方式',
+    pin_other_warn: '用其他方式可能会创建一个新的资料。',
+    pin_new_profile: '还没有资料使用这个方式，所以会创建一个新的资料。不是你想要的？',
+    pin_back_signin: '用注册时的方式登录',
     pin_signin_btn: '重新登录',
     pin_no_pin_text: '请重新登录以打开 30+DA。',
     pin_change: '更改 PIN 码',
@@ -982,7 +1094,15 @@ registerStrings({
     pin_wrong: 'PIN이 틀렸어요. 다시 해 보세요.',
     pin_too_many: '시도가 너무 많아요. 1분만 기다려 주세요.',
     pin_forgot: 'PIN을 잊으셨나요?',
-    pin_signin_again: '다시 로그인해서 새 PIN을 설정하세요.',
+    pin_forgot_title: '로그인하고 새 PIN 설정',
+    pin_forgot_text: 'PIN을 잊으셨나요? 가입할 때 쓴 방법으로 다시 로그인한 뒤 새 PIN을 설정하세요.',
+    pin_signin_text: '가입할 때 쓴 방법으로 다시 로그인한 뒤 새 PIN을 설정하세요.',
+    pin_forgot_yours: '가입할 때 쓴 방법',
+    pin_forgot_number: '같은 전화번호를 입력하고 앱을 누르세요.',
+    pin_other_way: '다른 방법 사용',
+    pin_other_warn: '다른 방법을 쓰면 새 프로필이 만들어질 수 있어요.',
+    pin_new_profile: '이 방법을 쓰는 프로필이 아직 없어서 새 프로필이 만들어져요. 원하신 게 아닌가요?',
+    pin_back_signin: '가입할 때 쓴 방법으로 로그인',
     pin_signin_btn: '다시 로그인',
     pin_no_pin_text: '30+DA를 열려면 다시 로그인하세요.',
     pin_change: 'PIN 변경',
@@ -1014,7 +1134,15 @@ registerStrings({
     pin_wrong: 'PINが違います。もう一度入力してください。',
     pin_too_many: '試行回数が多すぎます。1分ほどお待ちください。',
     pin_forgot: 'PINを忘れた場合',
-    pin_signin_again: 'もう一度ログインして、新しいPINを設定してください。',
+    pin_forgot_title: 'ログインして新しいPINを設定',
+    pin_forgot_text: 'PINを忘れた場合は、登録したときと同じ方法でもう一度ログインし、新しいPINを設定してください。',
+    pin_signin_text: '登録したときと同じ方法でもう一度ログインし、新しいPINを設定してください。',
+    pin_forgot_yours: '登録した方法',
+    pin_forgot_number: '同じ電話番号を入力して、アプリを押してください。',
+    pin_other_way: '別の方法を使う',
+    pin_other_warn: '別の方法では、新しいプロフィールが作られることがあります。',
+    pin_new_profile: 'この方法を使うプロフィールはまだないため、新しいプロフィールが作られます。違いますか？',
+    pin_back_signin: '登録した方法でログイン',
     pin_signin_btn: 'もう一度ログイン',
     pin_no_pin_text: '30+DAを開くには、もう一度ログインしてください。',
     pin_change: 'PINを変更',
