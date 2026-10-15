@@ -1656,6 +1656,8 @@
     const view = pairView(pair, u);
     const seen = other ? photosFor(other, { openLevel: R.stageOpenLevel(stage) }) : { photos: [], lockedPhotos: [] };
     const real = realNameFor(other, stage);
+    // Level 2 waits: the person who started the conversation may open it now (as the server: canStartLevel2).
+    const l2Waiting = stage === 'l2_wait' && !frozen;
     return {
       pair: view,
       other: other
@@ -1666,6 +1668,8 @@
         : { id: otherId, name: '', gender: null, lang: 'en', photos: [], lockedPhotos: [] },
       levels,
       canSend,
+      canStartLevel2: l2Waiting && pair.a === u.id,
+      otherCanStartLevel2: l2Waiting && pair.a !== u.id,
       chat: { open: stage === 'l3_open', opensAt: null, phoneNeeded: !canTalk(u) },
       decision: { canDecide: stage === 'l3_decide' && !frozen && view.decision === null, mine: view.decision, ended: stage === 'ended', endedAt: view.endedAt },
       next: view.next,
@@ -1762,6 +1766,24 @@
     const { pair } = pairFor(u, params[0], { write: true });
     pair.remind[u.id] = Boolean(body.on);
     return { pair: pairView(pair, u) };
+  }
+
+  /** POST /pairs/:id/level2/start (as the server): the person who started the conversation opens Level 2 now. */
+  function startLevel2({ params }) {
+    const u = me();
+    const { pair } = pairFor(u, params[0], { write: true });
+    if (pair.a !== u.id) throw fail(403, 'not_starter', 'Only the person who started this conversation can open Level 2 now.');
+    if (pair.stage !== 'l2_wait') throw fail(409, 'not_waiting', 'Level 2 is not waiting any more.');
+    const at = nowIso();
+    pair.l2OpensAt = at;
+    chatLog(pair).push({
+      id: nextId('msg', 'M-'), from: u.id, at, kind: 'decision', level: 2,
+      text: 'Started Level 2 now, before the wait was over', lang: 'en', flagId: null, stopped: false,
+    });
+    settle(pair);
+    syncLevel(u);
+    botTick(pair, u); // the other person sends their 5 a little later
+    return { conversation: conversationOf(pair, u) };
   }
 
   function chatGate(u, pair) {
@@ -1866,6 +1888,7 @@
     ['POST', /^\/pairs\/(P-\d+)\/answers$/, sendAnswers],
     ['POST', /^\/pairs\/(P-\d+)\/decide$/, decide],
     ['POST', /^\/pairs\/(P-\d+)\/remind$/, remind],
+    ['POST', /^\/pairs\/(P-\d+)\/level2\/start$/, startLevel2],
     ['GET', /^\/pairs\/(P-\d+)\/messages$/, listMessages],
     ['POST', /^\/pairs\/(P-\d+)\/messages$/, postMessage],
     ['POST', /^\/pairs\/(P-\d+)\/messages\/(M-\d+)\/report$/, report],

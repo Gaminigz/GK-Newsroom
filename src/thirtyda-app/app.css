@@ -1067,6 +1067,10 @@ button.bubble { display: block; text-align: left; font-size: 15px; line-height: 
 .conv-wait-text b { font-family: var(--display); font-weight: 900; font-stretch: 112%; font-size: 16px; letter-spacing: 0; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .conv-remind { flex: none; background: #fff; color: var(--navy); }
 .conv-remind.on { background: rgb(255 255 255 / 0.14); color: #fff; }
+/* Level 2 waits: the starter's "Start Level 2 now" (a full row under the countdown), or the other one's note. */
+.conv-wait-more { flex-wrap: wrap; row-gap: 8px; }
+.conv-start { flex: 1 0 100%; margin-top: 2px; }
+.conv-wait-note { flex: 1 0 100%; margin: 0; padding-left: 26px; font-size: 12.5px; font-weight: 600; line-height: 1.35; color: var(--on-dark-muted); }
 /* Bottom: the send panel (folds), or one status line. */
 .conv-foot { max-height: 74%; }
 .conv-status { display: flex; align-items: center; gap: 8px; min-height: 40px; font-size: 13.5px; font-weight: 600; line-height: 1.35; }

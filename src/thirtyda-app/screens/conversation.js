@@ -16,6 +16,9 @@
 // history, with each other's real name in the header — and one "Forget it" ends the conversation for
 // both (it stays readable, nothing more can be sent). The bottom of the screen is the one thing to do
 // now: send your 5, reply, wait, choose, or (Level 3) chat.
+// Between Level 1 and Level 2 the countdown waits — but the person who started the conversation can open Level 2 at
+// once with "Start Level 2 now" (owner 2026-10-15, POST /level2/start); the other one reads "<name> can start Level 2
+// sooner." under the same countdown, and both then see Level 2 exactly as after the timer.
 // GET /pairs/:id/conversation is the one read model; replies save one at a time with PUT /replies, the
 // choice with POST /decide.
 import {
@@ -143,6 +146,8 @@ function mountConversation(root, base, initial, chat) {
   let pressing = false;
   let remindBusy = false;
   let deciding = false; // "Open the chat" / "Forget it" is being saved
+  let starting = false; // "Start Level 2 now" is on its way
+  let reminderDropped = false; // this phone's own reminder for a Level 2 that is already open was cancelled
   const editing = new Set(); // reply keys reopened to change
   const busy = new Set(); // reply keys being saved
   const replyErr = new Map(); // reply key → { text, msg, word } the server refused that exact text (until it changes)
@@ -467,6 +472,71 @@ function mountConversation(root, base, initial, chat) {
     return b;
   }
 
+  /**
+   * Level 2 is open and I had asked to be reminded: the reminder this phone set for the old time (the app's own,
+   * ThirtyDaShell) has nothing left to say — the person who started may have opened it early. Cancelled once, quietly;
+   * the browser's reminders follow the heartbeat, so they need nothing.
+   */
+  function dropStaleReminder() {
+    if (reminderDropped || !pairId || !conv.pair?.remind) return;
+    const L = levelOf(2);
+    if (!L || L.state === 'wait' || L.state === 'locked') return;
+    const shell = shellReminders();
+    if (!shell) return;
+    reminderDropped = true;
+    shell.cancelRemind({ id: reminderId(pairId) }).catch(() => {});
+  }
+
+  /**
+   * "Start Level 2 now" (owner 2026-10-15: "level 2 can start the person who started the conversation 1st time .. any
+   * time if he or she want ... or can wait for timmer"): only for the person who started the conversation, while Level 2
+   * waits (the server says so: canStartLevel2). It opens Level 2 for both at once and the screen moves on to it.
+   */
+  function startButton(level) {
+    const b = el('button', {
+      type: 'button', class: ['btn btn-light btn-sm conv-start', starting && 'busy'], disabled: starting,
+      'aria-busy': String(starting),
+    }, icon('arrow', 16), el('span', { class: 'btn-text' }, t('cv_start_now', { n: level })));
+    b.addEventListener('click', () => {
+      if (starting) return;
+      b.disabled = true;
+      b.classList.add('busy');
+      b.setAttribute('aria-busy', 'true');
+      startLevel2();
+    });
+    return b;
+  }
+
+  async function startLevel2() {
+    if (!alive || starting) return;
+    starting = true;
+    ver++;
+    try {
+      const r = await api.post(`${base}/level2/start`, {});
+      starting = false;
+      heartbeat(); // My conversations: the countdown there goes now, not at the next beat
+      apply(unwrap(r)); // "Level 2 is open." and the send panel
+      if (alive) requestAnimationFrame(() => { if (alive) scroller.scrollTop = scroller.scrollHeight; });
+      return;
+    } catch (err) {
+      starting = false;
+      if (!alive) return;
+      if (redirected(err)) {
+        if (err.code === 'verify_needed') renderSoon(); // the sheet closed unverified: the button is free again
+        return;
+      }
+      if (err.status === 409 || err.status === 404 || err.status === 403) {
+        // not_waiting: Level 2 opened meanwhile (the timer came first) — the read says so ("Level 2 is open.").
+        if (err.code === 'other_blocked') toast(t('cv_closed'));
+        else if (err.code !== 'not_waiting') toast(t('cv_moved'));
+        poll(true);
+      } else {
+        toast(errorText(err));
+      }
+    }
+    if (alive) renderSoon(); // the button again (unless the read above moved the screen on)
+  }
+
   /** "Level 2 opens in 23:59:12 · Remind me" (the one wait left: between Level 1 and Level 2). */
   function waitBanner(level, until) {
     const time = el('b', { class: 'tabular', role: 'timer', 'aria-live': 'off' }, '--:--:--');
@@ -474,10 +544,15 @@ function mountConversation(root, base, initial, chat) {
     const future = ms(until) > Date.now();
     clocks.push(countdown(time, until, future ? () => setTimeout(() => poll(true), 700) : null));
     const [before, after = ''] = t('cv_opens_in', { n: level }).split('{time}');
-    return el('div', { class: 'conv-wait' },
+    // The person who started the conversation may open Level 2 now; the other one is told they can.
+    const canStart = !chatMode && level === 2 && conv.canStartLevel2 === true && !frozen();
+    const theyCan = !chatMode && level === 2 && conv.otherCanStartLevel2 === true && !frozen();
+    return el('div', { class: ['conv-wait', (canStart || theyCan) && 'conv-wait-more'] },
       el('span', { class: 'conv-wait-icon', 'aria-hidden': 'true' }, icon('clock', 16)),
       el('span', { class: 'conv-wait-text' }, before, time, after),
-      chatMode || !canRemind() ? null : remindButton(level, until));
+      chatMode || !canRemind() ? null : remindButton(level, until),
+      canStart ? startButton(level) : null,
+      theyCan ? el('p', { class: 'conv-wait-note' }, t('cv_start_sooner', { name: name(), n: level })) : null);
   }
 
   function timelineNodes() {
@@ -498,7 +573,11 @@ function mountConversation(root, base, initial, chat) {
     if (ended()) out.push(divider(t(left() ? 'cv_left' : 'cv_ended_divider')));
     return out;
   }
-  const timelineSig = (c) => JSON.stringify([c.levels, c.pair?.stage, c.pair?.l2OpensAt, c.pair?.next, c.next, c.chat, c.decision?.ended]);
+  const timelineSig = (c) => JSON.stringify([
+    c.levels, c.pair?.stage, c.pair?.l2OpensAt, c.pair?.next, c.next, c.chat, c.decision?.ended, c.canStartLevel2, c.otherCanStartLevel2,
+  ]);
+
+  dropStaleReminder();
 
   // ------------------------------------------------ Level 3: the chat under the history
 
@@ -888,6 +967,7 @@ function mountConversation(root, base, initial, chat) {
       return;
     }
     announce(prev, conv);
+    dropStaleReminder();
     if (headerSig(prev) !== headerSig(conv)) {
       const h = headerNode();
       header.replaceWith(h);
@@ -1029,6 +1109,8 @@ registerStrings({
     cv_remind_on: 'Reminder on',
     cv_notify_off: 'Notifications are off in this browser, so you will see it here.',
     cv_remind_note: 'Level {n} with {name} is open now.',
+    cv_start_now: 'Start Level {n} now',
+    cv_start_sooner: '{name} can start Level {n} sooner.',
     cv_all_replied: 'All 5 replied. {name} can see them.',
     cv_they_all: '{name} replied to all 5.',
     cv_level_open: 'Level {n} is open.',
@@ -1091,6 +1173,8 @@ registerStrings({
     cv_remind_on: 'ការរំលឹកបានបើក',
     cv_notify_off: 'ការជូនដំណឹងត្រូវបានបិទនៅក្នុងកម្មវិធីរុករកនេះ ដូច្នេះអ្នកនឹងឃើញវានៅទីនេះ។',
     cv_remind_note: 'កម្រិត {n} ជាមួយ {name} បានបើកហើយ។',
+    cv_start_now: 'ចាប់ផ្ដើមកម្រិត {n} ឥឡូវនេះ',
+    cv_start_sooner: '{name} អាចចាប់ផ្ដើមកម្រិត {n} ឆាប់ជាងនេះបាន។',
     cv_all_replied: 'បានឆ្លើយតបទាំង 5 ហើយ។ {name} អាចមើលឃើញ។',
     cv_they_all: '{name} បានឆ្លើយតបទាំង 5 ហើយ។',
     cv_level_open: 'កម្រិត {n} បានបើកហើយ។',
@@ -1153,6 +1237,8 @@ registerStrings({
     cv_remind_on: '提醒已开启',
     cv_notify_off: '此浏览器已关闭通知，你会在这里看到提醒。',
     cv_remind_note: '你和 {name} 的等级 {n} 已开启。',
+    cv_start_now: '现在开始等级 {n}',
+    cv_start_sooner: '{name} 可以提前开始等级 {n}。',
     cv_all_replied: '5 句都已回复，{name} 可以看到了。',
     cv_they_all: '{name} 已回复全部 5 句。',
     cv_level_open: '等级 {n} 已开启。',
@@ -1215,6 +1301,8 @@ registerStrings({
     cv_remind_on: '알림 켜짐',
     cv_notify_off: '이 브라우저는 알림이 꺼져 있어서 여기에서 알려 드려요.',
     cv_remind_note: '{name}님과의 레벨 {n}이 열렸어요.',
+    cv_start_now: '지금 레벨 {n} 시작하기',
+    cv_start_sooner: '{name}님이 레벨 {n} 시작을 앞당길 수 있어요.',
     cv_all_replied: '5개 모두 답장했어요. {name}님이 볼 수 있어요.',
     cv_they_all: '{name}님이 5개 모두 답장했어요.',
     cv_level_open: '레벨 {n} 열림',
@@ -1277,6 +1365,8 @@ registerStrings({
     cv_remind_on: 'リマインダーON',
     cv_notify_off: 'このブラウザでは通知がオフのため、ここでお知らせします。',
     cv_remind_note: '{name}さんとのレベル{n}が開きました。',
+    cv_start_now: '今すぐレベル{n}を始める',
+    cv_start_sooner: '{name}さんはレベル{n}を早めに始められます。',
     cv_all_replied: '5つすべてに返信しました。{name}さんに届いています。',
     cv_they_all: '{name}さんが5つすべてに返信しました。',
     cv_level_open: 'レベル{n}が開きました。',

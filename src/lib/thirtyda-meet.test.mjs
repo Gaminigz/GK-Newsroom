@@ -542,7 +542,7 @@ test('the router: the three routes; suggesting and answering talk to someone (ve
   assert.equal(talksToSomeone('POST', '/pairs/P-1/meet/M-3'), true);
   assert.equal(talksToSomeone('GET', '/places'), false);
   assert.equal(talksToSomeone('POST', '/pairs/P-1/meet/M-3/x'), false);
-  assert.equal(TALK_ROUTES.length, 8);
+  assert.equal(TALK_ROUTES.length, 9); // + the starter's "Start Level 2 now" (owner 2026-10-15)
 });
 
 test('the chat read: meetings come with the chat lines (never a stopped try), and again whenever they change', () => {

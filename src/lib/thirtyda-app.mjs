@@ -19,7 +19,8 @@
  * reply can change until all 5 are in). A reply is checked like a written line — contact details and bad words
  * stopped and recorded for the admin — and also read together with the same person's other texts in the pair, so a
  * phone number or a handle written down several replies is stopped too.
- * A level is done when both sets are complete. Level 2 opens after the wait. After Level 2 each person
+ * A level is done when both sets are complete. Level 2 opens after the wait — or at once when the person who started
+ * the conversation (pair.a) asks for it (POST /pairs/:id/level2/start, owner 2026-10-15). After Level 2 each person
  * chooses (POST /pairs/:id/decide): the chat (Level 3) opens as soon as both chose to open it, and one
  * "Forget it" ends the conversation for both (stage 'ended': readable, nothing more to send). Real names
  * are shown to the other person only once the chat is open.
@@ -2948,9 +2949,11 @@ function setView(set, meId, lang, titles, { open }) {
  * GET /pairs/:id/conversation for `me`:
  * { pair: PairView, other: { id, name, gender, lang, photos, lockedPhotos, realName? }, levels: [{ level: 1|2,
  *   state: 'open'|'wait'|'done'|'locked', opensAt, rules: { pick, write }, mine: SetView|null, theirs: SetView|null }],
- *   canSend: { level, pick, write, slots } | null, chat: { open, opensAt, phoneNeeded },
+ *   canSend: { level, pick, write, slots } | null, canStartLevel2, otherCanStartLevel2, chat: { open, opensAt, phoneNeeded },
  *   decision: { canDecide, mine: true|false|null, ended, endedAt }, next }.
- * other.realName is there only once the chat (Level 3) is open. `sets` may be passed when already loaded.
+ * other.realName is there only once the chat (Level 3) is open. canStartLevel2: I started the conversation and Level 2
+ * waits, so I may open it now (POST /pairs/:id/level2/start); otherCanStartLevel2: the other person may. Both false on a
+ * frozen pair. `sets` may be passed when already loaded.
  */
 async function conversationFor(d, me, pair, other, sets = null) {
   const lang = me.lang ?? "en";
@@ -2981,6 +2984,9 @@ async function conversationFor(d, me, pair, other, sets = null) {
   const view = pairView(pair, me, other, sets);
   const seen = other ? photosFor(other, { openLevel: stageOpenLevel(stage) }) : { photos: [], lockedPhotos: [] };
   const real = realNameFor(other, stage);
+  // Level 2 waits: the person who started the conversation may open it now (POST /pairs/:id/level2/start); the other
+  // one is told they can. Neither on a frozen pair.
+  const l2Waiting = stage === "l2_wait" && !frozen;
   return {
     pair: view,
     other: other
@@ -2991,6 +2997,8 @@ async function conversationFor(d, me, pair, other, sets = null) {
       : { id: otherId, name: "", gender: null, lang: "en", photos: [], lockedPhotos: [] },
     levels,
     canSend,
+    canStartLevel2: l2Waiting && pair.a === me._id,
+    otherCanStartLevel2: l2Waiting && pair.a !== me._id,
     chat: { open: stage === "l3_open", opensAt: null, phoneNeeded: !canTalk(me) }, // any verified way chats (chatGate)
     decision: {
       canDecide: stage === "l3_decide" && !frozen && view.decision === null,
@@ -3319,6 +3327,57 @@ async function remind(ctx) {
   return { pair: await viewOf(d, me, await d.collection(C.pairs).findOne({ _id: pair._id })) };
 }
 
+// The admin's chat log notes it when the starter opened Level 2 before the wait was over (never shown in the app).
+const LEVEL2_START_TEXT = "Started Level 2 now, before the wait was over";
+
+/**
+ * POST /pairs/:id/level2/start → { conversation } (owner 2026-10-15: "level 2 can start the person who started the
+ * conversation 1st time .. any time if he or she want ... or can wait for timmer"). Between Level 1 and Level 2 the
+ * person who started the conversation (pair.a: the one who sent the first 5) may open Level 2 now instead of waiting;
+ * the other person waits for the timer or for them (the conversation's canStartLevel2 / otherCanStartLevel2).
+ * It only brings l2OpensAt forward to now: settle() then opens the level exactly as the timer does — users.level and
+ * chats.level raised, the conversation at the top of both lists, a frozen pair (someone blocked) left where it is. The
+ * other person learns it the way they learn a timed opening: their conversation read ("Level 2 is open."), the
+ * heartbeat's actions (next 'send': a notification where "Remind me" allowed them) and GET /me/pending.
+ * Two taps at once open it once, and the chat log notes it once. 403 not_starter (the other person), 409 not_waiting
+ * (Level 2 is not waiting: still Level 1, already open — the timer came first — or later), 409 other_blocked (frozen;
+ * a block that lands meanwhile undoes the start: the original time, nothing noted).
+ */
+async function startLevel2(ctx) {
+  const { d, me, params } = ctx;
+  const { pair, other } = await pairFor(ctx, params[0], { write: true });
+  if (pair.a !== me._id) throw fail(403, "not_starter", "Only the person who started this conversation can open Level 2 now.");
+  if (pair.stage !== "l2_wait") throw fail(409, "not_waiting", "Level 2 is not waiting any more.");
+  const pairs = d.collection(C.pairs);
+  const at = nowIso();
+  // Forward only, while it still waits, by the starter — and claimed once (l2StartedBy): of two taps at once one moves
+  // the time, the other never matches, whichever reaches the database first.
+  const brought = await pairs.updateOne(
+    { _id: pair._id, a: me._id, stage: "l2_wait", l2OpensAt: { $gt: at }, l2StartedBy: { $exists: false } },
+    { $set: { l2OpensAt: at, l2StartedBy: me._id } },
+  );
+  const fresh = await settle(d, await pairs.findOne({ _id: pair._id }));
+  // Still waiting with its time come: settle() kept it — a block landed meanwhile. The start did not happen: its own
+  // claim is undone (the original time and no l2StartedBy), so the pair waits as before and nothing is noted.
+  if (fresh.stage === "l2_wait") {
+    if (brought.modifiedCount) {
+      await pairs.updateOne(
+        { _id: pair._id, stage: "l2_wait", l2StartedBy: me._id, l2OpensAt: at },
+        { $set: { l2OpensAt: pair.l2OpensAt }, $unset: { l2StartedBy: "" } },
+      );
+    }
+    throw fail(409, "other_blocked", "This conversation is closed.");
+  }
+  if (brought.modifiedCount) {
+    const [id] = await nextIds(d, "msg", 1);
+    await appendMessages(d, fresh, [{
+      id, from: me._id, at, kind: "decision", level: 2, text: LEVEL2_START_TEXT, lang: "en", english: null,
+      translations: { en: LEVEL2_START_TEXT }, hit: null, flagId: null, stopped: false,
+    }]);
+  }
+  return { conversation: await conversationFor(d, me, fresh, other) };
+}
+
 // ---------------------------------------------------------------- chat handlers
 
 /**
@@ -3475,6 +3534,8 @@ export const meetHandlers = (over = {}) => meetRoutes({ ...MEET_DEPS, ...over })
 const meet = meetHandlers();
 /** The chat's own send and report, for the meeting tests (a chat line read with a meeting before it; a reported card). */
 export const chatHandlers = Object.freeze({ postMessage, report });
+/** Level 2 opened early by the starter, and read back as the screen and the heartbeat read it (thirtyda-level2-start.test.mjs). */
+export const levelHandlers = Object.freeze({ startLevel2, getConversation, remind, heartbeat });
 
 // ---------------------------------------------------------------- block + report a person (store policy, owner 2026-10-14)
 // The rules: src/thirtyda-app/shared/safety.js; the store and the admin's flags: src/lib/thirtyda-blocks.mjs.
@@ -3821,6 +3882,8 @@ const ROUTES = [
   ["POST", /^\/pairs\/(P-\d+)\/answers$/, sendAnswers],
   ["POST", /^\/pairs\/(P-\d+)\/decide$/, decide],
   ["POST", /^\/pairs\/(P-\d+)\/remind$/, remind],
+  // The starter opens Level 2 now instead of waiting for the timer (owner 2026-10-15).
+  ["POST", /^\/pairs\/(P-\d+)\/level2\/start$/, startLevel2],
   ["GET", /^\/pairs\/(P-\d+)\/messages$/, listMessages],
   ["POST", /^\/pairs\/(P-\d+)\/messages$/, postMessage],
   ["POST", /^\/pairs\/(P-\d+)\/messages\/(M-\d+)\/report$/, report],

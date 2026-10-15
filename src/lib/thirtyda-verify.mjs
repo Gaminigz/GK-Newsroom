@@ -37,6 +37,7 @@ export const TALK_ROUTES = [
   ["PUT", /^\/pairs\/(P-\d+)\/replies$/], // a short typed reply to a line of theirs
   ["POST", /^\/pairs\/(P-\d+)\/answers$/], // all replies at once (the older screens)
   ["POST", /^\/pairs\/(P-\d+)\/decide$/], // after Level 2: open the chat / forget it
+  ["POST", /^\/pairs\/(P-\d+)\/level2\/start$/], // the starter opens Level 2 now, for both (owner 2026-10-15)
   ["POST", /^\/pairs\/(P-\d+)\/messages$/], // a Level 3 chat line
   ["POST", /^\/pairs\/(P-\d+)\/meet$/], // suggest a meeting in the Level 3 chat (src/lib/thirtyda-meet.mjs)
   ["POST", /^\/pairs\/(P-\d+)\/meet\/(M-\d+)$/], // accept / decline / cancel a meeting

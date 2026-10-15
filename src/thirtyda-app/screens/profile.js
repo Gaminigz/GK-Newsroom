@@ -4,7 +4,7 @@
 // start, reply, see where it is while waiting, choose after Level 2, chat, or read an ended one.
 // The real name shows under the app name only once the chat (Level 3) is open (the server sends it then).
 import {
-  screen, el, icon, t, go, api, toast, modal, state, topBar, levelBar, avatar, countdown, pronoun, fmtKm,
+  screen, el, icon, t, go, api, toast, modal, state, bus, topBar, levelBar, avatar, countdown, pronoun, fmtKm,
   pairRoute, stageLevel, nextKind, registerStrings, morePhotosPrompt, stageOpenLevel, roleLabel,
 } from '../core.js';
 import { personMenuButton, reportPhotoButton } from './safety.js';
@@ -103,6 +103,15 @@ function actionButton(person, pair, { reload, stops }) {
       // Re-read the pair when the timer ends, but never loop on a time that is already past.
       const future = Date.parse(until) > Date.now();
       stops.push(countdown(time, until, future ? () => setTimeout(reload, 800) : null));
+      // The person who started the conversation can open Level 2 before the timer (POST /level2/start): once the
+      // heartbeat lists this pair as something to do, the wait is over — re-read it (the countdown goes).
+      const moved = () => {
+        if (!state.actions.some((a) => a.id === pair.id)) return;
+        bus.removeEventListener('actions', moved);
+        reload();
+      };
+      bus.addEventListener('actions', moved);
+      stops.push(() => bus.removeEventListener('actions', moved));
       return el('button', { type: 'button', class: 'btn btn-primary', on: { click: open } },
         icon('clock', 18), el('span', {}, before, time, after));
     }

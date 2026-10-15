@@ -81,6 +81,7 @@ const SAMPLES = [
   ['GET', '/questions', false], ['POST', '/pairs/P-1/sets', false], ['GET', '/pairs/P-1/incoming', false],
   ['GET', '/pairs/P-1/outgoing', false], ['POST', '/pairs/P-1/answers', false], ['POST', '/pairs/P-1/decide', false],
   ['POST', '/pairs/P-1/remind', false], ['GET', '/pairs/P-1/messages', false], ['POST', '/pairs/P-1/messages', false],
+  ['POST', '/pairs/P-1/level2/start', false], // the starter opens Level 2 now (owner 2026-10-15): waits for "I agree"
   ['POST', '/pairs/P-1/messages/M-1/report', false], ['GET', '/me/blocks', false], ['POST', '/people/U-10231/block', false],
   ['DELETE', '/people/U-10231/block', false], ['POST', '/people/U-10231/report', false],
   // Meetings in the Level 3 chat (owner 2026-10-14): wait for "I agree" like the chat.
