@@ -7,7 +7,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { createPlaceIndex, memoryIndexStore, rowsFromOverpass, INDEX_MAX_AGE_MS, INDEX_RETRY_MS } from './thirtyda-places-index.mjs';
+import {
+  createPlaceIndex, memoryIndexStore, rowsFromOverpass, INDEX_MAX_AGE_MS, INDEX_RETRY_MS, OVERPASS_SERVERS, OVERPASS_URL, OVERPASS_ROUNDS,
+  OVERPASS_TIMEOUT_MS, REFRESH_BUDGET_MS,
+} from './thirtyda-places-index.mjs';
 import { createPlaceSearch } from './thirtyda-places.mjs';
 import { placesAdminView, refreshPlaces, placesTry, REFRESH_GAP_MS } from './thirtyda-hub-places.mjs';
 
@@ -70,13 +73,17 @@ test('no list: "none"; an old list: "old"; a failed refresh keeps the old list a
 
   const errors = [];
   const down = overpassFetch(() => new Response('busy', { status: 504 }));
-  const old = createPlaceIndex({ fetchImpl: down, store: memoryIndexStore({ at: now.t - INDEX_MAX_AGE_MS - 1, rows: ROWS }), now, minRows: 5, onError: (e) => errors.push(e) });
+  const old = createPlaceIndex({ fetchImpl: down, store: memoryIndexStore({ at: now.t - INDEX_MAX_AGE_MS - 1, rows: ROWS }), now, minRows: 5, pauseMs: 0, onError: (e) => errors.push(e) });
   assert.equal((await placesAdminView(old, { now: now.t })).status, 'old');
   assert.equal(await old.refresh(), false);
   const v = await placesAdminView(old, { now: now.t });
   assert.equal(v.status, 'old', 'the old list stays');
   assert.equal(v.count, ROWS.length);
-  assert.deepEqual(v.lastError, { at: new Date(now.t).toISOString(), message: 'overpass HTTP 504' });
+  assert.deepEqual(v.lastError, {
+    at: new Date(now.t).toISOString(),
+    message: 'overpass: overpass-api.de: HTTP 504; overpass.private.coffee: HTTP 504; maps.mail.ru: HTTP 504; overpass-api.de: HTTP 504; overpass.private.coffee: HTTP 504; maps.mail.ru: HTTP 504',
+  });
+  assert.equal(down.calls.length, 6, 'three servers, two rounds');
   assert.equal(v.askedAt, new Date(now.t).toISOString());
   assert.equal(v.okAt, null);
   assert.equal(v.retryAt, new Date(now.t + INDEX_RETRY_MS).toISOString());
@@ -162,6 +169,123 @@ test('the app\'s own search answers exactly as before: no `explain` unless asked
   assert.deepEqual(e, { places: [], explain: { ours: false, own: 0, sure: 0, nominatim: 'not_asked', from: [] } });
 });
 
+// ---------------------------------------------------------------- the backup Overpass servers (owner 2026-10-16)
+
+const MAIN = OVERPASS_URL;
+const COFFEE = 'https://overpass.private.coffee/api/interpreter';
+const VK = 'https://maps.mail.ru/osm/tools/overpass/api/interpreter';
+/** Each server answers from its own list of replies (the last one repeats): a Response, an answer, or a thrown error. */
+function serversFetch(replies) {
+  const calls = [];
+  const seen = {};
+  const fn = async (url, init) => {
+    calls.push(String(url));
+    const list = replies[url] ?? [() => new Response('nope', { status: 500 })];
+    const n = (seen[url] = (seen[url] ?? -1) + 1);
+    const out = await list[Math.min(n, list.length - 1)](init);
+    if (out instanceof Response) return out;
+    return new Response(JSON.stringify(out), { status: 200 });
+  };
+  fn.calls = calls;
+  return fn;
+}
+const busy = () => new Response('This Overpass API server is currently at capacity.', { status: 502 });
+
+test('the servers: the main one, then two full-planet mirrors that welcome light use; 2 rounds; 90 s a server, 3 minutes in all', () => {
+  assert.deepEqual(OVERPASS_SERVERS, [MAIN, COFFEE, VK]);
+  assert.equal(MAIN, 'https://overpass-api.de/api/interpreter');
+  assert.deepEqual([OVERPASS_ROUNDS, OVERPASS_TIMEOUT_MS, REFRESH_BUDGET_MS], [2, 90e3, 180e3]);
+  const tf = readFileSync(new URL('./thirtyda-test-fetch.mjs', import.meta.url), 'utf8');
+  assert.match(tf, /"overpass-api\.de", "overpass\.private\.coffee", "maps\.mail\.ru",/, 'all three are test-fetch hosts on the dev server');
+});
+
+test('main down, the next one a bad answer → the third fills the list; the copy says which; each server\'s last answer', async () => {
+  const now = clock(1_800_000_000_000);
+  const fetchImpl = serversFetch({
+    [MAIN]: [busy],
+    [COFFEE]: [() => ({ remark: 'runtime error: Query timed out in "query" at line 3 after 91 seconds.', elements: ELEMENTS })],
+    [VK]: [() => ANSWER],
+  });
+  const store = memoryIndexStore();
+  const index = createPlaceIndex({ fetchImpl, store, now, minRows: 5, pauseMs: 0, onError: () => {} });
+  assert.equal(await index.refresh({ force: true }), true);
+  assert.deepEqual(fetchImpl.calls, [MAIN, COFFEE, VK], 'in order, each once');
+  const v = await placesAdminView(index, { now: now.t });
+  assert.deepEqual([v.status, v.count, v.from], ['live', ROWS.length, 'maps.mail.ru']);
+  assert.deepEqual(v.servers.map((s) => [s.host, Boolean(s.okAt), s.error?.message ?? null]), [
+    ['overpass-api.de', false, 'HTTP 502'],
+    ['overpass.private.coffee', false, 'runtime error: Query timed out in "query" at line 3 after 91 seconds.'],
+    ['maps.mail.ru', true, null],
+  ]);
+  assert.equal(v.servers[2].rows, ROWS.length);
+  assert.equal(v.lastError, null, 'a refresh that worked is no error');
+  assert.equal((await store.load()).from, 'maps.mail.ru', 'kept with the copy');
+  // After a restart, the stored copy still says which server filled it.
+  const again = createPlaceIndex({ fetchImpl: serversFetch({}), store, now, minRows: 5, onError: () => {} });
+  assert.equal((await placesAdminView(again, { now: now.t })).from, 'maps.mail.ru');
+});
+
+test('too few places, not JSON, a server that hangs: each moves on to the next server', async () => {
+  const now = clock(1_800_000_000_000);
+  const fetchImpl = serversFetch({
+    [MAIN]: [() => ({ elements: ELEMENTS.slice(0, 2) })],
+    [COFFEE]: [() => new Response('<html>oops</html>', { status: 200 })],
+    [VK]: [() => ANSWER],
+  });
+  const index = createPlaceIndex({ fetchImpl, store: memoryIndexStore(), now, minRows: 5, pauseMs: 0, onError: () => {} });
+  assert.equal(await index.refresh(), true);
+  const v = await placesAdminView(index, { now: now.t });
+  assert.deepEqual(v.servers.map((s) => s.error?.message ?? 'ok'), ['only 2 places', 'not JSON', 'ok']);
+  // A hanging main server is cut off at its own wait; the next is asked.
+  const hang = serversFetch({
+    [MAIN]: [(init) => new Promise((resolve, reject) => init.signal.addEventListener('abort', () => reject(Object.assign(new Error('x'), { name: 'TimeoutError' }))))],
+    [COFFEE]: [() => ANSWER],
+  });
+  const slow = createPlaceIndex({ fetchImpl: hang, store: memoryIndexStore(), now, minRows: 5, pauseMs: 0, timeoutMs: 30, budgetMs: 10e3, onError: () => {} });
+  const running = slow.refresh();
+  await new Promise((r) => setTimeout(r, 5));
+  assert.deepEqual((await placesAdminView(slow, { now: now.t })).servers.map((s) => s.asking), [true, false, false], 'the one being asked');
+  assert.equal(await running, true);
+  const w = await placesAdminView(slow, { now: now.t });
+  assert.deepEqual([w.from, w.servers[0].error.message], ['overpass.private.coffee', 'no answer in 0 s']);
+});
+
+test('every server down: a second round after the pause, then the old copy stays, the error names each, and searches wait the hour', async () => {
+  const now = clock(1_800_000_000_000);
+  const fetchImpl = serversFetch({ [MAIN]: [busy], [COFFEE]: [busy], [VK]: [() => { throw new TypeError('fetch failed'); }] });
+  const errors = [];
+  const old = { at: now.t - INDEX_MAX_AGE_MS - 1, rows: ROWS };
+  const store = memoryIndexStore(old);
+  const index = createPlaceIndex({ fetchImpl, store, now, minRows: 5, pauseMs: 5, onError: (e) => errors.push(e) });
+  await index.load();
+  assert.equal(await index.refresh(), false);
+  assert.deepEqual(fetchImpl.calls, [MAIN, COFFEE, VK, MAIN, COFFEE, VK], 'two rounds');
+  const v = await placesAdminView(index, { now: now.t });
+  assert.deepEqual([v.status, v.count, v.from], ['old', ROWS.length, null], 'the old copy stays');
+  assert.equal(store.saves, 0);
+  assert.match(v.lastError.message, /^overpass: overpass-api\.de: HTTP 502; overpass\.private\.coffee: HTTP 502; maps\.mail\.ru: fetch failed; /);
+  assert.equal(v.retryAt, new Date(now.t + INDEX_RETRY_MS).toISOString());
+  assert.equal(errors.length, 1, 'one line in the log per refresh');
+  // A search within the hour answers from the old copy and asks nobody.
+  now.t += INDEX_RETRY_MS - 1000;
+  assert.ok((await index.search({ q: 'browns' })).places.length);
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(fetchImpl.calls.length, 6);
+  // No time for a second round: the refresh ends after the first.
+  const quick = serversFetch({ [MAIN]: [busy], [COFFEE]: [busy], [VK]: [busy] });
+  const short = createPlaceIndex({ fetchImpl: quick, store: memoryIndexStore(old), now, minRows: 5, pauseMs: 60e3, budgetMs: 30e3, onError: () => {} });
+  assert.equal(await short.refresh(), false);
+  assert.equal(quick.calls.length, 3, 'the pause does not fit in what is left of the 3 minutes');
+});
+
+test('Code page: Tower 12 lists each server (main, backup) with its last answer; the copy\'s server on the List line', () => {
+  const js = readFileSync(new URL('../thirtyda-admin/connections.js', import.meta.url), 'utf8');
+  assert.match(js, /p\.servers\?\.length \? row\('Servers', placesServers\(p\)\) : null,/);
+  assert.ok(js.includes("${i ? 'backup' : 'main'}"));
+  assert.ok(js.includes("${p.from ? ` · from ${p.from}` : ''}"));
+  assert.ok(js.includes('The refresh failed on every server.'));
+});
+
 // ---------------------------------------------------------------- the Code page (connections.js, the admin routes)
 
 test('Code page: tower 12 "Places" (Search) after Wan, its words, its own icon; the routes; no inline style', () => {
@@ -230,7 +354,7 @@ test('Code page refresh poll: asks every 4 s while refreshing, re-draws Places o
   box.api.pollPlaces(box.state.data);
   box.answer = { ok: true, data: places(false, { lastError: { message: 'overpass HTTP 504' } }) };
   await box.tick();
-  assert.equal(box.toasts[1], 'The refresh failed: overpass HTTP 504. The old list stays.');
+  assert.equal(box.toasts[1], 'The refresh failed on every server. The old list stays.', 'the servers\' words are on the card');
   // Still refreshing after 4 minutes: the page stops asking.
   box.state.data = places(true);
   box.api.pollPlaces(box.state.data);

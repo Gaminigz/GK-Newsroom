@@ -6,8 +6,9 @@
  * same cache and the same 1-per-second Nominatim queue.
  *
  *   placesAdminView(index, { now }) → the page's `places` block { status, at, ageS, count, bytes, store, refreshing,
- *     askedAt, okAt, retryAt, nextAt, lastError, maxAgeDays, source }   status: 'live' | 'old' | 'none' | 'refreshing'
- *   refreshPlaces(index, { now }) → { ok: true } (started, in the background: Overpass takes up to 2 minutes) |
+ *     askedAt, okAt, retryAt, nextAt, lastError, maxAgeDays, source, from, servers }   status: 'live' | 'old' | 'none' |
+ *     'refreshing'; from: the Overpass server that filled the list; servers: each one's last answer, in the order asked
+ *   refreshPlaces(index, { now }) → { ok: true } (started, in the background: the servers take up to 3 minutes) |
  *     { ok: false, reason: 'busy' | 'too_soon', error }   at most once every REFRESH_GAP_MS (Overpass's usage policy)
  *   placesTry(search, { q, lang }) → { q, lang, places: [{ name, address, lat, lng, from }], ours, own, sure, nominatim,
  *     busy?, unavailable?, ms } | { error } — never signed (no `ref`): the page shows them, nobody can send one.
@@ -51,6 +52,11 @@ export async function placesAdminView(index, { now = Date.now(), waitMs = VIEW_W
     maxAgeDays: Math.round(i.maxAgeMs / 864e5),
     canRefreshAt: Number.isFinite(i.askedAt) && now - i.askedAt < REFRESH_GAP_MS ? iso(i.askedAt + REFRESH_GAP_MS) : null,
     source: "OpenStreetMap (Overpass API)",
+    from: i.from ?? null,
+    servers: (i.servers ?? []).map((s) => ({
+      host: s.host, asking: Boolean(s.asking), okAt: iso(s.okAt), ms: s.ms, rows: s.rows,
+      error: s.error ? { at: iso(s.error.at), message: s.error.message } : null,
+    })),
   };
 }
 

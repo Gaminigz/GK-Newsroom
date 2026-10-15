@@ -1397,7 +1397,7 @@ function checkWanAgain() {
 // ---------- Tower 12 · Places ----------
 // Our own Phnom Penh place list (src/lib/thirtyda-hub-places.mjs, src/lib/thirtyda-places-index.mjs): the app's place
 // search asks it first, then Nominatim. The tower shows the list (places, size, age, where it is kept), the last ask of
-// OpenStreetMap and the last error; "Refresh now" asks OpenStreetMap again (in the background, up to 2 minutes: this
+// OpenStreetMap and the last error; "Refresh now" asks OpenStreetMap again (in the background, up to 3 minutes: this
 // page asks every 4 seconds meanwhile); a test search shows which hits are ours and whether Nominatim was asked.
 
 const PLACES_PILLS = {
@@ -1425,7 +1425,19 @@ function placesListLine(p) {
       p.refreshing ? ' · being made now.' : ' · the app searches Nominatim alone until there is one. Press Refresh now.'];
   }
   return [h('b', { class: p.status === 'old' ? 'cx-bad' : 'cx-ok', text: `${p.count.toLocaleString('en-GB')} places` }),
-    ` · ${kilobytes(p.bytes)} · ${STORE_WORDS[p.store] || p.store || 'kept'}`];
+    ` · ${kilobytes(p.bytes)} · ${STORE_WORDS[p.store] || p.store || 'kept'}${p.from ? ` · from ${p.from}` : ''}`];
+}
+
+/** Each Overpass server's last answer, in the order a refresh asks them (the main one, then the backups). */
+function placesServers(p) {
+  if (!p.servers?.length) return null;
+  return h('ol', { class: 'cx-jobs' }, p.servers.map((s, i) => {
+    const ok = s.okAt && (!s.error || s.okAt >= s.error.at);
+    const word = s.asking ? ['asking now…', 'pending'] : !s.okAt && !s.error ? ['not asked yet', ''] : ok ? ['good', 'done'] : ['failed', 'failed'];
+    return h('li', {}, h('span', { class: `cx-job ${word[1]}`, text: s.host }), ` · ${i ? 'backup' : 'main'} · ${word[0]}`,
+      s.okAt ? ` · last good ${when(s.okAt)} (${(s.rows ?? 0).toLocaleString('en-GB')} places, ${(s.ms / 1000).toFixed(1)} s)` : '',
+      s.error ? h('span', { class: 'cx-bad', text: ` · ${s.error.message} · ${when(s.error.at)}` }) : null);
+  }));
 }
 
 function placesAgeLine(p) {
@@ -1436,7 +1448,7 @@ function placesAgeLine(p) {
 }
 
 function placesAskLine(p) {
-  if (p.refreshing) return [h('b', { text: 'Asking now…' }), ` up to 2 minutes.${p.count ? ' The old list stays until the new one is good.' : ''}`];
+  if (p.refreshing) return [h('b', { text: 'Asking now…' }), ` up to 3 minutes.${p.count ? ' The old list stays until the new one is good.' : ''}`];
   if (!p.askedAt) return 'Not asked since the server last started.';
   const ok = p.okAt && p.okAt >= p.askedAt;
   return [`Last asked ${when(p.askedAt)} · `, h('b', { class: ok ? 'cx-ok' : 'cx-bad', text: ok ? 'good answer ✓' : 'failed' })];
@@ -1458,7 +1470,7 @@ async function refreshPlacesNow() {
   state.placesError = r.ok ? null : r.data.error || 'Could not start the refresh.';
   if (r.data.view) renderPlaces(r.data.view);
   else renderPlaces(state.data);
-  if (r.ok) toast('Asking OpenStreetMap… up to 2 minutes.');
+  if (r.ok) toast('Asking OpenStreetMap… up to 3 minutes.');
   $('places-refresh')?.focus();
 }
 
@@ -1471,7 +1483,7 @@ function placesRefreshBlock(p) {
     ? h('div', { class: 'cx-result bad' }, h('p', {}, h('b', { text: 'Not started. ' }), state.placesError)) : null;
   return h('div', { class: 'cx-try' },
     h('h3', { text: 'Refresh' }),
-    h('p', { class: 'cx-help' }, `Asks OpenStreetMap (Overpass) for every named café, restaurant, bar, mall, park, museum and hotel in greater Phnom Penh. It also happens by itself every ${p.maxAgeDays} days. At most once every 5 minutes${p.canRefreshAt ? ` (next: ${when(p.canRefreshAt)})` : ''}.`),
+    h('p', { class: 'cx-help' }, `Asks OpenStreetMap (Overpass: the main server, then two backups) for every named café, restaurant, bar, mall, park, museum and hotel in greater Phnom Penh. It also happens by itself every ${p.maxAgeDays} days. At most once every 5 minutes${p.canRefreshAt ? ` (next: ${when(p.canRefreshAt)})` : ''}.`),
     btn,
     refused);
 }
@@ -1536,6 +1548,7 @@ function placesCard(p) {
       row('List', ...placesListLine(p)),
       row('Age', placesAgeLine(p)),
       row('OpenStreetMap', placesAskLine(p)),
+      p.servers?.length ? row('Servers', placesServers(p)) : null,
       p.lastError ? row('Last error', ...placesErrorLine(p)) : null,
       row('In the app', 'Level 3 “Meet” → search: ours first; fewer than 3 sure hits → Nominatim too, its places after ours.')),
     h('div', { class: 'cx-signin-body' },
@@ -1572,7 +1585,8 @@ async function askPlaces() {
   if (p.refreshing) return;
   const ok = p.okAt && p.okAt >= p.askedAt;
   const kept = p.count ? 'The old list stays.' : 'Still no list: the app uses Nominatim alone.';
-  toast(ok ? `Place list refreshed: ${p.count.toLocaleString('en-GB')} places.` : `The refresh failed${p.lastError ? `: ${p.lastError.message}` : ''}. ${kept}`, 8000);
+  // The servers' own words are on the card (Servers): the toast stays short.
+  toast(ok ? `Place list refreshed: ${p.count.toLocaleString('en-GB')} places${p.from ? ` from ${p.from}` : ''}.` : `The refresh failed on every server. ${kept}`, 8000);
 }
 
 // ---------- Tower 13 · Translate ----------

@@ -35,8 +35,8 @@ export const TEST_FETCH_COLLECTION = "thirtyda_test_fetch";
 const HOSTS = new Set([
   "oauth2.googleapis.com", "openidconnect.googleapis.com", "graph.facebook.com", "gatewayapi.telegram.org", "open.tiktokapis.com",
   "nominatim.openstreetmap.org",
-  // overpass-api.de: the weekly refresh of our own Phnom Penh place list (src/lib/thirtyda-places-index.mjs).
-  "overpass-api.de",
+  // overpass-api.de and its two mirrors: the weekly refresh of our own Phnom Penh place list (src/lib/thirtyda-places-index.mjs).
+  "overpass-api.de", "overpass.private.coffee", "maps.mail.ru",
   // Sign in with Apple (src/lib/thirtyda-apple.mjs): its public keys (GET /auth/keys), the token exchange and the revoke.
   "appleid.apple.com",
 ]);

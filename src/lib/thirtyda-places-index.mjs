@@ -8,12 +8,19 @@
  * as before, its suggestions after ours. Only for a search around Phnom Penh, and only places within 30 km of the
  * person (thirtyda-places.mjs PLACES_INDEX_KM).
  *
- * The list: ONE Overpass API query (overpass-api.de: OpenStreetMap's data, our User-Agent, once a week — its usage
- * policy asks for under 10,000 queries and 1 GB a day) for every NAMED cafe, restaurant, bar, pub, fast_food,
+ * The list: ONE Overpass API query (OpenStreetMap's data, our User-Agent, once a week) for every NAMED cafe, restaurant, bar, pub, fast_food,
  * food_court, ice_cream (amenity), mall, bakery, supermarket (shop), park, garden (leisure), attraction, museum,
  * viewpoint, hotel (tourism) in a box a little larger than Phnom Penh (INDEX_BOX). Kept of each, one compact row: its
  * id, kind, point (a way's or a relation's centre: "out center"), names (name, name:en / km / zh / ko / ja, brand),
  * branch, street and area tags (addr:street; addr:suburb / district / city_district). ~1,500–3,000 rows.
+ *
+ * Asked of OVERPASS_SERVERS in order (owner 2026-10-16: overpass-api.de answered "at capacity" for days and the live list
+ * never filled): the main server (FOSSGIS: under 10,000 queries and 1 GB a day), then two public mirrors of the whole
+ * planet whose policies welcome light use — overpass.private.coffee ("there is no rate limit in place") and VK Maps
+ * maps.mail.ru ("no requests limitations"). Each answer gets the same checks (HTTP ok, JSON, no "runtime error" remark,
+ * at least INDEX_MIN_ROWS places); a failed one moves on to the next server. All failed: one more round after
+ * OVERPASS_PAUSE_MS (they fail fast when busy), at most OVERPASS_TIMEOUT_MS a server and REFRESH_BUDGET_MS in all. The
+ * kept copy says which server filled it (`from`); info() has each server's last answer for the Code page's Tower 12.
  *
  * Kept where: in memory, plus ONE copy (gzip'd JSON, ~50–150 KB; refused over INDEX_MAX_BYTES): the Mongo doc
  * thirtyda_places_index/'phnom-penh' on the live server (THIRTYDA_PHOTO_STORE=mongo — an M0 cluster, 512 MB in all),
@@ -48,6 +55,17 @@ import { placeEntry, placeQuery, matchPlaces, areaLabel } from "../thirtyda-app/
 import { PLACE_NAME_MAX, cleanLine, cutLine } from "../thirtyda-app/shared/meet.js";
 
 export const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+/** Asked in this order: the main server, then the public mirrors (each a full-planet Overpass, light use welcome). */
+export const OVERPASS_SERVERS = Object.freeze([
+  OVERPASS_URL,
+  "https://overpass.private.coffee/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+]);
+/** Rounds over the servers in one refresh, and the pause before the second. */
+export const OVERPASS_ROUNDS = 2;
+export const OVERPASS_PAUSE_MS = 15e3;
+/** One refresh at most this long in all, whatever the servers do. */
+export const REFRESH_BUDGET_MS = 180e3;
 /** Greater Phnom Penh, a little larger than the city (11.45–11.65 N, 104.80–105.00 E). */
 export const INDEX_BOX = Object.freeze({ south: 11.4, west: 104.75, north: 11.72, east: 105.05 });
 /** What is kept: the OpenStreetMap key and its values. Named places only. */
@@ -61,7 +79,8 @@ export const INDEX_MAX_AGE_MS = 7 * 864e5;
 export const INDEX_RETRY_MS = 3600e3;
 /** The first search after a start waits at most this long for the stored copy (then Nominatim alone, this time). */
 export const INDEX_WAIT_MS = 1000;
-export const OVERPASS_TIMEOUT_MS = 120e3;
+/** One server's answer at most this long (the query itself asks for 90 s of the server's time). */
+export const OVERPASS_TIMEOUT_MS = 90e3;
 /** An answer with fewer places than this is taken for a broken one: the old copy stays. */
 export const INDEX_MIN_ROWS = 50;
 export const INDEX_MAX_ROWS = 12000;
@@ -82,6 +101,7 @@ const CITY = { en: "Phnom Penh", km: "ភ្នំពេញ" };
 const TAG_MAX = 100;
 
 const round6 = (n) => Math.round(n * 1e6) / 1e6;
+const hostOf = (url) => { try { return new URL(url).host; } catch { return String(url).slice(0, 100); } };
 const tag = (v) => cutLine(cleanLine(v), TAG_MAX);
 
 /** The Overpass QL of the one query: every named place of INDEX_KINDS in the box, a way's / relation's centre. */
@@ -123,8 +143,8 @@ export function rowsFromOverpass(json, box = INDEX_BOX) {
 }
 
 /** A stored copy { at, rows } as bytes (gzip'd JSON), and back (null when it is not one of ours). */
-export function encodeCopy({ at, rows }) {
-  return gzipSync(JSON.stringify({ v: COPY_VERSION, at, rows }));
+export function encodeCopy({ at, rows, from = null }) {
+  return gzipSync(JSON.stringify({ v: COPY_VERSION, at, rows, ...(from ? { from } : {}) }));
 }
 export function decodeCopy(bytes) {
   let j = null;
@@ -134,7 +154,8 @@ export function decodeCopy(bytes) {
     return null; // a broken copy is no copy: the next refresh writes a good one over it
   }
   if (j?.v !== COPY_VERSION || !Number.isFinite(j.at) || !Array.isArray(j.rows)) return null;
-  return { at: j.at, rows: j.rows.filter((r) => Array.isArray(r) && r.length > ROW.area) };
+  const from = typeof j.from === "string" ? j.from.slice(0, 100) : null; // the server that filled it (older copies: none)
+  return { at: j.at, rows: j.rows.filter((r) => Array.isArray(r) && r.length > ROW.area), from };
 }
 
 /** A row ready to search (shared/place-match.js placeEntry): every name it goes by, its kind, point and address words. */
@@ -266,7 +287,7 @@ export function mongoIndexStore(dbFn = null) {
       if (gz.length > INDEX_MAX_BYTES) throw new Error(`places index: ${gz.length} bytes is too big to keep`);
       await (await coll()).replaceOne(
         { _id: INDEX_DOC },
-        { v: COPY_VERSION, at: new Date(copy.at), count: copy.rows.length, bytes: gz.length, gz },
+        { v: COPY_VERSION, at: new Date(copy.at), count: copy.rows.length, bytes: gz.length, from: copy.from ?? null, gz },
         { upsert: true },
       );
     },
@@ -290,6 +311,10 @@ export function createPlaceIndex({
   store = defaultIndexStore(),
   now = () => Date.now(),
   box = INDEX_BOX,
+  servers = OVERPASS_SERVERS,
+  rounds = OVERPASS_ROUNDS,
+  pauseMs = OVERPASS_PAUSE_MS,
+  budgetMs = REFRESH_BUDGET_MS,
   maxAgeMs = INDEX_MAX_AGE_MS,
   retryMs = INDEX_RETRY_MS,
   waitMs = INDEX_WAIT_MS,
@@ -308,16 +333,18 @@ export function createPlaceIndex({
   let okAt = null; // the last time Overpass answered with a good list
   let lastError = null; // { at, message } — the last thing that went wrong (load, Overpass, save)
   let sized = null; // { at, bytes }: the current copy's size, gzip'd (worked out once, for info())
+  // Each server's last answer: url → { okAt, ms, rows, error: { at, message } } (the error stays after a later good one).
+  const answers = new Map(servers.map((url) => [url, { okAt: null, ms: null, rows: null, error: null }]));
 
   const noteError = (err) => {
-    lastError = { at: now(), message: String(err instanceof Error ? err.message : err).slice(0, 200) };
+    lastError = { at: now(), message: String(err instanceof Error ? err.message : err).slice(0, 400) };
     onError(err);
   };
 
   const use = (copy) => {
     if (!copy?.rows?.length) return false;
     if (current && current.at >= copy.at) return false; // never back to an older copy
-    current = { at: copy.at, rows: copy.rows, entries: copy.rows.map(entryOf) };
+    current = { at: copy.at, rows: copy.rows, from: copy.from ?? null, entries: copy.rows.map(entryOf) };
     return true;
   };
 
@@ -330,28 +357,72 @@ export function createPlaceIndex({
     return loading;
   }
 
-  async function fromOverpass() {
+  /** One server: its answer → rows, or throws in plain words (HTTP 502, not JSON, the remark, too few places). */
+  async function askOne(url, waitMs) {
     fetches++;
-    askedAt = now();
-    const res = await fetchImpl(OVERPASS_URL, {
-      method: "POST",
-      headers: {
-        "User-Agent": NOMINATIM_UA,
-        Accept: "application/json",
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({ data: overpassQuery(box) }).toString(),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!res?.ok) throw new Error(`overpass HTTP ${res?.status}`);
-    const json = await res.json();
+    let res;
+    try {
+      res = await fetchImpl(url, {
+        method: "POST",
+        headers: {
+          "User-Agent": NOMINATIM_UA,
+          Accept: "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({ data: overpassQuery(box) }).toString(),
+        signal: AbortSignal.timeout(waitMs),
+      });
+    } catch (err) {
+      if (err?.name === "TimeoutError" || err?.name === "AbortError") throw new Error(`no answer in ${Math.round(waitMs / 1000)} s`);
+      throw err;
+    }
+    if (!res?.ok) throw new Error(`HTTP ${res?.status}`);
+    let json;
+    try {
+      json = await res.json();
+    } catch {
+      throw new Error("not JSON");
+    }
     // Overpass answers 200 with a "remark" when the query ran out of time or memory: the elements are then partial.
     const remark = String(json?.remark ?? "");
-    if (/error|timed out|out of memory/i.test(remark)) throw new Error(`overpass: ${remark.slice(0, 160)}`);
+    if (/error|timed out|out of memory/i.test(remark)) throw new Error(remark.slice(0, 160));
     const rows = rowsFromOverpass(json, box);
-    if (rows.length < minRows) throw new Error(`overpass: only ${rows.length} places`);
-    okAt = now();
+    if (rows.length < minRows) throw new Error(`only ${rows.length} places`);
     return rows;
+  }
+
+  /** The servers in order (two rounds, the time bounded) → { rows, from } from the first good answer, or throws them all. */
+  async function fromOverpass() {
+    askedAt = now();
+    const started = Date.now();
+    const fails = [];
+    for (let round = 0; round < rounds; round++) {
+      if (round > 0) {
+        if (budgetMs - (Date.now() - started) < pauseMs + 5e3) break;
+        if (pauseMs > 0) await new Promise((r) => { const t = setTimeout(r, pauseMs); t.unref?.(); });
+      }
+      for (const url of servers) {
+        const left = budgetMs - (Date.now() - started);
+        if (left < 5e3) break; // no time left for a real answer
+        const a = answers.get(url) ?? { okAt: null, ms: null, rows: null, error: null };
+        answers.set(url, a);
+        const t0 = Date.now();
+        a.asking = true;
+        try {
+          const rows = await askOne(url, Math.min(timeoutMs, left));
+          Object.assign(a, { okAt: now(), ms: Date.now() - t0, rows: rows.length });
+          okAt = now();
+          return { rows, from: hostOf(url) };
+        } catch (err) {
+          const message = String(err instanceof Error ? err.message : err).slice(0, 160);
+          a.error = { at: now(), message };
+          fails.push(`${hostOf(url)}: ${message}`);
+        } finally {
+          a.asking = false;
+        }
+      }
+    }
+    throw new Error(`overpass: ${fails.join("; ") || "no time left"}`);
   }
 
   /**
@@ -367,7 +438,8 @@ export function createPlaceIndex({
           use(stored);
           return true;
         }
-        const copy = { at: now(), rows: await fromOverpass() };
+        const { rows, from } = await fromOverpass();
+        const copy = { at: now(), rows, from };
         use(copy);
         await Promise.resolve().then(() => store.save(copy)).catch((err) => noteError(err)); // in memory it is fresh anyway
         return true;
@@ -423,6 +495,9 @@ export function createPlaceIndex({
       store: store.kind ?? null,
       loaded,
       stale: stale(),
+      // Which server filled this list (a copy kept before 2026-10-16: null), and each server's last answer.
+      from: current?.from ?? null,
+      servers: [...answers].map(([url, a]) => ({ host: hostOf(url), asking: Boolean(a.asking), okAt: a.okAt, ms: a.ms, rows: a.rows, error: a.error })),
       refreshing: Boolean(refreshing),
       fetches,
       askedAt,

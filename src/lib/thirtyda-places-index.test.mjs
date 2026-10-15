@@ -444,7 +444,8 @@ test('Overpass fails (an error, a "runtime error" remark, too few places, no ans
   for (const reply of answers) {
     const store = memoryIndexStore(old);
     const fetchImpl = overpassFetch(reply);
-    const index = createPlaceIndex({ fetchImpl, store, now: () => now, onError: (e) => errors.push(e) });
+    // One server, one round: the backup servers have their own test (thirtyda-hub-places.test.mjs).
+    const index = createPlaceIndex({ fetchImpl, store, now: () => now, servers: [OVERPASS_URL], rounds: 1, onError: (e) => errors.push(e) });
     assert.ok((await index.search({ q: 'brown' })).places.length > 0, 'the old copy answers');
     await tick(5);
     assert.equal(fetchImpl.calls.length, 1);
@@ -511,7 +512,7 @@ test('stores: a gzip\'d copy well under 1 MB — one file (dev) or one Mongo doc
   const big = Array.from({ length: 3000 }, (_, i) => ['n' + i, 'restaurant', 11.5 + i * 1e-5, 104.9, `Restaurant number ${i}`, '', 'ភោជនីយដ្ឋាន', '', '', '', 'Brand', '', 'Street 271', 'Sangkat Tuol Svay Prey Ti Muoy']);
   const bytes = encodeCopy({ at: 1, rows: big });
   assert.ok(bytes.length < INDEX_MAX_BYTES / 4, `${bytes.length} bytes`);
-  assert.deepEqual(decodeCopy(bytes), { at: 1, rows: big });
+  assert.deepEqual(decodeCopy(bytes), { at: 1, rows: big, from: null });
   assert.equal(INDEX_MAX_BYTES, 1e6);
 
   const dir = mkdtempSync(join(tmpdir(), '30da-places-'));
@@ -520,7 +521,7 @@ test('stores: a gzip\'d copy well under 1 MB — one file (dev) or one Mongo doc
     const fs = fileIndexStore(file);
     assert.equal(await fs.load(), null, 'no file yet');
     await fs.save({ at: 7, rows: ROWS });
-    assert.deepEqual(await fs.load(), { at: 7, rows: ROWS });
+    assert.deepEqual(await fs.load(), { at: 7, rows: ROWS, from: null });
     assert.equal(existsSync(new URL('index.json.gz.tmp', file)), false, 'no half file left');
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -538,13 +539,13 @@ test('stores: a gzip\'d copy well under 1 MB — one file (dev) or one Mongo doc
   await ms.save({ at: 9, rows: ROWS });
   assert.equal(docs.size, 1);
   const doc = docs.get(INDEX_DOC);
-  assert.deepEqual(Object.keys(doc).sort(), ['_id', 'at', 'bytes', 'count', 'gz', 'v']);
+  assert.deepEqual(Object.keys(doc).sort(), ['_id', 'at', 'bytes', 'count', 'from', 'gz', 'v']);
   assert.equal(doc.count, ROWS.length);
   assert.ok(doc.bytes < 50_000);
-  assert.deepEqual(await ms.load(), { at: 9, rows: ROWS });
+  assert.deepEqual(await ms.load(), { at: 9, rows: ROWS, from: null });
   // As the driver gives a stored Buffer back: a BSON Binary.
   docs.set(INDEX_DOC, { ...doc, gz: { read: (at, n) => doc.gz.subarray(at, at + n), length: () => doc.gz.length } });
-  assert.deepEqual(await ms.load(), { at: 9, rows: ROWS });
+  assert.deepEqual(await ms.load(), { at: 9, rows: ROWS, from: null });
   assert.equal(defaultIndexStore({ THIRTYDA_PHOTO_STORE: 'mongo' }).kind, 'mongo');
   assert.equal(defaultIndexStore({}).kind, 'local');
   assert.equal(decodeCopy(Buffer.from([0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0])), null, 'not one of ours');
