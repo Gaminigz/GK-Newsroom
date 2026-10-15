@@ -2,11 +2,13 @@
 // above it a Google-Maps-like location search to pick the place (e.g. Brown Coffee TK), then set the date and time, the
 // other party accepts; the other party can see the location; clicking the location opens Google Maps").
 //
-// chat.js puts meetButton() next to the mic and draws every 'meet' message with meetRow(). The sheet searches places
-// through our own server (GET /places → OpenStreetMap, the free search: no Google key, no Google script — the page CSP
-// allows neither) only when asked — Enter or the Search button, never as you type (OpenStreetMap's Nominatim usage
-// policy forbids auto-complete) — or takes the typed name as it is (no address, no map pin: the server keeps those
-// only for a place it suggested, by the suggestion's `ref`). Date and time are native inputs read as Phnom Penh time
+// chat.js puts meetButton() — the calendar icon and the word "Meet" in the app language (owner 2026-10-15: "change to
+// Meet and it translate with the UI") — next to the mic and draws every 'meet' message with meetRow(). The sheet
+// searches places through our own server (GET /places → our own Phnom Penh list from OpenStreetMap, then OpenStreetMap's
+// Nominatim: the free search, no Google key, no Google script — the page CSP allows neither; the suggestions carry
+// "© OpenStreetMap contributors") only when asked — Enter or the Search button, never as you type (OpenStreetMap's
+// Nominatim usage policy forbids auto-complete) — or takes the typed name as it is (no address, no map pin: the server
+// keeps those only for a place it suggested, by the suggestion's `ref`). Date and time are native inputs read as Phnom Penh time
 // (UTC+7) whatever the phone's clock says; the card shows them in Phnom Penh time again. The place itself is the link: Google
 // Maps, outside the app (target=_blank). The rules both sides run: shared/meet.js; the server: src/lib/thirtyda-meet.mjs.
 import {
@@ -23,7 +25,14 @@ const PP_ZONE = 'Asia/Phnom_Penh';
 // ---------------------------------------------------------------- local styles (CSSOM: the CSP allows no inline <style>)
 
 const RULES = [
-  '.composer .meet-btn { flex: none; }',
+  // The composer's Meet button: the calendar and the word, a pill as tall as the round mic and send buttons beside it.
+  '.composer .meet-btn { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 5px; width: auto; min-width: 44px; padding: 0 13px 0 11px; border-radius: 999px; font-size: 14px; font-weight: 700; line-height: 1; white-space: nowrap; }',
+  '.composer .meet-btn > .icon { flex: none; }',
+  ':lang(km) .composer .meet-btn { font-size: 13.5px; font-weight: 600; line-height: 1.5; }',
+  // A 360 px phone: a little less room around the word, so the message box keeps its width (chat.js: a smaller gap too).
+  '@media (max-width: 389px) { .composer .meet-btn { gap: 3px; padding: 0 10px 0 8px; font-size: 13px; } .composer .meet-btn > .icon { width: 16px; height: 16px; } }',
+  // A 320 px phone (iPhone SE 1st gen, a large display size): tighter still, the word kept (Khmer keeps its 13.5px).
+  '@media (max-width: 349px) { .composer .meet-btn { gap: 2px; padding: 0 7px 0 6px; font-size: 12px; } }',
   '.meet-card { display: flex; flex-direction: column; gap: 8px; width: min(300px, 88%); padding: 12px 14px; border: 1.5px solid var(--line); border-radius: var(--radius-lg); background: #fff; color: var(--ink); font-size: 14px; line-height: 1.4; }',
   '.meet-card.mine { border-color: var(--navy); }',
   '.meet-card.busy { opacity: 0.65; }',
@@ -61,6 +70,9 @@ const RULES = [
   '.meet-note { font-size: 12.5px; color: var(--muted); }',
   '.meet-note:empty { display: none; }',
   '.meet-results { display: flex; flex-direction: column; }',
+  // OpenStreetMap's data (ODbL): credited wherever its suggestions show.
+  '.meet-osm { margin: -6px 0 0; font-size: 11px; line-height: 1.4; text-align: right; color: var(--muted-2); }',
+  '.meet-osm > a { color: inherit; text-decoration: none; }',
   '.meet-result { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 10px 4px; border-bottom: 1px solid var(--line-soft); text-align: left; }',
   '.meet-result:last-child { border-bottom: 0; }',
   '.meet-result > .icon { flex: none; margin-top: 2px; color: var(--navy); }',
@@ -143,15 +155,16 @@ export function fmtMeetWhen(iso, lang = state.lang) {
 // ---------------------------------------------------------------- the composer button
 
 /**
- * The calendar button next to the mic. ctx (from chat.js): { base: '/pairs/P-1', name: their app name,
- * onMessages(list): merge into the chat, fmtTime(iso), closed(): true when the chat no longer takes anything }.
+ * The Meet button next to the mic: the calendar and "Meet" in the app language (its spoken name starts with the same
+ * word). ctx (from chat.js): { base: '/pairs/P-1', name: their app name, onMessages(list): merge into the chat,
+ * fmtTime(iso), closed(): true when the chat no longer takes anything }.
  */
 export function meetButton(ctx) {
   ensureMeetStyles();
   return el('button', {
-    type: 'button', class: 'round-btn outline meet-btn', 'aria-label': t('meet_button'), title: t('meet_button'),
+    type: 'button', class: 'round-btn outline meet-btn', 'aria-label': t('meet_button_label', { name: ctx.name }), title: t('meet_title'),
     on: { click: () => openMeetSheet(ctx) },
-  }, ownIcon('calendar', 18));
+  }, ownIcon('calendar', 18), el('span', { class: 'meet-btn-text' }, t('meet_button')));
 }
 
 /** The error line for a refused meeting call, in the UI language. */
@@ -193,11 +206,13 @@ export function openMeetSheet(ctx, prefill = null) {
   });
   const note = el('p', { class: 'meet-note', 'aria-live': 'polite' });
   const results = el('div', { class: 'meet-results' });
+  const credit = el('p', { class: 'meet-osm', hidden: true },
+    el('a', { href: 'https://www.openstreetmap.org/copyright', target: '_blank', rel: 'noopener noreferrer' }, t('meet_osm')));
   const searchBtn = el('button', {
     type: 'button', class: 'btn btn-secondary meet-q-go', disabled: true, on: { click: runSearch },
   }, t('meet_search_go'));
   const searchBox = el('div', { class: 'meet-search stack' },
-    el('div', { class: 'meet-q-row' }, el('div', { class: 'meet-q-wrap' }, icon('pin', 18), query), searchBtn), note, results);
+    el('div', { class: 'meet-q-row' }, el('div', { class: 'meet-q-wrap' }, icon('pin', 18), query), searchBtn), note, results, credit);
   const picked = el('div', { class: 'meet-picked', hidden: true });
   const placeError = el('p', { class: 'field-error', role: 'alert' });
   const pickedKey = () => (chosen ? JSON.stringify([chosen.name, chosen.address]) : null);
@@ -252,9 +267,11 @@ export function openMeetSheet(ctx, prefill = null) {
     const typed = searching ? null : typedPlace();
     note.textContent = searching ? t('meet_searching') : busy ? t('meet_busy') : unavailable ? t('meet_unavailable')
       : typing && typed && searchable() ? t('meet_search_hint') : typed && list && !list.length ? t('meet_none') : '';
+    const found = searching ? [] : list || [];
     results.replaceChildren(
-      ...(searching ? [] : list || []).map((p) => placeButton(p)),
+      ...found.map((p) => placeButton(p)),
       typed && (list || typing) ? placeButton(typed, true) : '');
+    credit.hidden = !found.length; // OpenStreetMap's suggestions on screen: its credit with them
   }
 
   async function search(q) {
@@ -523,7 +540,8 @@ export const meetChangedAt = (m) => Math.max(Date.parse(m?.at) || 0, Date.parse(
 
 registerStrings({
   en: {
-    meet_button: 'Set a meeting',
+    meet_button: 'Meet',
+    meet_button_label: 'Meet: set a place and a time with {name}',
     meet_title: 'Set a meeting',
     meet_title_other: 'Suggest another time',
     meet_sub: 'Pick a place and a time. {name} can accept or decline.',
@@ -579,9 +597,11 @@ registerStrings({
     meet_done_cancel: 'Meeting cancelled.',
     meet_safety: 'Meet in a public place. Tell a friend where you go.',
     meet_report: 'Report',
+    meet_osm: '© OpenStreetMap contributors',
   },
   km: {
-    meet_button: 'កំណត់ការជួប',
+    meet_button: 'ជួបគ្នា',
+    meet_button_label: 'ជួបគ្នា៖ កំណត់ទីកន្លែង និងពេលវេលាជាមួយ {name}',
     meet_title: 'កំណត់ការជួប',
     meet_title_other: 'ស្នើពេលវេលាផ្សេង',
     meet_sub: 'ជ្រើសរើសទីកន្លែង និងពេលវេលា។ {name} អាចយល់ព្រម ឬបដិសេធ។',
@@ -637,9 +657,11 @@ registerStrings({
     meet_done_cancel: 'ការជួបត្រូវបានលុបចោល។',
     meet_safety: 'សូមជួបគ្នានៅទីសាធារណៈ។ ប្រាប់មិត្តភក្តិថាអ្នកទៅណា។',
     meet_report: 'រាយការណ៍',
+    meet_osm: '© អ្នករួមចំណែក OpenStreetMap',
   },
   zh: {
-    meet_button: '约见面',
+    meet_button: '见面',
+    meet_button_label: '见面：和 {name} 约定地点和时间',
     meet_title: '约见面',
     meet_title_other: '换个时间',
     meet_sub: '选好地点和时间。{name} 可以接受或拒绝。',
@@ -695,9 +717,11 @@ registerStrings({
     meet_done_cancel: '见面已取消。',
     meet_safety: '请在公共场所见面，并告诉朋友你去哪里。',
     meet_report: '举报',
+    meet_osm: '© OpenStreetMap 贡献者',
   },
   ko: {
-    meet_button: '만남 약속 잡기',
+    meet_button: '만나기',
+    meet_button_label: '만나기: {name}님과 장소와 시간 정하기',
     meet_title: '만남 약속 잡기',
     meet_title_other: '다른 시간 제안',
     meet_sub: '장소와 시간을 골라 주세요. {name}님이 수락하거나 거절할 수 있어요.',
@@ -753,9 +777,11 @@ registerStrings({
     meet_done_cancel: '만남을 취소했어요.',
     meet_safety: '공공장소에서 만나고, 어디 가는지 친구에게 알려 주세요.',
     meet_report: '신고',
+    meet_osm: '© OpenStreetMap 기여자',
   },
   ja: {
-    meet_button: '会う約束をする',
+    meet_button: '会う',
+    meet_button_label: '会う：{name}さんと場所と日時を決める',
     meet_title: '会う約束をする',
     meet_title_other: '別の日時を提案',
     meet_sub: '場所と日時を選んでください。{name}さんは承諾または辞退できます。',
@@ -811,5 +837,6 @@ registerStrings({
     meet_done_cancel: '約束をキャンセルしました。',
     meet_safety: '人の多い場所で会いましょう。行き先を友だちに伝えてください。',
     meet_report: '通報',
+    meet_osm: '© OpenStreetMap 貢献者',
   },
 });

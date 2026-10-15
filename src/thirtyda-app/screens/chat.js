@@ -11,7 +11,8 @@ import {
 // Inside the iOS / Android app a blocked microphone is the app's own setting, never "your browser settings" (Apple 4.2).
 import { permissionOff } from '../in-app.js';
 import { shellPlatform, shellCanDictate, shellDictate } from '../shell.js';
-// Meetings (owner 2026-10-14): the calendar button next to the mic and the meeting cards in the thread (screens/meet.js).
+// Meetings (owner 2026-10-14): the Meet button (the calendar and "Meet" in the app language, owner 2026-10-15) next to
+// the mic and the meeting cards in the thread (screens/meet.js).
 import { meetButton, meetRow, isMeet, meetChangedAt } from './meet.js';
 
 const POLL_MS = 3000;
@@ -72,6 +73,9 @@ const RULES = [
   '.chat .round-btn[aria-disabled="true"] { background: var(--disabled-bg); border-color: var(--disabled-bg); color: var(--disabled-ink); cursor: default; }',
   '.chat .round-btn.busy { opacity: 0.6; cursor: progress; }',
   '.chat .composer-input { font-size: 16px; }', // under 16px iOS Safari zooms the page on focus
+  // A 360 px phone: Meet (a word now, not just an icon), the mic, the message box and send still fit on one row.
+  '@media (max-width: 389px) { .chat .composer { gap: 6px; } }',
+  '@media (max-width: 349px) { .chat .composer { gap: 4px; } }', // 320 px: the message box keeps ~115 px or more
   '.chat-meter { display: flex; align-items: center; gap: 10px; }',
   '.chat-meter > .meter { flex: 1; }',
   '.chat-meter > .counter { min-width: 48px; text-align: right; }',
@@ -608,7 +612,7 @@ export function mountChat(root, { pair, data, gate, history = null, header: head
       mic.hidden = false;
     });
   }
-  // Set a meeting (screens/meet.js): the same round outline button, left of the mic.
+  // Meet (screens/meet.js): the calendar and the word "Meet" in the app language, an outline pill left of the mic.
   const meetCtx = {
     base, name, fmtTime, onMessages: (list) => addMessages(list), closed: () => !alive || Boolean(mode),
     onClosed: (err) => sendFailed(err, ''), report: (quote) => openReport(quote),

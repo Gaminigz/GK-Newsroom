@@ -25,9 +25,21 @@
  *
  * Each suggestion the server hands out carries `ref` (createPlaceRefs): POST /pairs/:id/meet keeps a place's address and
  * map point only with it, so a card's name and its map always belong together.
+ *
+ * Our own Phnom Penh list first (owner 2026-10-15: "Browns" found nothing — Nominatim matches whole words only, and the
+ * café is "Brown Coffee"): createPlaceSearch({ index }) asks src/lib/thirtyda-places-index.mjs before Nominatim — the
+ * named cafés, restaurants, malls, parks … of greater Phnom Penh from OpenStreetMap, kept on the server and searched
+ * there (plurals, synonyms, area words like "tk" or "BKK1", word starts, small typos, Khmer / Chinese / Korean /
+ * Japanese parts of a name: shared/place-match.js). Only for a search around Phnom Penh: its centre within 30 km of
+ * the city (PLACES_INDEX_KM), and only our places within 30 km of that centre; anywhere else in Cambodia (Siem Reap,
+ * Sihanoukville …) Nominatim alone around the person, as before. 3 or more of ours (found without a typo): Nominatim is
+ * not asked at all. Fewer: Nominatim as above, its suggestions after ours and before our near-misses (one place once:
+ * the same name within 150 m, or anything within 40 m: sameSpot). Ours are made the same way (addressLine, the same
+ * checks) and get the same ref. No list yet: Nominatim alone, as before.
  */
 import crypto from "node:crypto";
 import { NOMINATIM_ORIGIN, NOMINATIM_UA, SKIPPED, nominatimTurn } from "./thirtyda-nominatim.mjs";
+import { normPlace, kmBetween } from "../thirtyda-app/shared/place-match.js";
 import { LANGS, findContactDetails, findContactDetailsAcross, findBadWords } from "../thirtyda-app/shared/rules.js";
 import {
   PLACE_NAME_MAX, PLACE_ADDRESS_MAX, PLACE_QUERY_MIN, PLACE_QUERY_MAX, cleanLine, cutLine, checkPlace, inCambodia,
@@ -44,8 +56,15 @@ export const PLACES_CACHE_MAX = 2000;
  * search is answered "busy" at once.
  */
 export const PLACES_QUEUE_MAX = 4;
+/** Our own list's hits that are enough: with this many, Nominatim is not asked. */
+export const PLACES_INDEX_ENOUGH = 3;
 /** Phnom Penh (Independence Monument): the centre when we do not know where the person is. */
 export const PHNOM_PENH = Object.freeze({ lat: 11.56, lng: 104.93 });
+/**
+ * Our own list is greater Phnom Penh (thirtyda-places-index.mjs INDEX_BOX, its corners ~27 km from PHNOM_PENH): asked
+ * only for a search centred within this many km of the city, and only its places within this many km of that centre.
+ */
+export const PLACES_INDEX_KM = 30;
 /** Half the side of the box the search prefers, in degrees (≈ 22 km at Phnom Penh). */
 export const VIEW_HALF = 0.2;
 
@@ -97,13 +116,34 @@ export function searchUrl({ q, lang = "en", near = null }) {
   return u;
 }
 
-const passes = (text) => findContactDetails(text).ok && findBadWords(text).ok;
+/** A name or an address line the app's own checks let through: no contact detail, no bad word. */
+export const passes = (text) => findContactDetails(text).ok && findBadWords(text).ok;
 
 // The address parts, in order: the road, the area (in Cambodia the sangkat or the khan), the city or province.
 const ROAD = ["road", "pedestrian", "street", "footway", "square"];
 const AREA = ["suburb", "quarter", "neighbourhood", "village", "city_district", "town"];
 const CITY = ["city", "state", "province", "town"];
-const tidyArea = (s) => cleanLine(s).replace(/^(sangkat|khan|krong|commune|district)\s+/i, "");
+/** An area name without its "Sangkat" / "Khan" / … in front. */
+export const tidyArea = (s) => cleanLine(s).replace(/^(sangkat|khan|krong|commune|district)\s+/i, "");
+
+/**
+ * A suggestion's short address line from its parts, in order (blank ones skipped): each part kept only when it passes
+ * the checks alone and read together with the name ("Cafe 012 887" + "766 Street" is a phone number), is not the name
+ * or a part already there, and still fits (140). null when nothing is left. The Nominatim answers and our own list
+ * (src/lib/thirtyda-places-index.mjs) both make their lines here.
+ */
+export function addressLine(name, list) {
+  const parts = [];
+  const same = (a, b) => a.toLowerCase() === b.toLowerCase();
+  for (const raw of list) {
+    const part = cleanLine(raw);
+    if (!part || same(part, name) || parts.some((x) => same(x, part))) continue;
+    const next = [...parts, part].join(", ");
+    if (Array.from(next).length > PLACE_ADDRESS_MAX || !passes(next) || !findContactDetailsAcross([name, next]).ok) continue;
+    parts.push(part);
+  }
+  return parts.join(", ") || null;
+}
 
 /**
  * One Nominatim result → { name, address, lat, lng }, or null (no point, no name, or a name the app's checks would
@@ -118,14 +158,8 @@ export function placeFromResult(r) {
   const name = cutLine(cleanLine(r?.name) || cleanLine(String(r?.display_name ?? "").split(",")[0]), PLACE_NAME_MAX);
   if (Array.from(name).length < 2 || !passes(name)) return null;
   const first = (keys, tidy = cleanLine) => keys.map((k) => tidy(a[k])).find(Boolean) || "";
-  const parts = [];
-  for (const part of [first(ROAD), first(AREA, tidyArea), first(CITY, tidyArea)]) {
-    if (!part || part === name || parts.includes(part)) continue;
-    const next = [...parts, part].join(", ");
-    if (Array.from(next).length > PLACE_ADDRESS_MAX || !passes(next) || !findContactDetailsAcross([name, next]).ok) continue;
-    parts.push(part);
-  }
-  return { name, address: parts.join(", ") || null, lat: round6(lat), lng: round6(lng) };
+  const address = addressLine(name, [first(ROAD), first(AREA, tidyArea), first(CITY, tidyArea)]);
+  return { name, address, lat: round6(lat), lng: round6(lng) };
 }
 
 /** The suggestions of one Nominatim answer: at most 6, each once (same name and address). */
@@ -144,11 +178,43 @@ export function placesFrom(list) {
   return out;
 }
 
+/** Metres between two suggestions (Infinity when either has no point). */
+const metres = (a, b) => (Number.isFinite(a?.lat) && Number.isFinite(b?.lat) ? kmBetween(a, b) * 1000 : Infinity);
+/** One place twice: anything within 40 m, or the same name (case, accents, punctuation aside) within 150 m. */
+export const SAME_SPOT_M = 40;
+export const SAME_NAME_M = 150;
+
+/**
+ * Two suggestions that are one place (SAME_SPOT_M / SAME_NAME_M) — by where they are, never by their words: two branches
+ * of a chain with the same name and the same area line are two places.
+ */
+export function sameSpot(a, b) {
+  const m = metres(a, b);
+  return m < SAME_SPOT_M || (m < SAME_NAME_M && normPlace(a.name) === normPlace(b.name));
+}
+
+/**
+ * Our own suggestions first, then Nominatim's that are not one of ours again (sameSpot): at most 6.
+ */
+export function mergePlaces(own, more, limit = PLACES_LIMIT) {
+  const out = [...(own || [])].slice(0, limit);
+  for (const p of more || []) {
+    if (out.length >= limit) break;
+    if (!out.some((o) => sameSpot(o, p))) out.push(p);
+  }
+  return out;
+}
+
 /**
  * A place search with its own cache. fetchImpl(url, init) is the server's outbound fetch (the dev server's test stand-in
  * may answer it, src/lib/thirtyda-test-fetch.mjs); turn is the shared Nominatim queue. Both, and the clock, are for tests.
+ * index: our own place list (src/lib/thirtyda-places-index.mjs createPlaceIndex: search({ q, lang, centre, limit }) →
+ * { places, sure } — the first `sure` matched without a typo — or null while there is no list yet), asked first when
+ * the search centre is within PLACES_INDEX_KM of Phnom Penh; 3 sure ones are enough; none at all (or a centre further
+ * away) → Nominatim alone, exactly as before.
  */
 export function createPlaceSearch({
+  index = null,
   fetchImpl = (url, init) => globalThis.fetch(url, init),
   turn = nominatimTurn,
   now = () => Date.now(),
@@ -178,17 +244,44 @@ export function createPlaceSearch({
     if (!query) return { places: [] };
     const centre = searchCentre(near);
     const language = LANGS.includes(lang) ? lang : "en";
+    // Our own Phnom Penh list first: in memory, forgiving, nothing leaves the server (src/lib/thirtyda-places-index.mjs).
+    // Only around Phnom Penh: a person in Siem Reap searching "Brown Coffee" wants the one there, not ours 300 km away.
+    const started = Date.now();
+    let own = null;
+    if (index && kmBetween(centre, PHNOM_PENH) <= PLACES_INDEX_KM) {
+      try {
+        own = await index.search({ q: query, lang: language, centre, limit: PLACES_LIMIT });
+      } catch (err) {
+        onError(err);
+        own = null;
+      }
+    }
+    const ownPlaces = Array.isArray(own?.places) ? own.places : [];
+    const sure = ownPlaces.slice(0, Math.max(0, Number(own?.sure) || 0)); // matched without a typo
+    const typos = ownPlaces.slice(sure.length);
+    if (sure.length >= PLACES_INDEX_ENOUGH) return { places: ownPlaces.slice(0, PLACES_LIMIT) };
+    // Not enough of ours: Nominatim, within what is left of the deadline (the first search after a start may have
+    // waited a moment for the stored list).
+    const r = await nominatim(query, language, centre, Math.max(1, deadlineMs - (Date.now() - started)));
+    if (!ownPlaces.length) return r;
+    // Ours, then Nominatim's, then our near-misses (a typo): "busy" or "unavailable" does not matter while there is
+    // something to pick.
+    return { places: mergePlaces(mergePlaces(sure, r.places), typos), ...(r.cached ? { cached: true } : {}) };
+  }
+
+  /** Nominatim's suggestions for one search: the cache, the shared queue, "busy", the deadline. */
+  function nominatim(query, language, centre, timeLeftMs) {
     const key = `${language}|${query.toLowerCase()}|${centre.lat.toFixed(1)},${centre.lng.toFixed(1)}`;
     const hit = cache.get(key);
     if (hit && now() - hit.at < ttlMs) {
       cache.delete(key);
       cache.set(key, hit);
-      return { places: hit.places, cached: true };
+      return Promise.resolve({ places: hit.places, cached: true });
     }
     if (hit) cache.delete(key);
     if (inflight.has(key)) return inflight.get(key);
     // The queue is shared with the area names (src/lib/thirtyda-geo.mjs): count every lookup that waits, not only mine.
-    if (queued() >= queueMax) return { places: [], busy: true };
+    if (queued() >= queueMax) return Promise.resolve({ places: [], busy: true });
     waiting++;
     let started = false;
     let late = false; // past the deadline: if its turn has not come yet, it never asks Nominatim
@@ -211,13 +304,14 @@ export function createPlaceSearch({
       .finally(() => {
         if (!started) waiting--;
       });
-    // The whole search, its wait for a turn included, has at most `deadlineMs`: the app never shows "Searching…" for long.
+    // The whole search, its wait for a turn included, has at most `deadlineMs` (here: what is left of it): the app never
+    // shows "Searching…" for long.
     let timer = null;
     const deadline = new Promise((resolve) => {
       timer = setTimeout(() => {
         late = true;
         resolve({ places: [], unavailable: true });
-      }, deadlineMs);
+      }, timeLeftMs);
       timer.unref?.();
     });
     const p = Promise.race([job, deadline]).finally(() => {

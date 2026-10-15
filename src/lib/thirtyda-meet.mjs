@@ -3,7 +3,8 @@
  * accepts; the other party can see the location; clicking the location opens Google Maps"). The rules: shared/meet.js.
  *
  *   GET  /places?q=…[&near=lat,lng]  → { places: [{ name, address, lat, lng, ref }], cached?, busy?, unavailable? }
- *        the place search (src/lib/thirtyda-places.mjs → OpenStreetMap Nominatim), asked only on Enter or the Search
+ *        the place search (src/lib/thirtyda-places.mjs: our own Phnom Penh list first, src/lib/thirtyda-places-index.mjs,
+ *        then OpenStreetMap Nominatim), asked only on Enter or the Search
  *        button (never as you type: the Nominatim usage policy). Only for someone with a Level 3 chat (users.level 3);
  *        near = the asker's stored point when not given; 10 searches a minute each. `ref`: the server's signature of
  *        that suggestion for that person (1 hour).
@@ -33,6 +34,7 @@ import {
   checkPlace, checkMeetTime, placeTexts, placeLine, meetActionCheck, meetsLastHour, meetView, samePlace, keptPlace,
 } from "../thirtyda-app/shared/meet.js";
 import { createPlaceSearch, createPlaceRefs, parseNear, cleanQuery } from "./thirtyda-places.mjs";
+import { createPlaceIndex } from "./thirtyda-places-index.mjs";
 import { windowLimiter } from "./thirtyda-telegram-bot.mjs";
 import { outboundFetch } from "./thirtyda-test-fetch.mjs";
 
@@ -72,7 +74,10 @@ export function meetRoutes({
   const daily = limits.daily ?? windowLimiter(864e5);
   const searches = limits.searches ?? windowLimiter(60e3);
   let search = placeSearch;
-  const searcher = () => (search ??= createPlaceSearch({ fetchImpl: outboundFetch() }));
+  // Our own Phnom Penh place list first (kept in Mongo or a local file, refreshed weekly from Overpass), then Nominatim.
+  const searcher = () => (search ??= createPlaceSearch({
+    fetchImpl: outboundFetch(), index: createPlaceIndex({ fetchImpl: outboundFetch() }),
+  }));
   let refs = placeRefs;
   const signer = () => (refs ??= createPlaceRefs());
 
