@@ -213,8 +213,9 @@
     import('/30da/shared/rules.js'), import('/30da/shared/questions.js'),
     import('/30da/shared/question-slots.js'), import('/30da/shared/conversation.js'), import('/30da/shared/pin.js'),
     import('/30da/shared/terms.js'), import('/30da/shared/meet.js'), import('/30da/shared/ways.js'),
-  ]).then(([rules, questions, slots, conversation, pin, terms, meet, ways]) => {
-    R = { ...rules, ...questions, ...slots, ...conversation, ...pin, ...terms, ...meet, ...ways };
+    import('/30da/shared/place-match.js'),
+  ]).then(([rules, questions, slots, conversation, pin, terms, meet, ways, placeMatch]) => {
+    R = { ...rules, ...questions, ...slots, ...conversation, ...pin, ...terms, ...meet, ...ways, ...placeMatch };
     // Screen 2 (Create profile) starts after the community rules' "I agree" too (the API answers only after this).
     if (S === 2) {
       try { window.localStorage.setItem(R.TERMS_KEY, JSON.stringify(R.newAgreement())); } catch { /* storage blocked */ }
@@ -867,7 +868,8 @@
 
   // ------------------------------------------------------------------ meetings (src/lib/thirtyda-meet.mjs)
 
-  // The demo's place search: a few Phnom Penh places instead of OpenStreetMap (nothing leaves the browser). Each has its
+  // The demo's place search: a few Phnom Penh places instead of OpenStreetMap (nothing leaves the browser), searched
+  // the way the server searches its own list (shared/place-match.js: "Browns", "brown tk", a typo …). Each has its
   // OpenStreetMap point, so Google Maps drops a pin on it (a name search can list a sponsored shop first).
   const DEMO_PLACES = [
     { name: 'Brown Coffee Toul Kork', address: 'Street 315, Boeung Kak 2, Toul Kork, Phnom Penh', lat: 11.5808, lng: 104.8959 },
@@ -876,6 +878,8 @@
     { name: 'Wat Phnom', address: 'Daun Penh, Phnom Penh', lat: 11.5762, lng: 104.9231 },
     { name: 'Independence Monument', address: 'Norodom Blvd, BKK1, Phnom Penh', lat: 11.5564, lng: 104.9282 },
   ];
+  const DEMO_KINDS = { 'Brown Coffee Toul Kork': 'cafe', 'Brown Coffee BKK1': 'cafe', 'Aeon Mall Phnom Penh': 'mall', 'Wat Phnom': 'attraction', 'Independence Monument': 'attraction' };
+  let demoEntries = null;
 
   function meetMessage(from, atMs, meetAtMs, place, extra = {}) {
     const at = iso(atMs);
@@ -889,10 +893,12 @@
   function places({ url }) {
     const u = me();
     if ((u.level ?? 1) < 3) throw fail(403, 'chat_closed', 'Meetings are for a Level 3 chat.');
-    const q = String(url.searchParams.get('q') || '').trim().toLowerCase();
-    if (q.length < R.PLACE_QUERY_MIN) return { places: [] };
-    const words = q.split(/\s+/);
-    return { places: DEMO_PLACES.filter((p) => words.every((w) => `${p.name} ${p.address}`.toLowerCase().includes(w))) };
+    const q = R.cleanLine(url.searchParams.get('q'));
+    if (Array.from(q).length < R.PLACE_QUERY_MIN) return { places: [] };
+    if (!demoEntries) {
+      demoEntries = DEMO_PLACES.map((p) => R.placeEntry({ names: [p.name], kind: DEMO_KINDS[p.name], lat: p.lat, lng: p.lng, areaText: p.address }, p));
+    }
+    return { places: R.matchPlaces(demoEntries, q, { centre: { lat: 11.56, lng: 104.93 } }).map((m) => m.entry.data) };
   }
 
   function proposeMeet(ctx) {

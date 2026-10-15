@@ -117,7 +117,8 @@
  * so a guest can report one: an admin flag "Reported by a guest", rate-limited per address.
  *
  * Meetings (owner 2026-10-14, src/lib/thirtyda-meet.mjs + src/thirtyda-app/shared/meet.js): in an open Level 3 chat,
- * GET /places?q= (OpenStreetMap search through the server), POST /pairs/:id/meet { place, at } (a 'meet' message in the
+ * GET /places?q= (OpenStreetMap search through the server: our own Phnom Penh list first, src/lib/thirtyda-places-index.mjs,
+ * then Nominatim), POST /pairs/:id/meet { place, at } (a 'meet' message in the
  * chat stream: the place through the chat's contact-detail and bad-word checks, one open suggestion per pair) and
  * POST /pairs/:id/meet/:mid { action: accept | decline | cancel }. Times are Phnom Penh time (UTC+7).
  */

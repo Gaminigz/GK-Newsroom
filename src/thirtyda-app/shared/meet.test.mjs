@@ -1,7 +1,7 @@
 // Run: npm run 30da:test (or node --test src/thirtyda-app/shared/meet.test.mjs)
 // Meetings in the Level 3 chat (owner 2026-10-14): Phnom Penh time whatever the device clock, future-only within 60 days,
 // the place as sent, the Google Maps link, who may accept / decline / cancel, the status line each side sees, the
-// per-conversation limit — and the app's words in all 5 languages, the calendar button next to the mic.
+// per-conversation limit — and the app's words in all 5 languages, the Meet button (the calendar and the word) next to the mic.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -230,4 +230,47 @@ test('the chat: the calendar button sits left of the mic, meetings draw their ow
   assert.match(meet, /ctx\.report\(\{ id: cur\.id, text: quote \}\)/);
   assert.match(chat, /rows\.get\(m\.id\)\?\.update\?\.\(known\)/);
   assert.match(chat, /lastAt = Math\.max\(lastAt, ms\(m\.at\), isMeet\(m\) \? meetChangedAt\(m\) : 0\);/);
+});
+
+test('the composer button says "Meet" in the app language (owner 2026-10-15), its spoken name starts with it, and it stays compact', () => {
+  const meet = read('../screens/meet.js');
+  const reg = meet.slice(meet.lastIndexOf('registerStrings({'));
+  const value = (lang, key) => {
+    const block = reg.slice(reg.indexOf(`  ${lang}: {`), reg.indexOf('\n  },', reg.indexOf(`  ${lang}: {`)));
+    return new RegExp(`^ {4}${key}: '([^']*)',$`, 'm').exec(block)?.[1];
+  };
+  const WORD = { en: 'Meet', km: 'ជួបគ្នា', zh: '见面', ko: '만나기', ja: '会う' };
+  for (const lang of LANGS) {
+    assert.equal(value(lang, 'meet_button'), WORD[lang], lang);
+    const label = value(lang, 'meet_button_label');
+    assert.ok(label.startsWith(WORD[lang]) && label.includes('{name}'), `${lang}: the spoken name starts with the word (${label})`);
+  }
+  assert.equal(value('en', 'meet_title'), 'Set a meeting', 'the sheet keeps its title');
+  // The word through t() (Khmer too: khmerKeep), never written into the code.
+  const code = meet.slice(0, meet.lastIndexOf('registerStrings({'));
+  assert.match(code, /'aria-label': t\('meet_button_label', \{ name: ctx\.name \}\), title: t\('meet_title'\),/);
+  assert.match(code, /\}, ownIcon\('calendar', 18\), el\('span', \{ class: 'meet-btn-text' \}, t\('meet_button'\)\)\);/);
+  for (const w of Object.values(WORD).slice(1)) assert.ok(!code.includes(w), `${w} only in the strings`);
+  // A pill as tall as the round buttons beside it, one line; tighter on a phone under 390 px (measured at 360 px: the
+  // message box keeps 141–149 px in all 5 languages, the mic and send stay 44 px, nothing wraps).
+  assert.match(code, /'\.composer \.meet-btn \{ flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 5px; width: auto; min-width: 44px; padding: 0 13px 0 11px; border-radius: 999px; font-size: 14px; font-weight: 700; line-height: 1; white-space: nowrap; \}'/);
+  assert.match(code, /'@media \(max-width: 389px\) \{ \.composer \.meet-btn \{ gap: 3px; padding: 0 10px 0 8px; font-size: 13px; \}/);
+  const chat = read('../screens/chat.js');
+  assert.match(chat, /'@media \(max-width: 389px\) \{ \.chat \.composer \{ gap: 6px; \} \}'/);
+  assert.match(chat, /el\('div', \{ class: 'composer' \}, meetBtn, mic, input, sendBtn\)/, 'still left of the mic');
+});
+
+test('a 320 px phone: Meet keeps its word, a step tighter than at 360 px, so the message box keeps ~115 px or more', () => {
+  // Measured in headless Chromium (app.css + both RULES, the mic shown, 280 px composer): the message box 116–123 px in
+  // all 5 languages (101–109 before this step), the mic and send 44 px, nothing overflows; at 360 px still 141–149 px.
+  const meet = read('../screens/meet.js');
+  const code = meet.slice(0, meet.lastIndexOf('registerStrings({'));
+  const at389 = code.indexOf("'@media (max-width: 389px) { .composer .meet-btn {");
+  const at349 = code.indexOf("'@media (max-width: 349px) { .composer .meet-btn { gap: 2px; padding: 0 7px 0 6px; font-size: 12px; } }'");
+  assert.ok(at389 > 0 && at349 > at389, 'after the 360 px step, so it wins');
+  assert.match(code, /':lang\(km\) \.composer \.meet-btn \{ font-size: 13\.5px;/, 'Khmer keeps its own size');
+  const chat = read('../screens/chat.js');
+  const gap389 = chat.indexOf("'@media (max-width: 389px) { .chat .composer { gap: 6px; } }'");
+  const gap349 = chat.indexOf("'@media (max-width: 349px) { .chat .composer { gap: 4px; } }'");
+  assert.ok(gap389 > 0 && gap349 > gap389);
 });
