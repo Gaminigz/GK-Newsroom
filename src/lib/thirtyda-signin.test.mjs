@@ -490,7 +490,7 @@ test('privacy + delete-data: plain one-line points, in each language, flags on t
     // Never a wall: each point one plain line.
     for (const li of p.match(/<li>[\s\S]*?<\/li>/g) || []) assert.ok([...shown(li).trim()].length <= 240, `privacy ${lang}: one line, not a wall: ${shown(li)}`);
     // Delete-data: email us (subject filled in), within 30 days, links back to the policy in the same language.
-    assert.ok(d.includes(`<h1>${t.del_title}</h1>`) && d.includes('Delete my 30+DA account') && d.includes('30'));
+    assert.ok(d.includes(`<h1>${t.del_title} · 30+DA:Safe Calm Dating for 30+</h1>`) && d.includes("Delete my 30+DA account") && d.includes("30"));
     assert.ok(d.includes('href="mailto:gk.smart@ggmt.sg?subject=Delete%20my%2030%2BDA%20account"'));
     assert.ok(d.includes(`href="/30da/privacy?lang=${lang}"`));
   }

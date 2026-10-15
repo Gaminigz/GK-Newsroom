@@ -37,6 +37,12 @@ import { APP_SCHEME, APP_PACKAGE } from "./thirtyda-signin.mjs";
 export const CONTACT_EMAIL = "gk.smart@ggmt.sg";
 /** Who runs 30+DA (owner 2026-10-14): on every public page, next to the email. */
 export const OPERATOR = "GGMT PTE. LTD.";
+/**
+ * The app and its developer exactly as the Google Play listing names them (Play's Account Deletion rule, rejection
+ * 2026-10-14: the delete-data link must name the entity on the listing). The privacy and delete-data pages carry both.
+ */
+export const PLAY_APP_NAME = "30+DA:Safe Calm Dating for 30+";
+export const PLAY_DEVELOPER = "Kassapa Gamini Gunasingha";
 /** The day the privacy policy last changed (YYYY-MM-DD): the one place to change it. Each language writes it its own way (policyDate). */
 export const POLICY_DATE = "2026-10-14";
 /** The subject a deletion email asks for (English in every language: the team reads it; the mail link fills it in). */
@@ -168,7 +174,7 @@ export const PAGE_STRINGS = {
     priv_withdraw: "delete your account at any time (My profile → Delete my account), or email us.",
     del_title: "Delete your data",
     del_lede: "Two ways. Both delete your account, your photos and your messages.",
-    del_for: "For the 30+DA app by {operator}.",
+    del_for: "For the {app} app by {developer} ({operator}).",
     del_app_k: "In the app:",
     del_app: "My profile → Delete my account. It is instant.",
     del_steps_k: "Step by step:",
@@ -377,7 +383,7 @@ export const PAGE_STRINGS = {
     priv_withdraw: "លុបគណនីរបស់អ្នកបានគ្រប់ពេល (ប្រវត្តិរូបរបស់ខ្ញុំ → លុបគណនីរបស់ខ្ញុំ) ឬអ៊ីមែលមកយើង។",
     del_title: "លុបទិន្នន័យរបស់អ្នក",
     del_lede: "មានពីរវិធី។ វិធីទាំងពីរលុបគណនី រូបថត និងសាររបស់អ្នក។",
-    del_for: "សម្រាប់កម្មវិធី 30+DA ដោយ {operator}។",
+    del_for: "សម្រាប់កម្មវិធី {app} ដោយ {developer} ({operator})។",
     del_app_k: "ក្នុងកម្មវិធី៖",
     del_app: "ប្រវត្តិរូបរបស់ខ្ញុំ → លុបគណនីរបស់ខ្ញុំ។ លុបភ្លាមៗ។",
     del_steps_k: "ម្ដងមួយជំហាន៖",
@@ -581,7 +587,7 @@ export const PAGE_STRINGS = {
     priv_withdraw: "随时删除你的账号（我的资料 → 删除我的账号），或发邮件给我们。",
     del_title: "删除你的数据",
     del_lede: "两种方式，都会删除你的账号、照片和消息。",
-    del_for: "适用于 {operator} 的 30+DA 应用。",
+    del_for: "适用于 {developer}（{operator}）的 {app} 应用。",
     del_app_k: "在应用里：",
     del_app: "我的资料 → 删除我的账号。立即删除。",
     del_steps_k: "具体步骤：",
@@ -785,7 +791,7 @@ export const PAGE_STRINGS = {
     priv_withdraw: "언제든 계정을 삭제하거나(내 프로필 → 내 계정 삭제) 이메일을 보내 주세요.",
     del_title: "내 데이터 삭제",
     del_lede: "두 가지 방법이 있어요. 둘 다 계정, 사진, 메시지를 삭제해요.",
-    del_for: "{operator}의 30+DA 앱.",
+    del_for: "{developer}({operator})의 {app} 앱.",
     del_app_k: "앱에서:",
     del_app: "내 프로필 → 내 계정 삭제. 바로 삭제돼요.",
     del_steps_k: "단계별로:",
@@ -989,7 +995,7 @@ export const PAGE_STRINGS = {
     priv_withdraw: "いつでもアカウントを削除できます（マイプロフィール → アカウントを削除）。メールでも受け付けます。",
     del_title: "データの削除",
     del_lede: "方法は2つ。どちらもアカウント・写真・メッセージを削除します。",
-    del_for: "{operator} の 30+DA アプリが対象です。",
+    del_for: "{developer}（{operator}）の {app} アプリが対象です。",
     del_app_k: "アプリで：",
     del_app: "マイプロフィール → アカウントを削除。すぐに削除されます。",
     del_steps_k: "手順：",
@@ -1261,6 +1267,7 @@ export function privacyPage({ lang: want, from = null } = {}) {
   const list = (lines) => `      <ul class="facts">\n${lines.join("\n")}\n      </ul>`;
   const body = `      <h1>${t.priv_title}</h1>
       <p class="doc-date">${fill(t.priv_date, { date: khmerKeep(policyDate(lang)) })}</p>
+      <p>${fill(t.del_for, { app: `<b>${esc(PLAY_APP_NAME)}</b>`, developer: `<b>${esc(PLAY_DEVELOPER)}</b>`, operator: `<b>${OPERATOR}</b>` })}</p>
       <p class="doc-lede">${t.priv_lede}</p>
       <p>${fill(t.priv_operator, { operator: `<b>${OPERATOR}</b>`, mail: mailLink })}</p>
 ${list([point("priv_keep"), point("priv_why"), `        <li>${t.priv_never}</li>`])}
@@ -1278,7 +1285,7 @@ ${list(PRIVACY_CHOICES.map(point))}
       <p class="doc-contact">${t.run_by} <b>${OPERATOR}</b> · ${t.questions} ${mailLink}</p>
 ${backToApp(t, from)}`;
   return page({
-    title: `${t.priv_title} · 30+DA`,
+    title: `${t.priv_title} · ${PLAY_APP_NAME} · ${PLAY_DEVELOPER}`,
     lang,
     inner: docColumn({ lang, flags: flagRow(lang, (c) => `/30da/privacy?${pageQuery(c, from)}`), body }),
   });
@@ -1296,9 +1303,9 @@ export function deleteDataPage({ lang: want } = {}) {
   const lang = ok(want);
   const t = pageWords(lang);
   const mail = [fill(t.del_step1, { mail: deleteMailLink, subject: `<b>${DELETE_SUBJECT}</b>` }), t.del_step2, t.del_step3].join(" ");
-  const body = `      <h1>${t.del_title}</h1>
+  const body = `      <h1>${t.del_title} · ${esc(PLAY_APP_NAME)}</h1>
+      <p>${fill(t.del_for, { app: `<b>${esc(PLAY_APP_NAME)}</b>`, developer: `<b>${esc(PLAY_DEVELOPER)}</b>`, operator: `<b>${OPERATOR}</b>` })}</p>
       <p class="doc-lede">${t.del_lede}</p>
-      <p>${fill(t.del_for, { operator: `<b>${OPERATOR}</b>` })}</p>
       <ul class="facts">
         <li><b>${t.del_app_k}</b> ${t.del_app}</li>
 ${factLine(t, "del_steps")}
@@ -1312,7 +1319,7 @@ ${["del_goes", "kept", "kept_long"].map((k) => factLine(t, k)).join("\n")}
       <p class="doc-contact">${t.run_by} <b>${OPERATOR}</b> · ${t.questions} ${mailLink} · <a href="/30da/privacy?lang=${lang}">${t.priv_title}</a></p>
 ${backToApp(t)}`;
   return page({
-    title: `${t.del_title} · 30+DA`,
+    title: `${t.del_title} · ${PLAY_APP_NAME} · ${PLAY_DEVELOPER}`,
     lang,
     inner: docColumn({ lang, flags: flagRow(lang, (c) => `/30da/delete-data?lang=${c}`), body }),
   });

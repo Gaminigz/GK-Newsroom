@@ -157,8 +157,12 @@ test('delete-data: the developer exactly as on Google Play, the in-app steps in 
     const t = PAGE_STRINGS[lang];
     const d = deleteDataPage({ lang });
     commonChecks('delete-data', d, lang);
-    assert.ok(d.includes(`<p>${t.del_for.replace('{operator}', '<b>GGMT PTE. LTD.</b>')}</p>`), `${lang}: for the 30+DA app by GGMT PTE. LTD.`);
-    assert.ok(t.del_for.includes('30+DA'), `${lang}: names the app`);
+    // Google Play's Account Deletion rule (rejection 2026-10-14): the app and developer exactly as the listing names them.
+    const entity = t.del_for.replace('{app}', '<b>30+DA:Safe Calm Dating for 30+</b>').replace('{developer}', '<b>Kassapa Gamini Gunasingha</b>').replace('{operator}', '<b>GGMT PTE. LTD.</b>');
+    assert.ok(d.includes(`<p>${entity}</p>`), `${lang}: for the Play app by its Play developer (GGMT PTE. LTD.)`);
+    assert.ok(t.del_for.includes('{app}') && t.del_for.includes('{developer}') && t.del_for.includes('{operator}'), `${lang}: names app, developer and company`);
+    assert.ok(d.includes('30+DA:Safe Calm Dating for 30+</h1>'), `${lang}: the heading names the Play app`);
+    assert.match(d, /<title>[^<]*30\+DA:Safe Calm Dating for 30\+ · Kassapa Gamini Gunasingha<\/title>/, `${lang}: the <title> names app + developer`);
     // In page order: in the app, step by step, or by email; then what goes, what stays, how long.
     const order = [`<li><b>${t.del_app_k}</b> ${t.del_app}</li>`, `<li><b>${t.del_steps_k}</b> ${t.del_steps}</li>`, `<b>${t.del_mail_k}</b>`,
       `<li><b>${t.del_goes_k}</b> ${t.del_goes}</li>`, `<li><b>${t.kept_k}</b> ${t.kept}</li>`, `<li><b>${t.kept_long_k}</b> ${t.kept_long}</li>`,
