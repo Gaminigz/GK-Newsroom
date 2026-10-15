@@ -310,9 +310,9 @@ test('Code page, Apple: the tower draws the key card (not "Later"), says the sig
   assert.match(js, /key: 'privateKey', label: 'Private key \(\.p8\)', secret: true/);
   assert.match(js, /if \(c\.live\) return \{ pill: 'live', text: 'Live' \};/);
   assert.ok(js.includes("apple: () => 'Remove the Apple key?"), 'Remove has its own words');
-  // The tower keeps its place: tenth, after YouTube (Wan, tower 11, comes after it).
+  // The tower keeps its place: tenth, after YouTube (Wan, tower 11, and Places, tower 12, come after it).
   const order = [...js.slice(js.indexOf('const TOWERS = ['), js.indexOf('const towerNumber')).matchAll(/(?:signinTower|laterOne)\('([a-z-]+)'|key: '([a-z-]+)'/g)].map((m) => m[1] || m[2]);
-  assert.deepEqual(order, ['tiktok', 'telegram-bot', 'telegram-gateway', 'facebook', 'google', 'whatsapp', 'wechat', 'alipay', 'youtube', 'apple', 'wan']);
+  assert.deepEqual(order, ['tiktok', 'telegram-bot', 'telegram-gateway', 'facebook', 'google', 'whatsapp', 'wechat', 'alipay', 'youtube', 'apple', 'wan', 'places']);
 });
 
 test('Code page, Wan: "clips kept" counts the done jobs that still have their clip ({ $ne: null }), not the swept ones', async () => {

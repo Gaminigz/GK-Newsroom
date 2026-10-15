@@ -556,7 +556,7 @@ textarea.input.q-in {
 .btn-primary.q-save { width: auto; min-width: 150px; height: 38px; margin-top: 0; padding: 0 18px; }
 .btn-primary.q-save[disabled] { opacity: 0.4; cursor: default; }
 
-/* ---------- Code: the sign-in and messaging hub — eleven towers left to right (owner 2026-10-14) ---------- */
+/* ---------- Code: the sign-in and messaging hub — twelve towers left to right (owner 2026-10-14) ---------- */
 .cx-banner {
   margin: 0 0 16px;
   max-width: 78ch;
@@ -885,6 +885,8 @@ a.btn.cx-try-btn { display: inline-flex; align-items: center; height: 40px; colo
 .cx-job.done { color: var(--green); }
 .cx-job.failed { color: var(--red); }
 .cx-job.running, .cx-job.pending { color: #9a5b0b; }
+/* Tower 12 · Places: the test search's language. */
+.input.cx-lang { flex: none; width: 104px; }
 @media (max-width: 760px) {
   /* A phone: the bar and the row reach the screen's edges; one tower at a time, the next one peeking in. */
   .cx-bar { margin: 0 -16px 2px; padding: 8px 16px; gap: 8px 6px; }

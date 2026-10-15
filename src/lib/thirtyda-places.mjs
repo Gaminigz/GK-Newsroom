@@ -212,6 +212,10 @@ export function mergePlaces(own, more, limit = PLACES_LIMIT) {
  * { places, sure } — the first `sure` matched without a typo — or null while there is no list yet), asked first when
  * the search centre is within PLACES_INDEX_KM of Phnom Penh; 3 sure ones are enough; none at all (or a centre further
  * away) → Nominatim alone, exactly as before.
+ *
+ * search({ …, explain: true }) (the Code page's Tower 12 test search only; GET /places never asks for it) adds
+ * `explain`: { ours: was our list asked, own / sure: its hits / those without a typo, nominatim: 'not_asked' | 'asked' |
+ * 'cached' | 'busy' | 'unavailable', from: per place 'ours' | 'ours_typo' | 'nominatim' }.
  */
 export function createPlaceSearch({
   index = null,
@@ -239,16 +243,27 @@ export function createPlaceSearch({
     return placesFrom(await res.json());
   }
 
-  async function search({ q, lang = "en", near = null } = {}) {
+  async function search({ q, lang = "en", near = null, explain = false } = {}) {
+    const r = await searchOnce({ q, lang, near });
+    if (!explain) return r.answer;
+    const { answer, ours, own, sure, typos, nominatim } = r;
+    const from = (answer.places || []).map((p) => (sure.includes(p) ? "ours" : typos.includes(p) ? "ours_typo" : "nominatim"));
+    return { ...answer, explain: { ours, own: own.length, sure: sure.length, nominatim, from } };
+  }
+
+  /** One search → { answer (what GET /places returns), ours, own, sure, typos, nominatim } (the last five: explain). */
+  async function searchOnce({ q, lang, near }) {
+    const none = { ours: false, own: [], sure: [], typos: [], nominatim: "not_asked" };
     const query = cleanQuery(q);
-    if (!query) return { places: [] };
+    if (!query) return { answer: { places: [] }, ...none };
     const centre = searchCentre(near);
     const language = LANGS.includes(lang) ? lang : "en";
     // Our own Phnom Penh list first: in memory, forgiving, nothing leaves the server (src/lib/thirtyda-places-index.mjs).
     // Only around Phnom Penh: a person in Siem Reap searching "Brown Coffee" wants the one there, not ours 300 km away.
     const started = Date.now();
     let own = null;
-    if (index && kmBetween(centre, PHNOM_PENH) <= PLACES_INDEX_KM) {
+    const ours = Boolean(index && kmBetween(centre, PHNOM_PENH) <= PLACES_INDEX_KM);
+    if (ours) {
       try {
         own = await index.search({ q: query, lang: language, centre, limit: PLACES_LIMIT });
       } catch (err) {
@@ -259,14 +274,17 @@ export function createPlaceSearch({
     const ownPlaces = Array.isArray(own?.places) ? own.places : [];
     const sure = ownPlaces.slice(0, Math.max(0, Number(own?.sure) || 0)); // matched without a typo
     const typos = ownPlaces.slice(sure.length);
-    if (sure.length >= PLACES_INDEX_ENOUGH) return { places: ownPlaces.slice(0, PLACES_LIMIT) };
+    const how = { ours, own: ownPlaces, sure, typos };
+    if (sure.length >= PLACES_INDEX_ENOUGH) return { answer: { places: ownPlaces.slice(0, PLACES_LIMIT) }, ...how, nominatim: "not_asked" };
     // Not enough of ours: Nominatim, within what is left of the deadline (the first search after a start may have
     // waited a moment for the stored list).
     const r = await nominatim(query, language, centre, Math.max(1, deadlineMs - (Date.now() - started)));
-    if (!ownPlaces.length) return r;
+    const nominatimWord = r.cached ? "cached" : r.busy ? "busy" : r.unavailable ? "unavailable" : "asked";
+    if (!ownPlaces.length) return { answer: r, ...how, nominatim: nominatimWord };
     // Ours, then Nominatim's, then our near-misses (a typo): "busy" or "unavailable" does not matter while there is
     // something to pick.
-    return { places: mergePlaces(mergePlaces(sure, r.places), typos), ...(r.cached ? { cached: true } : {}) };
+    const answer = { places: mergePlaces(mergePlaces(sure, r.places), typos), ...(r.cached ? { cached: true } : {}) };
+    return { answer, ...how, nominatim: nominatimWord };
   }
 
   /** Nominatim's suggestions for one search: the cache, the shared queue, "busy", the deadline. */

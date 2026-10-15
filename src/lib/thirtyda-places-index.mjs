@@ -31,7 +31,10 @@
  * The route signs it (`ref`) like any other. ODbL: the sheet that shows suggestions credits "© OpenStreetMap contributors".
  *
  *   createPlaceIndex({ fetchImpl, store, now, … }) → { search({ q, lang, centre, limit }) → { places, sure } | null,
- *   refresh(), load(), info() }      (fetchImpl, store and the clock: for tests — no network, no Mongo there)
+ *   refresh({ force }), load(), info() }      (fetchImpl, store and the clock: for tests — no network, no Mongo there)
+ *   refresh({ force: true }): Overpass even when the stored copy is fresh (the Code page's Tower 12 "Refresh now").
+ *   info(): what Tower 12 shows — the list's time and size, where it is kept, a refresh on its way, the last Overpass
+ *   ask and the last error (its words only: never a key, there is none).
  *   `sure`: how many of the places (they come first) matched without a typo; only those count as "enough" to leave
  *   Nominatim out — a search that found only near-misses still asks it, and its near-misses come after Nominatim's. A
  *   search for a kind of place this list does not hold (a pagoda, a market: place-match.js `elsewhere`) counts only a
@@ -301,6 +304,15 @@ export function createPlaceIndex({
   let refreshing = null; // the refresh on its way (one at a time)
   let failedAt = -Infinity; // the last refresh that failed
   let fetches = 0;
+  let askedAt = null; // the last time Overpass was asked (ok or not)
+  let okAt = null; // the last time Overpass answered with a good list
+  let lastError = null; // { at, message } — the last thing that went wrong (load, Overpass, save)
+  let sized = null; // { at, bytes }: the current copy's size, gzip'd (worked out once, for info())
+
+  const noteError = (err) => {
+    lastError = { at: now(), message: String(err instanceof Error ? err.message : err).slice(0, 200) };
+    onError(err);
+  };
 
   const use = (copy) => {
     if (!copy?.rows?.length) return false;
@@ -313,13 +325,14 @@ export function createPlaceIndex({
     loading ??= Promise.resolve()
       .then(() => store.load())
       .then((copy) => { use(copy); })
-      .catch((err) => onError(err))
+      .catch((err) => noteError(err))
       .finally(() => { loaded = true; });
     return loading;
   }
 
   async function fromOverpass() {
     fetches++;
+    askedAt = now();
     const res = await fetchImpl(OVERPASS_URL, {
       method: "POST",
       headers: {
@@ -337,26 +350,30 @@ export function createPlaceIndex({
     if (/error|timed out|out of memory/i.test(remark)) throw new Error(`overpass: ${remark.slice(0, 160)}`);
     const rows = rowsFromOverpass(json, box);
     if (rows.length < minRows) throw new Error(`overpass: only ${rows.length} places`);
+    okAt = now();
     return rows;
   }
 
-  /** Refresh now (one at a time: a second call gets the same one). → true when the list is fresh after it. */
-  function refresh() {
+  /**
+   * Refresh now (one at a time: a second call gets the same one). → true when the list is fresh after it. force: ask
+   * Overpass even when the stored copy is fresh (the admin's "Refresh now").
+   */
+  function refresh({ force = false } = {}) {
     refreshing ??= (async () => {
       try {
         // Another server (or an earlier run) may have stored a fresh copy meanwhile: then no need to ask Overpass.
-        const stored = await Promise.resolve().then(() => store.load()).catch((err) => { onError(err); return null; });
-        if (stored && now() - stored.at < maxAgeMs) {
+        const stored = await Promise.resolve().then(() => store.load()).catch((err) => { noteError(err); return null; });
+        if (!force && stored && now() - stored.at < maxAgeMs) {
           use(stored);
           return true;
         }
         const copy = { at: now(), rows: await fromOverpass() };
         use(copy);
-        await Promise.resolve().then(() => store.save(copy)).catch((err) => onError(err)); // in memory it is fresh anyway
+        await Promise.resolve().then(() => store.save(copy)).catch((err) => noteError(err)); // in memory it is fresh anyway
         return true;
       } catch (err) {
         failedAt = now();
-        onError(err);
+        noteError(err);
         return false; // the old copy stays
       } finally {
         refreshing = null;
@@ -393,6 +410,28 @@ export function createPlaceIndex({
     search,
     refresh,
     load,
-    info: () => ({ at: current?.at ?? null, count: current?.rows.length ?? 0, refreshing: Boolean(refreshing), fetches }),
+    info,
   };
+
+  /** What the Code page's Tower 12 shows. bytes: the list gzip'd, as it is kept (worked out once per list). */
+  function info() {
+    if (current && sized?.at !== current.at) sized = { at: current.at, bytes: encodeCopy(current).length };
+    return {
+      at: current?.at ?? null,
+      count: current?.rows.length ?? 0,
+      bytes: current ? sized.bytes : 0,
+      store: store.kind ?? null,
+      loaded,
+      stale: stale(),
+      refreshing: Boolean(refreshing),
+      fetches,
+      askedAt,
+      okAt,
+      failedAt: Number.isFinite(failedAt) ? failedAt : null,
+      // A failed refresh is not tried again by a search before this (the admin's "Refresh now" may).
+      retryAt: Number.isFinite(failedAt) && stale() ? failedAt + retryMs : null,
+      lastError,
+      maxAgeMs,
+    };
+  }
 }

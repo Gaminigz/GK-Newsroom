@@ -53,6 +53,15 @@ export const MEET_TEXT = Object.freeze({
   level3: "Meetings are for a Level 3 chat.",
 });
 
+/**
+ * The server's one place list and one place search (its cache, its Nominatim queue): GET /places and the Code page's
+ * Tower 12 (src/lib/thirtyda-hub-places.mjs: status, Refresh now, a test search) share them.
+ */
+let sharedIndex = null;
+let sharedSearch = null;
+export const placeIndex = () => (sharedIndex ??= createPlaceIndex({ fetchImpl: outboundFetch() }));
+export const placeSearch = () => (sharedSearch ??= createPlaceSearch({ fetchImpl: outboundFetch(), index: placeIndex() }));
+
 /** When a meeting message last changed: a later accept / decline / cancel / replace shows up in the next poll. */
 export const changedAt = (m) => Math.max(Date.parse(m?.at) || 0, Date.parse(m?.meet?.updatedAt) || 0);
 
@@ -75,9 +84,7 @@ export function meetRoutes({
   const searches = limits.searches ?? windowLimiter(60e3);
   let search = placeSearch;
   // Our own Phnom Penh place list first (kept in Mongo or a local file, refreshed weekly from Overpass), then Nominatim.
-  const searcher = () => (search ??= createPlaceSearch({
-    fetchImpl: outboundFetch(), index: createPlaceIndex({ fetchImpl: outboundFetch() }),
-  }));
+  const searcher = () => (search ??= placeSearch());
   let refs = placeRefs;
   const signer = () => (refs ??= createPlaceRefs());
 

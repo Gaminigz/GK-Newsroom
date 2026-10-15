@@ -1,10 +1,11 @@
-// 30+DA super admin · Code — the sign-in and messaging hub, the GK API Hub (owner 2026-10-14): eleven towers left to right,
+// 30+DA super admin · Code — the sign-in and messaging hub, the GK API Hub (owner 2026-10-14): twelve towers left to right,
 // in the owner's order (1 TikTok, 2 Telegram Bot, 3 Telegram Gateway, 4 Facebook, 5 Google, 6 WhatsApp, 7 WeChat, 8 Alipay,
-// 9 YouTube, 10 Apple, 11 Wan; 7–9 are "Later" placeholders), each with the keys it needs. Tower 10 is Sign in with Apple
+// 9 YouTube, 10 Apple, 11 Wan, 12 Places; 7–9 are "Later" placeholders), each with the keys it needs. Tower 10 is Sign in with Apple
 // (owner 2026-10-14): the sign-in needs no key; its key (Team ID, Key ID, the .p8) lets a deleted account end its Apple
 // link. Tower 11 is Wan (owner 2026-10-14): image to video on our M5 for Yai Media Director — a client token and a worker
 // token (each shown once, then only its last 4), On / Off, the sizes and seconds allowed, and a Try that plays its clip
-// here (src/lib/thirtyda-hub-wan.mjs). A strip at the top jumps to a tower; ‹ ›, the
+// here (src/lib/thirtyda-hub-wan.mjs). Tower 12 is Places (owner 2026-10-15): our own Phnom Penh place list — its
+// status, Refresh now and a test search (src/lib/thirtyda-hub-places.mjs). A strip at the top jumps to a tower; ‹ ›, the
 // arrow keys and the slider move along; the last tower is remembered in this browser. Later all our apps use this hub.
 // Telegram and WhatsApp send the sign-in code: offered in the app only once a test code went through since the
 // keys were saved, and stopped again by a lasting failure (no balance, bad token, template). Google, Facebook and
@@ -19,7 +20,11 @@ const API = '/30da/admin/api/connections';
 const $ = (id) => document.getElementById(id);
 
 // wanReveal: a Wan token just made { kind, token } — this page's memory only, until "Done" (never stored, never sent back).
-const state = { data: null, busy: false, test: {}, testPhone: {}, wanReveal: null, wanBusy: null, wanTrying: false, wanTryError: null };
+// placesBusy / placesError: Tower 12's Refresh now; placesTry: its test search { busy, result, error }.
+const state = {
+  data: null, busy: false, test: {}, testPhone: {}, wanReveal: null, wanBusy: null, wanTrying: false, wanTryError: null,
+  placesBusy: false, placesError: null, placesTry: {},
+};
 
 // ---------- dom ----------
 function h(tag, attrs = {}, ...kids) {
@@ -49,6 +54,8 @@ const LOGOS = {
   youtube: '<rect x="2.6" y="5.6" width="18.8" height="12.8" rx="4" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M10.2 9.2v5.6l4.8-2.8-4.8-2.8Z" fill="currentColor"/>',
   // Wan (tower 11): a video camera with a play mark, our own drawing.
   wan: '<rect x="2.8" y="5.6" width="13" height="12.8" rx="2.6" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="m15.8 10.4 5.2-3v9.2l-5.2-3" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="M7.6 9.4v5.2l4.3-2.6-4.3-2.6Z" fill="currentColor"/>',
+  // Places (tower 12): a map pin, our own drawing.
+  places: '<path d="M12 21s-6.6-6.1-6.6-11.2a6.6 6.6 0 0 1 13.2 0C18.6 14.9 12 21 12 21Z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><circle cx="12" cy="9.8" r="2.4" stroke="currentColor" stroke-width="1.6" fill="none"/>',
   apple: '<path d="M12 8.1c-1.1-.9-3.6-1.4-5.1.5-1.6 2-1.1 5.8.6 8.4 1 1.5 2 2.6 3.1 2.5.9-.1 1.1-.6 2.1-.6 1 0 1.3.5 2.1.6 1.2.1 2.2-1.1 3.1-2.5.6-.9 1-1.8 1.2-2.4-1.7-.8-2.5-3.3-1.1-5 .3-.4.6-.7 1-.9-1.5-1.9-4-1.7-5.2-.6Z" fill="currentColor"/><path d="M12.1 7.3c-.1-1.6 1.2-3.2 2.8-3.3.2 1.7-1.2 3.3-2.8 3.3Z" fill="currentColor"/>',
 };
 function logo(id) {
@@ -1293,7 +1300,7 @@ function wanCard(w) {
 
 /**
  * While a Try waits or renders, the page asks again every 5 seconds. Only the Wan tower is re-drawn (renderWan), and only
- * when its status, queue or jobs changed: the other ten towers (what is typed there, an error, a shown secret) are never
+ * when its status, queue or jobs changed: the other towers (what is typed there, an error, a shown secret) are never
  * touched, and a box being typed in inside the Wan tower holds the asking. Nothing new for 10 minutes (the M5 asleep)
  * stops it — no polling for hours, no sign-in bounce from an idle tab — and "Check again" asks once more.
  */
@@ -1346,7 +1353,188 @@ function checkWanAgain() {
   return askWan();
 }
 
-// ---------- the hub: eleven towers left to right ----------
+// ---------- Tower 12 · Places ----------
+// Our own Phnom Penh place list (src/lib/thirtyda-hub-places.mjs, src/lib/thirtyda-places-index.mjs): the app's place
+// search asks it first, then Nominatim. The tower shows the list (places, size, age, where it is kept), the last ask of
+// OpenStreetMap and the last error; "Refresh now" asks OpenStreetMap again (in the background, up to 2 minutes: this
+// page asks every 4 seconds meanwhile); a test search shows which hits are ours and whether Nominatim was asked.
+
+const PLACES_PILLS = {
+  live: { pill: 'live', text: 'Live' },
+  old: { pill: 'warn', text: 'Out of date' },
+  none: { pill: 'warn', text: 'No list yet' },
+  refreshing: { pill: 'wait', text: 'Refreshing' },
+};
+const placesPill = (p) => PLACES_PILLS[p?.status] || PLACES_PILLS.none;
+const kilobytes = (n) => `${Math.max(1, Math.round(n / 1024))} KB`;
+const STORE_WORDS = { mongo: 'kept in Mongo (one doc)', local: 'kept in a file on this server', memory: 'in memory only' };
+const NOMINATIM_WORDS = {
+  not_asked: 'not asked (3 of ours were enough)',
+  asked: 'asked',
+  cached: 'answered from its cache (24 h)',
+  busy: 'busy, not asked',
+  unavailable: 'no answer within 4 s',
+};
+const FROM_WORDS = { ours: ['Ours', 'done'], ours_typo: ['Ours · typo', 'pending'], nominatim: ['Nominatim', ''] };
+const PLACE_LANGS = [['en', 'English'], ['km', 'ខ្មែរ'], ['zh', '中文'], ['ko', '한국어'], ['ja', '日本語']];
+
+function placesListLine(p) {
+  if (!p.count) {
+    return [h('b', { class: 'cx-bad', text: 'No list yet' }),
+      p.refreshing ? ' · being made now.' : ' · the app searches Nominatim alone until there is one. Press Refresh now.'];
+  }
+  return [h('b', { class: p.status === 'old' ? 'cx-bad' : 'cx-ok', text: `${p.count.toLocaleString('en-GB')} places` }),
+    ` · ${kilobytes(p.bytes)} · ${STORE_WORDS[p.store] || p.store || 'kept'}`];
+}
+
+function placesAgeLine(p) {
+  if (!p.at) return 'Never made.';
+  const made = `Made ${ago(p.ageS)} ago (${when(p.at)})`;
+  if (p.status === 'old') return [h('b', { class: 'cx-bad', text: `${made}: older than ${p.maxAgeDays} days.` }), ' The next search starts a refresh.'];
+  return `${made} · refreshes by itself after ${when(p.nextAt)}.`;
+}
+
+function placesAskLine(p) {
+  if (p.refreshing) return [h('b', { text: 'Asking now…' }), ` up to 2 minutes.${p.count ? ' The old list stays until the new one is good.' : ''}`];
+  if (!p.askedAt) return 'Not asked since the server last started.';
+  const ok = p.okAt && p.okAt >= p.askedAt;
+  return [`Last asked ${when(p.askedAt)} · `, h('b', { class: ok ? 'cx-ok' : 'cx-bad', text: ok ? 'good answer ✓' : 'failed' })];
+}
+
+function placesErrorLine(p) {
+  const e = p.lastError;
+  return [h('span', { class: 'cx-bad', text: e.message }), ` · ${when(e.at)}`,
+    p.retryAt ? ` · searches try again after ${when(p.retryAt)}` : ''];
+}
+
+async function refreshPlacesNow() {
+  if (state.placesBusy) return;
+  state.placesBusy = true;
+  state.placesError = null;
+  renderPlaces(state.data);
+  const r = await call('POST', `${API}/places/refresh`, {});
+  state.placesBusy = false;
+  state.placesError = r.ok ? null : r.data.error || 'Could not start the refresh.';
+  if (r.data.view) renderPlaces(r.data.view);
+  else renderPlaces(state.data);
+  if (r.ok) toast('Asking OpenStreetMap… up to 2 minutes.');
+  $('places-refresh')?.focus();
+}
+
+function placesRefreshBlock(p) {
+  const btn = h('button', {
+    type: 'button', class: 'btn cx-test-btn cx-try-btn', id: 'places-refresh', disabled: state.placesBusy || p.refreshing,
+    on: { click: refreshPlacesNow },
+  }, p.refreshing || state.placesBusy ? 'Refreshing…' : 'Refresh now');
+  const refused = state.placesError
+    ? h('div', { class: 'cx-result bad' }, h('p', {}, h('b', { text: 'Not started. ' }), state.placesError)) : null;
+  return h('div', { class: 'cx-try' },
+    h('h3', { text: 'Refresh' }),
+    h('p', { class: 'cx-help' }, `Asks OpenStreetMap (Overpass) for every named café, restaurant, bar, mall, park, museum and hotel in greater Phnom Penh. It also happens by itself every ${p.maxAgeDays} days. At most once every 5 minutes${p.canRefreshAt ? ` (next: ${when(p.canRefreshAt)})` : ''}.`),
+    btn,
+    refused);
+}
+
+async function trySearchPlaces() {
+  if (state.placesTry.busy) return;
+  const q = ($('places-q')?.value || '').trim();
+  const lang = $('places-lang')?.value || 'en';
+  if (Array.from(q).length < 2) {
+    state.placesTry = { error: 'Type at least 2 letters of a place.' };
+    renderPlaces(state.data);
+    $('places-q')?.focus();
+    return;
+  }
+  state.placesTry = { busy: true, result: state.placesTry.result };
+  renderPlaces(state.data);
+  const r = await call('POST', `${API}/places/search`, { q, lang });
+  state.placesTry = r.ok ? { result: r.data } : { error: r.data.error || 'Could not search.' };
+  renderPlaces(state.data);
+  $('places-q')?.focus();
+}
+
+function placesResult(t) {
+  if (t.error) return h('div', { class: 'cx-result bad' }, h('p', {}, h('b', { text: 'Not searched. ' }), t.error));
+  const r = t.result;
+  if (!r) return null;
+  const n = r.places.length;
+  const summary = h('p', {}, h('b', { text: `“${r.q}”: ${n} ${n === 1 ? 'place' : 'places'}` }),
+    ` · ${r.ms} ms · ours: ${r.own} (${r.sure} without a typo) · Nominatim: ${NOMINATIM_WORDS[r.nominatim] || r.nominatim}`);
+  const list = n ? h('ol', { class: 'cx-jobs' }, r.places.map((p) => {
+    const [word, cls] = FROM_WORDS[p.from] || FROM_WORDS.nominatim;
+    return h('li', {}, h('span', { class: `cx-job ${cls}`, text: word }), ` ${p.name}`, p.address ? ` — ${p.address}` : '',
+      Number.isFinite(p.lat) ? [' · ', link(`https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lng}#map=18/${p.lat}/${p.lng}`, 'map')] : null);
+  })) : h('p', { class: 'cx-fine' }, 'Nothing found: the app shows “No places found”.');
+  return h('div', { class: `cx-result ${n ? 'ok' : ''}` }, summary, list);
+}
+
+function placesSearchBlock() {
+  const t = state.placesTry;
+  const input = h('input', {
+    class: 'input', id: 'places-q', type: 'search', maxlength: '80', autocomplete: 'off', spellcheck: 'false',
+    placeholder: 'e.g. Browns, cafe riverside, BKK1 pizza', 'aria-label': 'Place to search for', 'data-draft': 'places',
+    on: { keydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); trySearchPlaces(); } } },
+  });
+  const lang = h('select', { class: 'input cx-lang', id: 'places-lang', 'aria-label': 'App language', 'data-draft': 'places' },
+    PLACE_LANGS.map(([v, text]) => h('option', { value: v, text })));
+  const btn = h('button', { type: 'button', class: 'btn cx-test-btn', id: 'places-search', disabled: Boolean(t.busy), on: { click: trySearchPlaces } },
+    t.busy ? 'Searching…' : 'Search');
+  return h('div', { class: 'cx-try' },
+    h('h3', { text: 'Test search' }),
+    h('p', { class: 'cx-help' }, 'The app’s own search, around Phnom Penh, in the language picked: our list first; 3 of ours found without a typo and Nominatim is not asked. Shown here only.'),
+    h('div', { class: 'cx-test-row' }, input, lang, btn),
+    placesResult(t));
+}
+
+function placesCard(p) {
+  // The status pill (placesPill) sits on the tower's top line.
+  return h('section', { class: 'panel cx-card cx-signin', 'aria-labelledby': 'cx-places' },
+    h('div', { class: 'cx-head' }, logo('places'),
+      h('div', { class: 'cx-title' }, h('h2', { id: 'cx-places', text: 'Places' }), h('p', { class: 'cx-sub', text: 'Our own Phnom Penh place list · searched before Nominatim' }))),
+    h('dl', { class: 'cx-status' },
+      row('List', ...placesListLine(p)),
+      row('Age', placesAgeLine(p)),
+      row('OpenStreetMap', placesAskLine(p)),
+      p.lastError ? row('Last error', ...placesErrorLine(p)) : null,
+      row('In the app', 'Level 3 “Meet” → search: ours first; fewer than 3 sure hits → Nominatim too, its places after ours.')),
+    h('div', { class: 'cx-signin-body' },
+      placesRefreshBlock(p),
+      placesSearchBlock(),
+      h('p', { class: 'cx-fine' }, `Source: ${p.source}. © OpenStreetMap contributors (ODbL).`)));
+}
+
+/** While a refresh runs, the page asks every 4 seconds (at most 4 minutes); only the Places tower is re-drawn. */
+const PLACES_ASK_MS = 4000;
+const placesAsk = { timer: 0, since: 0 };
+function pollPlaces(data) {
+  clearTimeout(placesAsk.timer);
+  if (!data?.places?.refreshing) {
+    placesAsk.since = 0;
+    return;
+  }
+  placesAsk.since ||= Date.now();
+  if (Date.now() - placesAsk.since > 4 * 60e3) return;
+  placesAsk.timer = setTimeout(askPlaces, PLACES_ASK_MS);
+}
+
+async function askPlaces() {
+  if (state.busy || document.hidden) return pollPlaces(state.data);
+  let r;
+  try {
+    r = await call('GET', API);
+  } catch {
+    return; // signed out: call() already moved on
+  }
+  if (!r.ok || !r.data.places) return pollPlaces(state.data);
+  renderPlaces(r.data);
+  const p = r.data.places;
+  if (p.refreshing) return;
+  const ok = p.okAt && p.okAt >= p.askedAt;
+  const kept = p.count ? 'The old list stays.' : 'Still no list: the app uses Nominatim alone.';
+  toast(ok ? `Place list refreshed: ${p.count.toLocaleString('en-GB')} places.` : `The refresh failed${p.lastError ? `: ${p.lastError.message}` : ''}. ${kept}`, 8000);
+}
+
+// ---------- the hub: twelve towers left to right ----------
 
 /** A sign-in tower (TikTok, Facebook, Google): its keys card, its pill from signinStatus. */
 const signinTower = (id, name) => ({
@@ -1383,6 +1571,10 @@ const TOWERS = [
   {
     key: 'wan', name: 'Wan', kind: 'Video', has: (byId, data) => Boolean(data?.wan),
     status: (byId, data) => wanPill(data.wan), draw: (byId, data) => wanCard(data.wan),
+  },
+  {
+    key: 'places', name: 'Places', kind: 'Search', has: (byId, data) => Boolean(data?.places),
+    status: (byId, data) => placesPill(data.places), draw: (byId, data) => placesCard(data.places),
   },
 ];
 const towerNumber = (t) => TOWERS.indexOf(t) + 1;
@@ -1609,9 +1801,9 @@ function headline(data) {
   // Stopped / Last try failed, each with its own words.
   const warns = [...new Set(all.filter(({ st }) => st.pill === 'warn' && st.text !== 'Needs attention').map(({ st }) => st.text))];
   for (const text of warns) parts.push(`${text}: ${named((st) => st.pill === 'warn' && st.text === text).join(' + ')}`);
-  // Wan, on but its M5 not seen for 2 minutes.
-  const waiting = named((st) => st.pill === 'wait');
-  if (waiting.length) parts.push(`Waiting for the M5: ${waiting.join(' + ')}`);
+  // Wan, on but its M5 not seen for 2 minutes ("Waiting for the M5"); Places, a refresh on its way ("Refreshing").
+  const waits = [...new Set(all.filter(({ st }) => st.pill === 'wait').map(({ st }) => st.text))];
+  for (const text of waits) parts.push(`${text}: ${named((st) => st.pill === 'wait' && st.text === text).join(' + ')}`);
   const toTry = named((st) => st.pill === 'saved');
   if (toTry.length) parts.push(`Saved, not tried: ${toTry.join(' + ')}`);
   if (!live.length) parts.push(data.testCodes ? 'Test codes · nothing live yet' : 'Nothing live yet');
@@ -1661,18 +1853,17 @@ function render(data, { fresh = null } = {}) {
   }
   if (focused && $(focused) && !$(focused).disabled) $(focused).focus();
   pollWan(data);
+  pollPlaces(data);
 }
 
 /**
- * The Try poll's draw: the Wan tower, its strip button and the top line only. The other ten towers are left exactly as
- * they are (their data too: only `wan` is taken from the answer). What was typed in the Wan tower stays.
+ * One tower re-drawn from state.data, with its strip button and the top line; the other towers are left exactly as they
+ * are. What was typed in it, and the focus, stay. → false when the tower is not on the page.
  */
-function renderWan(data) {
-  const i = hub.shown.findIndex((t) => t.key === 'wan');
-  const old = $('tower-wan');
-  if (i < 0 || !old || !data.wan || !state.data) return render(data);
-  noteWan(data.wan);
-  state.data = { ...state.data, wan: data.wan };
+function redrawTower(key) {
+  const i = hub.shown.findIndex((t) => t.key === key);
+  const old = $(`tower-${key}`);
+  if (i < 0 || !old) return false;
   const focused = old.contains(document.activeElement) ? document.activeElement.id : null;
   const drafts = {};
   for (const input of old.querySelectorAll('[data-draft]')) {
@@ -1691,7 +1882,27 @@ function renderWan(data) {
   $('state').textContent = headline(state.data);
   paintHub(false);
   if (focused && $(focused) && !$(focused).disabled) $(focused).focus({ preventScroll: true });
+  return true;
+}
+
+/**
+ * The Try poll's draw: the Wan tower only (its data too: only `wan` is taken from the answer). What was typed in the
+ * Wan tower stays.
+ */
+function renderWan(data) {
+  if (!data.wan || !state.data || !$('tower-wan')) return render(data);
+  noteWan(data.wan);
+  state.data = { ...state.data, wan: data.wan };
+  redrawTower('wan');
   pollWan(state.data);
+}
+
+/** Tower 12's own draws (Refresh now, the test search, the refresh poll): the Places tower only. */
+function renderPlaces(data) {
+  if (!data?.places || !state.data || !$('tower-places')) return render(data ?? state.data);
+  state.data = { ...state.data, places: data.places };
+  redrawTower('places');
+  pollPlaces(state.data);
 }
 
 $('signout').addEventListener('click', async () => {

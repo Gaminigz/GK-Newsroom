@@ -555,7 +555,10 @@ test('stores: a gzip\'d copy well under 1 MB — one file (dev) or one Mongo doc
 test('the server asks our list first: the meeting routes build the place search with the index; Overpass is a test-fetch host', () => {
   const meet = readFileSync(new URL('./thirtyda-meet.mjs', import.meta.url), 'utf8');
   assert.match(meet, /import \{ createPlaceIndex \} from "\.\/thirtyda-places-index\.mjs";/);
-  assert.match(meet, /createPlaceSearch\(\{\n\s+fetchImpl: outboundFetch\(\), index: createPlaceIndex\(\{ fetchImpl: outboundFetch\(\) \}\),\n\s+\}\)/);
+  // One list and one search per server, shared with the Code page's Tower 12 (src/lib/thirtyda-hub-places.mjs).
+  assert.match(meet, /export const placeIndex = \(\) => \(sharedIndex \?\?= createPlaceIndex\(\{ fetchImpl: outboundFetch\(\) \}\)\);/);
+  assert.match(meet, /export const placeSearch = \(\) => \(sharedSearch \?\?= createPlaceSearch\(\{ fetchImpl: outboundFetch\(\), index: placeIndex\(\) \}\)\);/);
+  assert.match(meet, /const searcher = \(\) => \(search \?\?= placeSearch\(\)\);/);
   const tf = readFileSync(new URL('./thirtyda-test-fetch.mjs', import.meta.url), 'utf8');
   assert.match(tf, /"overpass-api\.de",/);
   const del = readFileSync(new URL('./thirtyda-delete.mjs', import.meta.url), 'utf8');

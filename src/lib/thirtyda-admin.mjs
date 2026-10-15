@@ -43,6 +43,10 @@
  *   PUT  /30da/admin/api/connections/wan/options     { enabled?, sizes?: { '480p', '720p' }, maxSeconds? } → the page's data | 422
  *   POST /30da/admin/api/connections/wan/try         queue a test render of the home picture (source 'try', the same caps)
  *   GET  /30da/admin/api/connections/wan/clips/:id   a Try's clip for the tower's player (byte ranges), never a client's
+ *   Tower 12 · Places (our own Phnom Penh place list, src/lib/thirtyda-hub-places.mjs) — the page's data carries a
+ *   `places` block (status, the list's time, size and store, the last Overpass ask, the last error):
+ *   POST /30da/admin/api/connections/places/refresh   ask OpenStreetMap now, in the background → { ok, view } | 429 too soon
+ *   POST /30da/admin/api/connections/places/search    { q, lang } a test search → our hits, Nominatim asked or not (never signed)
  *   POST /30da/admin/api/connections/telegram|whatsapp/test   { phone } → a real code to that phone, or why not.
  *        A test that goes through turns the channel on in the app (src/lib/thirtyda-code-send.mjs channelOffer);
  *        the answer carries the page's fresh data (`view`) so the card can say so at once.
@@ -150,6 +154,8 @@ import { resolveUpdate, reopenUpdate } from "./thirtyda-blocks.mjs";
 import { targetLabel } from "../thirtyda-app/shared/safety.js";
 import { BAD_WORD_REASONS } from "../thirtyda-app/shared/bad-words.js";
 import { readPhoto, isPhotoId, deletePhoto, thumbPhoto, savePhoto, PhotoError } from "./thirtyda-photos.mjs";
+import { placesAdminView, refreshPlaces, placesTry } from "./thirtyda-hub-places.mjs";
+import { placeIndex, placeSearch } from "./thirtyda-meet.mjs";
 import { wanAdminView, newWanToken, revokeWanToken, saveWanOptions, queueWanTry, wanTryClip, sendClip } from "./thirtyda-hub-wan.mjs";
 import {
   pendingQueue, pendingOwner, pendingCount, reviewTarget, approvePhoto, rejectPhoto, photoNotice, disqualifyPhoto, adminSlots,
@@ -561,6 +567,11 @@ async function connectionsView(d, req) {
       console.error("[30da admin] wan:", err instanceof Error ? err.message : err);
       return null;
     }),
+    // Tower 12 · Places (src/lib/thirtyda-hub-places.mjs): our own Phnom Penh place list. A failure: drawn without it.
+    places: await placesAdminView(placeIndex()).catch((err) => {
+      console.error("[30da admin] places:", err instanceof Error ? err.message : err);
+      return null;
+    }),
   };
 }
 
@@ -736,6 +747,36 @@ async function wanRoute(req, res, m) {
   if (!r.ok) return json(res, 422, { error: r.error, field: r.field });
   await audit(req, "wan_options", { enabled: r.options.enabled, sizes: r.options.sizes, maxSeconds: r.options.maxSeconds });
   return json(res, 200, await connectionsView(d, req));
+}
+
+/**
+ * Tower 12 · Places on the Code page (signed in; writes are same-origin JSON: checked before this). m[1] = what.
+ *   POST refresh → { ok: true, view } (Overpass is asked in the background) | 429 { ok: false, error, reason, view }.
+ *   POST search { q, lang } → placesTry's answer | 422 { error }. 20 test searches a minute: they share the app's
+ *   Nominatim queue (1 a second).
+ */
+const placeTries = windowLimiter(60e3);
+async function placesRoute(req, res, m) {
+  if (req.method !== "POST") {
+    req.resume();
+    return json(res, 404, { error: "Not found." });
+  }
+  if (m[1] === "refresh") {
+    req.resume();
+    if (writeLimited(req)) return json(res, 429, { error: "Too many changes. Try again in a few minutes." });
+    const r = refreshPlaces(placeIndex());
+    await audit(req, "places_refresh", { ok: r.ok, ...(r.ok ? {} : { reason: r.reason }) });
+    const view = await connectionsView(await db(), req);
+    if (!r.ok) return json(res, r.reason === "busy" ? 409 : 429, { ok: false, error: r.error, reason: r.reason, view });
+    return json(res, 200, { ok: true, view });
+  }
+  const body = await readJsonBody(req, 2000);
+  if (body.tooLarge) return json(res, 413, { error: "That is far too long to search." });
+  if (body.bad) return json(res, 400, { error: "Send the search as JSON." });
+  if (placeTries.over(tokenOf(req) || clientIp(req), 20)) return json(res, 429, { error: "That is 20 searches in a minute. Wait a moment." });
+  const r = await placesTry(placeSearch(), { q: body.value?.q, lang: body.value?.lang });
+  if (r.error) return json(res, 422, { error: r.error });
+  return json(res, 200, r);
 }
 
 /**
@@ -1210,6 +1251,10 @@ export async function handleThirtyDaAdmin(req, res, url) {
   // Tower 11 · Wan: tokens, options, Try, and the Try's clip (src/lib/thirtyda-hub-wan.mjs).
   m = sub.match(/^\/api\/connections\/wan\/(tokens\/(client|worker)|options|try|clips\/([a-f0-9]{32}))$/);
   if (m) return wanRoute(req, res, m);
+
+  // Tower 12 · Places: Refresh now, a test search (src/lib/thirtyda-hub-places.mjs).
+  m = sub.match(/^\/api\/connections\/places\/(refresh|search)$/);
+  if (m) return placesRoute(req, res, m);
 
   // Sign in with Apple's key: "Try the key" (Save / Remove are the generic PUT / DELETE below).
   if (req.method === "POST" && sub === "/api/connections/apple/try") return appleTryRoute(req, res);
