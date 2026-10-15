@@ -14,12 +14,21 @@
  * person (a notice, kind 'photo') and can block them too. Both act only while THAT photo (its id) is still pending in
  * that slot, so a photo replaced meanwhile is never approved or deleted by mistake.
  *
+ * Users → Photos (owner 2026-10-15: "the 4 photo preview and has function to manually view and approve or disqualify"):
+ * the admin's Users table draws every profile's 4 slots (photoSummary: ids + status only) and a dialog shows them large
+ * (adminSlots). Approve there is the same approve. Disqualify takes down ANY photo, approved or pending: the slot is
+ * emptied exactly as a reject empties it, the person gets the same notice; it acts only while THAT photo is still in
+ * that slot, and never on an App review account (its photos are changed on the App review page).
+ *
  * Pure apart from the collection handed in, so the unit tests run without a database.
  */
 
 import { isPhotoId } from "./thirtyda-photos.mjs";
+import { REVIEW } from "./thirtyda-review.mjs";
 
 export const PHOTO_PENDING = "pending";
+/** A photo with no review entry (checked by the team, or put there before the rule): everyone may see it. */
+export const PHOTO_APPROVED = "approved";
 const SLOTS = 4; // = PHOTO_MAX in src/thirtyda-app/shared/rules.js
 /** What the person is told when a photo is rejected (the app shows it in their language: app_notice_photo). */
 export const PHOTO_REJECTED_TEXT = "A photo was not accepted — please use a clear photo of your face.";
@@ -39,6 +48,32 @@ export function pendingFlags(u) {
   return slots.map((id, i) => Boolean(id) && isPending(u, i));
 }
 
+/** Slot `index` as the admin sees it: 'pending', 'approved', or null when it is empty. */
+export function slotStatus(u, index) {
+  if (!isPhotoId(slotsOf(u)[index])) return null;
+  return isPending(u, index) ? PHOTO_PENDING : PHOTO_APPROVED;
+}
+
+/** true while `photoId` is the photo in slot `index` (approved or pending): the admin's view of that slot. */
+export const photoInSlot = (u, index, photoId) => isPhotoId(photoId) && slotsOf(u)[index] === photoId;
+
+/**
+ * The 4 slots of one profile for the admin (Users → Photos), slot-aligned, empty ones included:
+ * [{ index, photoId, status, at }] — `at` = when a pending photo was put there (null once approved, or empty).
+ */
+export function adminSlots(u) {
+  return Array.from({ length: SLOTS }, (_, i) => {
+    const status = slotStatus(u, i);
+    return {
+      index: i, photoId: status ? slotsOf(u)[i] : null, status,
+      at: status === PHOTO_PENDING ? u.photoReviewAt?.[i] ?? null : null,
+    };
+  });
+}
+
+/** The Users table's summary of a profile's photos: 4 × { photoId, status } — ids and status only. */
+export const photoSummary = (u) => adminSlots(u).map(({ photoId, status }) => ({ photoId, status }));
+
 /** The $set fields that make the photo just put in slot `index` pending. */
 export const pendingSet = (index, at = new Date().toISOString()) => ({
   [`photoReview.${index}`]: PHOTO_PENDING, [`photoReviewAt.${index}`]: at,
@@ -55,6 +90,8 @@ export const pendingFilter = () => ({ $or: Array.from({ length: SLOTS }, (_, i) 
 
 /** Only while that exact photo is still pending in that slot. */
 const stillPending = (userId, index, photoId) => ({ _id: userId, [`photos.${index}`]: photoId, [`photoReview.${index}`]: PHOTO_PENDING });
+/** Only while that exact photo is still in that slot (approved or pending), and never an App review account's. */
+const stillThere = (userId, index, photoId) => ({ _id: userId, [`photos.${index}`]: photoId, demo: { $ne: REVIEW } });
 
 /** "U-10234", 0–3, a photo id → the checked target, or null. */
 export function reviewTarget(userId, index, photoId) {
@@ -112,13 +149,25 @@ export const photoNotice = ({ id, slot, at = new Date().toISOString() }) => ({
   id, kind: "photo", slot, text: PHOTO_REJECTED_TEXT, at, seenAt: null,
 });
 
+/** Reject and disqualify alike: the slot is emptied (the others stay where they are) and the person is told. */
+const emptySlot = (index, notice) => ({ $set: { [`photos.${index}`]: null }, $unset: reviewUnset(index), $push: { notices: notice } });
+
 /**
  * Reject → true (the slot is empty now and the notice is on the profile; the caller deletes the stored photo and,
  * when asked, blocks the person), or false when that photo is no longer pending in that slot.
  */
 export async function rejectPhoto(users, { userId, index, photoId, notice }) {
-  const r = await users.updateOne(stillPending(userId, index, photoId), {
-    $set: { [`photos.${index}`]: null }, $unset: reviewUnset(index), $push: { notices: notice },
-  });
+  const r = await users.updateOne(stillPending(userId, index, photoId), emptySlot(index, notice));
+  return Boolean(r.modifiedCount);
+}
+
+/**
+ * Disqualify (Users → Photos) → true: the photo, approved or pending, is out of its slot exactly as a reject leaves it
+ * (the slot empty, its review cleared, the notice on the profile; the caller drops the empty slots at the end, deletes
+ * the stored photo and, when asked, blocks the person). false when that photo is no longer in that slot, or the profile
+ * is an App review account.
+ */
+export async function disqualifyPhoto(users, { userId, index, photoId, notice }) {
+  const r = await users.updateOne(stillThere(userId, index, photoId), emptySlot(index, notice));
   return Boolean(r.modifiedCount);
 }

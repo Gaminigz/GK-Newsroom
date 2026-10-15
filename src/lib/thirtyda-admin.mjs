@@ -64,6 +64,19 @@
  *   POST /30da/admin/api/photos/:userId/:slotIndex/approve   { photoId } → everyone can see it now
  *   POST /30da/admin/api/photos/:userId/:slotIndex/reject    { photoId, block? } → deleted, the person told; block = also block them
  *        Both act only while that photo is still pending in that slot (409 otherwise). Audited with ids only.
+ *   Users → Photos (owner 2026-10-15: "the 4 photo preview and has function to manually view and approve or disqualify"):
+ *   GET  /30da/admin/api/users/:id/photos     { user: { id, name, review, blocked }, slots: [4 × { index, photoId, status:
+ *        'approved'|'pending'|null, at, url, thumb }] } slot-aligned; url / thumb carry the photo id, so a replaced photo
+ *        never shows under the old one. 404 no such profile. The opening is audited (the id only).
+ *   GET  /30da/admin/api/users/:id/photos/:index?id=<photoId>[&size=thumb]   the photo while THAT id is in that slot
+ *        (approved or pending; 404 otherwise); size=thumb ≤ 160 px. Admin only, never cached.
+ *   POST /30da/admin/api/users/:id/photos/:index/approve      { photoId } the Photos page's approve (pending only)
+ *   POST /30da/admin/api/users/:id/photos/:index/disqualify   { photoId, block? } an approved OR pending photo: the slot
+ *        emptied as Reject empties it, the stored photo deleted, the person told (the same notice); block = also block
+ *        them. 409 photo_changed when that photo is no longer in that slot; 409 review_account for an App review account
+ *        (its photos change on the App review page). Both answer the fresh slots + { count } (photos waiting) and are
+ *        audited with ids only. The overview's user rows carry photos: [4 × { photoId, status }] (ids + status only),
+ *        so the Users table draws the 4 thumbnails without a request per profile.
  *   GET  /30da/admin/review                   App review: demo accounts for the App Store / Google Play reviewers
  *   GET  /30da/admin/api/review               { on, code, accounts, profiles, notes, … } (src/lib/thirtyda-review.mjs reviewView)
  *   POST /30da/admin/api/review/switch        { on } "Review sign-in" ON / OFF (ON: blocks + open flags between demo
@@ -125,10 +138,11 @@ import { QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS } from "../thirtyda-app/s
 import { resolveUpdate, reopenUpdate } from "./thirtyda-blocks.mjs";
 import { targetLabel } from "../thirtyda-app/shared/safety.js";
 import { BAD_WORD_REASONS } from "../thirtyda-app/shared/bad-words.js";
-import { readPhoto, isPhotoId, deletePhoto } from "./thirtyda-photos.mjs";
+import { readPhoto, isPhotoId, deletePhoto, thumbPhoto } from "./thirtyda-photos.mjs";
 import { wanAdminView, newWanToken, revokeWanToken, saveWanOptions, queueWanTry, wanTryClip, sendClip } from "./thirtyda-hub-wan.mjs";
 import {
-  pendingQueue, pendingOwner, reviewTarget, approvePhoto, rejectPhoto, photoNotice,
+  pendingQueue, pendingOwner, pendingCount, reviewTarget, approvePhoto, rejectPhoto, photoNotice, disqualifyPhoto, adminSlots,
+  photoSummary, photoInSlot,
 } from "./thirtyda-photo-review.mjs";
 
 const BASE = "/30da/admin";
@@ -151,6 +165,8 @@ const QUESTIONS_BODY_MAX = 200_000; // 20 choices × 5 languages × 100 characte
 const MAX_TESTS = 10; // real Telegram test codes per admin session per window (each one costs money)
 const MAX_REPLIES = 60; // support replies per admin session per window
 const replyLimits = windowLimiter(WINDOW_MS);
+const MAX_PHOTO_DECISIONS = 120; // Users → Photos approve / disqualify per admin session per window (30 profiles × 4)
+const photoLimits = windowLimiter(WINDOW_MS);
 
 const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
@@ -160,13 +176,17 @@ const SECURITY_HEADERS = {
     "default-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-ancestors 'none'",
 };
 
-// Unit tests only (src/lib/thirtyda-admin.test.mjs): an in-memory database and a stand-in for the delete. Unset in the
-// server, where the admin always uses getDb() and the app's own deleteAccount.
-const testHooks = { db: null, deleteAccount: null };
-export function setAdminTestHooks({ db: d = null, deleteAccount: del = null } = {}) {
+// Unit tests only (src/lib/thirtyda-admin.test.mjs, thirtyda-admin-photos.test.mjs): an in-memory database, a stand-in
+// for the delete and for the photo store ({ read, remove }). Unset in the server, where the admin always uses getDb(),
+// the app's own deleteAccount and the real photo store.
+const testHooks = { db: null, deleteAccount: null, photoStore: null };
+export function setAdminTestHooks({ db: d = null, deleteAccount: del = null, photoStore = null } = {}) {
   testHooks.db = d;
   testHooks.deleteAccount = del;
+  testHooks.photoStore = photoStore;
 }
+/** The photo store: read(id) → the JPEG or null, remove(id). */
+const photoStore = () => testHooks.photoStore ?? { read: readPhoto, remove: deletePhoto };
 
 // ---------- db ----------
 let ready = null;
@@ -222,9 +242,11 @@ async function overview() {
     // The PIN's hash and its wrong-try count never leave the server (the admin sees only whether one is set); nor does
     // a review account's sealed PIN or the number it had before, nor Sign in with Apple's sealed refresh token (on the
     // profile, or in deleting.apple while a delete runs: only its Apple id stays there).
-    users: users.map(({ blockResolved, location, locOffset, locMoves, locAt, notices, pinHash, pinAt, pinTries, reviewPinBox, reviewWas, appleRefresh, deleting, ...u }) => ({
+    // Photos: the 4 slots as ids + status only (photoSummary) — the table draws the thumbnails from them.
+    users: users.map(({ blockResolved, location, locOffset, locMoves, locAt, notices, pinHash, pinAt, pinTries, reviewPinBox, reviewWas, appleRefresh, deleting, photos, photoReview, photoReviewAt, ...u }) => ({
       ...u,
       ...(deleting ? { deleting: withoutAppleBox(deleting) } : {}),
+      photos: photoSummary({ photos, photoReview, photoReviewAt }),
       review: isReview(u),
       pinSet: Boolean(pinHash),
       openFlags: open.filter((f) => f.from === u.id).length,
@@ -668,7 +690,7 @@ async function wanRoute(req, res, m) {
 }
 
 /**
- * Block a person: the monitor's Block, and Reject + block on the Photos page. → { alreadyBlocked }
+ * Block a person: the monitor's Block, Reject + block on the Photos page, Disqualify + block on Users → Photos. → { alreadyBlocked }
  * Blocking settles every open flag this user raised; undo reopens exactly those. A flag
  * raised after the block (e.g. a report on an older message) settles too, but then the
  * block itself is not new, so there is nothing to undo.
@@ -693,6 +715,90 @@ async function photoQueueView(d) {
     count: rows.length,
     photos: rows.map((r) => ({ ...r, url: `${BASE}/api/photos/${r.photoId}` })),
   };
+}
+
+/**
+ * Users → Photos (owner 2026-10-15): one profile's 4 slots, each with its admin-only urls, or null (no such profile).
+ * The photo id is in the url (?id=): a photo replaced meanwhile never shows under the old one's slot.
+ */
+async function userPhotosView(d, id) {
+  const u = await d.collection("thirtyda_users").findOne(
+    { _id: id }, { projection: { name: 1, photos: 1, photoReview: 1, photoReviewAt: 1, blocked: 1, demo: 1 } },
+  );
+  if (!u) return null;
+  const src = (s) => `${BASE}/api/users/${encodeURIComponent(u._id)}/photos/${s.index}?id=${s.photoId}`;
+  return {
+    user: { id: u._id, name: u.name ?? "", review: isReview(u), blocked: Boolean(u.blocked) },
+    slots: adminSlots(u).map((s) => ({ ...s, url: s.photoId ? src(s) : null, thumb: s.photoId ? `${src(s)}&size=thumb` : null })),
+  };
+}
+
+/**
+ * Users → Photos (signed in; writes are same-origin JSON: checked before this). m[1] = the profile, m[2] = the slot
+ * index (0–3), m[3] = approve | disqualify.
+ *   GET  …/photos                          → userPhotosView; 404 no such profile.
+ *   GET  …/photos/:index?id=[&size=thumb]  → the image while THAT id is in that slot (approved or pending), else 404.
+ *   POST …/approve    { photoId }          → the Photos page's approve: pending only.
+ *   POST …/disqualify { photoId, block? }  → any photo, approved or pending, of a profile that is not an App review account.
+ * A write answers the fresh slots + { count } (photos waiting: the sidebar badge); a refusal carries them too.
+ */
+async function userPhotosRoute(req, res, m, url) {
+  const d = await db();
+  const users = d.collection("thirtyda_users");
+  if (req.method === "GET" && !m[2]) {
+    const view = await userPhotosView(d, m[1]);
+    if (!view) return json(res, 404, { error: "There is no such profile (it may be deleted already).", reason: "not_found" });
+    await audit(req, "view_user_photos", { user: m[1] });
+    return json(res, 200, view);
+  }
+  if (req.method === "GET" && !m[3]) {
+    const target = reviewTarget(m[1], m[2], url.searchParams.get("id"));
+    const u = target ? await users.findOne({ _id: target.userId }, { projection: { photos: 1 } }) : null;
+    let buf = u && photoInSlot(u, target.index, target.photoId) ? await photoStore().read(target.photoId) : null;
+    // An empty file (a write cut short) is no photo: 404 like an unreadable one, never an empty image or a 500.
+    if (buf?.length && url.searchParams.get("size") === "thumb") buf = await thumbPhoto(buf).catch(() => null);
+    if (!buf?.length) return send(res, 404, "Not found", { "Content-Type": "text/plain" });
+    return send(res, 200, buf, { "Content-Type": "image/jpeg", "Content-Length": buf.length, "Cache-Control": "private, no-store" });
+  }
+  if (req.method !== "POST" || !m[3]) {
+    req.resume();
+    return json(res, 404, { error: "Not found." });
+  }
+  if (photoLimits.over(tokenOf(req) || clientIp(req), MAX_PHOTO_DECISIONS)) {
+    req.resume();
+    return json(res, 429, { error: "That is a lot of photo decisions in 15 minutes. Try again in a few minutes." });
+  }
+  const body = await readJsonBody(req, 1e4);
+  if (body.bad || body.tooLarge) return json(res, 400, { error: "Send { photoId }." });
+  const target = reviewTarget(m[1], m[2], body.value.photoId);
+  if (!target) return json(res, 400, { error: "Send { photoId }." });
+  const u = await users.findOne({ _id: target.userId });
+  if (!u) return json(res, 404, { error: "There is no such profile (it may be deleted already).", reason: "not_found" });
+  const slot = target.index + 1;
+  const fresh = async () => ({ ...(await userPhotosView(d, target.userId)), count: await pendingCount(users) });
+  const refused = async (reason, error) => json(res, 409, { error, reason, ...(await fresh()) });
+  const changed = () => refused("photo_changed", "This photo was changed or already checked. The photos are up to date now.");
+  const reviewAccount = () => refused("review_account", "This is an App review account: change its photos on the App review page.");
+  if (m[3] === "approve") {
+    if (!(await approvePhoto(users, target))) return changed();
+    await audit(req, "photo_approve", { user: target.userId, slot, photo: target.photoId });
+    return json(res, 200, { ok: true, ...(await fresh()) });
+  }
+  // Disqualify: the slot is emptied as a reject empties it and the person told (a notice), the empty slots at the end are
+  // dropped, then the stored photo is deleted; block = also block them. Never an App review account's photo.
+  if (isReview(u)) return reviewAccount();
+  const notice = photoNotice({ id: `N-${crypto.randomBytes(6).toString("hex")}`, slot });
+  if (!(await disqualifyPhoto(users, { ...target, notice }))) {
+    // Made an App review account meanwhile, or that photo is no longer in that slot.
+    return isReview(await users.findOne({ _id: target.userId }, { projection: { demo: 1 } })) ? reviewAccount() : changed();
+  }
+  await trimPhotoSlots(users, target.userId);
+  await photoStore().remove(target.photoId);
+  const blocked = body.value.block === true ? await blockUser(d, u) : null;
+  await audit(req, "photo_disqualified", {
+    user: target.userId, slot, photo: target.photoId, block: Boolean(blocked), ...(blocked ? { alreadyBlocked: blocked.alreadyBlocked } : {}),
+  });
+  return json(res, 200, { ok: true, blocked: Boolean(blocked), ...(await fresh()) });
 }
 
 /**
@@ -1137,6 +1243,10 @@ export async function handleThirtyDaAdmin(req, res, url) {
     return json(res, 200, { ...(await overview()), alreadyBlocked });
   }
 
+  // Users → Photos: a profile's 4 photos — view, approve, disqualify (owner 2026-10-15).
+  m = sub.match(/^\/api\/users\/(U-\d+)\/photos(?:\/([0-3])(?:\/(approve|disqualify))?)?$/);
+  if (m) return userPhotosRoute(req, res, m, url);
+
   // Photos waiting for approval (store policy, owner 2026-10-14, src/lib/thirtyda-photo-review.mjs).
   if (req.method === "GET" && sub === "/api/photos") return json(res, 200, await photoQueueView(await db()));
   if (req.method === "GET" && sub === "/api/photos/count") return json(res, 200, { count: (await photoQueueView(await db())).count });
@@ -1145,7 +1255,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
   if (req.method === "GET" && m) {
     const d = await db();
     const owner = await pendingOwner(d.collection("thirtyda_users"), m[1]);
-    const buf = owner ? await readPhoto(m[1]) : null;
+    const buf = owner ? await photoStore().read(m[1]) : null;
     if (!buf) return send(res, 404, "Not found", { "Content-Type": "text/plain" });
     return send(res, 200, buf, { "Content-Type": "image/jpeg", "Content-Length": buf.length, "Cache-Control": "no-store" });
   }
@@ -1170,7 +1280,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
     const notice = photoNotice({ id: `N-${crypto.randomBytes(6).toString("hex")}`, slot });
     if (!(await rejectPhoto(users, { ...target, notice }))) return changed();
     await trimPhotoSlots(users, target.userId);
-    await deletePhoto(target.photoId);
+    await photoStore().remove(target.photoId);
     let blocked = null;
     if (body.value.block === true) {
       const u = await users.findOne({ _id: target.userId });
@@ -1187,7 +1297,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
   if (req.method === "GET" && m) {
     const d = await db();
     const f = await d.collection("thirtyda_flags").findOne({ _id: m[1] }, { projection: { photoId: 1 } });
-    const buf = f && isPhotoId(f.photoId) ? await readPhoto(f.photoId) : null;
+    const buf = f && isPhotoId(f.photoId) ? await photoStore().read(f.photoId) : null;
     if (!buf) return send(res, 404, "Not found", { "Content-Type": "text/plain" });
     await audit(req, "view_reported_photo", { flag: m[1] });
     return send(res, 200, buf, { "Content-Type": "image/jpeg", "Content-Length": buf.length, "Cache-Control": "no-store" });

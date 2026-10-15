@@ -20,6 +20,8 @@ import { getDb } from "./mongo.ts";
 const STORE = process.env.THIRTYDA_PHOTO_STORE === "mongo" ? "mongo" : "local";
 const DIR = new URL("../../.data/30da-photos/", import.meta.url);
 const MAX_PX = 720;
+/** The admin's Users table draws each profile's 4 photos this small (thumbPhoto). */
+export const THUMB_PX = 160;
 const ID_RE = /^[a-f0-9]{32}$/;
 
 export const isPhotoId = (id) => typeof id === "string" && ID_RE.test(id);
@@ -38,6 +40,17 @@ export async function normalizePhoto(buffer) {
   } catch {
     throw new PhotoError("That file is not a photo we can read.");
   }
+}
+
+/**
+ * A stored photo made small for the admin's Users table: JPEG, at most THUMB_PX on the long side. Rejects on a bad file
+ * (async: sharp throws an empty buffer at once, in its constructor — that too comes back as a rejection, never a throw).
+ */
+export async function thumbPhoto(jpeg) {
+  return sharp(jpeg, { failOn: "error", limitInputPixels: 50e6 })
+    .resize({ width: THUMB_PX, height: THUMB_PX, fit: "inside", withoutEnlargement: true })
+    .jpeg({ quality: 78, mozjpeg: true })
+    .toBuffer();
 }
 
 let bucket = null;
