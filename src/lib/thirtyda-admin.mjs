@@ -4,6 +4,9 @@
  *   GET  /30da/admin                      sign-in page (code only)
  *   GET  /30da/admin/monitor              live overview + chat monitor
  *   GET  /30da/admin/questions            the question choices people pick from (Level 1 / Level 2)
+ *   GET  /30da/admin/gk-smart-logo.png    the GK SMART logo (96 px) next to "GK API Hub · 30+DA" in every page's header
+ *   GET  /30da/admin/gk-smart-favicon.png the tab icon (32 px). Both are named files, like the scripts and styles: a name
+ *        from the URL is only ever matched against that list, never read as a path.
  *   POST /30da/admin/api/signin           { code }
  *   POST /30da/admin/api/signout
  *   GET  /30da/admin/api/overview         counts, users, open flags
@@ -325,7 +328,7 @@ function json(res, status, obj, headers = {}) {
   send(res, status, JSON.stringify(obj), { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers });
 }
 
-const TYPES = { html: "text/html; charset=utf-8", css: "text/css; charset=utf-8", js: "text/javascript; charset=utf-8" };
+const TYPES = { html: "text/html; charset=utf-8", css: "text/css; charset=utf-8", js: "text/javascript; charset=utf-8", png: "image/png" };
 async function serveFile(res, name) {
   const buf = await readFile(new URL(`../thirtyda-admin/${name}`, import.meta.url));
   send(res, 200, buf, { "Content-Type": TYPES[name.split(".").pop()], "Cache-Control": "no-store" });
@@ -815,7 +818,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
   const path = url.pathname.replace(/\/+$/, "") || "/";
   const sub = path.slice(BASE.length) || "/";
 
-  const asset = sub.match(/^\/(app\.css|signin\.js|monitor\.js|questions\.js|connections\.js|support\.js|support\.css|support-badge\.js|photos\.js|photos\.css|review\.js|review\.css|delete-profile\.js)$/);
+  const asset = sub.match(/^\/(app\.css|signin\.js|monitor\.js|questions\.js|connections\.js|support\.js|support\.css|support-badge\.js|photos\.js|photos\.css|review\.js|review\.css|delete-profile\.js|gk-smart-logo\.png|gk-smart-favicon\.png)$/);
   if (req.method === "GET" && asset) return serveFile(res, asset[1]);
 
   if (req.method !== "GET" && req.method !== "HEAD" && sub.startsWith("/api/")) {

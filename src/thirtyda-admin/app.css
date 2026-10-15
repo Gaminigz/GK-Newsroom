@@ -79,8 +79,19 @@ input { font: inherit; color: inherit; }
   flex-direction: column;
   justify-content: space-between;
 }
-.brand-row { display: flex; align-items: center; gap: 8px; }
+.brand-row { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
 .brand-row .wordmark { font-size: 22px; }
+/* The brand on every admin page and the sign-in panel (owner 2026-10-15: "the GK SMART Logo and the GK API HUB + 30DA
+   name"): the GK SMART logo, "GK API Hub · 30+DA", then the Super admin pill. Where the row is narrow (the sign-in panel,
+   a phone's top bar) the name stacks: "GK API Hub" small over the 30+DA wordmark. */
+.brand-logo { display: block; flex: none; width: 36px; height: 36px; border-radius: 9px; }
+.brand-name { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.brand-sep { color: var(--grey); font-weight: 700; }
+.signin-brand .brand-logo { width: 44px; height: 44px; border-radius: 11px; }
+.signin-brand .brand-row { gap: 10px; }
+.signin-brand .brand-name { flex-direction: column; align-items: flex-start; gap: 3px; line-height: 1; }
+.signin-brand .brand-sep { display: none; }
+.signin-brand .brand-row .wordmark.hub { font-size: 15px; }
 .signin-brand h1 {
   font-family: var(--display);
   font-weight: 900;
@@ -174,6 +185,7 @@ input { font: inherit; color: inherit; }
   background: #fff;
   border-bottom: 1px solid var(--line);
 }
+.topbar .brand-row { flex: none; flex-wrap: nowrap; }
 .topbar .brand-row .wordmark { font-size: 17px; color: var(--navy); }
 .topbar .pill { background: var(--navy); color: #fff; border-color: var(--navy); }
 .search {
@@ -195,7 +207,7 @@ input { font: inherit; color: inherit; }
 .dot.blocked { background: var(--red); }
 .live .dot { background: var(--green); animation: pulse 2s infinite; }
 @keyframes pulse { 50% { opacity: 0.35; } }
-.topbar .signout { margin-left: auto; font-size: 13px; }
+.topbar .signout { margin-left: auto; font-size: 13px; flex: none; white-space: nowrap; }
 
 .shell { display: grid; grid-template-columns: 200px 1fr; gap: 24px; padding: 20px; max-width: 1440px; }
 .sidenav { display: flex; flex-direction: column; gap: 4px; }
@@ -839,6 +851,10 @@ a.btn.cx-try-btn { display: inline-flex; align-items: center; height: 40px; colo
 @media (max-width: 760px) {
   .topbar { gap: 10px; padding: 0 16px; }
   .topbar .live { display: none; }
+  .topbar .brand-name { flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1; }
+  .topbar .brand-sep { display: none; }
+  .topbar .brand-row .wordmark { font-size: 16px; }
+  .topbar .brand-row .wordmark.hub { font-size: 12px; }
   .search { flex: 1 1 auto; }
   .shell { grid-template-columns: 1fr; padding: 16px; gap: 14px; }
   .sidenav { flex-direction: row; overflow-x: auto; }
@@ -863,6 +879,8 @@ a.btn.cx-try-btn { display: inline-flex; align-items: center; height: 40px; colo
   .q-num { margin-top: 9px; }
   .q-actions .btn-primary.q-save { min-width: 0; flex: 1 0 auto; }
 }
-@media (max-width: 480px) {
-  .topbar .pill { display: none; }
+@media (max-width: 560px) {
+  /* A phone: the brand (logo, name, pill) and Sign out on the first line, the search on its own line under them. */
+  .topbar { flex-wrap: wrap; height: auto; min-height: 56px; padding: 10px 16px; row-gap: 8px; }
+  .topbar .search { order: 3; flex: 1 0 100%; }
 }

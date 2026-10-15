@@ -99,7 +99,7 @@ async function admin(method, path, { headers = {}, body, cookie = TOKEN } = {}) 
   };
   const res = { status: null, headers: null, body: undefined };
   res.writeHead = (s, h = {}) => { res.status = s; res.headers = h; return res; };
-  res.end = (b) => { res.body = b === undefined ? undefined : String(b); return res; };
+  res.end = (b) => { res.raw = b; res.body = b === undefined ? undefined : String(b); return res; }; // raw: an image's bytes
   await handleThirtyDaAdmin(req, res, new URL(path, `https://${HOST}`));
   res.json = () => JSON.parse(res.body);
   return res;
@@ -326,4 +326,79 @@ test('Code page, Wan: "clips kept" counts the done jobs that still have their cl
   assert.equal(r.json().wan.queue.clips, 2);
   // The fake itself, as Mongo: { $ne: null } keeps set values, drops null and missing.
   assert.deepEqual((await jobs.find({ clip: { $ne: null } }).toArray()).map((j) => j._id).sort(), ['1'.repeat(32), '2'.repeat(32)]);
+});
+
+// ---------------------------------------------------------------- the brand (owner 2026-10-15: "i still can not see the
+// GK SMART Logo and the GK API HUB + 30DA name"): the logo, "GK API Hub · 30+DA" and the Super admin pill in the header
+// of every admin page and on the sign-in panel; the tab icon on every page.
+
+const ADMIN_PAGES = { monitor: 'Live overview', photos: 'Photos', questions: 'Questions', review: 'App review', support: 'Support', connections: 'Code', signin: 'Sign in' };
+/** A PNG's width × height, from its IHDR. */
+const pngSize = (buf) => {
+  assert.ok(buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])), 'a PNG');
+  return [buf.readUInt32BE(16), buf.readUInt32BE(20)];
+};
+
+test('brand: every admin page and the sign-in panel show the GK SMART logo, then "GK API Hub · 30+DA", then the pill; the tab icon too', () => {
+  for (const [page, name] of Object.entries(ADMIN_PAGES)) {
+    const html = readFileSync(new URL(`../thirtyda-admin/${page}.html`, import.meta.url), 'utf8');
+    const row = html.slice(html.indexOf('<div class="brand-row">'), html.indexOf('</div>', html.indexOf('<div class="brand-row">')));
+    const logo = row.indexOf('<img class="brand-logo" src="/30da/admin/gk-smart-logo.png" width="36" height="36" alt="GK SMART">');
+    const words = row.indexOf('<span class="brand-name"><span class="wordmark hub">GK API Hub</span><span class="brand-sep" aria-hidden="true">·</span><span class="wordmark">30+DA</span></span>');
+    const pill = row.indexOf('<span class="pill">Super admin</span>');
+    assert.ok(logo > 0 && words > logo && pill > words, `${page}: logo, then the name, then the pill`);
+    if (page === 'signin') assert.ok(html.indexOf('<section class="signin-brand">') < html.indexOf('<div class="brand-row">'), 'on the brand panel');
+    else assert.ok(html.indexOf('<header class="topbar">') < html.indexOf('<div class="brand-row">'), `${page}: in the top bar`);
+    assert.ok(html.includes(`<title>${name} · GK API Hub · 30+DA Super admin</title>`), `${page}: the page's name first`);
+    assert.match(html, /<link rel="icon" type="image\/png" sizes="32x32" href="\/30da\/admin\/gk-smart-favicon\.png">/, `${page}: the tab icon`);
+    assert.equal(/style=|<script>/.test(html), false, `${page}: no inline style or script (the CSP)`);
+  }
+  // A phone (360 px): the name stacks, the search takes its own line, the pill stays (no longer hidden under 480 px).
+  const css = readFileSync(new URL('../thirtyda-admin/app.css', import.meta.url), 'utf8');
+  for (const rule of ['.brand-logo {', '.brand-name {', '.signin-brand .brand-name {', '.topbar .brand-name {', '.topbar .search { order: 3; flex: 1 0 100%; }']) assert.ok(css.includes(rule), rule);
+  assert.equal(/\.topbar \.pill \{ display: none; \}/.test(css), false);
+});
+
+test('brand: on a tablet (761–915 px, iPad portrait) the fixed brand row squeezes the search, never Sign out ("Sign" over "out")', () => {
+  const css = readFileSync(new URL('../thirtyda-admin/app.css', import.meta.url), 'utf8');
+  const rule = (sel) => {
+    const at = css.indexOf(`\n${sel} {`);
+    assert.ok(at >= 0, sel);
+    return css.slice(at, css.indexOf('}', at));
+  };
+  // The brand row (logo, one-line name, pill) does not shrink above 760 px; the search is the one that gives way.
+  assert.match(rule('.topbar .brand-row'), /flex: none;/);
+  assert.match(rule('.search'), /flex: 0 1 380px;/);
+  // Sign out keeps its width and its one line.
+  const signout = rule('.topbar .signout');
+  assert.match(signout, /flex: none;/);
+  assert.match(signout, /white-space: nowrap;/);
+  assert.match(signout, /margin-left: auto;/);
+});
+
+test('brand: the logo (96 px) and the tab icon (32 px) are served as PNG, signed in or not; only those two names', async () => {
+  for (const [file, px, max] of [['gk-smart-logo.png', 96, 20_000], ['gk-smart-favicon.png', 32, 4_000]]) {
+    const onDisk = readFileSync(new URL(`../thirtyda-admin/${file}`, import.meta.url));
+    assert.deepEqual(pngSize(onDisk), [px, px], file);
+    assert.ok(onDisk.length < max, `${file}: small (${onDisk.length} bytes)`);
+    for (const cookie of [null, TOKEN]) {
+      const r = await admin('GET', `/30da/admin/${file}`, { cookie });
+      assert.equal(r.status, 200, file);
+      assert.equal(r.headers['Content-Type'], 'image/png');
+      assert.equal(r.headers['X-Content-Type-Options'], 'nosniff');
+      assert.ok(Buffer.from(r.raw).equals(onDisk), `${file}: the file's own bytes`);
+    }
+  }
+  // The CSP lets the page show its own images (img-src falls back to default-src 'self').
+  const page = await admin('GET', '/30da/admin', { cookie: null });
+  assert.equal(page.status, 200);
+  assert.ok(page.body.includes('src="/30da/admin/gk-smart-logo.png"'));
+  assert.match(page.headers['Content-Security-Policy'], /default-src 'self'/);
+  assert.equal(/img-src/.test(page.headers['Content-Security-Policy']), false);
+  // Any other name is not a file: the admin's 404 (or the sign-in redirect for a page), never an image.
+  for (const p of ['/30da/admin/gk-smart-logo.jpg', '/30da/admin/gk-smart-logo.png.bak', '/30da/admin/review/demo-w-1.jpg', '/30da/admin/x/gk-smart-logo.png', '/30da/admin/%2e%2e/lib/thirtyda-admin.mjs']) {
+    const r = await admin('GET', p, { cookie: null });
+    assert.notEqual(r.status, 200, p);
+    assert.notEqual(r.headers['Content-Type'], 'image/png', p);
+  }
 });
