@@ -17,7 +17,9 @@
 //   a word of the place's own street, area or branch, with a word of its name ("Brown Coffee Norodom", "Starbucks
 //   Aeon"); the city or the country ("Browns Phnom Penh", "星巴克 金边": the whole list is Phnom Penh).
 // Ranked: in the area asked for > the whole name > every word whole > a word begun (or the kind: "cafe" finds every
-// café; or its street, area or branch) > a typo; then nearer to the person; then more words matched.
+// café; or its street, area or branch) > a typo; then the better words (more of them whole, the kind asked for, the
+// name begun by the search's first word: "Bown Coffee" → Brown Coffee before Pho Bowl, a café tagged so; "cafe
+// riverside" → the cafés before a restaurant with "Cafe" in an old name); then nearer to the person.
 
 const LATIN_MARKS = /[̀-ͯ]/g;
 
@@ -343,6 +345,12 @@ function scoreOf(entry, query) {
     sum += best;
   }
   if (!named) return null; // "Norodom" alone is a street, not the name of a place on it
+  // The kind asked for ("cafe riverside": a café before a restaurant whose old English name says "Cafe").
+  if (query.required.some((q) => kindFits(q, entry.kind))) sum += 1;
+  // The name begun by the search's first word ("Bown Coffee": "Brown 51" before "Pho Bowl"); not a kind word ("cafe …").
+  const first = query.required[0];
+  if (first.latin && !KIND_WORDS[canonOf(first.w)]
+    && entry.variants.some((v) => v.words[0] && wordIn(first, { ...v, words: [v.words[0]] }))) sum += 1;
   for (const o of query.optional) {
     const q = { w: o, forms: wordForms(o), latin: isLatinWord(o) };
     if (entry.variants.some((v) => wordIn(q, v) === 3)) sum += 1;
@@ -360,7 +368,7 @@ function inAreas(entry, areas) {
 
 /**
  * The places (placeEntry) that match a search, best first: [{ entry, tier, inArea, km, sum }], at most `limit`.
- * `centre` ({ lat, lng }): nearer ranks higher among equals. A search with nothing to match (no words, or only one
+ * `centre` ({ lat, lng }): nearer ranks higher among equals (same area, tier and sum). A search with nothing to match (no words, or only one
  * letter) finds nothing.
  */
 export function matchPlaces(entries, q, { centre = null, limit = 6 } = {}) {
@@ -378,6 +386,6 @@ export function matchPlaces(entries, q, { centre = null, limit = 6 } = {}) {
       km: hasPoint(centre) && hasPoint(entry) ? kmBetween(centre, entry) : 0,
     });
   }
-  out.sort((a, b) => (b.inArea - a.inArea) || (b.tier - a.tier) || (a.km - b.km) || (b.sum - a.sum));
+  out.sort((a, b) => (b.inArea - a.inArea) || (b.tier - a.tier) || (b.sum - a.sum) || (a.km - b.km));
   return limit ? out.slice(0, limit) : out;
 }

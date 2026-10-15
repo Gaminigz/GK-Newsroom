@@ -229,3 +229,25 @@ test('the board demo searches its DEMO_PLACES with this file (board/demo.js), an
   assert.deepEqual(q('aeon'), ['Aeon Mall Phnom Penh']);
   assert.deepEqual(q('independance monument'), ['Independence Monument'], 'a typo');
 });
+
+test('among equals the better words rank before the nearer place: "Bown Coffee", "cafe riverside" (real rows, 2026-10-15)', () => {
+  const RIVER = { lat: 11.5600, lng: 104.9292 };
+  const near = { lat: 11.5605, lng: 104.9293 };
+  const far = { lat: 11.5640, lng: 104.9300 };
+  const rows = [
+    // OpenStreetMap tags "Pho Bowl" a café; "bown" is one letter off "bowl" as it is off "brown" — and it is the nearer.
+    placeEntry({ names: ['Pho Bowl'], kind: 'cafe', ...near }, 'pho-bowl'),
+    placeEntry({ names: ['Brown 51'], kind: 'cafe', ...far }, 'brown-51'),
+    placeEntry({ names: ['Brown Coffee'], kind: 'cafe', lat: 11.5700, lng: 104.9300 }, 'brown-coffee'),
+    // A restaurant whose old English name still says "Cafe", nearest of all; the cafés are a little further.
+    placeEntry({ names: ['Taqueria Corona', 'Lone Pine Cafe'], kind: 'restaurant', ...near }, 'taqueria'),
+    placeEntry({ names: ['Enso Cafe'], kind: 'cafe', ...far }, 'enso'),
+  ];
+  const ids = (q) => matchPlaces(rows, q, { centre: RIVER }).map((m) => m.entry.data);
+  assert.deepEqual(ids('Bown Coffee').slice(0, 2), ['brown-coffee', 'brown-51'], 'both words, then the name begun by "bown"');
+  assert.equal(ids('Bown Coffee').at(-1), 'pho-bowl', 'Pho Bowl last');
+  const river = ids('cafe riverside');
+  assert.ok(river.indexOf('enso') < river.indexOf('taqueria'), 'the café before the restaurant');
+  // The whole name still comes first, however far: then "Brown" + a café; Pho Bowl is no match without the typo.
+  assert.deepEqual(ids('Brown Coffee'), ['brown-coffee', 'brown-51']);
+});
