@@ -6,8 +6,11 @@
  *   - The admin turns EXISTING profiles into review accounts ("Use as review account": users.demo = 'review'): a mock
  *     number becomes the profile's verified phone (phoneVia 'review') and the admin's PIN becomes its PIN (hashed exactly
  *     like the app's own PIN; the PIN itself is also kept SEALED on the profile, reviewPinBox, so the page can show it
- *     in the review notes). Photos, birth year, level and conversations stay exactly as they are. "Stop being a review
- *     account" puts the profile's own number / PIN back (reviewWas) and ends the sessions the review code made.
+ *     in the review notes). Photos, birth year, level and conversations stay exactly as they are — except the photos the
+ *     team uploads on Users → Photos (src/lib/thirtyda-admin.mjs, owner 2026-10-15), recorded per slot (reviewUploads)
+ *     with the profile's own photo they replaced kept (reviewWas.photos). "Stop being a review account" puts the
+ *     profile's own number / PIN / photos back (reviewWas), takes the uploaded photos out (no made-up face ever reaches
+ *     real people) and ends the sessions the review code made.
  *   - "Create demo account" (src/lib/thirtyda-demo.mjs, owner 2026-10-14: "1 woman 1 man", PINs 5566 / 7788) makes a NEW,
  *     fully filled profile directly as a review account (users.demoPreset), with 4 approved photos; Remove deletes it.
  *   - A PINNED Phnom Penh location: a review account is put on a fixed point in central Phnom Penh (REVIEW_SPOTS, area
@@ -34,6 +37,7 @@ import crypto from "node:crypto";
 import { SETTINGS_COLLECTION, saveSecret, readSecret, secretSaved, sealSecret, openSecret, settingsKey, keyReady } from "./thirtyda-settings.mjs";
 import { hashPin, checkNewPin, verifyPin, pinDigits, PIN_LENGTH } from "./thirtyda-pin.mjs";
 import { PHOTO_MAX } from "../thirtyda-app/shared/rules.js";
+import { isPhotoId, deletePhoto } from "./thirtyda-photos.mjs";
 
 export const REVIEW = "review"; // users.demo
 export const REVIEW_MAX = 4; // review accounts at most
@@ -441,14 +445,45 @@ export async function makeReviewAccount(d, id, { phone, pin }, { now = Date.now(
 }
 
 /**
+ * The photos "Stop being a review account" puts back. Every slot that still holds the team's upload (reviewUploads,
+ * Users → Photos → Upload) gets the profile's own photo again (reviewWas.photos: { id, pendingAt } — waiting for approval
+ * again if it was), or is emptied; the empty slots at the end are dropped. A kept photo whose slot changed otherwise is
+ * not needed any more. → { photos: the new list (null: unchanged), set, unset, goes: the stored photos to delete once the
+ * profile is back }.
+ */
+function photosBack(u) {
+  const ups = u.reviewUploads ?? {};
+  const kept = u.reviewWas?.photos ?? {};
+  const list = Array.isArray(u.photos) ? [...u.photos] : [];
+  const set = {};
+  const unset = { reviewUploads: "" };
+  const goes = [];
+  let changed = false;
+  for (let i = 0; i < PHOTO_MAX; i++) {
+    const own = isPhotoId(kept[i]?.id) ? kept[i] : null;
+    if (isPhotoId(ups[i]) && list[i] === ups[i]) {
+      goes.push(ups[i]);
+      list[i] = own?.id ?? null;
+      changed = true;
+      if (own?.pendingAt) Object.assign(set, { [`photoReview.${i}`]: "pending", [`photoReviewAt.${i}`]: own.pendingAt });
+      else Object.assign(unset, { [`photoReview.${i}`]: "", [`photoReviewAt.${i}`]: "" });
+    } else if (own && list[i] !== own.id) goes.push(own.id);
+  }
+  while (list.length && list.at(-1) == null) list.pop();
+  return { photos: changed ? list : null, set, unset, goes };
+}
+
+/**
  * "Stop being a review account": the mark and the mock number go; the profile's own number comes back (unless another
  * profile has taken it meanwhile), its own phoneVia and PIN too (none → the app asks for a new PIN), and its own location
- * (none → none: the app's next fix sets it; POST /me/location works for it again). Every session
+ * (none → none: the app's next fix sets it; POST /me/location works for it again). The photos the team uploaded go and
+ * its own come back (photosBack) — only while its photos are still the ones read here (409 photos_changed: an upload
+ * landed meanwhile, try again), so no uploaded photo is ever left on a real profile. Every session
  * the review code made for it ends (reviewSignin, kept when such a session is renewed), and so does any other session
  * of it started since it became a review account: a reviewer's phone never keeps a real profile. Its sessions from
- * before (the owner's own phone) stay.
+ * before (the owner's own phone) stay. opts.remove: the photo store's delete (tests).
  */
-export async function stopReviewAccount(d, id) {
+export async function stopReviewAccount(d, id, { remove = deletePhoto } = {}) {
   const users = d.collection(USERS);
   const u = await users.findOne({ _id: id });
   if (!u || !isReview(u)) throw new ReviewError(404, "not_found", "This profile is not a review account.");
@@ -470,12 +505,21 @@ export async function stopReviewAccount(d, id) {
   if (was.pinHash) Object.assign(set, { pinHash: was.pinHash, pinAt: was.pinAt ?? new Date() });
   else Object.assign(unset, { pinHash: "", pinAt: "" });
   if ("location" in was) Object.assign(set, { location: was.location ?? null, area: was.area ?? "", city: was.city ?? "" });
-  await users.updateOne({ _id: id, demo: REVIEW }, { $set: set, $unset: unset });
+  const photos = photosBack(u);
+  if (photos.photos) set.photos = photos.photos;
+  Object.assign(set, photos.set);
+  Object.assign(unset, photos.unset);
+  const r = await users.updateOne({ _id: id, demo: REVIEW, photos: u.photos ?? null }, { $set: set, $unset: unset });
+  if (!r.matchedCount) {
+    if (!isReview(await users.findOne({ _id: id }, { projection: { demo: 1 } }))) throw new ReviewError(404, "not_found", "This profile is not a review account.");
+    throw new ReviewError(409, "photos_changed", "Its photos changed just now (an upload on Users → Photos). Try again.");
+  }
+  await Promise.all(photos.goes.map((x) => remove(x)));
   const since = u.reviewAt ? new Date(u.reviewAt) : null;
   const ended = await d.collection(SESSIONS).deleteMany({
     userId: id, $or: [{ reviewSignin: true }, ...(since && !Number.isNaN(since.getTime()) ? [{ created: { $gte: since } }] : [])],
   });
-  return { user: await users.findOne({ _id: id }), sessionsEnded: ended.deletedCount ?? 0 };
+  return { user: await users.findOne({ _id: id }), sessionsEnded: ended.deletedCount ?? 0, photosDeleted: photos.goes.length };
 }
 
 // ---------------------------------------------------------------- the page's data

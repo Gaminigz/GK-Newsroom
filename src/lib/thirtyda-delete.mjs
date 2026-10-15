@@ -138,7 +138,12 @@ export function handlesOf(user) {
       seen.add(key);
       return true;
     }).map(({ provider, id }) => ({ provider, id: String(id) })),
-    photos: uniq([...(Array.isArray(was.photos) ? was.photos : []), ...(Array.isArray(user?.photos) ? user.photos : [])]).filter(isPhotoId),
+    photos: uniq([
+      ...(Array.isArray(was.photos) ? was.photos : []), ...(Array.isArray(user?.photos) ? user.photos : []),
+      // An App review account made from a profile keeps the photos of its own that the team's uploads replaced
+      // (reviewWas.photos, src/lib/thirtyda-admin.mjs): they go with it.
+      ...Object.values(user?.reviewWas?.photos ?? {}).map((p) => p?.id),
+    ]).filter(isPhotoId),
   };
 }
 

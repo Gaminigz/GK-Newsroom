@@ -17,8 +17,9 @@ process.env.THIRTYDA_SECRET_KEY ||= crypto.randomBytes(32).toString('hex');
 
 const {
   DEMO_PRESETS, DEMO_PRESET_KEYS, DEMO_PHOTO_DIR, demoPhotoFile, demoPhotoFiles, placeholderPhoto, placeholderSvg, checkDemoFields,
-  createDemoAccount, refreshDemoPhotos, demoView, demoAccountOf, isDemoPreset,
+  createDemoAccount, refreshDemoPhotos, demoView, demoAccountOf, isDemoPreset, DEMO_UPLOADED,
 } = await import('./thirtyda-demo.mjs');
+const { putReviewPhoto } = await import('./thirtyda-photo-review.mjs');
 const {
   REVIEW, REVIEW_MAX, REVIEW_DEFAULTS, REVIEW_SPOTS, REVIEW_PLACE, isReview, sameWorld, worldFilter, makeReviewAccount, stopReviewAccount,
   setReviewSwitch, reviewPinCheck, reviewPinProbe, reviewAccountForPin, reviewView, reviewPinOf, tryCounter, ReviewError,
@@ -32,7 +33,10 @@ const { normalizePhoto } = await import('./thirtyda-photos.mjs');
 
 const get = (doc, path) => path.split('.').reduce((v, k) => (v == null ? undefined : v[k]), doc);
 const val = (v) => (v instanceof Date ? v.getTime() : v);
-const eq = (v, want) => (want === null ? v == null : Array.isArray(v) ? v.some((x) => val(x) === val(want)) : val(v) === val(want));
+// An array asked for matches that exact array (Mongo: same length, same order), as the photo writes ask for the list read.
+const eq = (v, want) => (want === null ? v == null
+  : Array.isArray(want) ? Array.isArray(v) && v.length === want.length && v.every((x, i) => eq(x, want[i]))
+    : Array.isArray(v) ? v.some((x) => val(x) === val(want)) : val(v) === val(want));
 function matches(doc, q) {
   for (const [k, cond] of Object.entries(q || {})) {
     if (k === '$or') { if (!cond.some((c) => matches(doc, c))) return false; continue; }
@@ -293,6 +297,96 @@ test('C: the Media Director\'s files are used slot by slot once they are in the 
     await assert.rejects(refreshDemoPhotos(d, 'U-10003', { ...store, dir: two.url }), (e) => e instanceof ReviewError && e.status === 404);
   } finally {
     await two.done();
+  }
+});
+
+test('C: a photo the team uploaded on Users → Photos ("uploaded") counts as real and stays through Refresh photos and Edit', async () => {
+  const d = await world();
+  const store = photoStore();
+  const f = await folder({ woman: [1, 2, 3, 4] });
+  try {
+    const u = (await createDemoAccount(d, 'woman', {}, { ...store, dir: f.url })).user;
+    // Users → Photos → Upload into photo 2 (the admin route's own update, src/lib/thirtyda-photo-review.mjs).
+    const up = await store.save(Buffer.from('the uploaded photo'));
+    assert.equal(await putReviewPhoto(d.collection('thirtyda_users'), { userId: u._id, index: 1, oldId: u.photos[1], photoId: up, demoKind: DEMO_UPLOADED }), true);
+    await store.remove(u.photos[1]); // the route deletes the one it replaced
+    const acc = (await demoView(d, { dir: f.url })).presets.find((p) => p.preset === 'woman').account;
+    assert.deepEqual([acc.photos, acc.realPhotos, acc.refresh], [4, 4, false], 'real; demo-w-2.jpg in the folder never asks to go over it');
+    // Refresh photos: the folder's files again for photos 1, 3, 4; photo 2 stays the uploaded one.
+    const r = await refreshDemoPhotos(d, u._id, { ...store, dir: f.url });
+    assert.equal(r.photos[1], up);
+    assert.deepEqual(r.demoPhotos, ['real', DEMO_UPLOADED, 'real', 'real']);
+    assert.ok(r.photos.every((id) => store.files.has(id)));
+    assert.equal(store.files.size, PHOTO_MAX, 'the replaced ones left the store, never the uploaded one');
+    // Edit (Create again with a new PIN): the same.
+    const again = (await createDemoAccount(d, 'woman', { pin: '5577' }, { ...store, dir: f.url })).user;
+    assert.equal(again.photos[1], up);
+    assert.deepEqual(again.demoPhotos, ['real', DEMO_UPLOADED, 'real', 'real']);
+    assert.equal(store.files.size, PHOTO_MAX);
+    assert.ok(again.photos.every((id) => store.files.has(id)));
+    // A Refresh that fails (a folder file that is no photo) removes only what it stored: the account keeps its photos.
+    await writeFile(join(f.dir, demoPhotoFile('woman', 4)), 'not a photo');
+    await assert.rejects(refreshDemoPhotos(d, u._id, { ...store, save: async (buf) => { await normalizePhoto(buf); return store.save(buf); }, dir: f.url }), (e) => e.code === 'bad_photo');
+    assert.equal(store.files.size, PHOTO_MAX);
+    assert.ok(store.files.has(up));
+    assert.deepEqual(d.docs('thirtyda_users').find((x) => x._id === u._id).photos, again.photos);
+  } finally {
+    await f.done();
+  }
+});
+
+test('C: an upload that lands while Refresh photos or Edit runs is never overwritten (409 photos_changed): what they stored is removed, the slot keeps the upload', async () => {
+  const d = await world();
+  const store = photoStore();
+  const f = await folder({ woman: [1, 2, 3, 4] });
+  const users = d.collection('thirtyda_users');
+  const doc = (id) => d.docs('thirtyda_users').find((x) => x._id === id);
+  /** The store, with Users → Photos → Upload / Replace into `index` landing right after its first save (the route's own steps). */
+  const racing = (userId, index) => {
+    let landed = null;
+    return {
+      ...store,
+      dir: f.url,
+      save: async (buf) => {
+        const id = await store.save(buf);
+        if (!landed) {
+          landed = await store.save(Buffer.from('the uploaded photo'));
+          const old = doc(userId).photos[index];
+          assert.equal(await putReviewPhoto(users, { userId, index, oldId: old, photoId: landed, demoKind: DEMO_UPLOADED }), true);
+          await store.remove(old);
+        }
+        return id;
+      },
+      landed: () => landed,
+    };
+  };
+  try {
+    const u = (await createDemoAccount(d, 'woman', {}, { ...store, dir: f.url })).user;
+    // Case A: Refresh reads photo 1 (a folder file), the upload swaps in X and deletes that one, then Refresh writes.
+    let race = racing(u._id, 0);
+    await assert.rejects(refreshDemoPhotos(d, u._id, race), (e) => e instanceof ReviewError && e.status === 409 && e.code === 'photos_changed');
+    const x = race.landed();
+    assert.deepEqual(doc(u._id).photos, [x, ...u.photos.slice(1)], 'the upload stays in its slot');
+    assert.deepEqual(doc(u._id).demoPhotos, [DEMO_UPLOADED, 'real', 'real', 'real']);
+    assert.deepEqual([...store.files.keys()].sort(), [x, ...u.photos.slice(1)].sort(), 'what Refresh stored is removed; nothing orphaned');
+    // Refresh again: done, and the upload is kept.
+    const r = await refreshDemoPhotos(d, u._id, { ...store, dir: f.url });
+    assert.equal(r.photos[0], x);
+    assert.ok(r.photos.every((id) => store.files.has(id)));
+    // Case B: Edit keeps the upload X (read), a Replace swaps X → Y (deleting X) before Edit writes: never X back into
+    // the slot (a deleted file), never Y lost. The number and PIN are saved already, the rest is not.
+    race = racing(u._id, 0);
+    await assert.rejects(createDemoAccount(d, 'woman', { pin: '5577', name: 'Sopal K' }, race),
+      (e) => e instanceof ReviewError && e.status === 409 && e.code === 'photos_changed' && /number and PIN are saved/.test(e.message));
+    const y = race.landed();
+    assert.equal(doc(u._id).photos[0], y);
+    assert.equal(store.files.has(x), false);
+    assert.ok(doc(u._id).photos.every((id) => store.files.has(id)), 'every slot points at a stored photo');
+    assert.equal(store.files.size, PHOTO_MAX, 'what Edit stored is removed');
+    assert.equal(reviewPinOf(doc(u._id)), '5577');
+    assert.equal(doc(u._id).name, u.name, 'the rest waits for the next Save');
+  } finally {
+    await f.done();
   }
 });
 
@@ -572,6 +666,28 @@ test('admin routes: Create demo account and Refresh photos are signed-in, same-o
   const src = readFileSync(new URL('./thirtyda-admin.mjs', import.meta.url), 'utf8');
   assert.match(src, /await audit\(req, "review_demo_save", \{ user: r\.user\._id, preset, created: r\.created \}\);/, 'audited with ids only');
   assert.match(src, /await audit\(req, "review_demo_photos", \{ user: m\[2\] \}\);/);
+});
+
+test('admin page: the photo line says what the ACCOUNT shows once it has a real photo (uploaded on Users → Photos), not only the folder — on the card and in Edit', async () => {
+  const { readFileSync } = await import('node:fs');
+  const vm = await import('node:vm');
+  const js = readFileSync(new URL('../thirtyda-admin/review.js', import.meta.url), 'utf8');
+  const fns = js.slice(js.indexOf('function photoLine('), js.indexOf('function renderDemos('));
+  const { demoPhotoLine } = vm.runInNewContext(`${fns}\n;({ demoPhotoLine })`);
+  const empty = { count: 0, of: 4, names: ['demo-w-1.jpg', 'demo-w-2.jpg', 'demo-w-3.jpg', 'demo-w-4.jpg'], real: [false, false, false, false] };
+  const line = (account, files = empty) => JSON.parse(JSON.stringify(demoPhotoLine({ files, account })));
+  // No account, or no real photo yet: the folder.
+  assert.deepEqual(line(null), { text: 'Photos: placeholders — real demo photos not added yet', cls: 'is-placeholder' });
+  assert.deepEqual(line({ photos: 4, realPhotos: 0 }), { text: 'Photos: placeholders — real demo photos not added yet', cls: 'is-placeholder' });
+  // 2 uploaded, an empty folder: never "not added yet" next to "4 of 4 · 2 real".
+  assert.deepEqual(line({ photos: 4, realPhotos: 2 }), { text: 'Photos: 2 of 4 real, approved — placeholders in the rest', cls: 'is-placeholder' });
+  assert.deepEqual(line({ photos: 4, realPhotos: 4 }), { text: 'Photos: 4 real photos, approved', cls: 'is-real' });
+  // The card and the Edit dialog both use it; Edit says the uploads stay.
+  assert.match(js, /const line = demoPhotoLine\(p\);/);
+  assert.match(js, /\$\('demo-form-photos'\)\.textContent = demoPhotoLine\(p\)\.text;/);
+  assert.ok(js.includes('Saving updates this same account, its photos too (the ones uploaded on Users → Photos stay).'));
+  // Stop says what happens to the photos.
+  assert.ok(js.includes("the profile's own number, PIN and photos come back (photos uploaded on Users → Photos are deleted)"));
 });
 
 test('admin page: the Create panel with both presets, the photo status line, and Refresh photos; everything as text', async () => {

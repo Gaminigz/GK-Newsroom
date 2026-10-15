@@ -2330,8 +2330,8 @@ function photoRefusal(u, index = emptySlot(slotsOf(u), PHOTO_MAX)) {
  */
 const emptySlotFilter = (i) => ({ $or: [{ [`photos.${i}`]: { $type: "null" } }, { [`photos.${i}`]: { $exists: false } }] });
 
-/** Older profiles may lack the array; slot updates by index need one. */
-async function ensurePhotoArray(users, me) {
+/** Older profiles may lack the array; slot updates by index need one. (Also the admin's Upload, src/lib/thirtyda-admin.mjs.) */
+export async function ensurePhotoArray(users, me) {
   if (Array.isArray(me.photos)) return;
   await users.updateOne({ _id: me._id, photos: { $not: { $type: "array" } } }, { $set: { photos: [] } });
   me.photos = [];

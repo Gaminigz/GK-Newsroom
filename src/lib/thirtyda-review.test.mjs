@@ -24,7 +24,10 @@ const { normalizePhone } = await import('./thirtyda-app.mjs');
 
 const get = (doc, path) => path.split('.').reduce((v, k) => (v == null ? undefined : v[k]), doc);
 const val = (v) => (v instanceof Date ? v.getTime() : v);
-const eq = (v, want) => (want === null ? v == null : Array.isArray(v) ? v.some((x) => val(x) === val(want)) : val(v) === val(want));
+// An array asked for matches that exact array (Mongo: same length, same order), as the photo writes ask for the list read.
+const eq = (v, want) => (want === null ? v == null
+  : Array.isArray(want) ? Array.isArray(v) && v.length === want.length && v.every((x, i) => eq(x, want[i]))
+    : Array.isArray(v) ? v.some((x) => val(x) === val(want)) : val(v) === val(want));
 function matches(doc, q) {
   for (const [k, cond] of Object.entries(q || {})) {
     if (k === '$or') { if (!cond.some((c) => matches(doc, c))) return false; continue; }

@@ -18,7 +18,14 @@
  * the admin's Users table draws every profile's 4 slots (photoSummary: ids + status only) and a dialog shows them large
  * (adminSlots). Approve there is the same approve. Disqualify takes down ANY photo, approved or pending: the slot is
  * emptied exactly as a reject empties it, the person gets the same notice; it acts only while THAT photo is still in
- * that slot, and never on an App review account (its photos are changed on the App review page).
+ * that slot, and never on an App review account.
+ *
+ * Users → Photos → Upload (owner 2026-10-15, the 4 App review test users: "its take 1 hours to make 4 test users damn"):
+ * the team puts a photo straight into a slot of an App review account — never a real person's — APPROVED at once (no
+ * review entry: the team put it there). putReviewPhoto swaps it in only while that slot still holds the photo the
+ * request read (or is still empty), so two uploads into one slot never both land. On a review account made from an
+ * existing profile the upload is recorded and the profile's own photo kept, never deleted: "Stop being a review
+ * account" takes the team's photos out and puts the profile's own back, so none of them reaches real people.
  *
  * Pure apart from the collection handed in, so the unit tests run without a database.
  */
@@ -169,5 +176,41 @@ export async function rejectPhoto(users, { userId, index, photoId, notice }) {
  */
 export async function disqualifyPhoto(users, { userId, index, photoId, notice }) {
   const r = await users.updateOne(stillThere(userId, index, photoId), emptySlot(index, notice));
+  return Boolean(r.modifiedCount);
+}
+
+/**
+ * Matches while slot `index` is empty: an explicit null, or past the end of the list (the app's emptySlotFilter in
+ * src/lib/thirtyda-app.mjs — `{"photos.3": null}` alone misses a slot past the end).
+ */
+const emptySlotFilter = (index) => ({ $or: [{ [`photos.${index}`]: { $type: "null" } }, { [`photos.${index}`]: { $exists: false } }] });
+
+/**
+ * Upload (Users → Photos) → true: slot `index` of an App review account holds `photoId` now, approved (its review entry
+ * cleared). Only while that slot still holds `oldId` (null: still empty), the profile is still an App review account
+ * and no delete has started on it. Past the end of the list Mongo pads the slots between with null — the app's own empty
+ * slot — so the list stays slot-aligned (photo 4 stays photo 4). `demoKind` (a profile made by "Create demo account",
+ * users.demoPhotos) marks that slot's kind too. `fromProfile` (a review account made from an existing profile, which
+ * "Stop being a review account" puts back among real people) records the upload in reviewUploads.<index> (its id), and
+ * `kept` — the profile's own photo it replaces, { id, pendingAt } — in reviewWas.photos.<index>: Stop takes the team's
+ * photo out again and puts that one back (src/lib/thirtyda-review.mjs stopReviewAccount). false when any of that
+ * changed meanwhile: the caller removes the new file.
+ */
+export async function putReviewPhoto(users, { userId, index, oldId = null, photoId, demoKind = null, fromProfile = false, kept = null }) {
+  const r = await users.updateOne(
+    {
+      _id: userId, demo: REVIEW, deleting: { $exists: false }, photos: { $type: "array" },
+      ...(oldId == null ? emptySlotFilter(index) : { [`photos.${index}`]: oldId }),
+    },
+    {
+      $set: {
+        [`photos.${index}`]: photoId,
+        ...(demoKind ? { [`demoPhotos.${index}`]: demoKind } : {}),
+        ...(fromProfile ? { [`reviewUploads.${index}`]: photoId } : {}),
+        ...(kept ? { [`reviewWas.photos.${index}`]: kept } : {}),
+      },
+      $unset: reviewUnset(index),
+    },
+  );
   return Boolean(r.modifiedCount);
 }

@@ -396,8 +396,7 @@ tr.is-blocked .thumb img { opacity: 0.6; }
 .pd-sub { margin: 0; font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em; color: var(--muted); }
 .pd-close { flex: none; width: 32px; height: 32px; border: 0; border-radius: 6px; background: #eef1f6; font-size: 18px; line-height: 1; }
 .pd-close:hover { background: #e2e7f0; }
-.pd-note { margin: 0 0 12px; padding: 10px 12px; border-radius: 6px; background: #eef2f8; font-size: 12px; font-weight: 600; line-height: 1.45; }
-.pd-note a, .pd-hint a { color: inherit; font-weight: 700; text-underline-offset: 2px; }
+.pd-hint a { color: inherit; font-weight: 700; text-underline-offset: 2px; }
 .pd-done { margin: 0 0 12px; font-size: 12px; font-weight: 700; color: var(--green); }
 .pd-done:empty { margin: 0; } /* stays in the page (a live region), takes no room until it says something */
 .pd-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; align-items: start; }
@@ -423,6 +422,15 @@ tr.is-blocked .thumb img { opacity: 0.6; }
 .pd-ask-row .btn { height: 32px; flex: 1 0 auto; }
 .pd-ask-row .link { font-size: 12px; }
 .pd-hint { margin: 0; font-size: 11px; color: var(--muted); }
+/* Upload (an App review account only, owner 2026-10-15): "Upload 4 photos", the line that they are approved at once,
+   the progress line; each slot's Upload / Replace; the dashed outline while files are dragged over the dialog. */
+.pd-upload { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 12px; padding: 10px 12px; border-radius: 6px; background: #eef2f8; }
+.pd-upload .btn-primary { flex: none; width: auto; height: 36px; padding: 0 16px; margin: 0; }
+.pd-upload-note { flex: 1 1 220px; margin: 0; font-size: 12px; font-weight: 600; line-height: 1.45; }
+.pd-progress { flex: 1 0 100%; margin: 0; font-size: 12px; font-weight: 700; color: var(--navy); }
+/* Like .pd-done: stays in the page (a live region, so its first "Uploading…" is read out), takes no room while empty. */
+.pd-progress:empty { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.ad-dialog.pd-dialog.is-drop { outline: 3px dashed var(--navy); outline-offset: -6px; }
 @media (max-width: 760px) {
   .ad-dialog.pd-dialog { padding: 16px; }
   .pd-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }

@@ -141,7 +141,7 @@ beforeEach(async () => {
     base('U-10002', 'Sophea', { photos: [B1], photoReview: { 0: 'pending' }, photoReviewAt: { 0: T0 } }),
     // Made before the rule: every photo approved.
     base('U-10004', 'Old', { photos: [C1, C2, C3] }),
-    // An App review demo account (src/lib/thirtyda-review.mjs): its photos change on the App review page.
+    // An App review demo account (src/lib/thirtyda-review.mjs): never disqualified; its photos are uploaded instead.
     base('U-10003', 'Review', { demo: 'review', photos: [R1, R2] }),
   ]) await d.collection('thirtyda_users').insertOne(u);
   setAdminTestHooks({
@@ -425,7 +425,8 @@ test('an App review account: disqualify refused (409 review_account) — nothing
     const r = await decide('U-10003', body.photoId === R1 ? 0 : 1, 'disqualify', body);
     assert.equal(r.status, 409);
     assert.equal(r.json().reason, 'review_account');
-    assert.match(r.json().error, /App review page/);
+    // Sent to the controls that change it (Upload / Replace in this same dialog), not the App review page.
+    assert.equal(r.json().error, 'This is an App review account: upload its photos here instead (Upload / Replace).');
     assert.equal(r.json().user.review, true, 'the fresh slots come with it');
   }
   const u = userDoc('U-10003');
@@ -434,7 +435,7 @@ test('an App review account: disqualify refused (409 review_account) — nothing
   assert.equal(u.blocked, false);
   assert.deepEqual(removed, []);
   assert.equal(audits('photo_disqualified').length, 0);
-  // Its photos still show (view-only).
+  // Its photos still show.
   assert.equal((await admin('GET', `${API}/U-10003/photos/0?id=${R1}&size=thumb`)).status, 200);
   // The update itself refuses a review account too (one made meanwhile is never touched).
   const users = d.collection('thirtyda_users');
@@ -507,7 +508,8 @@ test('the page: a Photos column with 4 slot-aligned lazy thumbnails, a Photos ro
     'pd.dlg.showModal()', "addEventListener('cancel'", "addEventListener('keydown', keepFocusInside)", "'aria-label': 'Close'",
     "'Approve'", "'Disqualify'", "'Yes, disqualify'", "'Also block this person'",
     '`The photo is deleted and ${who} is told to use a clear photo of their face.`',
-    "'App review account — change its photos on the ', el('a', { href: '/30da/admin/review' }, 'App review page')",
+    // An App review account: the view-only note became Upload (thirtyda-admin-upload.test.mjs).
+    "'App review account — photos you upload are approved at once.'",
     "'aria-label': `Approve ${name} of ${who}`", "'aria-label': `Disqualify ${name} of ${who}`",
     'setPhotosBadge(d.count)', 'refresh(); // the table',
   ]) assert.ok(ui.includes(bit), bit);

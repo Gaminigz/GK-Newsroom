@@ -38,6 +38,8 @@ const dayOf = (iso) => (iso ? new Intl.DateTimeFormat('en-GB', { timeZone: PP, d
 const whenOf = (iso) => (iso ? new Intl.DateTimeFormat('en-GB', { timeZone: PP, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(iso)) : '');
 /** "+855100001122" → "+855 10 000 1122" (easier to read and type; the server takes either). */
 const spaced = (p) => String(p ?? '').replace(/^\+855(\d{2})(\d{3})(\d{3,4})$/, '+855 $1 $2 $3');
+// Users → Photos of one profile (monitor.js opens its Photos dialog): the team uploads a review account's photos there.
+const photosLink = (id) => `/30da/admin/monitor#photos=${encodeURIComponent(id)}`;
 const STAGE = { l1: 'Level 1', l2_wait: 'Level 2 (waiting)', l2_open: 'Level 2', l3_decide: 'Level 2 done (choosing)', l3_open: 'Level 3 (chat)', ended: 'Ended' };
 
 let toastTimer = null;
@@ -110,14 +112,18 @@ function render() {
       v.accounts.length > 1 && !a.talks.length && !a.made ? 'No conversation with another review account' : null,
     ].filter(Boolean);
     // Made on this page (Create demo account): edit it there, Refresh photos, Remove — never "Stop" (no own profile).
+    // Upload photos (every review account): its Photos on Users, where the team's photos go in approved at once. Made from
+    // a profile, Stop takes them out again and puts the profile's own back (src/lib/thirtyda-review.mjs).
     const actions = a.made
       ? [
         el('button', { type: 'button', class: 'link', onclick: () => openDemo(a.made) }, 'Edit demo account'),
+        el('a', { class: 'link', href: photosLink(a.id) }, 'Upload photos'),
         el('button', { type: 'button', class: 'link', onclick: () => refreshPhotos(a) }, 'Refresh photos'),
         el('button', { type: 'button', class: 'link danger', onclick: () => remove(a) }, 'Remove'),
       ]
       : [
         el('button', { type: 'button', class: 'link', onclick: () => openForm(a) }, 'Change number / PIN'),
+        el('a', { class: 'link', href: photosLink(a.id) }, 'Upload photos'),
         el('button', { type: 'button', class: 'link danger', onclick: () => stop(a) }, 'Stop being a review account'),
       ];
     return el('li', { class: 'rv-account', 'data-id': a.id },
@@ -164,6 +170,17 @@ function photoLine(p) {
   return { text: `Photos: ${f.count} of ${f.of} real — placeholders for ${missing.join(', ')}`, cls: 'is-placeholder' };
 }
 
+/**
+ * "Photos: …" for a preset's account: once it has a real photo (uploaded on Users → Photos, or the folder's file in
+ * place) what the ACCOUNT shows; before that, or with no account yet, what the folder holds (photoLine).
+ */
+function demoPhotoLine(p) {
+  const a = p.account;
+  if (!a?.realPhotos) return photoLine(p);
+  if (a.realPhotos >= 4) return { text: 'Photos: 4 real photos, approved', cls: 'is-real' };
+  return { text: `Photos: ${a.realPhotos} of 4 real, approved — placeholders in the rest`, cls: 'is-placeholder' };
+}
+
 function renderDemos() {
   const dm = view.demo;
   if (!dm) return;
@@ -171,7 +188,9 @@ function renderDemos() {
   $('demos').replaceChildren(...dm.presets.map((p) => {
     const a = p.account;
     const pin = a?.pin ?? p.defaults.pin;
-    const line = photoLine(p);
+    // What the account shows (uploaded on Users → Photos, or the folder's files), not only what the folder holds.
+    const allReal = Boolean(a && a.realPhotos >= 4);
+    const line = demoPhotoLine(p);
     const facts = a
       ? el('dl', { class: 'rv-facts' },
         el('dt', {}, 'App name'), el('dd', {}, a.name),
@@ -185,6 +204,9 @@ function renderDemos() {
       el('div', { class: 'rv-demo-head' }, el('b', {}, `${p.label} (PIN ${pin})`), a ? el('small', {}, a.id) : null),
       facts,
       el('p', { class: ['rv-photos', line.cls] }, line.text),
+      // The quick way to real photos (owner 2026-10-15): upload the Media Director's files on Users → Photos.
+      allReal ? null : el('p', { class: 'rv-help rv-upload' }, a ? 'Upload its 4 photos yourself on ' : 'After Create, upload its 4 photos on ',
+        el('a', { href: a ? photosLink(a.id) : '/30da/admin/monitor#users' }, 'Users → Photos'), ' — approved at once.'),
       a?.refresh ? el('p', { class: 'rv-help' }, 'New photo files are in the folder: press Refresh photos to use them.') : null,
       el('div', { class: 'rv-actions' },
         el('button', { type: 'button', class: 'btn-primary', onclick: () => openDemo(p.preset) }, a ? 'Edit' : `Create ${p.label.toLowerCase()}`),
@@ -193,7 +215,8 @@ function renderDemos() {
   }));
   const names = dm.presets.map((p) => `${p.files.names[0]} … ${p.files.names.at(-1)}`).join(' and ');
   $('demo-folder').replaceChildren('Real demo photos: put ', el('code', {}, names), ' in ', el('code', {}, dm.folder),
-    ' (photo 1 = the face), then Create or Refresh photos. Until then each slot gets a navy / grey silhouette placeholder.');
+    ' (photo 1 = the face), then Create or Refresh photos. Until then each slot gets a navy / grey silhouette placeholder.',
+    ' Photos uploaded on Users → Photos stay through Edit and Refresh photos.');
 }
 
 function options(select, list, value) {
@@ -208,7 +231,7 @@ function openDemo(preset) {
   const v = p.account ? { ...p.defaults, ...Object.fromEntries(Object.entries(p.account).filter(([, x]) => x != null && x !== '')) } : p.defaults;
   $('demo-form-title').textContent = p.account ? `Edit ${p.label.toLowerCase()}` : `Create ${p.label.toLowerCase()}`;
   $('demo-form-who').textContent = p.account
-    ? `${p.account.name} (${p.account.id}). Saving updates this same account, its photos too.`
+    ? `${p.account.name} (${p.account.id}). Saving updates this same account, its photos too (the ones uploaded on Users → Photos stay).`
     : 'A new profile, made as a review account at once.';
   $('demo-name').value = v.name ?? '';
   $('demo-real').value = v.realName ?? '';
@@ -218,7 +241,7 @@ function openDemo(preset) {
   options($('demo-lang'), view.demo.langs, v.lang);
   $('demo-phone').value = spaced(v.phone);
   $('demo-pin').value = v.pin ?? '';
-  $('demo-form-photos').textContent = photoLine(p).text;
+  $('demo-form-photos').textContent = demoPhotoLine(p).text;
   $('demo-save').textContent = p.account ? 'Save' : 'Create';
   $('demo-error').hidden = true;
   $('demo-dialog').showModal();
@@ -322,7 +345,7 @@ $('form').addEventListener('submit', async (e) => {
 $('form-cancel').addEventListener('click', () => $('form-dialog').close());
 
 async function stop(a) {
-  if (!confirm(`Stop using ${a.name} (${a.id}) as a review account?\n\nThe mock number goes, the profile's own number and PIN come back, and reviewers signed in to it are signed out.`)) return;
+  if (!confirm(`Stop using ${a.name} (${a.id}) as a review account?\n\nThe mock number goes, the profile's own number, PIN and photos come back (photos uploaded on Users → Photos are deleted), and reviewers signed in to it are signed out.`)) return;
   await act(`accounts/${a.id}/stop`, {}, `${a.name} is a normal profile again.`).catch(() => {});
 }
 

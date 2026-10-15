@@ -58,6 +58,8 @@
 .rv-photos { margin: 0; font-size: 12px; font-weight: 700; }
 .rv-photos.is-placeholder { color: #8a4b00; }
 .rv-photos.is-real { color: var(--green); }
+.rv-upload { margin: 0; }
+.rv-upload a { color: inherit; font-weight: 700; text-underline-offset: 2px; }
 .rv-demo .btn-primary { width: auto; height: 36px; padding: 0 16px; margin-top: 0; }
 .rv-folder code { font-family: var(--mono); font-size: 11px; }
 .rv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }

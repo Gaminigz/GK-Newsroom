@@ -29,6 +29,15 @@ async function api(path, body) {
   return data;
 }
 
+// Users → Photos → Upload: the photo file itself is the body, sent with its image type; answers and refusals as api().
+async function apiUpload(path, file, type) {
+  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': type }, body: file });
+  if (res.status === 401) { location.href = '/30da/admin'; throw new Error('signed out'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data.error || 'Something went wrong.'), { status: res.status, data });
+  return data;
+}
+
 async function refresh() {
   try {
     view.data = await api('/30da/admin/api/overview');
@@ -274,8 +283,10 @@ function logHtml() {
 // The table draws every profile's 4 slots from the overview (photos: 4 × { photoId, status }, ids + status only): an
 // empty slot is a dashed box, a photo waiting for approval has an amber ring. A thumbnail, or the row's "Photos", opens
 // the 4 slots large: Approve (a pending photo), Disqualify (any photo — deleted, the person told, blocked if asked).
-// An App review account is view-only: its photos change on the App review page. Routes: src/lib/thirtyda-admin.mjs
-// (/30da/admin/api/users/:id/photos…); the rules: src/lib/thirtyda-photo-review.mjs.
+// An App review account is never disqualified: the team uploads its photos instead (owner 2026-10-15, the 4 test users:
+// "its take 1 hours to make 4 test users damn") — "Upload 4 photos", a slot's Upload / Replace, or files dropped on the
+// dialog; approved at once. Routes: src/lib/thirtyda-admin.mjs (/30da/admin/api/users/:id/photos…); the rules:
+// src/lib/thirtyda-photo-review.mjs.
 const SLOT_NAMES = ['Photo 1 · main', 'Photo 2 · Level 2', 'Photo 3 · Level 3', 'Photo 4 · Level 3'];
 const PHOTOS_API = (id) => `/30da/admin/api/users/${encodeURIComponent(id)}/photos`;
 // The url carries the photo id: a replaced photo is a new url (the server answers only while that id is in that slot).
@@ -326,26 +337,74 @@ function setPhotosBadge(n) {
 // answer is drawn only into the opening that asked, see decidePhoto).
 const pd = {
   dlg: null, parts: null, user: null, view: null, asking: null, blockChoice: false, busy: false, opener: null, opened: 0, imgs: new Map(),
+  pick: null, // the slot a slot's Upload / Replace opened the file picker for
 };
+
+// Upload: what the server takes (src/lib/thirtyda-admin.mjs UPLOAD_TYPES / UPLOAD_BYTES_MAX). Several files go where
+// their names say when every name ends in -1 … -4, each number once (demo-w-3.jpg → Photo 3: sending only demo-w-3 and
+// demo-w-4 again fills Photo 3 and 4, never Photo 1); other names go by name the way people count from Photo 1 (and
+// demo-w-2 comes before demo-w-10).
+const UPLOAD_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const UPLOAD_EXT = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+const UPLOAD_MAX = 10 * 1024 * 1024;
+const byName = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+const SLOT_IN_NAME = /-([1-4])\.[a-z0-9]+$/i;
+const PD_CLASS = 'ad-dialog pd-dialog';
 
 function photosDialog() {
   if (pd.dlg) return;
   const title = el('h2', { id: 'pd-title' });
   const sub = el('p', { class: 'pd-sub', id: 'pd-sub' });
   const close = el('button', { type: 'button', class: 'pd-close', 'aria-label': 'Close', 'data-pd': 'close', onclick: () => { if (!pd.busy) pd.dlg.close(); } }, '×');
-  const note = el('p', { class: 'pd-note', hidden: true });
   const done = el('p', { class: 'pd-done', role: 'status' });
   const error = el('p', { class: 'form-error', role: 'alert', hidden: true });
   const grid = el('ul', { class: 'pd-grid', 'aria-label': 'Photo 1 to photo 4' });
-  pd.dlg = el('dialog', { class: 'ad-dialog pd-dialog', id: 'photos-dialog', 'aria-labelledby': 'pd-title', 'aria-describedby': 'pd-sub' },
-    el('div', { class: 'pd-head' }, el('div', { class: 'pd-titles' }, title, sub), close), note, error, done, grid);
-  pd.parts = { title, sub, note, done, error, grid };
+  // An App review account only: "Upload 4 photos" (one picker, several files) and each slot's Upload / Replace (one file).
+  const picked = (slot) => (e) => {
+    const files = [...(e.target.files || [])];
+    e.target.value = ''; // the same file can be picked again
+    uploadPhotos(files, slot());
+  };
+  const many = el('input', { type: 'file', accept: UPLOAD_TYPES.join(','), multiple: true, hidden: true, 'data-pd': 'files', onchange: picked(() => null) });
+  const one = el('input', { type: 'file', accept: UPLOAD_TYPES.join(','), hidden: true, 'data-pd': 'file', onchange: picked(() => pd.pick) });
+  const uploadAll = el('button', {
+    type: 'button', class: 'btn-primary', 'data-pd': 'upload-all', onclick: () => { if (!pd.busy) many.click(); },
+  }, 'Upload 4 photos');
+  const progress = el('p', { class: 'pd-progress', role: 'status' });
+  const upload = el('div', { class: 'pd-upload', hidden: true },
+    uploadAll, el('p', { class: 'pd-upload-note' }, 'App review account — photos you upload are approved at once.'), progress, many, one);
+  pd.dlg = el('dialog', { class: PD_CLASS, id: 'photos-dialog', 'aria-labelledby': 'pd-title', 'aria-describedby': 'pd-sub' },
+    el('div', { class: 'pd-head' }, el('div', { class: 'pd-titles' }, title, sub), close), upload, error, done, grid);
+  pd.parts = { title, sub, upload, uploadAll, progress, many, one, done, error, grid };
   // Esc closes (not while a decision is on its way); Tab stays inside the dialog.
   pd.dlg.addEventListener('cancel', (e) => { if (pd.busy) e.preventDefault(); });
   pd.dlg.addEventListener('close', photosClosed);
   pd.dlg.addEventListener('keydown', keepFocusInside);
+  // Files dropped on the dialog: the same as "Upload 4 photos" (an App review account). Never the browser opening the
+  // file instead, whatever the profile.
+  const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+  pd.dlg.addEventListener('dragover', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    const ok = Boolean(pd.view?.user.review) && !pd.busy;
+    e.dataTransfer.dropEffect = ok ? 'copy' : 'none';
+    dropping(ok);
+  });
+  pd.dlg.addEventListener('dragleave', (e) => { if (!pd.dlg.contains(e.relatedTarget)) dropping(false); });
+  pd.dlg.addEventListener('drop', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dropping(false);
+    // One file dropped on a photo's card goes into that photo (as its Upload / Replace); else as "Upload 4 photos".
+    const files = [...e.dataTransfer.files];
+    const card = files.length === 1 ? e.target?.closest?.('[data-pd-slot]') : null;
+    uploadPhotos(files, card ? Number(card.getAttribute('data-pd-slot')) : null);
+  });
   document.body.append(pd.dlg);
 }
+
+// The dashed outline while files are dragged over the dialog.
+const dropping = (on) => { pd.dlg.className = on ? `${PD_CLASS} is-drop` : PD_CLASS; };
 
 function keepFocusInside(e) {
   if (e.key !== 'Tab') return;
@@ -358,9 +417,11 @@ function keepFocusInside(e) {
 
 function photosClosed() {
   const o = pd.opener;
-  Object.assign(pd, { user: null, view: null, asking: null, blockChoice: false, busy: false, opener: null });
+  Object.assign(pd, { user: null, view: null, asking: null, blockChoice: false, busy: false, opener: null, pick: null });
   pd.imgs.clear();
   pd.parts.grid.replaceChildren();
+  pd.parts.progress.textContent = '';
+  dropping(false);
   // Back to the same thumbnail, or the row's "Photos" (the rows may have been redrawn, the thumbnail gone).
   const id = CSS.escape(o?.user ?? '');
   const back = (o?.slot != null && document.querySelector(`button.thumb[data-photos="${id}"][data-slot="${CSS.escape(String(o.slot))}"]`))
@@ -371,12 +432,13 @@ function photosClosed() {
 async function openPhotos(userId, opener) {
   photosDialog();
   if (pd.dlg.open) return;
-  Object.assign(pd, { user: userId, view: null, asking: null, blockChoice: false, busy: false, opener, opened: pd.opened + 1 });
+  Object.assign(pd, { user: userId, view: null, asking: null, blockChoice: false, busy: false, opener, opened: pd.opened + 1, pick: null });
   pd.imgs.clear();
-  const { title, sub, note, done, error, grid } = pd.parts;
+  const { title, sub, upload, progress, done, error, grid } = pd.parts;
   title.textContent = `Photos · ${view.data?.users.find((u) => u.id === userId)?.name || userId}`;
   sub.textContent = 'Loading…';
-  note.hidden = true;
+  upload.hidden = true;
+  progress.textContent = '';
   error.hidden = true;
   done.textContent = '';
   grid.replaceChildren();
@@ -385,9 +447,10 @@ async function openPhotos(userId, opener) {
     const v = await api(PHOTOS_API(userId));
     if (pd.user !== userId) return; // closed meanwhile
     pd.view = v;
-    // The focus goes to the first thing to decide: the first photo's Approve (waiting) or Disqualify.
+    // The focus goes to the first thing to decide: the first photo's Approve (waiting) or Disqualify; on an App review
+    // account, "Upload 4 photos".
     const first = v.user.review ? null : v.slots.find((s) => s.photoId);
-    renderPhotos(first ? `${first.status === 'pending' ? 'approve' : 'disqualify'}-${first.index}` : null);
+    renderPhotos(v.user.review ? 'upload-all' : first ? `${first.status === 'pending' ? 'approve' : 'disqualify'}-${first.index}` : null);
   } catch (e) {
     if (e.message === 'signed out' || pd.user !== userId) return;
     sub.textContent = userId;
@@ -430,9 +493,15 @@ function slotCard(v, s) {
         type: 'button', class: 'btn block', disabled: pd.busy, 'data-pd': `disqualify-${s.index}`, 'aria-label': `Disqualify ${name} of ${who}`,
         onclick: () => { pd.asking = s.index; pd.blockChoice = false; pd.parts.done.textContent = ''; renderPhotos(`cancel-${s.index}`); },
       }, 'Disqualify'));
-  } else if (pending) {
-    // An App review account's photo still waiting (a profile made a review account): the Photos page approves it.
-    actions = el('p', { class: 'pd-hint' }, 'Approve it on the ', el('a', { href: '/30da/admin/photos' }, 'Photos page'), '.');
+  } else if (v.user.review) {
+    // An App review account: a photo goes into the slot (Upload) or over the one there (Replace), approved at once.
+    actions = el('div', { class: 'pd-actions' },
+      el('button', {
+        type: 'button', class: 'btn', disabled: pd.busy, 'data-pd': `upload-${s.index}`,
+        'aria-label': `${s.photoId ? 'Replace' : 'Upload'} ${name} of ${who}`, onclick: () => pickPhoto(s.index),
+      }, s.photoId ? 'Replace' : 'Upload'),
+      // Made a review account while a photo of its own still waited: Replace it, or approve it on the Photos page.
+      pending ? el('p', { class: 'pd-hint' }, 'Or approve it on the ', el('a', { href: '/30da/admin/photos' }, 'Photos page'), '.') : null);
   }
   let img = el('span', { class: 'pd-none' }, 'No photo');
   if (s.url) {
@@ -440,7 +509,7 @@ function slotCard(v, s) {
     img = pd.imgs.get(s.url) ?? el('img', { src: s.url, alt: `${name} of ${who}`, decoding: 'async' });
     pd.imgs.set(s.url, img);
   }
-  return el('li', { class: ['pd-slot', pending && 'is-pending', !s.photoId && 'is-empty'] },
+  return el('li', { class: ['pd-slot', pending && 'is-pending', !s.photoId && 'is-empty'], 'data-pd-slot': s.index },
     el('div', { class: 'pd-img' }, img),
     el('div', { class: 'pd-meta' },
       el('b', {}, name),
@@ -454,14 +523,14 @@ function slotCard(v, s) {
 function renderPhotos(focus) {
   const v = pd.view;
   if (!v || !pd.dlg.open) return;
-  const { title, sub, note, grid } = pd.parts;
+  const { title, sub, upload, uploadAll, grid } = pd.parts;
   title.textContent = `Photos · ${v.user.name || v.user.id}`;
   const filled = v.slots.filter((s) => s.photoId).length;
   const waiting = v.slots.filter((s) => s.status === 'pending').length;
   sub.textContent = [v.user.id, `${filled} of 4 photos`, waiting ? `${waiting} waiting for approval` : null, v.user.blocked ? 'blocked' : null]
     .filter(Boolean).join(' · ');
-  note.hidden = !v.user.review;
-  if (v.user.review) note.replaceChildren('App review account — change its photos on the ', el('a', { href: '/30da/admin/review' }, 'App review page'), '.');
+  upload.hidden = !v.user.review;
+  uploadAll.disabled = pd.busy;
   for (const src of pd.imgs.keys()) if (!v.slots.some((s) => s.url === src)) pd.imgs.delete(src);
   grid.replaceChildren(...v.slots.map((s) => slotCard(v, s)));
   if (!focus && pd.dlg.contains(document.activeElement)) return;
@@ -507,6 +576,94 @@ async function decidePhoto(s, what, { block = false } = {}) {
   }
   if (here()) renderPhotos(focus);
   refresh(); // the table's thumbnails and counts
+}
+
+/** A slot's Upload / Replace: the one-file picker, for that slot. */
+function pickPhoto(index) {
+  if (pd.busy || !pd.view?.user.review) return;
+  pd.pick = index;
+  pd.parts.one.click();
+}
+
+/** The type the server takes for this file (a browser that gives no type: by its name), or null. */
+const uploadType = (f) => (UPLOAD_TYPES.includes(f.type) ? f.type
+  : f.type ? null : UPLOAD_EXT[String(f.name).split('.').pop().toLowerCase()] ?? null);
+
+/**
+ * Several files → [{ file, index }], 4 at most: into the photo each name ends in (-1 … -4) when every one does, each
+ * number once; else by name into Photo 1, 2, …
+ */
+function placeFiles(files) {
+  const list = [...files].sort((a, b) => byName.compare(a.name, b.name)).slice(0, 4);
+  const named = list.map((f) => Number(SLOT_IN_NAME.exec(f.name)?.[1]) - 1);
+  const byNumber = named.every((i) => i >= 0) && new Set(named).size === named.length;
+  return list.map((file, i) => ({ file, index: byNumber ? named[i] : i })).sort((a, b) => a.index - b.index);
+}
+
+/** [0, 1] → "photos 1–2", [2] → "photo 3", [0, 2] → "photos 1 and 3". */
+function slotsText(indexes) {
+  const n = [...indexes].sort((a, b) => a - b).map((i) => i + 1);
+  if (n.length === 1) return `photo ${n[0]}`;
+  if (n.at(-1) - n[0] === n.length - 1) return `photos ${n[0]}–${n.at(-1)}`;
+  return `photos ${n.slice(0, -1).join(', ')} and ${n.at(-1)}`;
+}
+
+/**
+ * Upload into an App review account: one file into `slot` (its Upload / Replace, or one file dropped on its card), or
+ * several (the picker of "Upload 4 photos", or dropped on the dialog) placed by placeFiles — 4 at most. One request per
+ * photo, one after the other, the dialog redrawn after each; the first refusal stops the rest with its message. Then the
+ * badge and the table take the fresh state.
+ */
+async function uploadPhotos(files, slot = null) {
+  const v = pd.view;
+  if (pd.busy || !v?.user.review || !files.length) return;
+  // As decidePhoto: the opening that asked, not one opened since (Esc twice can close it while a photo is on its way).
+  const opened = pd.opened;
+  const here = () => pd.dlg.open && pd.opened === opened;
+  const list = slot == null ? placeFiles(files) : [{ file: files[0], index: slot }];
+  const left = files.length - list.length;
+  const { error, done, progress } = pd.parts;
+  pd.busy = true;
+  error.hidden = true;
+  done.textContent = '';
+  renderPhotos();
+  const sent = [];
+  for (const [i, { file, index }] of list.entries()) {
+    progress.textContent = list.length > 1 ? `Uploading ${i + 1} of ${list.length}…` : `Uploading photo ${index + 1}…`;
+    let d;
+    try {
+      const type = uploadType(file);
+      if (!type) throw new Error('Not a JPEG, PNG or WebP photo.');
+      if (file.size > UPLOAD_MAX) throw new Error('That photo is too big: 10 MB at most.');
+      d = await apiUpload(`${PHOTOS_API(v.user.id)}/${index}/upload`, file, type);
+    } catch (e) {
+      if (e.message === 'signed out') return;
+      // Refused (changed meanwhile, not a photo, too big…): the answer may carry the fresh slots.
+      if (e.data?.slots) setPhotosBadge(e.data.count);
+      if (here()) {
+        if (e.data?.slots) pd.view = { user: e.data.user, slots: e.data.slots };
+        error.textContent = `${file.name}: ${e.message}`;
+        error.hidden = false;
+      }
+      break;
+    }
+    sent.push(index);
+    setPhotosBadge(d.count);
+    if (!here()) break; // closed: the rest is not sent
+    pd.view = { user: d.user, slots: d.slots };
+    renderPhotos();
+  }
+  if (here()) {
+    pd.busy = false;
+    progress.textContent = '';
+    const stopped = sent.length < list.length;
+    done.textContent = !sent.length ? '' : `Uploaded ${slotsText(sent)}${stopped ? ` (${sent.length} of ${list.length})` : ''}. Approved: the app shows ${sent.length === 1 ? 'it' : 'them'} now.`
+      + (left > 0 ? ` ${left} more ${left === 1 ? 'file was' : 'files were'} left out: 4 photos at most.` : '')
+      // Picking only the rest again would fill from Photo 1 unless their names end in -1 … -4.
+      + (stopped ? ' Upload the rest with each photo\'s own Upload / Replace.' : '');
+    renderPhotos(slot == null ? 'upload-all' : `upload-${slot}`);
+  }
+  refresh(); // the table's thumbnails
 }
 
 // ---------- toast with undo ----------
@@ -579,11 +736,14 @@ $('search').addEventListener('input', (e) => {
   renderUsers();
 });
 
-// Arriving from another admin page with #users / #monitor: mark that section in the side nav.
+// Arriving from another admin page with #users / #monitor: mark that section in the side nav. #photos=<id> (the App
+// review page's "Upload photos"): the Users section, and that profile's Photos open once the table is in.
+const photosFor = /^#photos=(U-\d+)$/.exec(location.hash)?.[1] ?? null;
+if (photosFor) history.replaceState(null, '', '#users');
 if (/^#(top|users|monitor)$/.test(location.hash)) {
   const target = location.hash.slice(1);
   document.querySelectorAll('button.navitem').forEach((n) => n.classList.toggle('active', n.dataset.target === target));
 }
 
-refresh();
+refresh().then(() => { if (photosFor) openPhotos(photosFor, { user: photosFor, slot: null }); });
 setInterval(refresh, 15000);

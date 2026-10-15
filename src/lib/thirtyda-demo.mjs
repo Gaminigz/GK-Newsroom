@@ -19,6 +19,9 @@
  *     demo-w-4.jpg, demo-m-1.jpg … demo-m-4.jpg), else a placeholder made here (a flat navy / grey silhouette, clearly
  *     not a real person). users.demoPhotos says which kind each slot has; "Refresh photos" (refreshDemoPhotos) puts the
  *     files in once they are added.
+ *   - Or the team uploads them on Users → Photos (owner 2026-10-15: "its take 1 hours to make 4 test users damn",
+ *     src/lib/thirtyda-admin.mjs): such a slot is DEMO_UPLOADED — real for the page's count, and kept by Edit (Create
+ *     again) and "Refresh photos", which put the folder's files / placeholders only into the other slots.
  *
  * Pure apart from the `d` (Mongo Db), the photo store and the folder handed in, so the unit tests run without them.
  */
@@ -64,6 +67,9 @@ export const DEMO_PHOTO_DIR_NAME = "src/thirtyda-admin/review/";
 export const demoPhotoFile = (preset, slot) => `demo-${isDemoPreset(preset) ? DEMO_PRESETS[preset].file : "x"}-${slot}.jpg`;
 export const DEMO_REAL = "real";
 export const DEMO_PLACEHOLDER = "placeholder";
+/** A photo the team uploaded on Users → Photos: counts as real; Edit and "Refresh photos" keep it (replace it there). */
+export const DEMO_UPLOADED = "uploaded";
+const isRealKind = (k) => k === DEMO_REAL || k === DEMO_UPLOADED;
 
 const exists = (url) => access(url).then(() => true, () => false);
 
@@ -168,9 +174,29 @@ async function storeDemoPhotos(list, { save, remove }) {
   return { ids, kinds: list.map((p) => p.kind) };
 }
 
+/** The photos an account keeps on Edit / Refresh: [photo id | null] ×4, the id where the team uploaded that slot's photo. */
+function uploadedSlots(u) {
+  const kinds = Array.isArray(u?.demoPhotos) ? u.demoPhotos : [];
+  const photos = Array.isArray(u?.photos) ? u.photos : [];
+  return Array.from({ length: PHOTO_MAX }, (_, i) => (kinds[i] === DEMO_UPLOADED && isPhotoId(photos[i]) ? photos[i] : null));
+}
+
+/**
+ * The 4 photos of an account: the uploaded ones (`kept`) stay in their slots, the others are stored from `list`
+ * (demoPhotoBuffers). → { ids, kinds, added } — `added` = the ids stored now, the only ones a failure removes again.
+ */
+async function storeKeeping(list, kept, store) {
+  const fresh = await storeDemoPhotos(list.filter((_, i) => !kept[i]), store);
+  let j = 0;
+  const slots = list.map((_, i) => (kept[i] ? { id: kept[i], kind: DEMO_UPLOADED } : { id: fresh.ids[j], kind: fresh.kinds[j++] }));
+  return { ids: slots.map((x) => x.id), kinds: slots.map((x) => x.kind), added: fresh.ids };
+}
+
 // ---------------------------------------------------------------- the fields
 
 const bad = (message, field) => Object.assign(new ReviewError(422, "bad_field", message), { field });
+/** Edit / Refresh photos found other photos than they read (an upload on Users → Photos landed meanwhile). */
+const photosChanged = (message) => new ReviewError(409, "photos_changed", message);
 
 /** The admin's form → checked fields (the app's own rules), or 422 bad_field with a plain line. */
 export function checkDemoFields(preset, input = {}, { now = Date.now() } = {}) {
@@ -211,7 +237,8 @@ export async function demoAccountOf(d, preset) {
  * phone, pin }). A new account when the preset has none; else that same account is updated (fields, photos, number,
  * PIN). Refuses before anything is written: bad fields (422), no lock key (503), REVIEW_MAX review accounts already
  * (409 too_many, a new one only), a number another profile has (409 phone_in_use), an app name another review account
- * has (409 name_in_use), a PIN another review account has (409 pin_in_use). → { user, created }.
+ * has (409 name_in_use), a PIN another review account has (409 pin_in_use). An existing account's photos changed by an
+ * upload on Users → Photos while this runs → 409 photos_changed (number and PIN saved, the rest not). → { user, created }.
  * opts (tests): save / remove (the photo store), newId, dir (the photo folder), now.
  */
 export async function createDemoAccount(d, preset, input, opts = {}) {
@@ -235,7 +262,9 @@ export async function createDemoAccount(d, preset, input, opts = {}) {
   const clash = await reviewPinInUse(d, f.pin, selfId);
   if (clash) throw pinInUse(clash);
 
-  const { ids, kinds } = await storeDemoPhotos(await demoPhotoBuffers(preset, f.gender, { dir }), { save, remove });
+  // An existing account keeps the photos the team uploaded on Users → Photos.
+  const kept = existing ? uploadedSlots(existing) : [];
+  const { ids, kinds, added } = await storeKeeping(await demoPhotoBuffers(preset, f.gender, { dir }), kept, { save, remove });
   const at = new Date(now);
   const fields = {
     name: f.name, realName: f.realName, gender: f.gender, birthYear: f.birthYear, role: f.role, lang: f.lang, language: LANG_ENGLISH[f.lang],
@@ -248,8 +277,13 @@ export async function createDemoAccount(d, preset, input, opts = {}) {
     if (existing) {
       // Number and PIN first: should that fail, the account still shows its old photos (the new ones go below).
       await review();
-      // Approved photos: no photoReview entry for any slot.
-      await users.updateOne({ _id: id, demoPreset: preset }, { $set: { ...fields, demoAt: at }, $unset: { photoReview: "", photoReviewAt: "" } });
+      // Approved photos: no photoReview entry for any slot. Only while its photos are still the ones read above: an
+      // upload on Users → Photos that landed meanwhile is never overwritten (nor a slot pointed at its deleted photo).
+      const r = await users.updateOne(
+        { _id: id, demoPreset: preset, photos: existing.photos ?? null, demoPhotos: existing.demoPhotos ?? null },
+        { $set: { ...fields, demoAt: at }, $unset: { photoReview: "", photoReviewAt: "" } },
+      );
+      if (!r.matchedCount) throw photosChanged("The number and PIN are saved, but its photos changed meanwhile (an upload on Users → Photos), so nothing else was. Save again.");
     } else {
       id = await newId();
       await users.insertOne({
@@ -263,7 +297,7 @@ export async function createDemoAccount(d, preset, input, opts = {}) {
       await review();
     }
   } catch (err) {
-    await Promise.all(ids.map((x) => remove(x)));
+    await Promise.all(added.map((x) => remove(x)));
     if (!existing && id) await users.deleteMany({ _id: id, demoPreset: preset });
     if (err?.code === 11000) throw new ReviewError(409, "phone_in_use", "Another profile has this number. Choose another mock number.");
     throw err;
@@ -276,19 +310,24 @@ export async function createDemoAccount(d, preset, input, opts = {}) {
 /**
  * "Refresh photos" (POST /30da/admin/api/review/demo/:id/photos): a preset-made account takes the photos now in the
  * folder (the Media Director's files where they are, placeholders for the rest), approved, slot-aligned; its old
- * photos leave the store. 404 for any other profile. → the user.
+ * photos leave the store. A photo uploaded on Users → Photos stays in its slot; one that lands while this runs → 409
+ * photos_changed (nothing changed, what was stored here removed). 404 for any other profile. → the user.
  */
 export async function refreshDemoPhotos(d, id, opts = {}) {
   const { save = savePhoto, remove = deletePhoto, dir = DEMO_PHOTO_DIR, now = Date.now() } = opts;
   const users = d.collection(USERS);
   const u = await users.findOne({ _id: id });
   if (!u || u.deleting || !isDemoPreset(u.demoPreset) || !isReview(u)) throw new ReviewError(404, "not_found", "This is not a demo account made on this page.");
-  const { ids, kinds } = await storeDemoPhotos(await demoPhotoBuffers(u.demoPreset, u.gender, { dir }), { save, remove });
+  const { ids, kinds, added } = await storeKeeping(await demoPhotoBuffers(u.demoPreset, u.gender, { dir }), uploadedSlots(u), { save, remove });
+  // Only while its photos are still the ones read above: an upload on Users → Photos that landed meanwhile stays.
   const r = await users.updateOne(
-    { _id: id, demoPreset: u.demoPreset }, { $set: { photos: ids, demoPhotos: kinds, demoAt: new Date(now) }, $unset: { photoReview: "", photoReviewAt: "" } },
+    { _id: id, demoPreset: u.demoPreset, photos: u.photos ?? null, demoPhotos: u.demoPhotos ?? null },
+    { $set: { photos: ids, demoPhotos: kinds, demoAt: new Date(now) }, $unset: { photoReview: "", photoReviewAt: "" } },
   );
   if (!r.matchedCount) {
-    await Promise.all(ids.map((x) => remove(x)));
+    await Promise.all(added.map((x) => remove(x)));
+    const still = await users.findOne({ _id: id, demoPreset: u.demoPreset, demo: REVIEW, deleting: { $exists: false } }, { projection: { _id: 1 } });
+    if (still) throw photosChanged("Its photos changed meanwhile (an upload on Users → Photos). Press Refresh photos again.");
     throw new ReviewError(404, "not_found", "This is not a demo account made on this page.");
   }
   await Promise.all((u.photos ?? []).filter((x) => isPhotoId(x) && !ids.includes(x)).map((x) => remove(x)));
@@ -315,9 +354,10 @@ export async function demoView(d, { dir = DEMO_PHOTO_DIR } = {}) {
         id: u._id, name: u.name ?? "", realName: u.realName ?? "", gender: u.gender ?? null, birthYear: u.birthYear ?? null,
         role: u.role ?? null, lang: u.lang ?? "en", phone: u.phoneVia === REVIEW ? u.phone ?? null : null, pin: reviewPinOf(u),
         photos: Array.isArray(u.photos) ? u.photos.slice(0, PHOTO_MAX).filter(Boolean).length : 0,
-        realPhotos: kinds.filter((k) => k === DEMO_REAL).length,
-        // Real files are in the folder that this account does not show yet: "Refresh photos" puts them in.
-        refresh: files.real.some((r, i) => r && kinds[i] !== DEMO_REAL),
+        realPhotos: kinds.filter(isRealKind).length,
+        // Real files are in the folder that this account does not show yet: "Refresh photos" puts them in (never over
+        // a photo uploaded on Users → Photos, which Refresh keeps).
+        refresh: files.real.some((r, i) => r && !isRealKind(kinds[i])),
       } : null,
     };
   }));

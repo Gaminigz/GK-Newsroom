@@ -74,9 +74,20 @@
  *   POST /30da/admin/api/users/:id/photos/:index/disqualify   { photoId, block? } an approved OR pending photo: the slot
  *        emptied as Reject empties it, the stored photo deleted, the person told (the same notice); block = also block
  *        them. 409 photo_changed when that photo is no longer in that slot; 409 review_account for an App review account
- *        (its photos change on the App review page). Both answer the fresh slots + { count } (photos waiting) and are
+ *        (its photos are uploaded instead). Both answer the fresh slots + { count } (photos waiting) and are
  *        audited with ids only. The overview's user rows carry photos: [4 × { photoId, status }] (ids + status only),
  *        so the Users table draws the 4 thumbnails without a request per profile.
+ *   POST /30da/admin/api/users/:id/photos/:index/upload   the photo itself as the body (Content-Type image/jpeg |
+ *        image/png | image/webp, ≤ 10 MB: 413 past it, the rest never buffered) into that slot of an App REVIEW account
+ *        only (owner 2026-10-15, the 4 test users: "its take 1 hours to make 4 test users damn"); any other profile →
+ *        409 not_review_account (the team never puts a photo on a real person's profile). Re-encoded by the photo store
+ *        (JPEG ≤ 720 px, EXIF stripped; 400 bad_photo for anything that is not a photo), approved at once, slot-aligned
+ *        (past the end the slots between stay empty); a preset-made account marks the slot 'uploaded' (users.demoPhotos:
+ *        real on the App review page, kept by Edit / Refresh photos). Swapped in only while the slot still holds the
+ *        photo the request read (409 photo_changed: the new file removed); the photo it replaces is deleted after the
+ *        swap — unless it is the profile's own (a review account made from a profile): that one is kept and the upload
+ *        recorded, and "Stop being a review account" takes the uploads out and puts the profile's own photos back.
+ *        → the fresh slots + { count }, like approve / disqualify. Same limit as those; audited with ids only.
  *   GET  /30da/admin/review                   App review: demo accounts for the App Store / Google Play reviewers
  *   GET  /30da/admin/api/review               { on, code, accounts, profiles, notes, … } (src/lib/thirtyda-review.mjs reviewView)
  *   POST /30da/admin/api/review/switch        { on } "Review sign-in" ON / OFF (ON: blocks + open flags between demo
@@ -127,22 +138,22 @@ import {
   listSupportChats, supportThread, sendSupportReply, supportUnread, describeBot, SUPPORT_TEXT_MAX,
 } from "./thirtyda-support.mjs";
 import { tryResultPage, requestLang } from "./thirtyda-pages.mjs";
-import { normalizePhone, trimPhotoSlots } from "./thirtyda-app.mjs";
+import { normalizePhone, trimPhotoSlots, ensurePhotoArray } from "./thirtyda-app.mjs";
 import {
   reviewView, setReviewSwitch, newReviewCode, makeReviewAccount, stopReviewAccount, ReviewError, isReview,
 } from "./thirtyda-review.mjs";
 import { deleteAccount } from "./thirtyda-delete.mjs";
 import { clearReviewWorld, forgetReviewDevices } from "./thirtyda-review-world.mjs";
-import { createDemoAccount, refreshDemoPhotos, demoView } from "./thirtyda-demo.mjs";
+import { createDemoAccount, refreshDemoPhotos, demoView, DEMO_UPLOADED } from "./thirtyda-demo.mjs";
 import { QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS } from "../thirtyda-app/shared/question-slots.js";
 import { resolveUpdate, reopenUpdate } from "./thirtyda-blocks.mjs";
 import { targetLabel } from "../thirtyda-app/shared/safety.js";
 import { BAD_WORD_REASONS } from "../thirtyda-app/shared/bad-words.js";
-import { readPhoto, isPhotoId, deletePhoto, thumbPhoto } from "./thirtyda-photos.mjs";
+import { readPhoto, isPhotoId, deletePhoto, thumbPhoto, savePhoto, PhotoError } from "./thirtyda-photos.mjs";
 import { wanAdminView, newWanToken, revokeWanToken, saveWanOptions, queueWanTry, wanTryClip, sendClip } from "./thirtyda-hub-wan.mjs";
 import {
   pendingQueue, pendingOwner, pendingCount, reviewTarget, approvePhoto, rejectPhoto, photoNotice, disqualifyPhoto, adminSlots,
-  photoSummary, photoInSlot,
+  photoSummary, photoInSlot, putReviewPhoto, isPending,
 } from "./thirtyda-photo-review.mjs";
 
 const BASE = "/30da/admin";
@@ -165,8 +176,12 @@ const QUESTIONS_BODY_MAX = 200_000; // 20 choices × 5 languages × 100 characte
 const MAX_TESTS = 10; // real Telegram test codes per admin session per window (each one costs money)
 const MAX_REPLIES = 60; // support replies per admin session per window
 const replyLimits = windowLimiter(WINDOW_MS);
-const MAX_PHOTO_DECISIONS = 120; // Users → Photos approve / disqualify per admin session per window (30 profiles × 4)
+const MAX_PHOTO_DECISIONS = 120; // Users → Photos approve / disqualify / upload per admin session per window (30 profiles × 4)
 const photoLimits = windowLimiter(WINDOW_MS);
+// Users → Photos → Upload: the photo itself is the body, so this one route takes an image type instead of JSON.
+const UPLOAD_PATH = /^\/api\/users\/U-\d+\/photos\/[0-3]\/upload$/;
+const UPLOAD_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const UPLOAD_BYTES_MAX = 10 * 1024 * 1024; // the Media Director's files are a few MB; the store keeps ≤ 720 px anyway
 
 const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
@@ -176,17 +191,17 @@ const SECURITY_HEADERS = {
     "default-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-ancestors 'none'",
 };
 
-// Unit tests only (src/lib/thirtyda-admin.test.mjs, thirtyda-admin-photos.test.mjs): an in-memory database, a stand-in
-// for the delete and for the photo store ({ read, remove }). Unset in the server, where the admin always uses getDb(),
-// the app's own deleteAccount and the real photo store.
+// Unit tests only (src/lib/thirtyda-admin.test.mjs, thirtyda-admin-photos.test.mjs, thirtyda-admin-upload.test.mjs): an
+// in-memory database, a stand-in for the delete and for the photo store ({ read, remove, save }). Unset in the server,
+// where the admin always uses getDb(), the app's own deleteAccount and the real photo store.
 const testHooks = { db: null, deleteAccount: null, photoStore: null };
 export function setAdminTestHooks({ db: d = null, deleteAccount: del = null, photoStore = null } = {}) {
   testHooks.db = d;
   testHooks.deleteAccount = del;
   testHooks.photoStore = photoStore;
 }
-/** The photo store: read(id) → the JPEG or null, remove(id). */
-const photoStore = () => testHooks.photoStore ?? { read: readPhoto, remove: deletePhoto };
+/** The photo store: read(id) → the JPEG or null, remove(id), save(bytes) → the id (re-encoded; PhotoError: not a photo). */
+const photoStore = () => testHooks.photoStore ?? { read: readPhoto, remove: deletePhoto, save: savePhoto };
 
 // ---------- db ----------
 let ready = null;
@@ -394,9 +409,11 @@ function readJsonBody(req, max) {
  * Writes must come from the admin pages themselves. SameSite=Strict keeps the cookie off other
  * sites, but not off a sibling subdomain: refuse a foreign Origin / Sec-Fetch-Site, and any body
  * that is not JSON (an HTML form can only send form-encoded or text/plain without a preflight).
+ * Upload (`photo`: Users → Photos → Upload) takes only an image type instead — just as out of a form's
+ * reach: another site's fetch with it needs a preflight, which this server never answers.
  * → null when fine, else [status, message].
  */
-function writeRefused(req) {
+function writeRefused(req, { photo = false } = {}) {
   const site = req.headers["sec-fetch-site"];
   if (site && site !== "same-origin" && site !== "none") return [403, "Requests must come from the admin pages."];
   const origin = req.headers.origin;
@@ -406,8 +423,40 @@ function writeRefused(req) {
     if (host !== (req.headers["x-forwarded-host"] || req.headers.host)) return [403, "Requests must come from the admin pages."];
   }
   const type = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+  if (photo) return UPLOAD_TYPES.includes(type) ? null : [415, "Send a JPEG, PNG or WebP photo (Content-Type image/jpeg, image/png or image/webp)."];
   if (type !== "application/json") return [415, "Send JSON (Content-Type: application/json)."];
   return null;
+}
+
+/**
+ * A raw body up to `max` BYTES → { buf }, or { tooLarge } / { bad }. A Content-Length past the limit is refused before
+ * anything is read; a body that grows past it while it streams is answered at once — nothing more is kept (the rest
+ * runs off unread into the flowing stream, never into memory).
+ */
+function readRawBody(req, max) {
+  if (Number(req.headers["content-length"] || 0) > max) {
+    req.resume();
+    return Promise.resolve({ tooLarge: true });
+  }
+  return new Promise((resolve) => {
+    const chunks = [];
+    let size = 0;
+    let done = false;
+    const finish = (r) => {
+      if (done) return;
+      done = true;
+      if (!r.buf) chunks.length = 0;
+      resolve(r);
+    };
+    req.on("data", (c) => {
+      if (done) return;
+      size += c.length;
+      if (size > max) return finish({ tooLarge: true });
+      chunks.push(c);
+    });
+    req.on("end", () => finish({ buf: Buffer.concat(chunks) }));
+    req.on("error", () => finish({ bad: true }));
+  });
 }
 
 const writes = new Map(); // admin session → [timestamps of question saves/resets]
@@ -734,12 +783,13 @@ async function userPhotosView(d, id) {
 }
 
 /**
- * Users → Photos (signed in; writes are same-origin JSON: checked before this). m[1] = the profile, m[2] = the slot
- * index (0–3), m[3] = approve | disqualify.
+ * Users → Photos (signed in; writes are same-origin JSON, or an image for upload: checked before this). m[1] = the
+ * profile, m[2] = the slot index (0–3), m[3] = approve | disqualify | upload.
  *   GET  …/photos                          → userPhotosView; 404 no such profile.
  *   GET  …/photos/:index?id=[&size=thumb]  → the image while THAT id is in that slot (approved or pending), else 404.
  *   POST …/approve    { photoId }          → the Photos page's approve: pending only.
  *   POST …/disqualify { photoId, block? }  → any photo, approved or pending, of a profile that is not an App review account.
+ *   POST …/upload     <the photo>         → into that slot of an App review account only (uploadRoute).
  * A write answers the fresh slots + { count } (photos waiting: the sidebar badge); a refusal carries them too.
  */
 async function userPhotosRoute(req, res, m, url) {
@@ -766,8 +816,9 @@ async function userPhotosRoute(req, res, m, url) {
   }
   if (photoLimits.over(tokenOf(req) || clientIp(req), MAX_PHOTO_DECISIONS)) {
     req.resume();
-    return json(res, 429, { error: "That is a lot of photo decisions in 15 minutes. Try again in a few minutes." });
+    return json(res, 429, { error: "That is a lot of photo changes in 15 minutes. Try again in a few minutes." });
   }
+  if (m[3] === "upload") return uploadRoute(req, res, d, m);
   const body = await readJsonBody(req, 1e4);
   if (body.bad || body.tooLarge) return json(res, 400, { error: "Send { photoId }." });
   const target = reviewTarget(m[1], m[2], body.value.photoId);
@@ -778,7 +829,7 @@ async function userPhotosRoute(req, res, m, url) {
   const fresh = async () => ({ ...(await userPhotosView(d, target.userId)), count: await pendingCount(users) });
   const refused = async (reason, error) => json(res, 409, { error, reason, ...(await fresh()) });
   const changed = () => refused("photo_changed", "This photo was changed or already checked. The photos are up to date now.");
-  const reviewAccount = () => refused("review_account", "This is an App review account: change its photos on the App review page.");
+  const reviewAccount = () => refused("review_account", "This is an App review account: upload its photos here instead (Upload / Replace).");
   if (m[3] === "approve") {
     if (!(await approvePhoto(users, target))) return changed();
     await audit(req, "photo_approve", { user: target.userId, slot, photo: target.photoId });
@@ -799,6 +850,78 @@ async function userPhotosRoute(req, res, m, url) {
     user: target.userId, slot, photo: target.photoId, block: Boolean(blocked), ...(blocked ? { alreadyBlocked: blocked.alreadyBlocked } : {}),
   });
   return json(res, 200, { ok: true, blocked: Boolean(blocked), ...(await fresh()) });
+}
+
+/**
+ * POST …/photos/:index/upload (signed in, same-origin, an image type: checked before this; the photo limit counted).
+ * The App review test users' photos, put in by the team (owner 2026-10-15: "its take 1 hours to make 4 test users
+ * damn") — ONLY an App review account's: the team never puts a photo on a real person's profile. The bytes go through
+ * the photo store (re-encoded JPEG ≤ 720 px, EXIF stripped) and into slot m[2], approved at once; the photo there before
+ * is deleted only after the swap went through (a profile's own is kept for Stop, see below). The swap is conditional on
+ * the slot still holding the photo read here, so a slot changed meanwhile (another upload, Refresh photos or Edit that
+ * landed first, Stop being a review account, a delete) → 409 and the new file is removed; Refresh photos, Edit and Stop
+ * are conditional on the photos they read in turn, so an upload landing first makes THEM answer 409. → { ok, user, slots,
+ * count } (the GET's view + the photos waiting). Audited with ids only.
+ */
+async function uploadRoute(req, res, d, m) {
+  const users = d.collection("thirtyda_users");
+  const index = Number(m[2]);
+  const fresh = async () => ({ ...(await userPhotosView(d, m[1])), count: await pendingCount(users) });
+  const refused = async (reason, error) => json(res, 409, { error, reason, ...(await fresh()) });
+  const notReview = () => refused("not_review_account", "Only an App review account takes uploaded photos: the team never puts photos on a real person's profile.");
+  const notFound = () => json(res, 404, { error: "There is no such profile (it may be deleted already).", reason: "not_found" });
+  const u = await users.findOne({ _id: m[1] }, {
+    projection: { photos: 1, demo: 1, demoPhotos: 1, demoPreset: 1, deleting: 1, photoReview: 1, photoReviewAt: 1, reviewUploads: 1, "reviewWas.photos": 1 },
+  });
+  if (!u || u.deleting) {
+    req.resume();
+    return notFound();
+  }
+  if (!isReview(u)) {
+    req.resume();
+    return notReview();
+  }
+  const body = await readRawBody(req, UPLOAD_BYTES_MAX);
+  if (body.tooLarge) return json(res, 413, { error: "That photo is too big: 10 MB at most.", reason: "too_large" }, { Connection: "close" });
+  if (body.bad || !body.buf.length) return json(res, 400, { error: "Choose a photo to upload.", reason: "bad_photo" });
+  // The photo the request read (null: an empty slot, or past the end of the list): swapped only while it is still there.
+  await ensurePhotoArray(users, u);
+  const old = u.photos[index] ?? null;
+  let photoId;
+  try {
+    photoId = await photoStore().save(body.buf);
+  } catch (err) {
+    if (err instanceof PhotoError) return json(res, 400, { error: err.message, reason: "bad_photo" });
+    throw err;
+  }
+  const demoKind = Array.isArray(u.demoPhotos) ? DEMO_UPLOADED : null;
+  // Made from an existing profile ("Use as review account"): "Stop being a review account" puts it back among real
+  // people, so the upload is recorded and the profile's own photo it replaces is KEPT, not deleted — Stop takes the
+  // team's photo out again and puts that one back (src/lib/thirtyda-review.mjs stopReviewAccount).
+  const fromProfile = !u.demoPreset;
+  const own = fromProfile && isPhotoId(old) && u.reviewUploads?.[index] !== old;
+  const kept = own ? { id: old, pendingAt: isPending(u, index) ? u.photoReviewAt?.[index] ?? new Date().toISOString() : null } : null;
+  let ok;
+  try {
+    ok = await putReviewPhoto(users, { userId: u._id, index, oldId: old, photoId, demoKind, fromProfile, kept });
+  } catch (err) {
+    await photoStore().remove(photoId); // the database refused (a failover, a write error): no file left behind
+    throw err;
+  }
+  if (!ok) {
+    await photoStore().remove(photoId);
+    const now = await users.findOne({ _id: u._id }, { projection: { demo: 1, deleting: 1 } });
+    if (!now || now.deleting) return notFound();
+    return isReview(now) ? refused("photo_changed", "This photo was changed meanwhile. The photos are up to date now: upload again.") : notReview();
+  }
+  // The photo it replaced: the team's own earlier upload (or a preset's) is deleted; the profile's own waits for Stop
+  // (and one of its own kept earlier for this slot, now replaced by this one, goes).
+  const before = u.reviewWas?.photos?.[index]?.id;
+  if (own) {
+    if (isPhotoId(before) && before !== old) await photoStore().remove(before);
+  } else if (isPhotoId(old) && old !== photoId) await photoStore().remove(old);
+  await audit(req, "review_photo_upload", { user: u._id, slot: index + 1, photo: photoId, ...(isPhotoId(old) ? { [own ? "kept" : "replaced"]: old } : {}) });
+  return json(res, 200, { ok: true, ...(await fresh()) });
 }
 
 /**
@@ -858,8 +981,9 @@ async function reviewRoute(req, res, m) {
       await audit(req, "review_code_new");
       await freshReviewWorld(req, d);
     } else if (m[2] && m[3]) {
-      const r = await stopReviewAccount(d, m[2]);
-      await audit(req, "review_account_stop", { user: m[2], sessionsEnded: r.sessionsEnded });
+      // The photos uploaded on Users → Photos go (the profile's own come back): through the same photo store.
+      const r = await stopReviewAccount(d, m[2], { remove: (x) => photoStore().remove(x) });
+      await audit(req, "review_account_stop", { user: m[2], sessionsEnded: r.sessionsEnded, photosDeleted: r.photosDeleted });
     } else if (m[2]) {
       const phone = normalizePhone(v.phone);
       await makeReviewAccount(d, m[2], { phone, pin: typeof v.pin === "string" || typeof v.pin === "number" ? String(v.pin) : "" });
@@ -928,7 +1052,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
   if (req.method === "GET" && asset) return serveFile(res, asset[1]);
 
   if (req.method !== "GET" && req.method !== "HEAD" && sub.startsWith("/api/")) {
-    const refused = writeRefused(req);
+    const refused = writeRefused(req, { photo: req.method === "POST" && UPLOAD_PATH.test(sub) });
     if (refused) {
       req.resume();
       return json(res, refused[0], { error: refused[1] });
@@ -1243,8 +1367,8 @@ export async function handleThirtyDaAdmin(req, res, url) {
     return json(res, 200, { ...(await overview()), alreadyBlocked });
   }
 
-  // Users → Photos: a profile's 4 photos — view, approve, disqualify (owner 2026-10-15).
-  m = sub.match(/^\/api\/users\/(U-\d+)\/photos(?:\/([0-3])(?:\/(approve|disqualify))?)?$/);
+  // Users → Photos: a profile's 4 photos — view, approve, disqualify; upload into an App review account (owner 2026-10-15).
+  m = sub.match(/^\/api\/users\/(U-\d+)\/photos(?:\/([0-3])(?:\/(approve|disqualify|upload))?)?$/);
   if (m) return userPhotosRoute(req, res, m, url);
 
   // Photos waiting for approval (store policy, owner 2026-10-14, src/lib/thirtyda-photo-review.mjs).
