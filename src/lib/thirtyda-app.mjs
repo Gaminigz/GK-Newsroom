@@ -22,8 +22,10 @@
  * A level is done when both sets are complete. Level 2 opens after the wait — or at once when the person who started
  * the conversation (pair.a) asks for it (POST /pairs/:id/level2/start, owner 2026-10-15). After Level 2 each person
  * chooses (POST /pairs/:id/decide): the chat (Level 3) opens as soon as both chose to open it, and one
- * "Forget it" ends the conversation for both (stage 'ended': readable, nothing more to send). Real names
- * are shown to the other person only once the chat is open.
+ * "Forget it" ends the conversation for both (stage 'ended': readable, nothing more to send). The person who started
+ * may move on to that choice before Level 2 is finished, once the other person replied to all 5 of their Level 2 lines
+ * (POST /pairs/:id/level3/start, owner 2026-10-15): it is their own "Open the chat", and the other person still chooses.
+ * Real names are shown to the other person only once the chat is open.
  * GET /pairs/:id/conversation is the one read model the conversation screen lives on.
  *
  * Collections: thirtyda_users, thirtyda_user_sessions, thirtyda_otps,
@@ -193,7 +195,7 @@ import { questionConfig, slotsView, flatView } from "./thirtyda-questions.mjs";
 import { meetRoutes, changedAt } from "./thirtyda-meet.mjs";
 import { meetView, placeLine } from "../thirtyda-app/shared/meet.js";
 import {
-  convStage, L1_STAGES, openSetLevel, currentSetLevel, levelState, repliedCount, allReplied, levelComplete,
+  convStage, L1_STAGES, openSetLevel, currentSetLevel, levelState, repliedCount, allReplied, levelComplete, setComplete,
   nextStep, isMyTurn, decisionOf, afterDecisions, replyOrders, writtenOrders, chatOrders, withReply,
 } from "../thirtyda-app/shared/conversation.js";
 
@@ -679,8 +681,7 @@ async function settle(d, pair) {
   if (!to) return pair;
   // A frozen pair (someone is blocked — by the admin, or one of them blocked the other) keeps its stage and levels;
   // it moves on once the block is lifted.
-  if (await d.collection(C.users).countDocuments({ _id: { $in: pair.members }, blocked: true }, { limit: 1 })) return pair;
-  if (await blockedBetween(d.collection(BLOCKS), pair.members?.[0], pair.members?.[1])) return pair;
+  if (await frozenNow(d, pair)) return pair;
   const moved = await d.collection(C.pairs).findOneAndUpdate(
     { _id: pair._id, stage: pair.stage },
     { $set: { stage: to.stage, level: to.level, updatedAt: to.at } },
@@ -692,6 +693,15 @@ async function settle(d, pair) {
     d.collection(C.chats).updateOne({ _id: pair._id }, { $max: { level: to.level } }),
   ]);
   return settle(d, moved);
+}
+
+/**
+ * Someone in the pair is blocked right now — by the admin, or one of the two blocked the other: the pair is frozen and
+ * never moves on (settle, startLevel3) until the block is lifted.
+ */
+async function frozenNow(d, pair) {
+  if (await d.collection(C.users).countDocuments({ _id: { $in: pair.members }, blocked: true }, { limit: 1 })) return true;
+  return Boolean(await blockedBetween(d.collection(BLOCKS), pair.members?.[0], pair.members?.[1]));
 }
 
 /**
@@ -2875,6 +2885,16 @@ async function sendSet(ctx) {
   }
 
   const pairs = d.collection(C.pairs);
+  // The level may have closed while this set was on its way (the checks and translations above take a while): the person
+  // who started moved on to Level 3 meanwhile (POST /level3/start does not wait for this set). Read once more after the
+  // insert, so a move either came after it (the set was in time, like any sent before the move) or this set is taken
+  // back — nobody could reply to it — and answered like any send after its level: 409, nothing logged, nothing bumped.
+  const still = await pairs.findOne({ _id: pair._id }, { projection: { stage: 1 } });
+  if (!still || openSetLevel(still.stage) !== level) {
+    await sets.deleteOne({ _id: setId });
+    throw notYourTurn();
+  }
+
   // The first set ever sent starts the conversation: its sender is `a` (the admin's chat log reads a/b)
   // and the pair stops being a draft, so the other person sees it too. Old 'l1_ask' drafts become 'l1'.
   const started = await pairs.updateOne(
@@ -2976,11 +2996,13 @@ function setView(set, meId, lang, titles, { open }) {
  * GET /pairs/:id/conversation for `me`:
  * { pair: PairView, other: { id, name, gender, lang, photos, lockedPhotos, realName? }, levels: [{ level: 1|2,
  *   state: 'open'|'wait'|'done'|'locked', opensAt, rules: { pick, write }, mine: SetView|null, theirs: SetView|null }],
- *   canSend: { level, pick, write, slots } | null, canStartLevel2, otherCanStartLevel2, chat: { open, opensAt, phoneNeeded },
- *   decision: { canDecide, mine: true|false|null, ended, endedAt }, next }.
+ *   canSend: { level, pick, write, slots } | null, canStartLevel2, otherCanStartLevel2, canStartLevel3, otherCanStartLevel3,
+ *   chat: { open, opensAt, phoneNeeded }, decision: { canDecide, mine: true|false|null, ended, endedAt }, next }.
  * other.realName is there only once the chat (Level 3) is open. canStartLevel2: I started the conversation and Level 2
- * waits, so I may open it now (POST /pairs/:id/level2/start); otherCanStartLevel2: the other person may. Both false on a
- * frozen pair. `sets` may be passed when already loaded.
+ * waits, so I may open it now (POST /pairs/:id/level2/start); otherCanStartLevel2: the other person may. canStartLevel3:
+ * I started the conversation, Level 2 is open and the other person replied to all 5 of my Level 2 lines, so I may move
+ * on to Level 3 now (POST /pairs/:id/level3/start); otherCanStartLevel3: the other person may. All false on a frozen
+ * pair. `sets` may be passed when already loaded.
  */
 async function conversationFor(d, me, pair, other, sets = null) {
   const lang = me.lang ?? "en";
@@ -3014,6 +3036,9 @@ async function conversationFor(d, me, pair, other, sets = null) {
   // Level 2 waits: the person who started the conversation may open it now (POST /pairs/:id/level2/start); the other
   // one is told they can. Neither on a frozen pair.
   const l2Waiting = stage === "l2_wait" && !frozen;
+  // Level 2 is open and the starter's own 5 all have a reply: the starter may move on to Level 3 now (their own "Open the
+  // chat"); the other one is told they can. Neither on a frozen pair.
+  const l3Ready = stage === "l2_open" && !frozen && starterLevel2Done(sets, pair);
   return {
     pair: view,
     other: other
@@ -3026,6 +3051,8 @@ async function conversationFor(d, me, pair, other, sets = null) {
     canSend,
     canStartLevel2: l2Waiting && pair.a === me._id,
     otherCanStartLevel2: l2Waiting && pair.a !== me._id,
+    canStartLevel3: l3Ready && pair.a === me._id,
+    otherCanStartLevel3: l3Ready && pair.a !== me._id,
     chat: { open: stage === "l3_open", opensAt: null, phoneNeeded: !canTalk(me) }, // any verified way chats (chatGate)
     decision: {
       canDecide: stage === "l3_decide" && !frozen && view.decision === null,
@@ -3405,6 +3432,72 @@ async function startLevel2(ctx) {
   return { conversation: await conversationFor(d, me, fresh, other) };
 }
 
+// The admin's chat log notes it when the starter moved on to Level 3 before Level 2 was finished (never shown in the app).
+const LEVEL3_START_TEXT = "Moved on to Level 3 before Level 2 was finished";
+
+/** The starter's own Level 2 set is complete: the other person replied to all 5 of its lines. */
+const starterLevel2Done = (sets, pair) => setComplete(sets.find((s) => s.level === 2 && s.from === pair.a));
+
+/**
+ * POST /pairs/:id/level3/start → { conversation } (owner 2026-10-15, at Level 2 as the starter after the other person had
+ * replied to all 5 of her lines but not sent his own 5: "again same situvation after level 2 if the 1st starting want to
+ * jump to level 3 can do"). While Level 2 is open, the person who started the conversation (pair.a) may move on to the
+ * choice after Level 2 (l3_decide) without waiting for the rest of Level 2 — once the other person replied to all 5 of
+ * the starter's own Level 2 lines. It is the starter's own "Open the chat": decisions = { [a]: { open: true } }. The other
+ * person still chooses "Open the chat" / "Forget it" (POST /decide) — nobody is put into a chat they did not choose; both
+ * open → Level 3 as always, one "Forget it" ends it. Their Level 2 lines not sent or not all replied are simply no longer
+ * needed: sending or replying at Level 2 answers 409 not_your_turn like after any finished level (a set already on its
+ * way is taken back: sendSet reads the stage again once it is stored), and the conversation
+ * still shows the Level 2 history there is. Levels: l3_decide is Level 2 like l2_open (users.level and chats.level are 2
+ * already — the normal finish of Level 2 raises nothing either). Two taps at once move it once (l3StartedBy), and the
+ * chat log notes it once. 403 not_starter (the other person), 409 not_open (Level 2 is not open: still Level 1 or
+ * waiting, finished meanwhile, or later), 409 not_ready (not all 5 of the starter's Level 2 lines have a reply yet),
+ * 409 other_blocked (frozen; a block that lands meanwhile undoes the move: Level 2 open as before, nothing noted).
+ */
+async function startLevel3(ctx) {
+  const { d, me, params } = ctx;
+  const { pair, other } = await pairFor(ctx, params[0], { write: true });
+  if (pair.a !== me._id) throw fail(403, "not_starter", "Only the person who started this conversation can move on to Level 3 now.");
+  if (pair.stage !== "l2_open") throw fail(409, "not_open", "Level 2 is not open.");
+  const mine = await d.collection(C.sets).findOne({ pairId: pair._id, level: 2, from: me._id });
+  if (!setComplete(mine)) throw fail(409, "not_ready", "Level 3 can start once all 5 of your Level 2 lines have a reply.");
+  const pairs = d.collection(C.pairs);
+  const at = nowIso();
+  // While Level 2 is still open, by the starter — and claimed once (l3StartedBy): of two taps at once one moves it, the
+  // other never matches. Level 2 finishing the usual way at the same moment (onSetComplete: only from l2_open) loses
+  // to it or wins over it, never both.
+  const claimed = await pairs.updateOne(
+    { _id: pair._id, a: me._id, stage: "l2_open", l3StartedBy: { $exists: false } },
+    { $set: { stage: "l3_decide", decisions: { [me._id]: { open: true, at } }, l3StartedBy: me._id, updatedAt: at } },
+  );
+  if (!claimed.modifiedCount) {
+    const now = await pairs.findOne({ _id: pair._id });
+    // My other tap moved it a moment ago: the same answer as that tap.
+    if (now?.stage === "l3_decide" && now.l3StartedBy === me._id && decisionOf(now.decisions, me._id) === true) {
+      return { conversation: await conversationFor(d, me, now, other) };
+    }
+    throw fail(409, "not_open", "Level 2 is not open any more.");
+  }
+  // A block landed meanwhile: a frozen pair does not move. The move is undone (Level 2 open as it was, no choice, no
+  // l3StartedBy) unless the other person already chose meanwhile, and nothing is noted.
+  if (await frozenNow(d, pair)) {
+    const back = { $set: { stage: "l2_open", updatedAt: pair.updatedAt }, $unset: { l3StartedBy: "" } };
+    if (pair.decisions === undefined) back.$unset.decisions = "";
+    else back.$set.decisions = pair.decisions;
+    await pairs.updateOne(
+      { _id: pair._id, stage: "l3_decide", l3StartedBy: me._id, [`decisions.${me._id}.at`]: at, [`decisions.${other._id}`]: { $exists: false } },
+      back,
+    );
+    throw fail(409, "other_blocked", "This conversation is closed.");
+  }
+  const [id] = await nextIds(d, "msg", 1);
+  await appendMessages(d, pair, [{
+    id, from: me._id, at, kind: "decision", level: 2, open: true, text: LEVEL3_START_TEXT, lang: "en", english: null,
+    translations: { en: LEVEL3_START_TEXT }, hit: null, flagId: null, stopped: false,
+  }]);
+  return { conversation: await conversationFor(d, me, await pairs.findOne({ _id: pair._id }), other) };
+}
+
 // ---------------------------------------------------------------- chat handlers
 
 /**
@@ -3561,8 +3654,13 @@ export const meetHandlers = (over = {}) => meetRoutes({ ...MEET_DEPS, ...over })
 const meet = meetHandlers();
 /** The chat's own send and report, for the meeting tests (a chat line read with a meeting before it; a reported card). */
 export const chatHandlers = Object.freeze({ postMessage, report });
-/** Level 2 opened early by the starter, and read back as the screen and the heartbeat read it (thirtyda-level2-start.test.mjs). */
-export const levelHandlers = Object.freeze({ startLevel2, getConversation, remind, heartbeat });
+/**
+ * Level 2 opened early by the starter, Level 3 moved on to early by the starter, and read back as the screen and the
+ * heartbeat read it; the choice and the Level 2 writes after it (thirtyda-level2-start.test.mjs, thirtyda-level3-start.test.mjs).
+ */
+export const levelHandlers = Object.freeze({
+  startLevel2, startLevel3, getConversation, remind, heartbeat, decide, sendSet, saveReply, sendAnswers,
+});
 
 // ---------------------------------------------------------------- block + report a person (store policy, owner 2026-10-14)
 // The rules: src/thirtyda-app/shared/safety.js; the store and the admin's flags: src/lib/thirtyda-blocks.mjs.
@@ -3972,6 +4070,8 @@ const ROUTES = [
   ["POST", /^\/pairs\/(P-\d+)\/remind$/, remind],
   // The starter opens Level 2 now instead of waiting for the timer (owner 2026-10-15).
   ["POST", /^\/pairs\/(P-\d+)\/level2\/start$/, startLevel2],
+  // The starter moves on to Level 3 (their own "Open the chat") once their Level 2 lines all have a reply (owner 2026-10-15).
+  ["POST", /^\/pairs\/(P-\d+)\/level3\/start$/, startLevel3],
   ["GET", /^\/pairs\/(P-\d+)\/messages$/, listMessages],
   ["POST", /^\/pairs\/(P-\d+)\/messages$/, postMessage],
   ["POST", /^\/pairs\/(P-\d+)\/messages\/(M-\d+)\/report$/, report],

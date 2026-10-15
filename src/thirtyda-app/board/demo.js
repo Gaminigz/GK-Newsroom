@@ -803,7 +803,7 @@
   /**
    * The other (simulated) person, one step at a time after I act: reply to the next line of my set, or
    * send their own 5 for the open level when they have not yet (after a couple of replies, so the
-   * screen shows "Sophea replied 2 of 5" first).
+   * screen shows "Sophea replied 2 of 5" first; at Level 2 when I started, after all 5, so "Go to Level 3 now" shows).
    */
   const botTimers = new Map(); // pairId → timer
   function botTick(pair, u) {
@@ -826,7 +826,10 @@
         const theirs = findSet(pair, lvl, other.id);
         const replied = R.repliedCount(mine);
         const at = nowIso();
-        if (!theirs && (!mine || replied >= 2 || mine.completedAt)) {
+        // At Level 2 with me as the one who started, all 5 of mine get their reply before their own 5 come — the owner's
+        // "Go to Level 3 now" moment (Meng replied to all of Sopal's lines, his own 5 not sent yet).
+        const holdOwn = lvl === 2 && pair.a === u.id;
+        if (!theirs && (!mine || (replied >= 2 && !holdOwn) || mine.completedAt)) {
           newSet(pair.id, lvl, other.id, u.id, linesOf(other, lvl), at);
           pair.updatedAt = at;
         } else if (mine && !mine.completedAt) {
@@ -1660,6 +1663,8 @@
     const real = realNameFor(other, stage);
     // Level 2 waits: the person who started the conversation may open it now (as the server: canStartLevel2).
     const l2Waiting = stage === 'l2_wait' && !frozen;
+    // Level 2 is open and the starter's 5 all have a reply: the starter may move on to Level 3 now (canStartLevel3).
+    const l3Ready = stage === 'l2_open' && !frozen && R.setComplete(findSet(pair, 2, pair.a));
     return {
       pair: view,
       other: other
@@ -1672,6 +1677,8 @@
       canSend,
       canStartLevel2: l2Waiting && pair.a === u.id,
       otherCanStartLevel2: l2Waiting && pair.a !== u.id,
+      canStartLevel3: l3Ready && pair.a === u.id,
+      otherCanStartLevel3: l3Ready && pair.a !== u.id,
       chat: { open: stage === 'l3_open', opensAt: null, phoneNeeded: !canTalk(u) },
       decision: { canDecide: stage === 'l3_decide' && !frozen && view.decision === null, mine: view.decision, ended: stage === 'ended', endedAt: view.endedAt },
       next: view.next,
@@ -1788,6 +1795,26 @@
     return { conversation: conversationOf(pair, u) };
   }
 
+  /**
+   * POST /pairs/:id/level3/start (as the server): the person who started the conversation moves on to Level 3 once the
+   * other person replied to all 5 of their Level 2 lines — their own "Open the chat"; the other person still chooses.
+   */
+  function startLevel3({ params }) {
+    const u = me();
+    const { pair } = pairFor(u, params[0], { write: true });
+    if (pair.a !== u.id) throw fail(403, 'not_starter', 'Only the person who started this conversation can move on to Level 3 now.');
+    if (pair.stage !== 'l2_open') throw fail(409, 'not_open', 'Level 2 is not open.');
+    if (!R.setComplete(findSet(pair, 2, u.id))) throw fail(409, 'not_ready', 'Level 3 can start once all 5 of your Level 2 lines have a reply.');
+    const at = nowIso();
+    Object.assign(pair, { stage: 'l3_decide', decisions: { [u.id]: { open: true, at } }, l3StartedBy: u.id, updatedAt: at });
+    chatLog(pair).push({
+      id: nextId('msg', 'M-'), from: u.id, at, kind: 'decision', level: 2, open: true,
+      text: 'Moved on to Level 3 before Level 2 was finished', lang: 'en', flagId: null, stopped: false,
+    });
+    botTick(pair, u); // the other person chooses a little later (the board's other person opens the chat)
+    return { conversation: conversationOf(pair, u) };
+  }
+
   function chatGate(u, pair) {
     if (pair.stage !== 'l3_open') throw fail(409, 'chat_closed', 'The chat opens at Level 3.');
     if (!canTalk(u)) throw fail(403, 'phone_needed', 'Verify to chat.'); // any verified way chats (the server's chatGate)
@@ -1891,6 +1918,7 @@
     ['POST', /^\/pairs\/(P-\d+)\/decide$/, decide],
     ['POST', /^\/pairs\/(P-\d+)\/remind$/, remind],
     ['POST', /^\/pairs\/(P-\d+)\/level2\/start$/, startLevel2],
+    ['POST', /^\/pairs\/(P-\d+)\/level3\/start$/, startLevel3],
     ['GET', /^\/pairs\/(P-\d+)\/messages$/, listMessages],
     ['POST', /^\/pairs\/(P-\d+)\/messages$/, postMessage],
     ['POST', /^\/pairs\/(P-\d+)\/messages\/(M-\d+)\/report$/, report],

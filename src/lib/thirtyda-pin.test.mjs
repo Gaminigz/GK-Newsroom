@@ -251,6 +251,7 @@ const SAMPLES = [
   ['POST', '/pairs/P-1/decide', null],
   ['POST', '/pairs/P-1/remind', null],
   ['POST', '/pairs/P-1/level2/start', null], // the starter opens Level 2 now (owner 2026-10-15): locked like the rest
+  ['POST', '/pairs/P-1/level3/start', null], // the starter moves on to Level 3 now (owner 2026-10-15): locked like the rest
   ['GET', '/pairs/P-1/messages', null],
   ['POST', '/pairs/P-1/messages', null],
   ['POST', '/pairs/P-1/messages/M-1/report', null],

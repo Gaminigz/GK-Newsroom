@@ -58,6 +58,8 @@ const SAMPLES = [
   ['POST', '/pairs/P-1/answers', true], ['POST', '/pairs/P-1/decide', true], ['POST', '/pairs/P-1/messages', true],
   // The starter opens Level 2 now (owner 2026-10-15): it moves the conversation on for both, so it talks to the other person.
   ['POST', '/pairs/P-1/level2/start', true],
+  // The starter moves on to Level 3 now (owner 2026-10-15): their own "Open the chat", and the other person is asked.
+  ['POST', '/pairs/P-1/level3/start', true],
   // A meeting in the Level 3 chat (owner 2026-10-14): suggesting and answering one talks to the other person; the place
   // search alone does not (a read, like the chat's).
   ['POST', '/pairs/P-1/meet', true], ['POST', '/pairs/P-1/meet/M-1', true], ['GET', '/places', false],
@@ -71,7 +73,7 @@ const SAMPLES = [
   ['POST', '/guest/report', false],
 ];
 
-test('gate: every route of the real router has a sample, and only the 9 that talk to someone are gated', () => {
+test('gate: every route of the real router has a sample, and only the 10 that talk to someone are gated', () => {
   for (const { method, re } of API_ROUTES) {
     assert.ok(SAMPLES.some(([m, p]) => m === method && re.test(p)), `route ${method} ${re} has a sample (a new route must say whether it talks to someone)`);
   }

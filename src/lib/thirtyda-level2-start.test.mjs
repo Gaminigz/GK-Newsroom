@@ -481,7 +481,8 @@ test('the route: POST only, locked by the PIN like the rest, waits for "I agree"
   assert.ok(API_ROUTES.some((r) => r.method === 'POST' && r.re.test(path)));
   assert.equal(API_ROUTES.some((r) => r.method === 'GET' && r.re.test(path)), false);
   assert.equal(API_ROUTES.some((r) => r.method === 'POST' && r.re.test('/pairs/P-1/level2/start/x')), false);
-  assert.equal(API_ROUTES.some((r) => r.method === 'POST' && r.re.test('/pairs/P-1/level3/start')), false);
+  // Level 3's own start is another route (thirtyda-level3-start.test.mjs): this one never answers it.
+  assert.equal(API_ROUTES.filter((r) => r.method === 'POST' && r.re.test(path) && r.re.test('/pairs/P-1/level3/start')).length, 0);
   assert.equal(whileLocked('POST', path), null, '423 while locked');
   assert.equal(termsFree('POST', path), false, '403 terms_needed before "I agree"');
   assert.equal(talksToSomeone('POST', path), true, '403 verify_needed without a verified way');

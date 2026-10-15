@@ -19,6 +19,11 @@
 // Between Level 1 and Level 2 the countdown waits — but the person who started the conversation can open Level 2 at
 // once with "Start Level 2 now" (owner 2026-10-15, POST /level2/start); the other one reads "<name> can start Level 2
 // sooner." under the same countdown, and both then see Level 2 exactly as after the timer.
+// At Level 2 the person who started can also move on to Level 3 before Level 2 is finished (owner 2026-10-15, POST
+// /level3/start): once the other person replied to all 5 of their lines, "Go to Level 3 now" stands under the status line
+// — "Waiting for <name>'s 5 lines", or "Your turn: reply to <name>" when the other person's 5 came first — it is their own
+// "Open the chat", and the other person still chooses (the choice after Level 2). The other one reads "<name> can move on
+// to Level 3 sooner." under the history meanwhile, and a toast says so when it happened before their Level 2 was done.
 // GET /pairs/:id/conversation is the one read model; replies save one at a time with PUT /replies, the
 // choice with POST /decide.
 import {
@@ -147,6 +152,7 @@ function mountConversation(root, base, initial, chat) {
   let remindBusy = false;
   let deciding = false; // "Open the chat" / "Forget it" is being saved
   let starting = false; // "Start Level 2 now" is on its way
+  let jumping = false; // "Go to Level 3 now" is on its way
   let reminderDropped = false; // this phone's own reminder for a Level 2 that is already open was cancelled
   const editing = new Set(); // reply keys reopened to change
   const busy = new Set(); // reply keys being saved
@@ -276,8 +282,9 @@ function mountConversation(root, base, initial, chat) {
       el('div', { class: 'bubble mine' }, lineParts(line, true)),
       line.reply
         ? theirReply(line.reply, s, line)
-        // Nothing is "waiting" in an ended conversation (when the other person left, their replies went with them).
-        : ended() ? null : el('span', { class: 'conv-pending' }, icon('clock', 12), el('span', {}, t('cv_waiting'))));
+        // Nothing is "waiting" in an ended conversation (when the other person left, their replies went with them), nor
+        // in a finished level (the person who started moved on to Level 3: these lines need no reply any more).
+        : ended() || levelOf(s.level)?.state === 'done' ? null : el('span', { class: 'conv-pending' }, icon('clock', 12), el('span', {}, t('cv_waiting'))));
   }
 
   function theirLine(s, line) {
@@ -570,11 +577,16 @@ function mountConversation(root, base, initial, chat) {
       out.push(divider(t('cv_level', { n: L.level })));
       for (const s of sets) out.push(...setNodes(s));
     }
+    // I replied to all 5 of the starter's Level 2 lines: they may move on to Level 3 sooner (and I would then choose).
+    if (!chatMode && conv.otherCanStartLevel3 === true && !frozen() && !ended()) {
+      out.push(el('p', { class: 'conv-l3-note' }, icon('clock', 13), el('span', {}, t('cv_l3_sooner', { name: name() }))));
+    }
     if (ended()) out.push(divider(t(left() ? 'cv_left' : 'cv_ended_divider')));
     return out;
   }
   const timelineSig = (c) => JSON.stringify([
     c.levels, c.pair?.stage, c.pair?.l2OpensAt, c.pair?.next, c.next, c.chat, c.decision?.ended, c.canStartLevel2, c.otherCanStartLevel2,
+    c.otherCanStartLevel3,
   ]);
 
   dropStaleReminder();
@@ -731,6 +743,73 @@ function mountConversation(root, base, initial, chat) {
       replyFailed(err, key, text);
       if (alive) boxes.get(key)?.(); // the box stays as it is, keyboard and all
     }
+  }
+
+  // ------------------------------------------------ at Level 2: the person who started moves on to Level 3 now
+
+  /** The server says I may (canStartLevel3): I started, Level 2 is open, and all 5 of my Level 2 lines have a reply. */
+  const canJump = () => !chatMode && conv.canStartLevel3 === true && !frozen() && !ended();
+
+  /**
+   * "Go to Level 3 now" (owner 2026-10-15: "again same situvation after level 2 if the 1st starting want to jump to level
+   * 3 can do"): my own "Open the chat (Level 3)" before Level 2 is done; the other person still chooses, so the screen
+   * moves on to "You chose to open the chat — waiting for <name>" (and "Forget it" stays there, as after any choice).
+   */
+  function jumpButton() {
+    const b = el('button', {
+      type: 'button', class: ['btn btn-primary btn-sm conv-l3-go', jumping && 'busy'], disabled: jumping,
+      'aria-busy': String(jumping), 'aria-describedby': 'cv-l3-hint',
+    }, icon('arrow', 16), el('span', { class: 'btn-text' }, t('cv_l3_now')));
+    b.addEventListener('click', () => {
+      if (jumping) return;
+      b.disabled = true;
+      b.classList.add('busy');
+      b.setAttribute('aria-busy', 'true');
+      startLevel3();
+    });
+    return b;
+  }
+
+  /**
+   * A status line, with "Go to Level 3 now" and what it means under it when I may (canJump): under "Waiting for <name>'s
+   * 5 lines" and under "Your turn: reply to <name>" alike — the server lets me in both, and <name> is told I can.
+   */
+  function withJump(row) {
+    if (!canJump()) return row;
+    return el('div', { class: 'conv-l3' },
+      row,
+      jumpButton(),
+      el('p', { class: 'conv-l3-hint', id: 'cv-l3-hint' }, t('cv_l3_hint', { name: name() })));
+  }
+
+  async function startLevel3() {
+    if (!alive || jumping) return;
+    jumping = true;
+    ver++;
+    renderFoot(); // the button greyed (the foot remembers it, so it is painted free again after a refusal)
+    try {
+      const r = await api.post(`${base}/level3/start`, {});
+      jumping = false;
+      heartbeat(); // My conversations: "waiting for <name>" there now, not at the next beat
+      apply(unwrap(r)); // "You chose to open the chat — waiting for <name>"
+      return;
+    } catch (err) {
+      jumping = false;
+      if (!alive) return;
+      if (redirected(err)) {
+        if (err.code === 'verify_needed') renderFoot(); // the sheet closed unverified: the button is free again
+        return;
+      }
+      if (err.status === 409 || err.status === 404 || err.status === 403) {
+        // not_open: Level 2 finished meanwhile (the read shows the choice); not_ready: a reply was changed — read again.
+        if (err.code === 'other_blocked') toast(t('cv_closed'));
+        else if (err.code !== 'not_open' && err.code !== 'not_ready') toast(t('cv_moved'));
+        poll(true);
+      } else {
+        toast(errorText(err));
+      }
+    }
+    if (alive) renderFoot(); // the button again (unless the read above moved the screen on)
   }
 
   // ------------------------------------------------ after Level 2: open the chat or forget it
@@ -891,7 +970,7 @@ function mountConversation(root, base, initial, chat) {
       return;
     }
     // A status line repaints only when it says something new (it is a live region).
-    const sig = JSON.stringify([kind, kind === 'closed' || kind === 'ended' ? null : footState(), deciding]);
+    const sig = JSON.stringify([kind, kind === 'closed' || kind === 'ended' ? null : footState(), deciding, (kind === 'wait' || kind === 'reply') && canJump(), jumping]);
     if (sig === footSig && !panel) return;
     footSig = sig;
     panel = null;
@@ -916,7 +995,8 @@ function mountConversation(root, base, initial, chat) {
       const total = (s.lines || []).length || 5;
       const done = (s.lines || []).filter((l) => l.reply).length;
       const show = el('button', { type: 'button', class: 'link', on: { click: () => scrollToUnreplied() } }, t('cv_show'));
-      foot.replaceChildren(statusRow('chat', t('cv_turn_reply', { name: name(), n: done, total }), show));
+      // All 5 of mine replied while their 5 wait for my replies: the person who started may move on instead.
+      foot.replaceChildren(withJump(statusRow('chat', t('cv_turn_reply', { name: name(), n: done, total }), show)));
     } else if (kind === 'wait') {
       const L = openLevel();
       const mine = L.mine;
@@ -928,7 +1008,8 @@ function mountConversation(root, base, initial, chat) {
       else if (!L.theirs) text = t('cv_wait_lines', { name: name() });
       else if (mine && !mine.completedAt) text = t('cv_wait_replies', { name: name() });
       else text = t('cv_wait_lines', { name: name() });
-      foot.replaceChildren(statusRow('clock', text));
+      // Waiting for their 5 with all of mine replied: the person who started may move on to Level 3 now.
+      foot.replaceChildren(withJump(statusRow('clock', text)));
     } else {
       foot.replaceChildren();
     }
@@ -938,10 +1019,14 @@ function mountConversation(root, base, initial, chat) {
 
   /**
    * Toasts for what just changed: my replies all in, theirs all in, a level open, the conversation ended.
-   * Not when Level 2 just finished: the choice under the history says so ("Level 2 is done …").
+   * Not when Level 2 just finished: the choice under the history says so ("Level 2 is done …") — unless the person who
+   * started moved on to Level 3 before my own Level 2 lines were sent and all replied (POST /level3/start): the screen
+   * swaps to the choice (my send panel too) while my Level 2 was not done, so it says why.
    */
   function announce(prev, next) {
     if (prev.pair?.stage !== 'l3_decide' && next.pair?.stage === 'l3_decide') {
+      const mine2 = (next.levels || []).find((x) => x?.level === 2)?.mine;
+      if (prev.pair?.stage === 'l2_open' && next.decision?.canDecide && !mine2?.completedAt) toast(t('cv_l3_moved', { name: name() }));
       heartbeat();
       return;
     }
@@ -995,7 +1080,7 @@ function mountConversation(root, base, initial, chat) {
     try {
       const r = unwrap(await api.get(`${base}/conversation`));
       fails = 0;
-      if (alive && (now || (v === ver && !busy.size && !deciding))) apply(r);
+      if (alive && (now || (v === ver && !busy.size && !deciding && !jumping))) apply(r);
     } catch (err) {
       if (redirected(err)) {
         alive = false;
@@ -1111,6 +1196,10 @@ registerStrings({
     cv_remind_note: 'Level {n} with {name} is open now.',
     cv_start_now: 'Start Level {n} now',
     cv_start_sooner: '{name} can start Level {n} sooner.',
+    cv_l3_now: 'Go to Level 3 now',
+    cv_l3_hint: 'This says yes to the chat. {name} still chooses.',
+    cv_l3_sooner: '{name} can move on to Level 3 sooner.',
+    cv_l3_moved: '{name} moved on to Level 3. Choose now.',
     cv_all_replied: 'All 5 replied. {name} can see them.',
     cv_they_all: '{name} replied to all 5.',
     cv_level_open: 'Level {n} is open.',
@@ -1175,6 +1264,10 @@ registerStrings({
     cv_remind_note: 'កម្រិត {n} ជាមួយ {name} បានបើកហើយ។',
     cv_start_now: 'ចាប់ផ្ដើមកម្រិត {n} ឥឡូវនេះ',
     cv_start_sooner: '{name} អាចចាប់ផ្ដើមកម្រិត {n} ឆាប់ជាងនេះបាន។',
+    cv_l3_now: 'ទៅកម្រិត 3 ឥឡូវនេះ',
+    cv_l3_hint: 'នេះមានន័យថា អ្នកយល់ព្រមបើកការជជែក។ {name} នៅតែជ្រើសរើសដោយខ្លួនឯង។',
+    cv_l3_sooner: '{name} អាចបន្តទៅកម្រិត 3 ឆាប់ជាងនេះបាន។',
+    cv_l3_moved: '{name} បានបន្តទៅកម្រិត 3 ហើយ។ សូមជ្រើសរើសឥឡូវនេះ។',
     cv_all_replied: 'បានឆ្លើយតបទាំង 5 ហើយ។ {name} អាចមើលឃើញ។',
     cv_they_all: '{name} បានឆ្លើយតបទាំង 5 ហើយ។',
     cv_level_open: 'កម្រិត {n} បានបើកហើយ។',
@@ -1239,6 +1332,10 @@ registerStrings({
     cv_remind_note: '你和 {name} 的等级 {n} 已开启。',
     cv_start_now: '现在开始等级 {n}',
     cv_start_sooner: '{name} 可以提前开始等级 {n}。',
+    cv_l3_now: '现在进入等级 3',
+    cv_l3_hint: '这表示你同意开始聊天，{name} 仍会自己选择。',
+    cv_l3_sooner: '{name} 可以提前进入等级 3。',
+    cv_l3_moved: '{name} 已进入等级 3，请现在选择。',
     cv_all_replied: '5 句都已回复，{name} 可以看到了。',
     cv_they_all: '{name} 已回复全部 5 句。',
     cv_level_open: '等级 {n} 已开启。',
@@ -1303,6 +1400,10 @@ registerStrings({
     cv_remind_note: '{name}님과의 레벨 {n}이 열렸어요.',
     cv_start_now: '지금 레벨 {n} 시작하기',
     cv_start_sooner: '{name}님이 레벨 {n} 시작을 앞당길 수 있어요.',
+    cv_l3_now: '지금 레벨 3으로 가기',
+    cv_l3_hint: '채팅 열기에 동의하는 거예요. {name}님은 직접 고를 수 있어요.',
+    cv_l3_sooner: '{name}님이 레벨 3으로 먼저 넘어갈 수 있어요.',
+    cv_l3_moved: '{name}님이 레벨 3으로 넘어갔어요. 지금 선택해 주세요.',
     cv_all_replied: '5개 모두 답장했어요. {name}님이 볼 수 있어요.',
     cv_they_all: '{name}님이 5개 모두 답장했어요.',
     cv_level_open: '레벨 {n} 열림',
@@ -1367,6 +1468,10 @@ registerStrings({
     cv_remind_note: '{name}さんとのレベル{n}が開きました。',
     cv_start_now: '今すぐレベル{n}を始める',
     cv_start_sooner: '{name}さんはレベル{n}を早めに始められます。',
+    cv_l3_now: '今すぐレベル3へ進む',
+    cv_l3_hint: 'チャットを開くことに同意します。{name}さんは自分で選びます。',
+    cv_l3_sooner: '{name}さんは早めにレベル3へ進めます。',
+    cv_l3_moved: '{name}さんがレベル3へ進みました。今すぐ選んでください。',
     cv_all_replied: '5つすべてに返信しました。{name}さんに届いています。',
     cv_they_all: '{name}さんが5つすべてに返信しました。',
     cv_level_open: 'レベル{n}が開きました。',
