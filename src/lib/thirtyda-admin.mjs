@@ -34,7 +34,7 @@
  *        keep the saved one) — for the token revoke on delete; the sign-in itself needs no key (src/lib/thirtyda-apple.mjs)
  *   POST /30da/admin/api/connections/apple/try       the ES256 client secret + a made-up code at Apple's /auth/token:
  *        invalid_grant = the key works (the tower goes Live), invalid_client = a wrong key → { ok, reason?, detail?, view }
- *   DELETE /30da/admin/api/connections/:id           remove what is saved for telegram | whatsapp | google | facebook | tiktok | apple
+ *   DELETE /30da/admin/api/connections/:id           remove what is saved for telegram | whatsapp | google | facebook | tiktok | apple | translate
  *   Tower 11 · Wan (the GK API Hub: image to video on the M5 for Yai Media Director, src/lib/thirtyda-hub-wan.mjs) — the
  *   page's data carries a `wan` block (status, the M5's last claim, the queue, the tokens' last 4 + made-at, options, jobs):
  *   POST /30da/admin/api/connections/wan/tokens/client|worker   New token: the old one stops at once → { token, kind, view }.
@@ -47,6 +47,11 @@
  *   `places` block (status, the list's time, size and store, the last Overpass ask, the last error):
  *   POST /30da/admin/api/connections/places/refresh   ask OpenStreetMap now, in the background → { ok, view } | 429 too soon
  *   POST /30da/admin/api/connections/places/search    { q, lang } a test search → our hits, Nominatim asked or not (never signed)
+ *   Tower 13 · Translate (where chat lines are translated, src/lib/thirtyda-hub-translate.mjs) — the page's data carries a
+ *   `translate` block (where: host, model, prompt style; On / Off, the wait; the app's numbers; the last Try; never the token):
+ *   PUT  /30da/admin/api/connections/translate        { url, model, token?, style } (empty token = keep the saved one)
+ *   PUT  /30da/admin/api/connections/translate/options { enabled?, timeoutS? } → the page's data | 422
+ *   POST /30da/admin/api/connections/translate/try    { text, from, to | 'all' } → { ok, results: [{ to, ok, text | error, ms }], view }
  *   POST /30da/admin/api/connections/telegram|whatsapp/test   { phone } → a real code to that phone, or why not.
  *        A test that goes through turns the channel on in the app (src/lib/thirtyda-code-send.mjs channelOffer);
  *        the answer carries the page's fresh data (`view`) so the card can say so at once.
@@ -155,6 +160,8 @@ import { targetLabel } from "../thirtyda-app/shared/safety.js";
 import { BAD_WORD_REASONS } from "../thirtyda-app/shared/bad-words.js";
 import { readPhoto, isPhotoId, deletePhoto, thumbPhoto, savePhoto, PhotoError } from "./thirtyda-photos.mjs";
 import { placesAdminView, refreshPlaces, placesTry } from "./thirtyda-hub-places.mjs";
+import { translateAdminView, checkTranslateFields, saveTranslateOptions, translateTry } from "./thirtyda-hub-translate.mjs";
+import { resetTranslate } from "./thirtyda-translate.mjs";
 import { placeIndex, placeSearch } from "./thirtyda-meet.mjs";
 import { wanAdminView, newWanToken, revokeWanToken, saveWanOptions, queueWanTry, wanTryClip, sendClip } from "./thirtyda-hub-wan.mjs";
 import {
@@ -572,6 +579,11 @@ async function connectionsView(d, req) {
       console.error("[30da admin] places:", err instanceof Error ? err.message : err);
       return null;
     }),
+    // Tower 13 · Translate (src/lib/thirtyda-hub-translate.mjs): never the token, only its last 4. A failure: without it.
+    translate: await translateAdminView(d).catch((err) => {
+      console.error("[30da admin] translate:", err instanceof Error ? err.message : err);
+      return null;
+    }),
   };
 }
 
@@ -582,8 +594,11 @@ const FIELD_CHECKS = {
   facebook: (input, current) => checkSigninFields("facebook", input, current),
   tiktok: (input, current) => checkSigninFields("tiktok", input, current),
   apple: (input, current) => checkAppleFields(input, current),
+  translate: (input, current) => checkTranslateFields(input, current),
 };
-const CONNECTION_NAMES = { telegram: "Telegram", whatsapp: "WhatsApp", google: "Google", facebook: "Facebook", tiktok: "TikTok", apple: "Apple" };
+const CONNECTION_NAMES = {
+  telegram: "Telegram", whatsapp: "WhatsApp", google: "Google", facebook: "Facebook", tiktok: "TikTok", apple: "Apple", translate: "Translate",
+};
 const TESTABLE = ["telegram", "whatsapp"];
 
 /** One level as the Questions page edits it. */
@@ -777,6 +792,37 @@ async function placesRoute(req, res, m) {
   const r = await placesTry(placeSearch(), { q: body.value?.q, lang: body.value?.lang });
   if (r.error) return json(res, 422, { error: r.error });
   return json(res, 200, r);
+}
+
+/**
+ * Tower 13 · Translate on the Code page (signed in; writes are same-origin JSON: checked before this). m[1] = what.
+ *   PUT options { enabled?, timeoutS? } → the page's data | 422 { error, field }.
+ *   POST try { text, from, to } → { ok, results: [{ to, ok, text | error, ms }], view } | 422 / 400 { error, field? }.
+ *   30 tries in 15 minutes (each one runs the M1's model). The line itself is never kept or audited.
+ */
+const translateTries = windowLimiter(WINDOW_MS);
+async function translateRoute(req, res, m) {
+  const want = m[1] === "options" ? "PUT" : "POST";
+  if (req.method !== want) {
+    req.resume();
+    return json(res, 404, { error: "Not found." });
+  }
+  const d = await db();
+  const body = await readJsonBody(req, 1e4);
+  if (body.tooLarge) return json(res, 413, { error: "That is far too long." });
+  if (body.bad) return json(res, 400, { error: "Send it as JSON." });
+  if (m[1] === "options") {
+    if (writeLimited(req)) return json(res, 429, { error: "Too many changes. Try again in a few minutes." });
+    const r = await saveTranslateOptions(d, body.value, { by: "superadmin" });
+    if (!r.ok) return json(res, 422, { error: r.error, field: r.field });
+    await audit(req, "translate_options", { enabled: r.options.enabled, timeoutS: r.options.timeoutS });
+    return json(res, 200, await connectionsView(d, req));
+  }
+  if (translateTries.over(tokenOf(req) || clientIp(req), 30)) return json(res, 429, { error: "That is 30 tries in 15 minutes. Try again later." });
+  const r = await translateTry(d, body.value);
+  if (r.status) return json(res, r.status, { error: r.error, field: r.field, reason: r.reason });
+  await audit(req, "translate_try", { ok: r.ok, from: r.from, to: r.results.map((x) => x.to), model: r.model });
+  return json(res, 200, { ...r, view: await connectionsView(d, req) });
 }
 
 /**
@@ -1252,6 +1298,10 @@ export async function handleThirtyDaAdmin(req, res, url) {
   m = sub.match(/^\/api\/connections\/wan\/(tokens\/(client|worker)|options|try|clips\/([a-f0-9]{32}))$/);
   if (m) return wanRoute(req, res, m);
 
+  // Tower 13 · Translate: On / Off + the wait (PUT options), Try (POST try). Its keys: the generic PUT / DELETE below.
+  m = sub.match(/^\/api\/connections\/translate\/(options|try)$/);
+  if (m) return translateRoute(req, res, m);
+
   // Tower 12 · Places: Refresh now, a test search (src/lib/thirtyda-hub-places.mjs).
   m = sub.match(/^\/api\/connections\/places\/(refresh|search)$/);
   if (m) return placesRoute(req, res, m);
@@ -1310,6 +1360,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
     if (req.method === "DELETE") {
       req.resume();
       const r = await removeSecret(d, id);
+      if (id === "translate") resetTranslate(); // the app goes back to the env (or off) at once
       await audit(req, "connection_remove", { connection: id, removed: r.removed });
       return json(res, 200, await connectionsView(d, req));
     }
@@ -1329,6 +1380,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
         const c = FIELD_CHECKS[id](body.value, current);
         if (!c.ok) return json(res, 422, { error: c.error, field: c.field });
         const saved = await saveFields(d, id, c.values, { by: "superadmin" });
+        if (id === "translate") resetTranslate(); // the app uses the new server at once
         // Never a secret in the audit: only which boxes changed, and the secrets' last 4.
         const changed = Object.keys(c.values).filter((f) => !current || current[f] !== c.values[f]);
         await audit(req, "connection_save", { connection: id, masks: saved.masks, changed });

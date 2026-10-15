@@ -556,7 +556,7 @@ textarea.input.q-in {
 .btn-primary.q-save { width: auto; min-width: 150px; height: 38px; margin-top: 0; padding: 0 18px; }
 .btn-primary.q-save[disabled] { opacity: 0.4; cursor: default; }
 
-/* ---------- Code: the sign-in and messaging hub — twelve towers left to right (owner 2026-10-14) ---------- */
+/* ---------- Code: the sign-in and messaging hub — thirteen towers left to right (owner 2026-10-14) ---------- */
 .cx-banner {
   margin: 0 0 16px;
   max-width: 78ch;
@@ -860,6 +860,10 @@ a.btn.cx-try-btn { display: inline-flex; align-items: center; height: 40px; colo
 /* Tower 11 · Wan: image to video on our M5 (the GK API Hub) */
 .cx-tower[data-tower="wan"] { --bar: linear-gradient(90deg, #6a4be0, #e0891b); }
 .cx-logo.wan { background: #efeafd; color: #5a3fd0; }
+.cx-tower[data-tower="places"] { --bar: linear-gradient(90deg, #1f8a5b, #7bc47f); }
+.cx-logo.places { background: #e4f5ec; color: #1f8a5b; }
+.cx-tower[data-tower="translate"] { --bar: linear-gradient(90deg, #1a6fc7, #12a3a0); }
+.cx-logo.translate { background: #e4f0fb; color: #1a6fc7; }
 .cx-pill.wait { background: #fff3e0; color: #9a5b0b; }
 .cx-dot.wait { background: var(--amber); }
 .cx-signin-body > .cx-try:first-child { padding-top: 0; border-top: 0; }
@@ -887,6 +891,10 @@ a.btn.cx-try-btn { display: inline-flex; align-items: center; height: 40px; colo
 .cx-job.running, .cx-job.pending { color: #9a5b0b; }
 /* Tower 12 · Places: the test search's language. */
 .input.cx-lang { flex: none; width: 104px; }
+/* Tower 13 · Translate: the Try's line, its languages, what came back. */
+textarea.input.cx-area { height: auto; min-height: 64px; padding: 9px 12px; line-height: 1.45; resize: vertical; margin-bottom: 8px; }
+.cx-tr-row { align-items: center; }
+.cx-tr-out { color: var(--ink); }
 @media (max-width: 760px) {
   /* A phone: the bar and the row reach the screen's edges; one tower at a time, the next one peeking in. */
   .cx-bar { margin: 0 -16px 2px; padding: 8px 16px; gap: 8px 6px; }

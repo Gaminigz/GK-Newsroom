@@ -1332,7 +1332,7 @@ test('Code page: tower 11 "Wan" (Video), its words, its own icon; tokens shown o
   const towers = js.slice(js.indexOf('const TOWERS = ['), js.indexOf('const towerNumber'));
   assert.match(towers, /key: 'wan', name: 'Wan', kind: 'Video'/);
   assert.match(js, /'Image to video on our M5 · for Yai Media Director'/);
-  assert.match(js, /twelve towers/);
+  assert.match(js, /thirteen towers/);
   assert.match(js, /11 Wan/);
   assert.match(js, /\n {2}wan: '<rect /, 'our own drawing in LOGOS');
   for (const words of ['Not set', 'Off', 'Waiting for the M5', 'Live', 'Shown once. ', 'Done, I copied it', 'Try a render',
@@ -1348,5 +1348,5 @@ test('Code page: tower 11 "Wan" (Video), its words, its own icon; tokens shown o
   const css = readFileSync(new URL('../thirtyda-admin/app.css', import.meta.url), 'utf8');
   for (const rule of ['.cx-pill.wait', '.cx-dot.wait', '.cx-logo.wan', '.cx-tower[data-tower="wan"]', '.cx-video']) assert.ok(css.includes(rule), rule);
   const html = readFileSync(new URL('../thirtyda-admin/connections.html', import.meta.url), 'utf8');
-  assert.match(html, /twelve towers/);
+  assert.match(html, /thirteen towers/);
 });

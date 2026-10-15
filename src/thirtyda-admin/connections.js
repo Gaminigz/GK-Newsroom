@@ -1,11 +1,12 @@
-// 30+DA super admin · Code — the sign-in and messaging hub, the GK API Hub (owner 2026-10-14): twelve towers left to right,
+// 30+DA super admin · Code — the sign-in and messaging hub, the GK API Hub (owner 2026-10-14): thirteen towers left to right,
 // in the owner's order (1 TikTok, 2 Telegram Bot, 3 Telegram Gateway, 4 Facebook, 5 Google, 6 WhatsApp, 7 WeChat, 8 Alipay,
-// 9 YouTube, 10 Apple, 11 Wan, 12 Places; 7–9 are "Later" placeholders), each with the keys it needs. Tower 10 is Sign in with Apple
+// 9 YouTube, 10 Apple, 11 Wan, 12 Places, 13 Translate; 7–9 are "Later" placeholders), each with the keys it needs. Tower 10 is Sign in with Apple
 // (owner 2026-10-14): the sign-in needs no key; its key (Team ID, Key ID, the .p8) lets a deleted account end its Apple
 // link. Tower 11 is Wan (owner 2026-10-14): image to video on our M5 for Yai Media Director — a client token and a worker
 // token (each shown once, then only its last 4), On / Off, the sizes and seconds allowed, and a Try that plays its clip
 // here (src/lib/thirtyda-hub-wan.mjs). Tower 12 is Places (owner 2026-10-15): our own Phnom Penh place list — its
-// status, Refresh now and a test search (src/lib/thirtyda-hub-places.mjs). A strip at the top jumps to a tower; ‹ ›, the
+// status, Refresh now and a test search (src/lib/thirtyda-hub-places.mjs). Tower 13 is Translate (owner 2026-10-15): where
+// chat lines are translated — our own model on the M1 (src/lib/thirtyda-hub-translate.mjs). A strip at the top jumps to a tower; ‹ ›, the
 // arrow keys and the slider move along; the last tower is remembered in this browser. Later all our apps use this hub.
 // Telegram and WhatsApp send the sign-in code: offered in the app only once a test code went through since the
 // keys were saved, and stopped again by a lasting failure (no balance, bad token, template). Google, Facebook and
@@ -20,10 +21,10 @@ const API = '/30da/admin/api/connections';
 const $ = (id) => document.getElementById(id);
 
 // wanReveal: a Wan token just made { kind, token } — this page's memory only, until "Done" (never stored, never sent back).
-// placesBusy / placesError: Tower 12's Refresh now; placesTry: its test search { busy, result, error }.
+// placesBusy / placesError: Tower 12's Refresh now; placesTry: its test search { busy, result, error }; trTry: Tower 13's Try.
 const state = {
   data: null, busy: false, test: {}, testPhone: {}, wanReveal: null, wanBusy: null, wanTrying: false, wanTryError: null,
-  placesBusy: false, placesError: null, placesTry: {},
+  placesBusy: false, placesError: null, placesTry: {}, trTry: {},
 };
 
 // ---------- dom ----------
@@ -56,6 +57,8 @@ const LOGOS = {
   wan: '<rect x="2.8" y="5.6" width="13" height="12.8" rx="2.6" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="m15.8 10.4 5.2-3v9.2l-5.2-3" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="M7.6 9.4v5.2l4.3-2.6-4.3-2.6Z" fill="currentColor"/>',
   // Places (tower 12): a map pin, our own drawing.
   places: '<path d="M12 21s-6.6-6.1-6.6-11.2a6.6 6.6 0 0 1 13.2 0C18.6 14.9 12 21 12 21Z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><circle cx="12" cy="9.8" r="2.4" stroke="currentColor" stroke-width="1.6" fill="none"/>',
+  // Translate (tower 13): two speech marks, "A" and "文", our own drawing.
+  translate: '<path d="M3.5 5.5h9v7h-5l-3 2.5v-2.5h-1Z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="m6.2 11 1.8-4.2 1.8 4.2M6.8 9.6h2.4" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.5 9.5h6v7h-1v2.5l-3-2.5h-5v-3" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="M14.4 12.2h4.2M16.5 11.2v1M15 15.4c1.4-.6 2.6-1.8 3-3.2M15.4 13.2c.5 1 1.4 1.8 2.6 2.2" stroke="currentColor" stroke-width="1.1" fill="none" stroke-linecap="round"/>',
   apple: '<path d="M12 8.1c-1.1-.9-3.6-1.4-5.1.5-1.6 2-1.1 5.8.6 8.4 1 1.5 2 2.6 3.1 2.5.9-.1 1.1-.6 2.1-.6 1 0 1.3.5 2.1.6 1.2.1 2.2-1.1 3.1-2.5.6-.9 1-1.8 1.2-2.4-1.7-.8-2.5-3.3-1.1-5 .3-.4.6-.7 1-.9-1.5-1.9-4-1.7-5.2-.6Z" fill="currentColor"/><path d="M12.1 7.3c-.1-1.6 1.2-3.2 2.8-3.3.2 1.7-1.2 3.3-2.8 3.3Z" fill="currentColor"/>',
 };
 function logo(id) {
@@ -615,6 +618,34 @@ const FIELD_CARDS = {
       },
     ],
   },
+  // Tower 13 · Translate (src/lib/thirtyda-hub-translate.mjs): the pick is Tencent Hy-MT2-1.8B in LM Studio on the M1.
+  translate: {
+    title: 'Translate',
+    sub: 'Chat lines in 5 languages · our own model on the M1',
+    what: 'keys',
+    steps: [
+      ['On the M1, in LM Studio: download Tencent Hy-MT2-1.8B (Apache-2.0, knows Khmer), load it, and copy its API name (Developer tab).'],
+      ['Here: the address https://llm.ggmt.sg (our M1, already on the privacy page), the model name, the M1 guard token, “Hy-MT”. Save.'],
+      ['Try lines in every language; have a Khmer speaker check about 50 casual lines.'],
+      ['Turn on. Every new chat line is then translated; older lines are filled in when someone reads them.'],
+    ],
+    fields: [
+      {
+        key: 'url', label: 'Address', placeholder: 'https://llm.ggmt.sg', fallback: 'https://llm.ggmt.sg',
+        help: ['Our M1 (the M1 guard in front of LM Studio). Any OpenAI-style …/v1/chat/completions server works.'],
+      },
+      { key: 'model', label: 'Model', placeholder: 'e.g. hy-mt2-1.8b', help: ['The name LM Studio shows for the loaded model.'] },
+      {
+        key: 'token', label: 'Token', secret: true, placeholder: 'Paste the M1 guard token',
+        help: ['The bearer token of llm.ggmt.sg (M1_LLM_TOKEN). Saved locked; only its last 4 characters show again.'],
+      },
+      {
+        key: 'style', label: 'How it is asked', fallback: 'hy-mt',
+        choices: [['hy-mt', 'Hy-MT: no system prompt'], ['chat', 'Chat model: a system prompt']],
+        help: ['Hy-MT2 / Hunyuan-MT take the instruction in the message itself. Chat: Qwen and other chat models.'],
+      },
+    ],
+  },
 };
 
 /** The boxes + Save / Remove of one card. The plain boxes start filled with what is saved. */
@@ -638,6 +669,13 @@ function fieldsForm(c, data) {
       control = wrap;
       // Left empty, the saved secret stays: say so where the eye goes next.
       if (c.set && masked) f = { ...f, help: ['Leave it empty to keep the saved one, or paste a new one. ', ...f.help] };
+    } else if (f.choices) {
+      // A fixed choice (Tower 13's "How it is asked"): a list, the saved one picked.
+      const saved = c.fields?.[f.key] || f.fallback;
+      const input = h('select', { class: 'input', id, name: id, disabled: !keyReady, 'data-draft': c.id, 'aria-describedby': `${helpId} ${c.id}-err` },
+        f.choices.map(([v, text]) => h('option', { value: v, text, selected: v === saved })));
+      inputs[f.key] = input;
+      control = input;
     } else {
       const saved = c.fields?.[f.key];
       const input = h('input', {
@@ -690,12 +728,14 @@ function fieldsForm(c, data) {
         }
         state.test[c.id] = null;
         render(r.data, { fresh: c.id });
-        const now = r.data.connections.find((x) => x.id === c.id);
-        toast(c.id === 'whatsapp'
+        const now = r.data.connections.find((x) => x.id === c.id) ?? r.data[c.id];
+        toast(c.id === 'translate' ? `Translate keys saved · token ends …${now?.masks?.token}. Try a line below.`
+          : c.id === 'whatsapp'
           ? `WhatsApp keys saved · token ends …${now.masks?.token}. Send a test code to check them.`
           : c.id === 'apple' ? `Apple key saved · key ends …${now.masks?.privateKey}. Press “Try the key” to check it.`
             : `${NAMES[c.id]} keys saved · secret ends …${now.last4}. Press Try sign-in to check them.`);
         if (c.id === 'apple') $('apple-try')?.focus();
+        if (c.id === 'translate') $('tr-text')?.focus();
         if (c.id === 'whatsapp') $('wa-phone')?.focus();
       },
     },
@@ -875,6 +915,7 @@ const REMOVE_TEXT = {
   google: () => 'Remove the Google keys?\n\nThe Google button in the app goes back to “Coming soon”, and nobody can sign in with Google until keys are saved again.',
   facebook: () => 'Remove the Facebook keys?\n\nThe Facebook button in the app goes back to “Coming soon”, and nobody can sign in with Facebook until keys are saved again.',
   tiktok: () => 'Remove the TikTok keys?\n\nThe TikTok button in the app goes back to “Coming soon”, and nobody can sign in with TikTok until keys are saved again.',
+  translate: () => 'Remove the Translate keys?\n\nNew chat lines are no longer translated (people see the original) until keys are saved again.',
   apple: () => 'Remove the Apple key?\n\nSign in with Apple keeps working on the iPhone app. Only the Apple link of a deleted account is no longer ended at Apple until a key is saved again.',
 };
 async function removeConnection(id) {
@@ -883,7 +924,7 @@ async function removeConnection(id) {
   if (!r.ok) return toast(r.data.error || 'Could not remove it.');
   state.test[id] = null;
   render(r.data, { fresh: id });
-  toast(id === 'telegram' ? 'Telegram token removed.' : id === 'telegram-bot' ? 'Telegram bot removed.' : id === 'apple' ? 'Apple key removed.' : `${NAMES[id]} keys removed.`);
+  toast(id === 'translate' ? 'Translate keys removed.' : id === 'telegram' ? 'Telegram token removed.' : id === 'telegram-bot' ? 'Telegram bot removed.' : id === 'apple' ? 'Apple key removed.' : `${NAMES[id]} keys removed.`);
 }
 
 // ---------- the "Later" towers (7–9): not built yet (10, Apple, only while the server sends no apple connection) ----------
@@ -1534,7 +1575,186 @@ async function askPlaces() {
   toast(ok ? `Place list refreshed: ${p.count.toLocaleString('en-GB')} places.` : `The refresh failed${p.lastError ? `: ${p.lastError.message}` : ''}. ${kept}`, 8000);
 }
 
-// ---------- the hub: twelve towers left to right ----------
+// ---------- Tower 13 · Translate ----------
+// Where chat lines and written answers are translated (src/lib/thirtyda-hub-translate.mjs, src/lib/thirtyda-translate.mjs):
+// the server (our M1, llm.ggmt.sg), the model, its token (saved locked, its last 4 only) and how the model is asked; On /
+// Off (off until turned on) and the most seconds a send waits; what the app's translations did since the server started;
+// and a Try (one line into one language or all four, even while Off).
+
+const TR_PILLS = {
+  not_set: { pill: 'off', text: 'Not set' },
+  off: { pill: 'off', text: 'Off' },
+  saved: { pill: 'saved', text: 'Saved, not tried' },
+  failing: { pill: 'warn', text: 'Failing' },
+  live: { pill: 'live', text: 'Live' },
+};
+const trPill = (t) => TR_PILLS[t?.status] || TR_PILLS.not_set;
+const LANG_WORDS = Object.fromEntries(PLACE_LANGS);
+const secs = (ms) => `${(ms / 1000).toFixed(1)} s`;
+
+function trWhereLine(t) {
+  if (!t.host) return [h('b', { class: 'cx-bad', text: 'Not set' }), ' · chats show “Translation not available yet” and the original line.'];
+  return [h('b', { text: t.host }), ` · ${t.model || 'the loaded model'} · ${t.style === 'hy-mt' ? 'Hy-MT (no system prompt)' : 'chat prompt'}`,
+    t.source === 'env' ? ' · from the server’s settings (THIRTYDA_TRANSLATE_…): saving here takes over.' : '',
+    t.ours ? '' : h('span', { class: 'cx-bad', text: ` · not ${t.privacyHost}: put this company on the privacy page before turning it on.` })];
+}
+
+function trTokenLine(t) {
+  if (!t.set) return t.source === 'env' ? 'From the server’s settings.' : 'Not saved.';
+  if (!t.readable) return [h('b', { class: 'cx-bad', text: 'Saved with another lock key' }), ' · save it again.'];
+  return [h('code', { class: 'cx-mono', text: `…${t.masks?.token || ''}` }), ` · saved ${when(t.updatedAt)}`];
+}
+
+function trAppLine(t) {
+  if (!t.host) return 'Nothing is translated: people see the original line.';
+  if (!t.options.enabled) return [h('b', { class: 'cx-bad', text: 'Off: ' }), 'nothing is translated; people see the original line. Try it, then turn it on.'];
+  const s = t.stats;
+  return `On · since the server started: ${s.ok} translated, ${s.failed} failed, ${s.cached} from memory${s.avgMs ? ` · about ${secs(s.avgMs)} a line` : ''}.`;
+}
+
+function trLastLine(t) {
+  const s = t.stats;
+  const out = [];
+  if (s.pausedUntil) out.push(h('b', { class: 'cx-bad', text: `Paused until ${when(s.pausedUntil)} after a failure. ` }));
+  if (s.lastError) out.push(h('span', { class: 'cx-bad', text: s.lastError.message }), ` · ${when(s.lastError.at)}. `);
+  if (s.lastOk) out.push(`Last good: ${when(s.lastOk.at)}, ${secs(s.lastOk.ms)}.`);
+  return out.length ? out : 'Nothing translated since the server started.';
+}
+
+async function saveTrOptions(body, err) {
+  if (state.busy) return;
+  state.busy = true;
+  const r = await call('PUT', `${API}/translate/options`, body);
+  state.busy = false;
+  if (!r.ok) {
+    if (err) {
+      err.textContent = r.data.error || 'Could not save.';
+      err.hidden = false;
+    } else toast(r.data.error || 'Could not save.');
+    return;
+  }
+  render(r.data, { fresh: 'translate-opt' });
+  toast('enabled' in body ? `Translation ${r.data.translate?.options.enabled ? 'on' : 'off'}.` : 'Wait saved.');
+}
+
+function trOptionsBlock(t) {
+  const o = t.options;
+  const [min, max] = t.timeoutRange;
+  const err = h('p', { class: 'cx-err', id: 'tr-opt-err', role: 'alert', hidden: true });
+  const wait = h('input', {
+    class: 'input cx-mono cx-secs', type: 'number', id: 'tr-timeout', min: String(min), max: String(max), step: '1',
+    inputmode: 'numeric', value: String(o.timeoutS), 'data-draft': 'translate-opt', 'aria-describedby': 'tr-opt-err',
+  });
+  const power = h('button', {
+    type: 'button', class: 'btn cx-test-btn', id: 'tr-power', 'aria-pressed': String(o.enabled), disabled: !t.host,
+    on: { click: () => saveTrOptions({ enabled: !o.enabled }) },
+  }, o.enabled ? 'Turn off' : 'Turn on');
+  const save = h('button', {
+    type: 'button', class: 'btn cx-test-btn', id: 'tr-wait-save',
+    on: {
+      click: () => {
+        const n = Number(wait.value);
+        if (!Number.isInteger(n) || n < min || n > max) {
+          err.textContent = `A whole number of seconds from ${min} to ${max}.`;
+          err.hidden = false;
+          wait.focus();
+          return;
+        }
+        saveTrOptions({ timeoutS: n }, err);
+      },
+    },
+  }, 'Save');
+  return h('div', { class: 'cx-try' },
+    h('h3', { text: 'On / Off' }),
+    h('div', { class: 'cx-power' }, power, h('p', { class: 'cx-help' }, o.enabled
+      ? 'On: every chat line and written answer is translated into the other 4 languages when it is sent.'
+      : 'Off: nothing is translated. Save the keys, try a few lines, then turn it on.')),
+    h('label', { class: 'field cx-secs-label', for: 'tr-timeout' }, h('span', { class: 'label', text: 'Most seconds to wait per line' })),
+    h('div', { class: 'cx-test-row' }, wait, save),
+    h('p', { class: 'cx-help' }, `A message is sent once its translations are back, so this is how long a send can wait when the M1 is slow (${min}–${max} s; 15 is the pick for Hy-MT2 on the M1). One failure pauses translation for a minute.`),
+    err);
+}
+
+async function tryTranslateNow() {
+  if (state.trTry.busy) return;
+  const text = ($('tr-text')?.value || '').trim();
+  const from = $('tr-from')?.value || 'en';
+  const to = $('tr-to')?.value || 'all';
+  if (!text) {
+    state.trTry = { error: 'Write a line to translate.' };
+    renderTranslate();
+    $('tr-text')?.focus();
+    return;
+  }
+  state.trTry = { busy: true, result: state.trTry.result };
+  renderTranslate();
+  const r = await call('POST', `${API}/translate/try`, { text, from, to });
+  state.trTry = r.ok ? { result: r.data } : { error: r.data.error || 'Could not try.' };
+  renderTranslate(r.data.view);
+  $('tr-text')?.focus();
+}
+
+function trTryResult(tt) {
+  if (tt.error) return h('div', { class: 'cx-result bad' }, h('p', {}, h('b', { text: 'Not tried. ' }), tt.error));
+  const r = tt.result;
+  if (!r) return null;
+  return h('div', { class: `cx-result ${r.ok ? 'ok' : 'bad'}` },
+    h('p', {}, h('b', { text: r.ok ? 'Works ✓ ' : 'Failed. ' }), `${r.host} · ${r.model || 'the loaded model'}${r.enabled ? '' : ' · the app is still Off'}`),
+    h('ol', { class: 'cx-jobs' }, r.results.map((x) => h('li', {},
+      h('span', { class: `cx-job ${x.ok ? 'done' : 'failed'}`, text: LANG_WORDS[x.to] || x.to }), ' ',
+      x.ok ? h('span', { class: 'cx-tr-out', lang: x.to, text: x.text }) : h('span', { class: 'cx-bad', text: x.error }),
+      ` · ${secs(x.ms)}`))));
+}
+
+function trTryBlock(t) {
+  const tt = state.trTry;
+  const langSelect = (id, label, first) => h('select', { class: 'input cx-lang', id, 'aria-label': label, 'data-draft': 'translate-try' },
+    first, PLACE_LANGS.map(([v, text]) => h('option', { value: v, text })));
+  const text = h('textarea', {
+    class: 'input cx-area', id: 'tr-text', rows: '2', maxlength: '500', 'aria-label': 'Line to translate', 'data-draft': 'translate-try',
+    placeholder: 'e.g. Would you like to meet for coffee on Saturday?',
+  });
+  const btn = h('button', { type: 'button', class: 'btn cx-test-btn', id: 'tr-try', disabled: Boolean(tt.busy) || !t.host, on: { click: tryTranslateNow } },
+    tt.busy ? 'Translating…' : 'Translate');
+  return h('div', { class: 'cx-try' },
+    h('h3', { text: 'Try' }),
+    h('p', { class: 'cx-help' }, t.host
+      ? 'One line through the saved server, even while Off; “All four” goes one language after the other. The line is not kept. Check Khmer with a Khmer speaker.'
+      : 'Save the address, model and token first.'),
+    text,
+    h('div', { class: 'cx-test-row cx-tr-row' }, langSelect('tr-from', 'Written in', null), h('span', { class: 'cx-fine', text: '→' }),
+      langSelect('tr-to', 'Translate into', h('option', { value: 'all', text: 'All four' })), btn),
+    trTryResult(tt));
+}
+
+function translateCard(t, data) {
+  const card = FIELD_CARDS.translate;
+  return h('section', { class: 'panel cx-card cx-signin', 'aria-labelledby': 'cx-translate' },
+    h('div', { class: 'cx-head' }, logo('translate'),
+      h('div', { class: 'cx-title' }, h('h2', { id: 'cx-translate', text: card.title }), h('p', { class: 'cx-sub', text: card.sub }))),
+    h('dl', { class: 'cx-status' },
+      row('Server', ...trWhereLine(t)),
+      row('Token', ...[trTokenLine(t)].flat()),
+      row('In the app', trAppLine(t)),
+      row('Last', ...[trLastLine(t)].flat()),
+      t.lastTry ? row('Last try', h('b', { class: t.lastTry.ok ? 'cx-ok' : 'cx-bad', text: t.lastTry.ok ? 'worked ✓' : 'failed' }),
+        ` · ${when(t.lastTry.at)}${t.lastTry.detail ? ` · ${t.lastTry.detail}` : ''}`) : null),
+    h('div', { class: 'cx-signin-body' },
+      h('div', { class: 'cx-where' },
+        h('p', { class: 'cx-help' }, h('b', { text: 'How to set it up:' })),
+        h('ol', { class: 'cx-steps' }, card.steps.map((step) => h('li', {}, ...step)))),
+      fieldsForm(t, data),
+      trOptionsBlock(t),
+      trTryBlock(t)));
+}
+
+/** The Try's own draws: the Translate tower only (its data from the answer's `view` when there is one). */
+function renderTranslate(view) {
+  if (view?.translate && state.data) state.data = { ...state.data, translate: view.translate };
+  if (!state.data || !redrawTower('translate')) render(view ?? state.data);
+}
+
+// ---------- the hub: thirteen towers left to right ----------
 
 /** A sign-in tower (TikTok, Facebook, Google): its keys card, its pill from signinStatus. */
 const signinTower = (id, name) => ({
@@ -1575,6 +1795,10 @@ const TOWERS = [
   {
     key: 'places', name: 'Places', kind: 'Search', has: (byId, data) => Boolean(data?.places),
     status: (byId, data) => placesPill(data.places), draw: (byId, data) => placesCard(data.places),
+  },
+  {
+    key: 'translate', name: 'Translate', kind: 'Language', has: (byId, data) => Boolean(data?.translate),
+    status: (byId, data) => trPill(data.translate), draw: (byId, data) => translateCard(data.translate, data),
   },
 ];
 const towerNumber = (t) => TOWERS.indexOf(t) + 1;

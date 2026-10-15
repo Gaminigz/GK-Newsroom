@@ -127,7 +127,7 @@ import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { getDb } from "./mongo.ts";
 import { savePhoto, readPhoto, deletePhoto, isPhotoId, PhotoError } from "./thirtyda-photos.mjs";
-import { translate, translateAll, translateEnabled } from "./thirtyda-translate.mjs";
+import { translate, translateAll, translateEnabled, useTranslateDb } from "./thirtyda-translate.mjs";
 import { areaFor, haversineKm } from "./thirtyda-geo.mjs";
 import { clientIp } from "./thirtyda-net.mjs";
 import { guestLimiter, guestPoint, guestCard, GUEST_LIMIT } from "./thirtyda-guest.mjs";
@@ -318,6 +318,7 @@ export async function ensureThirtyDaIndexes(d) {
 let ready = null;
 async function db() {
   const d = await getDb();
+  useTranslateDb(d); // Tower 13 · Translate's settings (the admin Code page) live in this database
   if (!ready) ready = ensureThirtyDaIndexes(d).catch((e) => { ready = null; throw e; });
   await ready;
   finishDeletesInBackground(d); // half-way account deletes finish now and every minute (src/lib/thirtyda-delete.mjs)
@@ -950,7 +951,7 @@ async function nameOrStop(ctx, field, raw, check) {
 
 // Translations missing at write time (provider down) are filled in when someone reads them.
 async function backfillSet(d, set, lang) {
-  if (!translateEnabled()) return;
+  if (!(await translateEnabled())) return;
   const jobs = [];
   for (const q of set.questions || []) {
     if (q.source === "written" && q.lang !== lang && !q.translations?.[lang]) {
@@ -978,7 +979,7 @@ async function backfillSet(d, set, lang) {
 }
 
 async function backfillMessages(d, pairId, messages, lang) {
-  if (!translateEnabled()) return;
+  if (!(await translateEnabled())) return;
   await Promise.all(messages.filter((m) => m.lang !== lang && !m.translations?.[lang]).map(async (m) => {
     const tr = await translate(m.text, m.lang, lang);
     if (!tr) return;

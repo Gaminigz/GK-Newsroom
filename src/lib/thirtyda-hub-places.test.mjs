@@ -192,7 +192,7 @@ test('Code page: tower 12 "Places" (Search) after Wan, its words, its own icon; 
 function placesPollBox() {
   const js = readFileSync(new URL('../thirtyda-admin/connections.js', import.meta.url), 'utf8');
   const from = js.indexOf('const PLACES_ASK_MS');
-  const to = js.indexOf('// ---------- the hub: twelve towers');
+  const to = js.indexOf('// ---------- Tower 13 · Translate');
   assert.ok(from > 0 && to > from);
   const box = { now: 0, timers: [], calls: 0, answer: null, drawn: [], toasts: [], state: { busy: false, data: null }, document: { hidden: false } };
   const ctx = vm.createContext({
