@@ -219,7 +219,7 @@ test('the board demo searches its DEMO_PLACES with this file (board/demo.js), an
   // The demo's own list, as it is in the file.
   const list = demo.slice(demo.indexOf('const DEMO_PLACES = ['), demo.indexOf('];', demo.indexOf('const DEMO_PLACES = [')) + 2);
   const DEMO_PLACES = (0, eval)(`(${list.replace('const DEMO_PLACES = ', '').replace(/;$/, '')})`);
-  assert.equal(DEMO_PLACES.length, 5);
+  assert.equal(DEMO_PLACES.length, 10, '5 places + a branch of each other brand chip');
   const entries = DEMO_PLACES.map((p) => placeEntry({ names: [p.name], lat: p.lat, lng: p.lng, areaText: p.address }, p.name));
   const q = (s) => matchPlaces(entries, s, { centre: PP }).map((m) => m.entry.data);
   assert.deepEqual(q('Browns').sort(), ['Brown Coffee BKK1', 'Brown Coffee Toul Kork']);

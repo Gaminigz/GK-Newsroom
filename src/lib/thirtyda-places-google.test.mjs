@@ -215,3 +215,27 @@ test('what the app gets: no explain, source on Google\'s places only (the sheet 
   assert.deepEqual(Object.keys(r), ['places']);
   assert.deepEqual(r.places.map((p) => p.source ?? null), ['google', null]);
 });
+
+test('a brand chip: Google asked in English for 20, only that brand kept, nearest first, each with km', async () => {
+  const { brandById } = await import('../thirtyda-app/shared/meet.js');
+  const tube = brandById('tube');
+  const centre = { lat: 11.55, lng: 104.92 };
+  assert.deepEqual([googleTextBody({ q: tube.q, lang: 'km', centre, brand: tube }).languageCode, googleTextBody({ q: tube.q, lang: 'km', centre, brand: tube }).pageSize], ['en', 20]);
+  const far = g('Tube Coffee Sen Sok', 11.60, 104.88, 'Sen Sok, Phnom Penh');
+  const other = g('Brown Coffee', 11.551, 104.921, 'BKK1, Phnom Penh');
+  const got = placesFromGoogle({ places: [far, other, TUBE_7M, TUBE_KP] }, { brand: tube, centre });
+  assert.deepEqual(got.map((p) => p.name), ['TUBE Coffee Hengly Market', 'Tube Coffee Koh Pich City', 'Tube Coffee Sen Sok'].sort((a, b) => {
+    const at = (n) => got.find((p) => p.name === n);
+    return Math.hypot(at(a).lat - centre.lat, at(a).lng - centre.lng) - Math.hypot(at(b).lat - centre.lat, at(b).lng - centre.lng);
+  }));
+  // Through the app's search: ours (strict) and Google's, one list, nearest first, km on each.
+  const ours = { name: 'Tube Café', address: 'Russian Market', lat: 11.5396, lng: 104.9186 };
+  const asked = [];
+  const index = { search: async (o) => { asked.push(o.minTier); return { places: [ours], sure: 1 }; } };
+  const google = { async search(o) { assert.equal(o.brand, tube); return { places: placesFromGoogle({ places: [TUBE_KP, other] }, { brand: tube, centre: o.centre }) }; } };
+  const s = createPlaceSearch({ index, google, fetchImpl: async () => { throw new Error('no Nominatim'); }, turn: (fn) => fn() });
+  const r = await s.search({ q: tube.q, near: centre, brand: tube });
+  assert.deepEqual(asked, [3], 'ours: every word whole');
+  assert.deepEqual(r.places.map((p) => p.name), ['Tube Café', 'Tube Coffee Koh Pich City']);
+  assert.ok(r.places.every((p) => Number.isFinite(p.km)) && r.places[0].km <= r.places[1].km);
+});

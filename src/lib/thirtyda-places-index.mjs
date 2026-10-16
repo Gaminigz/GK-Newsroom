@@ -194,12 +194,15 @@ export function placeFromRow(row, lang = "en") {
  * and one place is offered once (sameSpot: the better / nearer one) — two branches with the same name and the same area
  * line are two places, both offered, nearer first.
  */
-export function rankRows(entries, q, { lang = "en", centre = PHNOM_PENH, limit = PLACES_LIMIT, maxKm = PLACES_INDEX_KM } = {}) {
+// minTier: a brand chip (shared/meet.js MEET_BRANDS) takes only places with every word of it whole in a name (3): never
+// "Park Street" for "park cafe" because it is a café.
+export function rankRows(entries, q, { lang = "en", centre = PHNOM_PENH, limit = PLACES_LIMIT, maxKm = PLACES_INDEX_KM, minTier = 0 } = {}) {
   const sure = [];
   const typos = [];
   const query = placeQuery(q);
   for (const m of matchPlaces(entries, query, { centre, limit: 0 })) {
     if (m.km > maxKm) continue; // ours are Phnom Penh's: never 300 km from the person
+    if (m.tier < minTier) continue;
     const list = m.tier > 1 && (m.tier === 4 || !query.elsewhere) ? sure : typos;
     if (list.length >= limit) {
       if (sure.length >= limit) break;
@@ -465,7 +468,7 @@ export function createPlaceIndex({
    * The suggestions for one search: { places, sure } — `sure` of them (first) matched without a typo — or null while
    * there is no list (then Nominatim alone, as before).
    */
-  async function search({ q, lang = "en", centre = PHNOM_PENH, limit = PLACES_LIMIT } = {}) {
+  async function search({ q, lang = "en", centre = PHNOM_PENH, limit = PLACES_LIMIT, minTier = 0 } = {}) {
     if (!loaded && !waited) {
       waited = true; // a store that hangs costs one search a moment, not every search
       let timer = null;
@@ -474,7 +477,7 @@ export function createPlaceIndex({
     }
     maybeRefresh(); // in the background: this search is answered from what there is now
     if (!current) return null;
-    const { sure, typos } = rankRows(current.entries, q, { lang, centre, limit });
+    const { sure, typos } = rankRows(current.entries, q, { lang, centre, limit, minTier });
     return { places: [...sure, ...typos].slice(0, limit), sure: sure.length };
   }
 

@@ -16,10 +16,12 @@ import {
 } from '../core.js';
 import {
   MEET_MAX_DAYS, PLACE_NAME_MIN, PLACE_NAME_MAX, PLACE_QUERY_MIN, ppParts, ppDateValue, ppTimeValue, ppInstant, checkMeetTime,
-  checkPlace, cleanLine, placeLine, mapsUrl, meetStatusKey, meetChoices,
+  checkPlace, cleanLine, placeLine, mapsUrl, meetStatusKey, meetChoices, MEET_BRANDS,
 } from '../shared/meet.js';
 
 const DAY_MS = 864e5;
+/** A brand chip's distance: metres under 1 km (to 50 m), else km with one decimal. */
+const kmText = (km) => (km < 1 ? `${Math.max(50, Math.round((km * 1000) / 50) * 50)} m` : `${km.toFixed(1)} km`);
 const PP_ZONE = 'Asia/Phnom_Penh';
 
 // ---------------------------------------------------------------- local styles (CSSOM: the CSP allows no inline <style>)
@@ -67,6 +69,11 @@ const RULES = [
   '.meet-q-wrap { position: relative; }',
   '.meet-q-wrap > .icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }',
   '.meet-q-wrap > .input { padding-left: 38px; font-size: 16px; }', // under 16px iOS Safari zooms the page on focus
+  // The brand chips (owner 2026-10-16): text only, one tap → that brand's nearest places.
+  '.meet-brands { display: flex; flex-wrap: wrap; gap: 6px; }',
+  '.meet-brand { padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--navy); font-size: 13px; line-height: 1.3; }',
+  '.meet-brand[aria-pressed="true"] { border-color: var(--navy); background: var(--navy); color: #fff; }',
+  '.meet-km { white-space: nowrap; }',
   '.meet-note { font-size: 12.5px; color: var(--muted); }',
   '.meet-note:empty { display: none; }',
   '.meet-results { display: flex; flex-direction: column; }',
@@ -214,8 +221,16 @@ export function openMeetSheet(ctx, prefill = null) {
   const searchBtn = el('button', {
     type: 'button', class: 'btn btn-secondary meet-q-go', disabled: true, on: { click: runSearch },
   }, t('meet_search_go'));
+  // One tap, nothing to type: the brand's nearest places (GET /places?brand=…), then pick one as usual.
+  const brands = el('div', { class: 'meet-brands', role: 'group', 'aria-label': t('meet_brands') },
+    MEET_BRANDS.map((b) => el('button', {
+      type: 'button', class: 'meet-brand', 'aria-pressed': 'false', translate: 'no', 'data-brand': b.id, on: { click: () => pickBrand(b) },
+    }, b.label)));
+  const pressBrand = (id) => {
+    for (const c of brands.children) c.setAttribute('aria-pressed', String(c.dataset.brand === id));
+  };
   const searchBox = el('div', { class: 'meet-search stack' },
-    el('div', { class: 'meet-q-row' }, el('div', { class: 'meet-q-wrap' }, icon('pin', 18), query), searchBtn), note, results, credit);
+    el('div', { class: 'meet-q-row' }, el('div', { class: 'meet-q-wrap' }, icon('pin', 18), query), searchBtn), brands, note, results, credit);
   const picked = el('div', { class: 'meet-picked', hidden: true });
   const placeError = el('p', { class: 'field-error', role: 'alert' });
   const pickedKey = () => (chosen ? JSON.stringify([chosen.name, chosen.address]) : null);
@@ -254,7 +269,8 @@ export function openMeetSheet(ctx, prefill = null) {
       el('span', { class: 'meet-result-text' },
         el('span', { class: 'meet-result-name' }, typed ? t('meet_use_typed', { text: p.name }) : p.name),
         typed ? el('span', { class: 'meet-result-addr' }, t('meet_use_typed_note'))
-          : p.address ? el('span', { class: 'meet-result-addr' }, p.address) : null));
+          : p.address || Number.isFinite(p.km) ? el('span', { class: 'meet-result-addr' }, p.address || '',
+            Number.isFinite(p.km) ? el('span', { class: 'meet-km' }, `${p.address ? ' · ' : ''}${kmText(p.km)}`) : null) : null));
   }
 
   function typedPlace() {
@@ -266,9 +282,10 @@ export function openMeetSheet(ctx, prefill = null) {
 
   // The list changes only when an answer comes (the typed name included, at its end), never while a search runs: so
   // nothing moves under a finger that is about to tap. While typing: only "Use …" and the hint to tap Search.
-  function show(list, { busy = false, unavailable = false, searching = false, typing = false } = {}) {
-    const typed = searching ? null : typedPlace();
+  function show(list, { busy = false, unavailable = false, searching = false, typing = false, brand = false } = {}) {
+    const typed = searching || brand ? null : typedPlace();
     note.textContent = searching ? t('meet_searching') : busy ? t('meet_busy') : unavailable ? t('meet_unavailable')
+      : brand && list && !list.length ? t('meet_brand_none')
       : typing && typed && searchable() ? t('meet_search_hint') : typed && list && !list.length ? t('meet_none') : '';
     const found = searching ? [] : list || [];
     results.replaceChildren(
@@ -280,19 +297,30 @@ export function openMeetSheet(ctx, prefill = null) {
     credit.hidden = !found.length;
   }
 
-  async function search(q) {
+  // brand: a chip's id — the server searches its own words for it (GET /places?brand=…), nearest first.
+  async function search(q, brand = null) {
     const mine = ++seq;
     asking = q;
     let r;
     try {
-      r = await api.get(`/places?q=${encodeURIComponent(q)}`);
+      r = await api.get(brand ? `/places?brand=${encodeURIComponent(brand)}` : `/places?q=${encodeURIComponent(q)}`);
     } catch (err) {
       r = { places: [], busy: err?.code === 'rate_limited', unavailable: err?.code !== 'rate_limited' };
     } finally {
       if (asking === q) asking = null;
     }
     if (mine !== seq || chosen) return;
-    show(Array.isArray(r?.places) ? r.places : [], { busy: Boolean(r?.busy), unavailable: Boolean(r?.unavailable) });
+    show(Array.isArray(r?.places) ? r.places : [], { busy: Boolean(r?.busy), unavailable: Boolean(r?.unavailable), brand: Boolean(brand) });
+  }
+
+  /** A brand chip: no typing — its nearest places, then the person picks one. */
+  function pickBrand(b) {
+    if (asking === `brand:${b.id}`) return; // already on its way
+    query.value = '';
+    searchBtn.disabled = true;
+    pressBrand(b.id);
+    show(null, { searching: true });
+    search(`brand:${b.id}`, b.id);
   }
 
   /** Enter or the Search button: one search for what is typed (never as you type — the Nominatim usage policy). */
@@ -307,6 +335,7 @@ export function openMeetSheet(ctx, prefill = null) {
   query.addEventListener('input', () => {
     seq++; // an answer for an older text is not shown
     asking = null;
+    pressBrand(null); // typing leaves the chip
     searchBtn.disabled = !searchable();
     show(null, { typing: true });
   });
@@ -558,6 +587,8 @@ registerStrings({
     meet_search_go: 'Search',
     meet_search_hint: 'Tap Search to find the place on the map.',
     meet_none: 'No places found. You can use what you typed.',
+    meet_brands: 'Popular places',
+    meet_brand_none: 'None found near you. Try another, or type a name.',
     meet_busy: 'Search is busy. Try again in a moment.',
     meet_unavailable: 'Search is not available right now. You can use what you typed.',
     meet_use_typed: 'Use “{text}”',
@@ -618,6 +649,8 @@ registerStrings({
     meet_search_go: 'ស្វែងរក',
     meet_search_hint: 'ចុច ស្វែងរក ដើម្បីរកទីកន្លែងលើផែនទី។',
     meet_none: 'រកមិនឃើញទីកន្លែងទេ។ អ្នកអាចប្រើអ្វីដែលអ្នកបានវាយ។',
+    meet_brands: 'កន្លែងពេញនិយម',
+    meet_brand_none: 'រកមិនឃើញនៅជិតអ្នកទេ។ សាកមួយផ្សេងទៀត ឬវាយឈ្មោះ។',
     meet_busy: 'ការស្វែងរកកំពុងរវល់។ សូមព្យាយាមម្ដងទៀតបន្តិចទៀត។',
     meet_unavailable: 'ការស្វែងរកមិនអាចប្រើបានឥឡូវនេះទេ។ អ្នកអាចប្រើអ្វីដែលអ្នកបានវាយ។',
     meet_use_typed: 'ប្រើ “{text}”',
@@ -678,6 +711,8 @@ registerStrings({
     meet_search_go: '搜索',
     meet_search_hint: '点“搜索”在地图上查找这个地点。',
     meet_none: '没有找到地点。你可以直接使用输入的内容。',
+    meet_brands: '热门地点',
+    meet_brand_none: '附近没有找到。换一个试试，或输入名称。',
     meet_busy: '搜索繁忙，请稍后再试。',
     meet_unavailable: '搜索暂时不可用。你可以直接使用输入的内容。',
     meet_use_typed: '使用“{text}”',
@@ -738,6 +773,8 @@ registerStrings({
     meet_search_go: '검색',
     meet_search_hint: '검색을 눌러 지도에서 장소를 찾으세요.',
     meet_none: '장소를 찾지 못했어요. 입력한 그대로 쓸 수 있어요.',
+    meet_brands: '인기 장소',
+    meet_brand_none: '근처에서 찾지 못했어요. 다른 곳을 고르거나 이름을 입력하세요.',
     meet_busy: '검색이 많아요. 잠시 후 다시 해 보세요.',
     meet_unavailable: '지금은 검색을 쓸 수 없어요. 입력한 그대로 쓸 수 있어요.',
     meet_use_typed: '“{text}” 사용',
@@ -798,6 +835,8 @@ registerStrings({
     meet_search_go: '検索',
     meet_search_hint: '「検索」を押して地図で場所を探します。',
     meet_none: '場所が見つかりません。入力したままでも使えます。',
+    meet_brands: '人気の場所',
+    meet_brand_none: '近くに見つかりませんでした。別のものを選ぶか、名前を入力してください。',
     meet_busy: '検索が混み合っています。少ししてからもう一度お試しください。',
     meet_unavailable: '今は検索を使えません。入力したままでも使えます。',
     meet_use_typed: '「{text}」を使う',

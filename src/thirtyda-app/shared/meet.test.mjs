@@ -202,7 +202,8 @@ test('the card opens Google Maps outside the app; no Google script anywhere (the
   const src = read('../screens/meet.js');
   assert.match(src, /target: '_blank', rel: 'noopener noreferrer'/);
   assert.doesNotMatch(src, /maps\.googleapis|<script|innerHTML = [^P]/, 'only the constant icon paths go through innerHTML');
-  assert.match(src, /api\.get\(`\/places\?q=\$\{encodeURIComponent\(q\)\}`\)/, 'the search goes through our server');
+  assert.match(src, /`\/places\?q=\$\{encodeURIComponent\(q\)\}`/, 'the search goes through our server');
+  assert.match(src, /`\/places\?brand=\$\{encodeURIComponent\(brand\)\}`/, 'a brand chip too: by its id, never its words');
   assert.match(src, /timeZone: PP_ZONE/);
   assert.match(src, /const PP_ZONE = 'Asia\/Phnom_Penh'/);
 });
@@ -273,4 +274,21 @@ test('a 320 px phone: Meet keeps its word, a step tighter than at 360 px, so the
   const gap389 = chat.indexOf("'@media (max-width: 389px) { .chat .composer { gap: 6px; } }'");
   const gap349 = chat.indexOf("'@media (max-width: 349px) { .chat .composer { gap: 4px; } }'");
   assert.ok(gap389 > 0 && gap349 > gap389);
+});
+
+test('brand chips (owner 2026-10-16): 7 brands, ids unique, a name belongs by every match word starting a word', async () => {
+  const { MEET_BRANDS, brandById, brandMatches } = await import('./meet.js');
+  assert.deepEqual(MEET_BRANDS.map((b) => b.label), ['Brown Coffee', 'Tube Coffee', 'Starbucks', 'KOI Thé', 'AEON Mall', 'Park Café', 'Pasta Corner']);
+  assert.equal(new Set(MEET_BRANDS.map((b) => b.id)).size, MEET_BRANDS.length);
+  for (const b of MEET_BRANDS) assert.ok(b.q && b.match.length && Object.isFrozen(b), b.id);
+  assert.equal(brandById('nope'), null);
+  const park = brandById('parkcafe');
+  assert.ok(brandMatches('Park Café', park));
+  assert.ok(brandMatches('PARK CAFE Riverside', park));
+  assert.ok(!brandMatches('Park Street', park), 'a café called Park Street is not Park Café');
+  assert.ok(brandMatches('KOI Thé Eden Garden', brandById('koi')));
+  assert.ok(!brandMatches('Koh Pich Tea', brandById('koi')));
+  assert.ok(brandMatches('BROWN Coffee | Riverside', brandById('brown')));
+  assert.ok(!brandMatches('星巴克', brandById('starbucks')), 'other names are matched on the server by our list, not by words');
+  assert.ok(!brandMatches('', brandById('tube')) && !brandMatches('Tube Coffee', null));
 });

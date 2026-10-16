@@ -28,7 +28,8 @@
 import { SETTINGS_COLLECTION, readFields, fieldsStatus } from "./thirtyda-settings.mjs";
 import { addressLine, passes, PLACES_LIMIT } from "./thirtyda-places.mjs";
 import { LANGS } from "../thirtyda-app/shared/rules.js";
-import { PLACE_NAME_MAX, cleanLine, cutLine, inCambodia, PP_OFFSET_MS } from "../thirtyda-app/shared/meet.js";
+import { PLACE_NAME_MAX, cleanLine, cutLine, inCambodia, PP_OFFSET_MS, brandMatches } from "../thirtyda-app/shared/meet.js";
+import { kmBetween } from "../thirtyda-app/shared/place-match.js";
 
 export const GOOGLE_SETTING = "googleplaces";
 export const GOOGLE_OPTIONS = "googleplaces_options";
@@ -62,13 +63,19 @@ export function checkGooglePlacesFields(input = {}, current = null) {
 /** "YYYY-MM" of a moment in Phnom Penh time: the month the cap counts in. */
 export const monthOf = (ms) => new Date(ms + PP_OFFSET_MS).toISOString().slice(0, 7);
 
-/** The JSON body of one Text Search. */
-export function googleTextBody({ q, lang = "en", centre }) {
+/** A brand chip asks for this many (one request whatever the size), keeps that brand's, nearest first. */
+export const BRAND_PAGE = 20;
+
+/**
+ * The JSON body of one Text Search. brand (a chip, shared/meet.js MEET_BRANDS): English names (its words are matched
+ * on them) and 20 places, so the nearest branches are among them.
+ */
+export function googleTextBody({ q, lang = "en", centre, brand = null }) {
   return {
     textQuery: cleanLine(q),
-    languageCode: GOOGLE_LANG[lang] || "en",
+    languageCode: brand ? "en" : GOOGLE_LANG[lang] || "en",
     regionCode: "KH",
-    pageSize: PLACES_LIMIT,
+    pageSize: brand ? BRAND_PAGE : PLACES_LIMIT,
     locationBias: { circle: { center: { latitude: centre.lat, longitude: centre.lng }, radius: GOOGLE_RADIUS_M } },
   };
 }
@@ -92,13 +99,19 @@ export function placeFromGoogle(p) {
   return { name, address: addressLine(name, parts), lat: round6(lat), lng: round6(lng), source: "google" };
 }
 
-/** Google's answer → at most 6 suggestions, each once (the same name and address). */
-export function placesFromGoogle(json) {
+/**
+ * Google's answer → at most 6 suggestions, each once (the same name and address). brand + centre (a chip): only that
+ * brand's places, nearest first.
+ */
+export function placesFromGoogle(json, { brand = null, centre = null } = {}) {
   const out = [];
   const seen = new Set();
-  for (const r of Array.isArray(json?.places) ? json.places : []) {
-    const p = placeFromGoogle(r);
-    if (!p) continue;
+  let list = (Array.isArray(json?.places) ? json.places : []).map(placeFromGoogle).filter(Boolean);
+  if (brand) {
+    list = list.filter((p) => brandMatches(p.name, brand));
+    if (centre) list.sort((a, b) => kmBetween(centre, a) - kmBetween(centre, b));
+  }
+  for (const p of list) {
     const key = `${p.name.toLowerCase()}|${(p.address || "").toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -195,12 +208,12 @@ export function createGooglePlaces({
   }
 
   /** One live Text Search with the given key (also the tower's test search, even while Off). */
-  async function ask(key, { q, lang, centre }) {
+  async function ask(key, { q, lang, centre, brand = null }) {
     const started = now();
     const res = await fetchImpl(GOOGLE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": GOOGLE_FIELDS },
-      body: JSON.stringify(googleTextBody({ q, lang, centre })),
+      body: JSON.stringify(googleTextBody({ q, lang, centre, brand })),
       signal: AbortSignal.timeout(timeoutMs),
     });
     let json = null;
@@ -210,14 +223,14 @@ export function createGooglePlaces({
       const why = cleanLine(json?.error?.message || "").slice(0, 160);
       throw new Error(`Google HTTP ${res?.status}${why ? `: ${why}` : ""}`);
     }
-    return { places: placesFromGoogle(json), ms: now() - started };
+    return { places: placesFromGoogle(json, { brand, centre }), ms: now() - started };
   }
 
   /**
    * The app's search: { places } (possibly empty), { skipped: 'not_set' | 'off' | 'cap' } (Google not asked), or
    * { failed: message } (asked, no good answer). force: ask even while Off (the tower's test search) — never past the cap.
    */
-  async function search({ q, lang = "en", centre, force = false }) {
+  async function search({ q, lang = "en", centre, force = false, brand = null }) {
     let c;
     try {
       c = await config();
@@ -231,10 +244,10 @@ export function createGooglePlaces({
     const used = await googleUsage(d, now());
     if (used.calls >= c.monthlyCap) return { skipped: "cap" };
     const language = LANGS.includes(lang) ? lang : "en";
-    const k = `${language}|${cleanLine(q).toLowerCase()}|${centre.lat.toFixed(2)},${centre.lng.toFixed(2)}`;
+    const k = `${brand?.id ?? ""}|${language}|${cleanLine(q).toLowerCase()}|${centre.lat.toFixed(2)},${centre.lng.toFixed(2)}`;
     // The same search already on its way is asked once (two taps on Search): not a cache, nothing is kept after it.
     if (inflight.has(k)) return inflight.get(k);
-    const p = ask(c.key, { q, lang: language, centre })
+    const p = ask(c.key, { q, lang: language, centre, brand })
       .then(async (r) => {
         await countUse(d, { ok: true, ms: r.ms }, now()).catch(onError);
         return { places: r.places, ms: r.ms };

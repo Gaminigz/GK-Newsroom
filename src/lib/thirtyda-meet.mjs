@@ -2,7 +2,8 @@
  * 30+DA · meetings in the Level 3 chat (owner 2026-10-14: "a small calendar icon to set an appointment … the other party
  * accepts; the other party can see the location; clicking the location opens Google Maps"). The rules: shared/meet.js.
  *
- *   GET  /places?q=…[&near=lat,lng]  → { places: [{ name, address, lat, lng, ref }], cached?, busy?, unavailable? }
+ *   GET  /places?q=…[&near=lat,lng]  → { places: [{ name, address, lat, lng, ref, source?, km? }], cached?, busy?, unavailable? }
+ *        ?brand=<id> instead of q: a chip of the sheet (shared/meet.js MEET_BRANDS) — that brand only, nearest first, km each
  *        the place search (src/lib/thirtyda-places.mjs: our own Phnom Penh list first, src/lib/thirtyda-places-index.mjs,
  *        then OpenStreetMap Nominatim), asked only on Enter or the Search
  *        button (never as you type: the Nominatim usage policy). Only for someone with a Level 3 chat (users.level 3);
@@ -31,7 +32,7 @@
  */
 import {
   MEET_ACTIONS, MEET_MAX_DAYS, MEET_PER_PAIR_HOUR, MEET_PER_DAY, PLACE_SEARCHES_PER_MINUTE,
-  checkPlace, checkMeetTime, placeTexts, placeLine, meetActionCheck, meetsLastHour, meetView, samePlace, keptPlace,
+  checkPlace, checkMeetTime, placeTexts, placeLine, meetActionCheck, meetsLastHour, meetView, samePlace, keptPlace, brandById,
 } from "../thirtyda-app/shared/meet.js";
 import { createPlaceSearch, createPlaceRefs, parseNear, cleanQuery } from "./thirtyda-places.mjs";
 import { createPlaceIndex } from "./thirtyda-places-index.mjs";
@@ -96,11 +97,13 @@ export function meetRoutes({
   async function places(ctx) {
     const { me, url } = ctx;
     if ((Number(me?.level) || 1) < 3) throw fail(403, "chat_closed", MEET_TEXT.level3);
-    const q = cleanQuery(url.searchParams.get("q"));
+    // A brand chip (?brand=<id>, shared/meet.js MEET_BRANDS): the server's own words for it, nearest first with `km`.
+    const brand = url.searchParams.has("brand") ? brandById(url.searchParams.get("brand")) : null;
+    const q = brand ? brand.q : cleanQuery(url.searchParams.get("q"));
     if (!q) return { places: [] };
     if (searches.over(me._id, PLACE_SEARCHES_PER_MINUTE)) throw fail(429, "rate_limited", MEET_TEXT.searches);
     const near = parseNear(url.searchParams.get("near")) ?? pointOf(me);
-    const r = await searcher().search({ q, lang: me.lang ?? "en", near });
+    const r = await searcher().search({ q, lang: me.lang ?? "en", near, ...(brand ? { brand } : {}) });
     // Each suggestion signed for this person: what POST /pairs/:id/meet keeps the address and the map point by.
     return { ...r, places: (r?.places || []).map((p) => ({ ...p, ref: signer().sign(p, me._id) })) };
   }

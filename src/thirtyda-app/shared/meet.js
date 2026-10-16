@@ -32,6 +32,31 @@ export const MEET_PER_DAY = 20;
  */
 export const PLACE_SEARCHES_PER_MINUTE = 10;
 
+/**
+ * The places people meet at most, one tap each (owner 2026-10-16: "small text tags to click Browns, Tube Coffee,
+ * Starbucks, Koi, Aeon Mall, Park Cafe, Pasta Corner … once user click it will show up most nearest of that pick then
+ * confirm"): the sheet's chips under the search box. GET /places?brand=<id> searches `q` (the server's own words, never
+ * typed), keeps only places whose name has every `match` word (a word start: "koi" → "KOI Thé"), nearest first, each
+ * with its distance. Brand names are the same in every language.
+ */
+export const MEET_BRANDS = Object.freeze([
+  { id: 'brown', label: 'Brown Coffee', q: 'brown', match: ['brown'] },
+  { id: 'tube', label: 'Tube Coffee', q: 'tube coffee', match: ['tube'] },
+  { id: 'starbucks', label: 'Starbucks', q: 'starbucks', match: ['starbucks'] },
+  { id: 'koi', label: 'KOI Thé', q: 'koi', match: ['koi'] },
+  { id: 'aeon', label: 'AEON Mall', q: 'aeon mall', match: ['aeon', 'mall'] },
+  { id: 'parkcafe', label: 'Park Café', q: 'park cafe', match: ['park', 'cafe'] },
+  { id: 'pasta', label: 'Pasta Corner', q: 'pasta corner', match: ['pasta', 'corner'] },
+].map((b) => Object.freeze({ ...b, match: Object.freeze(b.match) })));
+
+export const brandById = (id) => MEET_BRANDS.find((b) => b.id === id) || null;
+
+/** Does a place name belong to the brand: every `match` word starts a word of the name (case and accents aside)? */
+export function brandMatches(name, brand) {
+  const words = String(name ?? '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  return Boolean(brand) && brand.match.every((m) => words.some((w) => w.startsWith(m)));
+}
+
 /** Cambodia, roughly (lat / lng): a map point outside it is not kept, and a search centre outside it is Phnom Penh. */
 export const KH_BOX = Object.freeze({ minLat: 9.5, maxLat: 14.8, minLng: 102.2, maxLng: 107.8 });
 

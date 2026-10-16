@@ -877,8 +877,17 @@
     { name: 'Aeon Mall Phnom Penh', address: 'Samdech Sothearos Blvd, Tonle Bassac, Phnom Penh', lat: 11.5481, lng: 104.9326 },
     { name: 'Wat Phnom', address: 'Daun Penh, Phnom Penh', lat: 11.5762, lng: 104.9231 },
     { name: 'Independence Monument', address: 'Norodom Blvd, BKK1, Phnom Penh', lat: 11.5564, lng: 104.9282 },
+    // A branch of each other brand chip (shared/meet.js MEET_BRANDS), at its OpenStreetMap point.
+    { name: 'Tube Coffee', address: 'Russian Federation Blvd, 7 Makara, Phnom Penh', lat: 11.5710, lng: 104.9109 },
+    { name: 'Starbucks', address: 'Street 57, BKK1, Phnom Penh', lat: 11.5517, lng: 104.9246 },
+    { name: 'KOI Thé', address: 'Mean Chey, Phnom Penh', lat: 11.5226, lng: 104.9286 },
+    { name: 'Park Café', address: '7 Makara, Phnom Penh', lat: 11.5648, lng: 104.9115 },
+    { name: 'Pasta Corner', address: 'Chbar Ampov, Phnom Penh', lat: 11.5472, lng: 104.9535 },
   ];
-  const DEMO_KINDS = { 'Brown Coffee Toul Kork': 'cafe', 'Brown Coffee BKK1': 'cafe', 'Aeon Mall Phnom Penh': 'mall', 'Wat Phnom': 'attraction', 'Independence Monument': 'attraction' };
+  const DEMO_KINDS = {
+    'Brown Coffee Toul Kork': 'cafe', 'Brown Coffee BKK1': 'cafe', 'Aeon Mall Phnom Penh': 'mall', 'Wat Phnom': 'attraction', 'Independence Monument': 'attraction',
+    'Tube Coffee': 'cafe', Starbucks: 'cafe', 'KOI Thé': 'cafe', 'Park Café': 'cafe', 'Pasta Corner': 'restaurant',
+  };
   let demoEntries = null;
 
   function meetMessage(from, atMs, meetAtMs, place, extra = {}) {
@@ -893,6 +902,15 @@
   function places({ url }) {
     const u = me();
     if ((u.level ?? 1) < 3) throw fail(403, 'chat_closed', 'Meetings are for a Level 3 chat.');
+    const centre = { lat: 11.56, lng: 104.93 };
+    // A brand chip: that brand's places, nearest first, each with km (as the server answers it).
+    if (url.searchParams.has('brand')) {
+      const b = R.brandById(url.searchParams.get('brand'));
+      return {
+        places: DEMO_PLACES.filter((p) => R.brandMatches(p.name, b))
+          .map((p) => ({ ...p, km: Math.round(R.kmBetween(centre, p) * 10) / 10 })).sort((x, y) => x.km - y.km),
+      };
+    }
     const q = R.cleanLine(url.searchParams.get('q'));
     if (Array.from(q).length < R.PLACE_QUERY_MIN) return { places: [] };
     if (!demoEntries) {
