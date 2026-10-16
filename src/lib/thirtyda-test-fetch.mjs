@@ -37,6 +37,8 @@ const HOSTS = new Set([
   "nominatim.openstreetmap.org",
   // overpass-api.de and its two mirrors: the weekly refresh of our own Phnom Penh place list (src/lib/thirtyda-places-index.mjs).
   "overpass-api.de", "overpass.private.coffee", "maps.mail.ru",
+  // Google Places Text Search: the meeting place search asks it first when Tower 12's key is on (thirtyda-places-google.mjs).
+  "places.googleapis.com",
   // Sign in with Apple (src/lib/thirtyda-apple.mjs): its public keys (GET /auth/keys), the token exchange and the revoke.
   "appleid.apple.com",
 ]);
@@ -67,7 +69,10 @@ export function redactCall(url, init = {}) {
   const u = new URL(String(url));
   const headers = {};
   for (const [k, v] of Object.entries(init.headers || {})) {
-    headers[k.toLowerCase()] = k.toLowerCase() === "authorization" ? String(v).replace(/^(\w+)\s+(.*)$/, (_, s, t) => `${s} ${last4(t)}`) : v;
+    const name = k.toLowerCase();
+    headers[name] = name === "authorization" ? String(v).replace(/^(\w+)\s+(.*)$/, (_, s, t) => `${s} ${last4(t)}`)
+      : name === "x-goog-api-key" ? last4(String(v)) : v; // Google Places: the key only as its last 4
+
   }
   let body = null;
   const raw = typeof init.body === "string" ? init.body : null;

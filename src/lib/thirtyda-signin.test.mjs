@@ -496,8 +496,9 @@ test('privacy + delete-data: plain one-line points, in each language, flags on t
   }
   assert.ok(privacyPage().includes('<html lang="en">') && privacyPage().includes('<h1>Privacy policy</h1>'), 'no language → English');
   assert.ok(privacyPage({ lang: 'xx' }).includes('<html lang="en">'));
-  // The whole policy (store policy, owner 2026-10-14) — still a few screens, not a contract.
-  assert.ok(shown(privacyPage()).length < 3600, `privacy (en) stays readable: ${shown(privacyPage()).length} characters`);
+  // The whole policy (store policy, owner 2026-10-14) — still a few screens, not a contract. 3700 since Google Maps
+  // joined the outside services (the meeting place search, 2026-10-16).
+  assert.ok(shown(privacyPage()).length < 3700, `privacy (en) stays readable: ${shown(privacyPage()).length} characters`);
   // The in-app way step by step, the email way, what goes, what stays and for how long (Google Play).
   assert.ok(shown(deleteDataPage()).length < 1500, `delete-data (en) stays short: ${shown(deleteDataPage()).length} characters`);
 });

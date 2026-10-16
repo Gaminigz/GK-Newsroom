@@ -35,6 +35,7 @@ import {
 } from "../thirtyda-app/shared/meet.js";
 import { createPlaceSearch, createPlaceRefs, parseNear, cleanQuery } from "./thirtyda-places.mjs";
 import { createPlaceIndex } from "./thirtyda-places-index.mjs";
+import { createGooglePlaces } from "./thirtyda-places-google.mjs";
 import { windowLimiter } from "./thirtyda-telegram-bot.mjs";
 import { outboundFetch } from "./thirtyda-test-fetch.mjs";
 
@@ -54,13 +55,16 @@ export const MEET_TEXT = Object.freeze({
 });
 
 /**
- * The server's one place list and one place search (its cache, its Nominatim queue): GET /places and the Code page's
+ * The server's one place list, its Google client and one place search (its cache, its Nominatim queue): GET /places and the Code page's
  * Tower 12 (src/lib/thirtyda-hub-places.mjs: status, Refresh now, a test search) share them.
  */
 let sharedIndex = null;
 let sharedSearch = null;
+let sharedGoogle = null;
 export const placeIndex = () => (sharedIndex ??= createPlaceIndex({ fetchImpl: outboundFetch() }));
-export const placeSearch = () => (sharedSearch ??= createPlaceSearch({ fetchImpl: outboundFetch(), index: placeIndex() }));
+// Google Places (src/lib/thirtyda-places-google.mjs): asked first once its key is saved on Tower 12 and turned on.
+export const placesGoogle = () => (sharedGoogle ??= createGooglePlaces({ fetchImpl: outboundFetch() }));
+export const placeSearch = () => (sharedSearch ??= createPlaceSearch({ fetchImpl: outboundFetch(), index: placeIndex(), google: placesGoogle() }));
 
 /** When a meeting message last changed: a later accept / decline / cancel / replace shows up in the next poll. */
 export const changedAt = (m) => Math.max(Date.parse(m?.at) || 0, Date.parse(m?.meet?.updatedAt) || 0);

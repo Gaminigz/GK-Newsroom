@@ -4,9 +4,9 @@
 //
 // chat.js puts meetButton() — the calendar icon and the word "Meet" in the app language (owner 2026-10-15: "change to
 // Meet and it translate with the UI") — next to the mic and draws every 'meet' message with meetRow(). The sheet
-// searches places through our own server (GET /places → our own Phnom Penh list from OpenStreetMap, then OpenStreetMap's
-// Nominatim: the free search, no Google key, no Google script — the page CSP allows neither; the suggestions carry
-// "© OpenStreetMap contributors") only when asked — Enter or the Search button, never as you type (OpenStreetMap's
+// searches places through our own server (GET /places → Google Places when Tower 12 has it on, asked by the server
+// — never a Google script here, the page CSP allows none — then our own Phnom Penh list from OpenStreetMap, then
+// OpenStreetMap's Nominatim; the suggestions carry "Google Maps" / "© OpenStreetMap contributors" by their source) only when asked — Enter or the Search button, never as you type (OpenStreetMap's
 // Nominatim usage policy forbids auto-complete) — or takes the typed name as it is (no address, no map pin: the server
 // keeps those only for a place it suggested, by the suggestion's `ref`). Date and time are native inputs read as Phnom Penh time
 // (UTC+7) whatever the phone's clock says; the card shows them in Phnom Penh time again. The place itself is the link: Google
@@ -70,9 +70,11 @@ const RULES = [
   '.meet-note { font-size: 12.5px; color: var(--muted); }',
   '.meet-note:empty { display: none; }',
   '.meet-results { display: flex; flex-direction: column; }',
-  // OpenStreetMap's data (ODbL): credited wherever its suggestions show.
+  // OpenStreetMap's data (ODbL) and Google's (owner 2026-10-16: Google Places first when Tower 12 turns it on): each
+  // credited wherever its suggestions show — "Google Maps" as Google asks, never translated.
   '.meet-osm { margin: -6px 0 0; font-size: 11px; line-height: 1.4; text-align: right; color: var(--muted-2); }',
   '.meet-osm > a { color: inherit; text-decoration: none; }',
+  '.meet-google:not([hidden]) + a:not([hidden])::before { content: " · "; }',
   '.meet-result { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 10px 4px; border-bottom: 1px solid var(--line-soft); text-align: left; }',
   '.meet-result:last-child { border-bottom: 0; }',
   '.meet-result > .icon { flex: none; margin-top: 2px; color: var(--navy); }',
@@ -206,8 +208,9 @@ export function openMeetSheet(ctx, prefill = null) {
   });
   const note = el('p', { class: 'meet-note', 'aria-live': 'polite' });
   const results = el('div', { class: 'meet-results' });
-  const credit = el('p', { class: 'meet-osm', hidden: true },
-    el('a', { href: 'https://www.openstreetmap.org/copyright', target: '_blank', rel: 'noopener noreferrer' }, t('meet_osm')));
+  const googleCredit = el('span', { class: 'meet-google', translate: 'no', lang: 'en', hidden: true }, 'Google Maps');
+  const osmCredit = el('a', { href: 'https://www.openstreetmap.org/copyright', target: '_blank', rel: 'noopener noreferrer' }, t('meet_osm'));
+  const credit = el('p', { class: 'meet-osm', hidden: true }, googleCredit, osmCredit);
   const searchBtn = el('button', {
     type: 'button', class: 'btn btn-secondary meet-q-go', disabled: true, on: { click: runSearch },
   }, t('meet_search_go'));
@@ -271,7 +274,10 @@ export function openMeetSheet(ctx, prefill = null) {
     results.replaceChildren(
       ...found.map((p) => placeButton(p)),
       typed && (list || typing) ? placeButton(typed, true) : '');
-    credit.hidden = !found.length; // OpenStreetMap's suggestions on screen: its credit with them
+    // Each source's suggestions on screen: its credit with them (the server marks Google's: source 'google').
+    googleCredit.hidden = !found.some((p) => p.source === 'google');
+    osmCredit.hidden = !found.some((p) => p.source !== 'google');
+    credit.hidden = !found.length;
   }
 
   async function search(q) {

@@ -44,7 +44,7 @@ export const OPERATOR = "GGMT PTE. LTD.";
 export const PLAY_APP_NAME = "30+DA:Safe Calm Dating for 30+";
 export const PLAY_DEVELOPER = "Kassapa Gamini Gunasingha";
 /** The day the privacy policy last changed (YYYY-MM-DD): the one place to change it. Each language writes it its own way (policyDate). */
-export const POLICY_DATE = "2026-10-14";
+export const POLICY_DATE = "2026-10-16";
 /** The subject a deletion email asks for (English in every language: the team reads it; the mail link fills it in). */
 export const DELETE_SUBJECT = "Delete my 30+DA account";
 const NAMES = { google: "Google", facebook: "Facebook", tiktok: "TikTok" };
@@ -129,7 +129,7 @@ export const PAGE_STRINGS = {
     priv_lines_k: "Lines and chat:",
     priv_lines: "what you write, with its translations, to pass it on.",
     priv_meet_k: "Meetings:",
-    priv_meet: "the places you search for go to OpenStreetMap; a meeting place and time you send are seen by the other person and kept with the chat.",
+    priv_meet: "the places you search for go to Google Maps and OpenStreetMap; a meeting place and time you send are seen by the other person and kept with the chat.",
     priv_safety_k: "Reports and blocks:",
     priv_safety: "who you report or block and why, to keep everyone safe.",
     priv_support_k: "Support:",
@@ -147,6 +147,7 @@ export const PAGE_STRINGS = {
     proc_railway: "runs our server.",
     proc_atlas: "stores the data and photos.",
     proc_osm: "turns a rough point into an area name. It never gets your name.",
+    proc_places: "finds a place to meet from your words and a rough point. It never gets your name.",
     proc_translate_k: "Our own translation server:",
     proc_translate: "translates lines and chat. No outside AI company sees them.",
     proc_fonts: "the app’s letters. Google sees your internet address.",
@@ -338,7 +339,7 @@ export const PAGE_STRINGS = {
     priv_lines_k: "ឃ្លា និងការជជែក៖",
     priv_lines: "អ្វីដែលអ្នកសរសេរ និងការបកប្រែរបស់វា ដើម្បីផ្ញើទៅអ្នកម្ខាងទៀត។",
     priv_meet_k: "ការជួប៖",
-    priv_meet: "ទីកន្លែងដែលអ្នកស្វែងរក ត្រូវបានផ្ញើទៅ OpenStreetMap។ ទីកន្លែង និងពេលវេលាជួបដែលអ្នកផ្ញើ អ្នកម្ខាងទៀតមើលឃើញ ហើយត្រូវបានរក្សាទុកជាមួយការជជែក។",
+    priv_meet: "ទីកន្លែងដែលអ្នកស្វែងរក ត្រូវបានផ្ញើទៅ Google Maps និង OpenStreetMap។ ទីកន្លែង និងពេលវេលាជួបដែលអ្នកផ្ញើ អ្នកម្ខាងទៀតមើលឃើញ ហើយត្រូវបានរក្សាទុកជាមួយការជជែក។",
     priv_safety_k: "ការរាយការណ៍ និងការទប់ស្កាត់៖",
     priv_safety: "អ្នកណាដែលអ្នករាយការណ៍ ឬទប់ស្កាត់ និងមូលហេតុ ដើម្បីរក្សាសុវត្ថិភាពគ្រប់គ្នា។",
     priv_support_k: "ជំនួយ៖",
@@ -356,6 +357,7 @@ export const PAGE_STRINGS = {
     proc_railway: "ដំណើរការម៉ាស៊ីនមេរបស់យើង។",
     proc_atlas: "រក្សាទុកទិន្នន័យ និងរូបថត។",
     proc_osm: "ប្ដូរចំណុចប្រហាក់ប្រហែលទៅជាឈ្មោះតំបន់។ វាមិនដែលទទួលបានឈ្មោះរបស់អ្នកទេ។",
+    proc_places: "ស្វែងរកទីកន្លែងដែលអ្នករកសម្រាប់ការជួបគ្នា។ វាទទួលបានតែពាក្យដែលអ្នកវាយ និងចំណុចប្រហាក់ប្រហែល មិនដែលទទួលបានឈ្មោះរបស់អ្នកទេ។",
     proc_translate_k: "ម៉ាស៊ីនបកប្រែផ្ទាល់ខ្លួនរបស់យើង៖",
     proc_translate: "បកប្រែឃ្លា និងការជជែក។ គ្មានក្រុមហ៊ុន AI ខាងក្រៅណាមួយឃើញទេ។",
     proc_fonts: "អក្សររបស់កម្មវិធី។ Google ឃើញអាសយដ្ឋានអ៊ីនធឺណិតរបស់អ្នក។",
@@ -542,7 +544,7 @@ export const PAGE_STRINGS = {
     priv_lines_k: "简短的话和聊天：",
     priv_lines: "你写的内容及其翻译，用来传给对方。",
     priv_meet_k: "见面：",
-    priv_meet: "你搜索的地点会发送到 OpenStreetMap；你发出的见面地点和时间对方可以看到，并与聊天一起保存。",
+    priv_meet: "你搜索的地点会发送到 Google 地图和 OpenStreetMap；你发出的见面地点和时间对方可以看到，并与聊天一起保存。",
     priv_safety_k: "举报和屏蔽：",
     priv_safety: "你举报或屏蔽了谁、原因是什么，用来保障大家的安全。",
     priv_support_k: "客服：",
@@ -560,6 +562,7 @@ export const PAGE_STRINGS = {
     proc_railway: "运行我们的服务器。",
     proc_atlas: "存储数据和照片。",
     proc_osm: "把大致位置转换成区域名称。它永远拿不到你的名字。",
+    proc_places: "在你约见面时查找你搜索的地点。它只收到你输入的文字和大致位置，永远拿不到你的名字。",
     proc_translate_k: "我们自己的翻译服务器：",
     proc_translate: "翻译简短的话和聊天。没有任何外部 AI 公司能看到。",
     proc_fonts: "提供应用的字体。Google 能看到你的网络地址。",
@@ -746,7 +749,7 @@ export const PAGE_STRINGS = {
     priv_lines_k: "한마디와 채팅:",
     priv_lines: "내가 쓴 글과 그 번역. 상대에게 전하기 위해서예요.",
     priv_meet_k: "만남 약속:",
-    priv_meet: "검색한 장소는 OpenStreetMap으로 전송돼요. 보낸 만남 장소와 시간은 상대가 볼 수 있고 채팅과 함께 보관돼요.",
+    priv_meet: "검색한 장소는 Google 지도와 OpenStreetMap으로 전송돼요. 보낸 만남 장소와 시간은 상대가 볼 수 있고 채팅과 함께 보관돼요.",
     priv_safety_k: "신고와 차단:",
     priv_safety: "누구를 왜 신고하거나 차단했는지. 모두의 안전을 위해서예요.",
     priv_support_k: "고객 지원:",
@@ -764,6 +767,7 @@ export const PAGE_STRINGS = {
     proc_railway: "서버를 운영해요.",
     proc_atlas: "데이터와 사진을 저장해요.",
     proc_osm: "대략적인 위치를 지역 이름으로 바꿔요. 이름은 절대 받지 않아요.",
+    proc_places: "만날 장소를 검색할 때 장소를 찾아줘요. 입력한 글자와 대략적인 위치만 받고, 이름은 절대 받지 않아요.",
     proc_translate_k: "자체 번역 서버:",
     proc_translate: "한마디와 채팅을 번역해요. 외부 AI 회사는 보지 못해요.",
     proc_fonts: "앱의 글꼴. Google은 내 인터넷 주소를 볼 수 있어요.",
@@ -950,7 +954,7 @@ export const PAGE_STRINGS = {
     priv_lines_k: "ひとこととチャット：",
     priv_lines: "あなたが書いた内容とその翻訳。相手に届けるためです。",
     priv_meet_k: "待ち合わせ：",
-    priv_meet: "検索した場所は OpenStreetMap に送られます。送った待ち合わせの場所と日時は相手に表示され、チャットと一緒に保存されます。",
+    priv_meet: "検索した場所は Google マップと OpenStreetMap に送られます。送った待ち合わせの場所と日時は相手に表示され、チャットと一緒に保存されます。",
     priv_safety_k: "報告とブロック：",
     priv_safety: "誰をなぜ報告・ブロックしたか。みんなの安全のためです。",
     priv_support_k: "サポート：",
@@ -968,6 +972,7 @@ export const PAGE_STRINGS = {
     proc_railway: "サーバーを動かしています。",
     proc_atlas: "データと写真を保存しています。",
     proc_osm: "おおよその位置を地域名に変えます。あなたの名前は渡しません。",
+    proc_places: "待ち合わせの場所を検索するときに場所を探します。入力した文字とおおよその位置だけを受け取り、あなたの名前は渡しません。",
     proc_translate_k: "自前の翻訳サーバー：",
     proc_translate: "ひとこととチャットを翻訳します。外部の AI 企業は内容を見ません。",
     proc_fonts: "アプリの文字（フォント）。Google にはあなたのインターネットアドレスが見えます。",
@@ -1231,6 +1236,7 @@ export const TRANSLATE_HOST = "llm.ggmt.sg";
  *   Railway                 runs the server (src/scripts/serve-web.mjs)
  *   MongoDB Atlas           the database and the photos (GridFS)
  *   OpenStreetMap Nominatim a rounded point → an area name (src/lib/thirtyda-geo.mjs), never a name
+ *   Google Maps             the words of a meeting place search + a rough point (src/lib/thirtyda-places-google.mjs)
  *   our translation server  lines and chat (src/lib/thirtyda-translate.mjs, TRANSLATE_HOST)
  *   Google Fonts            the app's letters (every page loads them)
  *   Telegram / WhatsApp     the number, to send or check a code (and the Telegram support bot)
@@ -1241,6 +1247,8 @@ export const PROCESSORS = Object.freeze([
   ["Railway", "proc_railway"],
   ["MongoDB Atlas", "proc_atlas"],
   ["OpenStreetMap Nominatim", "proc_osm"],
+  // Google Places (src/lib/thirtyda-places-google.mjs, owner 2026-10-16): the meeting place search, first when Tower 12 has it on.
+  ["Google Maps", "proc_places"],
   [null, "proc_translate"],
   ["Google Fonts", "proc_fonts"],
   [null, "priv_codes"],

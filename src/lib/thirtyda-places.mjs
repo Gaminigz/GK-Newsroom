@@ -36,6 +36,12 @@
  * not asked at all. Fewer: Nominatim as above, its suggestions after ours and before our near-misses (one place once:
  * the same name within 150 m, or anything within 40 m: sameSpot). Ours are made the same way (addressLine, the same
  * checks) and get the same ref. No list yet: Nominatim alone, as before.
+ *
+ * Google first when it is on (owner 2026-10-16: OpenStreetMap is thin on Phnom Penh's own chains — Tube Coffee,
+ * BreadTalk, Pasta Corner): createPlaceSearch({ google }) (src/lib/thirtyda-places-google.mjs, the key on Tower 12) is
+ * asked before anything else. Places from Google: they come first (source 'google', credited "Google Maps" in the app),
+ * our own sure ones fill what is left, and Nominatim is not asked. Google not set, Off, past its monthly cap, failing or
+ * finding nothing: exactly the search above. Nothing Google answers is cached or kept.
  */
 import crypto from "node:crypto";
 import { NOMINATIM_ORIGIN, NOMINATIM_UA, SKIPPED, nominatimTurn } from "./thirtyda-nominatim.mjs";
@@ -219,6 +225,7 @@ export function mergePlaces(own, more, limit = PLACES_LIMIT) {
  */
 export function createPlaceSearch({
   index = null,
+  google = null,
   fetchImpl = (url, init) => globalThis.fetch(url, init),
   turn = nominatimTurn,
   now = () => Date.now(),
@@ -243,21 +250,55 @@ export function createPlaceSearch({
     return placesFrom(await res.json());
   }
 
-  async function search({ q, lang = "en", near = null, explain = false } = {}) {
-    const r = await searchOnce({ q, lang, near });
+  // force: the tower's test search asks Google even while it is Off (a key can be tried before it is turned on).
+  async function search({ q, lang = "en", near = null, explain = false, force = false } = {}) {
+    const r = await searchOnce({ q, lang, near, force });
     if (!explain) return r.answer;
-    const { answer, ours, own, sure, typos, nominatim } = r;
-    const from = (answer.places || []).map((p) => (sure.includes(p) ? "ours" : typos.includes(p) ? "ours_typo" : "nominatim"));
-    return { ...answer, explain: { ours, own: own.length, sure: sure.length, nominatim, from } };
+    const { answer, ours, own, sure, typos, nominatim, google: g } = r;
+    const from = (answer.places || []).map((p) => (p.source === "google" ? "google" : sure.includes(p) ? "ours" : typos.includes(p) ? "ours_typo" : "nominatim"));
+    return { ...answer, explain: { ours, own: own.length, sure: sure.length, nominatim, google: g, from } };
   }
 
-  /** One search → { answer (what GET /places returns), ours, own, sure, typos, nominatim } (the last five: explain). */
-  async function searchOnce({ q, lang, near }) {
-    const none = { ours: false, own: [], sure: [], typos: [], nominatim: "not_asked" };
+  /**
+   * One search → { answer (what GET /places returns), ours, own, sure, typos, nominatim, google } (all but the answer:
+   * explain). google: 'not_set' | 'off' | 'cap' | 'failed' | 'none' (asked, nothing found) | 'asked'.
+   */
+  async function searchOnce({ q, lang, near, force = false }) {
+    const none = { ours: false, own: [], sure: [], typos: [], nominatim: "not_asked", google: "not_set" };
     const query = cleanQuery(q);
     if (!query) return { answer: { places: [] }, ...none };
     const centre = searchCentre(near);
     const language = LANGS.includes(lang) ? lang : "en";
+    // Google first when it is on (src/lib/thirtyda-places-google.mjs): anything else only behind it.
+    let g = { skipped: "not_set" };
+    if (google) {
+      try {
+        g = await google.search({ q: query, lang: language, centre, force });
+      } catch (err) {
+        onError(err);
+        g = { failed: String(err) };
+      }
+    }
+    const googleWord = g.skipped || (g.failed ? "failed" : g.places?.length ? "asked" : "none");
+    if (g.places?.length) {
+      // Ours (sure ones only) fill what Google left; Nominatim has nothing Google lacks.
+      let fill = [];
+      if (g.places.length < PLACES_LIMIT && index && kmBetween(centre, PHNOM_PENH) <= PLACES_INDEX_KM) {
+        try {
+          const own = await index.search({ q: query, lang: language, centre, limit: PLACES_LIMIT });
+          fill = (own?.places || []).slice(0, Math.max(0, Number(own?.sure) || 0));
+        } catch (err) {
+          onError(err);
+        }
+      }
+      return { answer: { places: mergePlaces(g.places, fill) }, ours: Boolean(fill.length), own: fill, sure: fill, typos: [], nominatim: "not_asked", google: googleWord };
+    }
+    const r = await withoutGoogle({ query, language, centre });
+    return { ...r, google: googleWord };
+  }
+
+  /** The search without Google: our own list, then Nominatim (the whole story in this file's head). */
+  async function withoutGoogle({ query, language, centre }) {
     // Our own Phnom Penh list first: in memory, forgiving, nothing leaves the server (src/lib/thirtyda-places-index.mjs).
     // Only around Phnom Penh: a person in Siem Reap searching "Brown Coffee" wants the one there, not ours 300 km away.
     const started = Date.now();

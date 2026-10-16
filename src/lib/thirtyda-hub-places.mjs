@@ -13,7 +13,9 @@
  *   placesTry(search, { q, lang }) → { q, lang, places: [{ name, address, lat, lng, from }], ours, own, sure, nominatim,
  *     busy?, unavailable?, ms } | { error } — never signed (no `ref`): the page shows them, nobody can send one.
  *
- * Not here (owner: "only if I say so"): a Google Places key.
+ * Google (owner 2026-10-16, "pick up and fix it"): the key, On / Off and the monthly cap live in
+ * src/lib/thirtyda-places-google.mjs; the page's `places.google` block is its status(). The test search asks Google
+ * even while it is Off (force), so a key can be tried before it is turned on — never past the month's cap.
  */
 import { LANGS } from "../thirtyda-app/shared/rules.js";
 import { cleanQuery } from "./thirtyda-places.mjs";
@@ -78,8 +80,8 @@ export async function placesTry(search, { q, lang } = {}) {
   const language = LANGS.includes(lang) ? lang : "en";
   const started = Date.now();
   // near: null → around Phnom Penh, like a person whose point is not known.
-  const r = await search.search({ q: query, lang: language, near: null, explain: true });
-  const e = r.explain || { ours: false, own: 0, sure: 0, nominatim: "not_asked", from: [] };
+  const r = await search.search({ q: query, lang: language, near: null, explain: true, force: true });
+  const e = r.explain || { ours: false, own: 0, sure: 0, nominatim: "not_asked", google: "not_set", from: [] };
   return {
     q: query,
     lang: language,
@@ -88,6 +90,7 @@ export async function placesTry(search, { q, lang } = {}) {
     own: e.own,
     sure: e.sure,
     nominatim: e.nominatim,
+    google: e.google ?? "not_set",
     ...(r.busy ? { busy: true } : {}),
     ...(r.unavailable ? { unavailable: true } : {}),
     ms: Date.now() - started,

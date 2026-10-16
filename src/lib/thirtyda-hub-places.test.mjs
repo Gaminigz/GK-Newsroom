@@ -166,7 +166,7 @@ test('the app\'s own search answers exactly as before: no `explain` unless asked
   assert.deepEqual(Object.keys(await s.search({ q: 'browns' })), ['places']);
   assert.deepEqual(await s.search({ q: 'x' }), { places: [] });
   const e = await s.search({ q: 'x', explain: true });
-  assert.deepEqual(e, { places: [], explain: { ours: false, own: 0, sure: 0, nominatim: 'not_asked', from: [] } });
+  assert.deepEqual(e, { places: [], explain: { ours: false, own: 0, sure: 0, nominatim: 'not_asked', google: 'not_set', from: [] } });
 });
 
 // ---------------------------------------------------------------- the backup Overpass servers (owner 2026-10-16)
@@ -306,8 +306,9 @@ test('Code page: tower 12 "Places" (Search) after Wan, its words, its own icon; 
   const css = readFileSync(new URL('../thirtyda-admin/app.css', import.meta.url), 'utf8');
   assert.ok(css.includes('.input.cx-lang'));
   const admin = readFileSync(new URL('./thirtyda-admin.mjs', import.meta.url), 'utf8');
-  assert.match(admin, /m = sub\.match\(\/\^\\\/api\\\/connections\\\/places\\\/\(refresh\|search\)\$\/\);\n {2}if \(m\) return placesRoute\(req, res, m\);/);
-  assert.match(admin, /places: await placesAdminView\(placeIndex\(\)\)\.catch\(/, 'a Places failure never takes the page down');
+  assert.match(admin, /m = sub\.match\(\/\^\\\/api\\\/connections\\\/places\\\/\(refresh\|search\|google\)\$\/\);\n {2}if \(m\) return placesRoute\(req, res, m\);/);
+  assert.match(admin, /places: await placesAdminView\(placeIndex\(\)\)\.then\(async \(p\) => \(\{[\s\S]{0,400}?\}\)\)\.catch\(/, 'a Places failure never takes the page down');
+  assert.match(admin, /google: await placesGoogle\(\)\.status\(d\)\.catch\(/, 'nor does a Google one: the list still shows');
   assert.match(admin, /placeTries\.over\(tokenOf\(req\) \|\| clientIp\(req\), 20\)/);
   assert.match(admin, /const r = refreshPlaces\(placeIndex\(\)\);\n {4}await audit\(req, "places_refresh"/);
 });

@@ -558,7 +558,8 @@ test('the server asks our list first: the meeting routes build the place search 
   assert.match(meet, /import \{ createPlaceIndex \} from "\.\/thirtyda-places-index\.mjs";/);
   // One list and one search per server, shared with the Code page's Tower 12 (src/lib/thirtyda-hub-places.mjs).
   assert.match(meet, /export const placeIndex = \(\) => \(sharedIndex \?\?= createPlaceIndex\(\{ fetchImpl: outboundFetch\(\) \}\)\);/);
-  assert.match(meet, /export const placeSearch = \(\) => \(sharedSearch \?\?= createPlaceSearch\(\{ fetchImpl: outboundFetch\(\), index: placeIndex\(\) \}\)\);/);
+  assert.match(meet, /export const placeSearch = \(\) => \(sharedSearch \?\?= createPlaceSearch\(\{ fetchImpl: outboundFetch\(\), index: placeIndex\(\), google: placesGoogle\(\) \}\)\);/);
+  assert.match(meet, /export const placesGoogle = \(\) => \(sharedGoogle \?\?= createGooglePlaces\(\{ fetchImpl: outboundFetch\(\) \}\)\);/);
   assert.match(meet, /const searcher = \(\) => \(search \?\?= placeSearch\(\)\);/);
   const tf = readFileSync(new URL('./thirtyda-test-fetch.mjs', import.meta.url), 'utf8');
   assert.match(tf, /"overpass-api\.de",/);

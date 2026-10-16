@@ -21,7 +21,8 @@ const API = '/30da/admin/api/connections';
 const $ = (id) => document.getElementById(id);
 
 // wanReveal: a Wan token just made { kind, token } — this page's memory only, until "Done" (never stored, never sent back).
-// placesBusy / placesError: Tower 12's Refresh now; placesTry: its test search { busy, result, error }; trTry: Tower 13's Try.
+// placesBusy / placesError: Tower 12's Refresh now; placesTry: its test search { busy, result, error } (its Google key,
+// On / Off and cap: googleBlock); trTry: Tower 13's Try.
 const state = {
   data: null, busy: false, test: {}, testPhone: {}, wanReveal: null, wanBusy: null, wanTrying: false, wanTryError: null,
   placesBusy: false, placesError: null, placesTry: {}, trTry: {},
@@ -618,6 +619,26 @@ const FIELD_CARDS = {
       },
     ],
   },
+  // Tower 12 · Places, Google (src/lib/thirtyda-places-google.mjs, owner 2026-10-16): the Places API key. Google's own
+  // menu names, in quotes, so they can be found in the Cloud console.
+  googleplaces: {
+    title: 'Google Places',
+    sub: 'Asked first in the meeting place search',
+    what: 'key',
+    steps: [
+      ['Open ', link('https://console.cloud.google.com/', 'console.cloud.google.com'), ' → pick or make a project (e.g. “30DA”) → “Billing”: link a billing account. Google asks for one even within its free monthly amount.'],
+      ['“APIs & Services” → “Library” → “Places API (New)” → Enable.'],
+      ['“APIs & Services” → “Credentials” → “Create credentials” → “API key”. Then edit the key: “API restrictions” → “Restrict key” → only “Places API (New)” → Save.'],
+      ['Paste the key here → Save → run a few test searches below (they ask Google even while Off) → Turn on.'],
+      ['In “Billing” → “Budgets & alerts”, set a small monthly budget with an email alert. The cap below stops us asking Google too.'],
+    ],
+    fields: [
+      {
+        key: 'key', label: 'API key', secret: true, placeholder: 'AIza… (39 characters)',
+        help: ['From “Credentials” in the Google Cloud console. Saved locked; only its last 4 characters show again.'],
+      },
+    ],
+  },
   // Tower 13 · Translate (src/lib/thirtyda-hub-translate.mjs): the pick is Tencent Hy-MT2-1.8B in LM Studio on the M1.
   translate: {
     title: 'Translate',
@@ -729,13 +750,15 @@ function fieldsForm(c, data) {
         state.test[c.id] = null;
         render(r.data, { fresh: c.id });
         const now = r.data.connections.find((x) => x.id === c.id) ?? r.data[c.id];
-        toast(c.id === 'translate' ? `Translate keys saved · token ends …${now?.masks?.token}. Try a line below.`
+        toast(c.id === 'googleplaces' ? `Google Places key saved · ends …${r.data.places?.google?.masks?.key || ''}. Try a search below, then turn it on.`
+          : c.id === 'translate' ? `Translate keys saved · token ends …${now?.masks?.token}. Try a line below.`
           : c.id === 'whatsapp'
           ? `WhatsApp keys saved · token ends …${now.masks?.token}. Send a test code to check them.`
           : c.id === 'apple' ? `Apple key saved · key ends …${now.masks?.privateKey}. Press “Try the key” to check it.`
             : `${NAMES[c.id]} keys saved · secret ends …${now.last4}. Press Try sign-in to check them.`);
         if (c.id === 'apple') $('apple-try')?.focus();
         if (c.id === 'translate') $('tr-text')?.focus();
+        if (c.id === 'googleplaces') $('places-q')?.focus();
         if (c.id === 'whatsapp') $('wa-phone')?.focus();
       },
     },
@@ -916,6 +939,7 @@ const REMOVE_TEXT = {
   facebook: () => 'Remove the Facebook keys?\n\nThe Facebook button in the app goes back to “Coming soon”, and nobody can sign in with Facebook until keys are saved again.',
   tiktok: () => 'Remove the TikTok keys?\n\nThe TikTok button in the app goes back to “Coming soon”, and nobody can sign in with TikTok until keys are saved again.',
   translate: () => 'Remove the Translate keys?\n\nNew chat lines are no longer translated (people see the original) until keys are saved again.',
+  googleplaces: () => 'Remove the Google Places key?\n\nThe app stops asking Google at once; place searches use our own list and OpenStreetMap only.',
   apple: () => 'Remove the Apple key?\n\nSign in with Apple keeps working on the iPhone app. Only the Apple link of a deleted account is no longer ended at Apple until a key is saved again.',
 };
 async function removeConnection(id) {
@@ -924,7 +948,7 @@ async function removeConnection(id) {
   if (!r.ok) return toast(r.data.error || 'Could not remove it.');
   state.test[id] = null;
   render(r.data, { fresh: id });
-  toast(id === 'translate' ? 'Translate keys removed.' : id === 'telegram' ? 'Telegram token removed.' : id === 'telegram-bot' ? 'Telegram bot removed.' : id === 'apple' ? 'Apple key removed.' : `${NAMES[id]} keys removed.`);
+  toast(id === 'googleplaces' ? 'Google Places key removed.' : id === 'translate' ? 'Translate keys removed.' : id === 'telegram' ? 'Telegram token removed.' : id === 'telegram-bot' ? 'Telegram bot removed.' : id === 'apple' ? 'Apple key removed.' : `${NAMES[id]} keys removed.`);
 }
 
 // ---------- the "Later" towers (7–9): not built yet (10, Apple, only while the server sends no apple connection) ----------
@@ -1416,7 +1440,11 @@ const NOMINATIM_WORDS = {
   busy: 'busy, not asked',
   unavailable: 'no answer within 4 s',
 };
-const FROM_WORDS = { ours: ['Ours', 'done'], ours_typo: ['Ours · typo', 'pending'], nominatim: ['Nominatim', ''] };
+const FROM_WORDS = { google: ['Google', 'done'], ours: ['Ours', 'done'], ours_typo: ['Ours · typo', 'pending'], nominatim: ['Nominatim', ''] };
+const GOOGLE_WORDS = {
+  not_set: 'no key', off: 'Off', cap: 'not asked (the month’s cap is reached)', failed: 'asked, failed (ours answered)',
+  none: 'asked, found nothing (ours answered)', asked: 'asked first',
+};
 const PLACE_LANGS = [['en', 'English'], ['km', 'ខ្មែរ'], ['zh', '中文'], ['ko', '한국어'], ['ja', '日本語']];
 
 function placesListLine(p) {
@@ -1512,7 +1540,7 @@ function placesResult(t) {
   if (!r) return null;
   const n = r.places.length;
   const summary = h('p', {}, h('b', { text: `“${r.q}”: ${n} ${n === 1 ? 'place' : 'places'}` }),
-    ` · ${r.ms} ms · ours: ${r.own} (${r.sure} without a typo) · Nominatim: ${NOMINATIM_WORDS[r.nominatim] || r.nominatim}`);
+    ` · ${r.ms} ms · Google: ${GOOGLE_WORDS[r.google] || r.google || 'no key'} · ours: ${r.own} (${r.sure} without a typo) · Nominatim: ${NOMINATIM_WORDS[r.nominatim] || r.nominatim}`);
   const list = n ? h('ol', { class: 'cx-jobs' }, r.places.map((p) => {
     const [word, cls] = FROM_WORDS[p.from] || FROM_WORDS.nominatim;
     return h('li', {}, h('span', { class: `cx-job ${cls}`, text: word }), ` ${p.name}`, p.address ? ` — ${p.address}` : '',
@@ -1534,7 +1562,7 @@ function placesSearchBlock() {
     t.busy ? 'Searching…' : 'Search');
   return h('div', { class: 'cx-try' },
     h('h3', { text: 'Test search' }),
-    h('p', { class: 'cx-help' }, 'The app’s own search, around Phnom Penh, in the language picked: our list first; 3 of ours found without a typo and Nominatim is not asked. Shown here only.'),
+    h('p', { class: 'cx-help' }, 'The app’s own search, around Phnom Penh, in the language picked: Google first when its key is saved (here even while Off; each search counts towards the month’s cap), then our list; 3 of ours found without a typo and Nominatim is not asked. Shown here only.'),
     h('div', { class: 'cx-test-row' }, input, lang, btn),
     placesResult(t));
 }
@@ -1550,11 +1578,102 @@ function placesCard(p) {
       row('OpenStreetMap', placesAskLine(p)),
       p.servers?.length ? row('Servers', placesServers(p)) : null,
       p.lastError ? row('Last error', ...placesErrorLine(p)) : null,
-      row('In the app', 'Level 3 “Meet” → search: ours first; fewer than 3 sure hits → Nominatim too, its places after ours.')),
+      p.google ? row('Google', ...googleLine(p.google)) : null,
+      row('In the app', p.google?.state === 'live'
+        ? 'Level 3 “Meet” → search: Google first, our sure ones after it; Google failing → ours, then Nominatim.'
+        : 'Level 3 “Meet” → search: ours first; fewer than 3 sure hits → Nominatim too, its places after ours.')),
     h('div', { class: 'cx-signin-body' },
       placesRefreshBlock(p),
+      p.google ? googleBlock(p.google) : null,
       placesSearchBlock(),
-      h('p', { class: 'cx-fine' }, `Source: ${p.source}. © OpenStreetMap contributors (ODbL).`)));
+      h('p', { class: 'cx-fine' }, `Source: ${p.source}${p.google?.set ? ' and Google Maps (asked live, nothing kept)' : ''}. © OpenStreetMap contributors (ODbL).`)));
+}
+
+// Google Places (src/lib/thirtyda-places-google.mjs): the key (its last 4), On / Off (off until turned on), the cap a
+// month and this month's searches. Nothing Google answers is kept, so there is nothing else to show.
+const GOOGLE_STATE = {
+  not_set: ['cx-bad', 'Not set', ' · the app searches our list and OpenStreetMap only.'],
+  unreadable: ['cx-bad', 'Saved with another lock key', ' · save the key again.'],
+  off: ['cx-bad', 'Off', ' · the key is saved; try a search below, then turn it on.'],
+  cap: ['cx-bad', 'The month’s cap is reached', ' · Google is not asked until the 1st; our list answers.'],
+  failing: ['cx-bad', 'Failing', ' · the last search failed (below); our list answered.'],
+  live: ['cx-ok', 'On', ' · asked first in every place search.'],
+};
+
+function googleLine(gp) {
+  const [cls, word, rest] = GOOGLE_STATE[gp.state] || GOOGLE_STATE.not_set;
+  return [h('b', { class: cls, text: word }), rest, gp.set && gp.masks?.key ? [' · key ', h('code', { class: 'cx-mono', text: `…${gp.masks.key}` })] : ''];
+}
+
+function googleUsageLine(gp) {
+  const u = gp.usage;
+  const cap = gp.options.monthlyCap;
+  const out = [h('b', { class: u.calls >= cap ? 'cx-bad' : 'cx-ok', text: `${u.calls.toLocaleString('en-GB')} of ${cap.toLocaleString('en-GB')}` }),
+    ` searches this month (${u.month}, Phnom Penh time) · ${u.ok} good · ${u.failed} failed`];
+  if (u.lastError && (!u.lastOk || u.lastError.at > u.lastOk.at)) out.push(' · ', h('span', { class: 'cx-bad', text: u.lastError.message }), ` · ${when(u.lastError.at)}`);
+  else if (u.lastOk) out.push(` · last good ${when(u.lastOk.at)}${Number.isFinite(u.lastOk.ms) ? `, ${secs(u.lastOk.ms)}` : ''}`);
+  return out;
+}
+
+async function saveGoogleOptions(body, err) {
+  if (state.busy) return;
+  state.busy = true;
+  const r = await call('PUT', `${API}/places/google`, body);
+  state.busy = false;
+  if (!r.ok) {
+    if (err) {
+      err.textContent = r.data.error || 'Could not save.';
+      err.hidden = false;
+    } else toast(r.data.error || 'Could not save.');
+    return;
+  }
+  render(r.data, { fresh: 'googleplaces-opt' });
+  toast('enabled' in body ? `Google Places ${r.data.places?.google?.options.enabled ? 'on: asked first' : 'off'}.` : 'Monthly cap saved.');
+}
+
+function googleBlock(gp) {
+  const card = FIELD_CARDS.googleplaces;
+  const o = gp.options;
+  const [min, max] = gp.capRange;
+  const err = h('p', { class: 'cx-err', id: 'gp-opt-err', role: 'alert', hidden: true });
+  const cap = h('input', {
+    class: 'input cx-mono cx-secs', type: 'number', id: 'gp-cap', min: String(min), max: String(max), step: '1',
+    inputmode: 'numeric', value: String(o.monthlyCap), 'data-draft': 'googleplaces-opt', 'aria-describedby': 'gp-opt-err',
+  });
+  const power = h('button', {
+    type: 'button', class: 'btn cx-test-btn', id: 'gp-power', 'aria-pressed': String(o.enabled), disabled: !gp.set || !gp.readable,
+    on: { click: () => saveGoogleOptions({ enabled: !o.enabled }) },
+  }, o.enabled ? 'Turn off' : 'Turn on');
+  const save = h('button', {
+    type: 'button', class: 'btn cx-test-btn', id: 'gp-cap-save',
+    on: {
+      click: () => {
+        const n = Number(cap.value);
+        if (!Number.isInteger(n) || n < min || n > max) {
+          err.textContent = `A whole number of searches from ${min} to ${max.toLocaleString('en-GB')}.`;
+          err.hidden = false;
+          cap.focus();
+          return;
+        }
+        saveGoogleOptions({ monthlyCap: n }, err);
+      },
+    },
+  }, 'Save');
+  return h('div', { class: 'cx-try' },
+    h('h3', { text: 'Google Places' }),
+    h('p', { class: 'cx-help' }, 'OpenStreetMap is thin on Phnom Penh’s own chains (Tube Coffee, BreadTalk, Pasta Corner …). With a key and On, the app asks Google first, live, and keeps nothing it answers; our list fills in after it and takes over when Google fails or the cap is reached.'),
+    h('div', { class: 'cx-where' },
+      h('p', { class: 'cx-help' }, h('b', { text: 'How to set it up:' })),
+      h('ol', { class: 'cx-steps' }, card.steps.map((step) => h('li', {}, ...step)))),
+    fieldsForm({ ...gp, id: 'googleplaces' }, state.data),
+    h('dl', { class: 'cx-status' }, row('This month', ...googleUsageLine(gp))),
+    h('div', { class: 'cx-power' }, power, h('p', { class: 'cx-help' }, o.enabled
+      ? 'On: every place search in the app asks Google first.'
+      : 'Off: the app does not ask Google. Test searches below still do.')),
+    h('label', { class: 'field cx-secs-label', for: 'gp-cap' }, h('span', { class: 'label', text: 'Most searches a month' })),
+    h('div', { class: 'cx-test-row' }, cap, save),
+    h('p', { class: 'cx-help' }, `Past it, Google is not asked until the 1st (Phnom Penh time) and our list answers alone (${min}–${max.toLocaleString('en-GB')}; 0 = never). Each person can search 10 times a minute.`),
+    err);
 }
 
 /** While a refresh runs, the page asks every 4 seconds (at most 4 minutes); only the Places tower is re-drawn. */

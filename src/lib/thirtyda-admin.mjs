@@ -47,6 +47,8 @@
  *   `places` block (status, the list's time, size and store, the last Overpass ask, the last error):
  *   POST /30da/admin/api/connections/places/refresh   ask OpenStreetMap now, in the background → { ok, view } | 429 too soon
  *   POST /30da/admin/api/connections/places/search    { q, lang } a test search → our hits, Nominatim asked or not (never signed)
+ *   PUT  /30da/admin/api/connections/places/google    { enabled?, monthlyCap? } Google's On / Off and cap; its key: the generic
+ *        PUT / DELETE /api/connections/googleplaces { key } (src/lib/thirtyda-places-google.mjs; the key's last 4 only)
  *   Tower 13 · Translate (where chat lines are translated, src/lib/thirtyda-hub-translate.mjs) — the page's data carries a
  *   `translate` block (where: host, model, prompt style; On / Off, the wait; the app's numbers; the last Try; never the token):
  *   PUT  /30da/admin/api/connections/translate        { url, model, token?, style } (empty token = keep the saved one)
@@ -162,7 +164,8 @@ import { readPhoto, isPhotoId, deletePhoto, thumbPhoto, savePhoto, PhotoError } 
 import { placesAdminView, refreshPlaces, placesTry } from "./thirtyda-hub-places.mjs";
 import { translateAdminView, checkTranslateFields, saveTranslateOptions, translateTry } from "./thirtyda-hub-translate.mjs";
 import { resetTranslate } from "./thirtyda-translate.mjs";
-import { placeIndex, placeSearch } from "./thirtyda-meet.mjs";
+import { placeIndex, placeSearch, placesGoogle } from "./thirtyda-meet.mjs";
+import { checkGooglePlacesFields, saveGoogleOptions } from "./thirtyda-places-google.mjs";
 import { wanAdminView, newWanToken, revokeWanToken, saveWanOptions, queueWanTry, wanTryClip, sendClip } from "./thirtyda-hub-wan.mjs";
 import {
   pendingQueue, pendingOwner, pendingCount, reviewTarget, approvePhoto, rejectPhoto, photoNotice, disqualifyPhoto, adminSlots,
@@ -575,7 +578,14 @@ async function connectionsView(d, req) {
       return null;
     }),
     // Tower 12 · Places (src/lib/thirtyda-hub-places.mjs): our own Phnom Penh place list. A failure: drawn without it.
-    places: await placesAdminView(placeIndex()).catch((err) => {
+    // Its `google` block: the Places API key (its last 4 only), On / Off, the month's cap and counts.
+    places: await placesAdminView(placeIndex()).then(async (p) => ({
+      ...p,
+      google: await placesGoogle().status(d).catch((err) => {
+        console.error("[30da admin] places google:", err instanceof Error ? err.message : err);
+        return null;
+      }),
+    })).catch((err) => {
       console.error("[30da admin] places:", err instanceof Error ? err.message : err);
       return null;
     }),
@@ -595,9 +605,11 @@ const FIELD_CHECKS = {
   tiktok: (input, current) => checkSigninFields("tiktok", input, current),
   apple: (input, current) => checkAppleFields(input, current),
   translate: (input, current) => checkTranslateFields(input, current),
+  googleplaces: (input, current) => checkGooglePlacesFields(input, current),
 };
 const CONNECTION_NAMES = {
   telegram: "Telegram", whatsapp: "WhatsApp", google: "Google", facebook: "Facebook", tiktok: "TikTok", apple: "Apple", translate: "Translate",
+  googleplaces: "Google Places",
 };
 const TESTABLE = ["telegram", "whatsapp"];
 
@@ -768,10 +780,27 @@ async function wanRoute(req, res, m) {
  * Tower 12 · Places on the Code page (signed in; writes are same-origin JSON: checked before this). m[1] = what.
  *   POST refresh → { ok: true, view } (Overpass is asked in the background) | 429 { ok: false, error, reason, view }.
  *   POST search { q, lang } → placesTry's answer | 422 { error }. 20 test searches a minute: they share the app's
- *   Nominatim queue (1 a second).
+ *   Nominatim queue (1 a second), and each one asks Google when its key is saved (counted against the month's cap).
+ *   PUT google { enabled?, monthlyCap? } → the page's data | 422 { error, field }: Google's On / Off and cap.
  */
 const placeTries = windowLimiter(60e3);
 async function placesRoute(req, res, m) {
+  if (m[1] === "google") {
+    if (req.method !== "PUT") {
+      req.resume();
+      return json(res, 404, { error: "Not found." });
+    }
+    const body = await readJsonBody(req, 1e4);
+    if (body.tooLarge) return json(res, 413, { error: "That is far too long." });
+    if (body.bad) return json(res, 400, { error: "Send the options as JSON." });
+    if (writeLimited(req)) return json(res, 429, { error: "Too many changes. Try again in a few minutes." });
+    const d = await db();
+    const r = await saveGoogleOptions(d, body.value, { by: "superadmin" });
+    if (!r.ok) return json(res, 422, { error: r.error, field: r.field });
+    placesGoogle().reset(); // the app reads it again at once
+    await audit(req, "places_google_options", { enabled: r.options.enabled, monthlyCap: r.options.monthlyCap });
+    return json(res, 200, await connectionsView(d, req));
+  }
   if (req.method !== "POST") {
     req.resume();
     return json(res, 404, { error: "Not found." });
@@ -1303,7 +1332,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
   if (m) return translateRoute(req, res, m);
 
   // Tower 12 · Places: Refresh now, a test search (src/lib/thirtyda-hub-places.mjs).
-  m = sub.match(/^\/api\/connections\/places\/(refresh|search)$/);
+  m = sub.match(/^\/api\/connections\/places\/(refresh|search|google)$/);
   if (m) return placesRoute(req, res, m);
 
   // Sign in with Apple's key: "Try the key" (Save / Remove are the generic PUT / DELETE below).
@@ -1361,6 +1390,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
       req.resume();
       const r = await removeSecret(d, id);
       if (id === "translate") resetTranslate(); // the app goes back to the env (or off) at once
+      if (id === "googleplaces") placesGoogle().reset(); // the app stops asking Google at once
       await audit(req, "connection_remove", { connection: id, removed: r.removed });
       return json(res, 200, await connectionsView(d, req));
     }
@@ -1381,6 +1411,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
         if (!c.ok) return json(res, 422, { error: c.error, field: c.field });
         const saved = await saveFields(d, id, c.values, { by: "superadmin" });
         if (id === "translate") resetTranslate(); // the app uses the new server at once
+        if (id === "googleplaces") placesGoogle().reset(); // the app uses the new key at once
         // Never a secret in the audit: only which boxes changed, and the secrets' last 4.
         const changed = Object.keys(c.values).filter((f) => !current || current[f] !== c.values[f]);
         await audit(req, "connection_save", { connection: id, masks: saved.masks, changed });
