@@ -49,6 +49,13 @@
  *   POST /30da/admin/api/connections/places/search    { q, lang } a test search → our hits, Nominatim asked or not (never signed)
  *   PUT  /30da/admin/api/connections/places/google    { enabled?, monthlyCap? } Google's On / Off and cap; its key: the generic
  *        PUT / DELETE /api/connections/googleplaces { key } (src/lib/thirtyda-places-google.mjs; the key's last 4 only)
+ *   Tower 14 · Agent Desk (the Gemini Worker on the M1: text, image, maps jobs for our other apps,
+ *   src/lib/thirtyda-hub-desk.mjs) — the page's data carries a `desk` block (status, the worker's windows, the queue, the
+ *   tokens' last 4, each type On / Off, the last 10 jobs, the latest Try of each type):
+ *   POST|DELETE /30da/admin/api/connections/desk/tokens/media|m1|m2|worker   New token (shown once) | Revoke
+ *   PUT  /30da/admin/api/connections/desk/options    { types: { text?, image?, maps? } } → the page's data | 422
+ *   POST /30da/admin/api/connections/desk/try        { type } a fixed, harmless job of that type (source 'try')
+ *   GET  /30da/admin/api/connections/desk/files/:id  a Try's picture, never an app's
  *   Tower 13 · Translate (where chat lines are translated, src/lib/thirtyda-hub-translate.mjs) — the page's data carries a
  *   `translate` block (where: host, model, prompt style; On / Off, the wait; the app's numbers; the last Try; never the token):
  *   PUT  /30da/admin/api/connections/translate        { url, model, token?, style } (empty token = keep the saved one)
@@ -166,6 +173,7 @@ import { translateAdminView, checkTranslateFields, saveTranslateOptions, transla
 import { resetTranslate } from "./thirtyda-translate.mjs";
 import { placeIndex, placeSearch, placesGoogle } from "./thirtyda-meet.mjs";
 import { checkGooglePlacesFields, saveGoogleOptions } from "./thirtyda-places-google.mjs";
+import { deskAdminView, newDeskToken, revokeDeskToken, saveDeskOptions, queueDeskTry, deskTryFile } from "./thirtyda-hub-desk.mjs";
 import { wanAdminView, newWanToken, revokeWanToken, saveWanOptions, queueWanTry, wanTryClip, sendClip } from "./thirtyda-hub-wan.mjs";
 import {
   pendingQueue, pendingOwner, pendingCount, reviewTarget, approvePhoto, rejectPhoto, photoNotice, disqualifyPhoto, adminSlots,
@@ -589,6 +597,11 @@ async function connectionsView(d, req) {
       console.error("[30da admin] places:", err instanceof Error ? err.message : err);
       return null;
     }),
+    // Tower 14 · Agent Desk (src/lib/thirtyda-hub-desk.mjs): never a token, a text prompt or a picture. A failure: without it.
+    desk: await deskAdminView(d, req).catch((err) => {
+      console.error("[30da admin] desk:", err instanceof Error ? err.message : err);
+      return null;
+    }),
     // Tower 13 · Translate (src/lib/thirtyda-hub-translate.mjs): never the token, only its last 4. A failure: without it.
     translate: await translateAdminView(d).catch((err) => {
       console.error("[30da admin] translate:", err instanceof Error ? err.message : err);
@@ -821,6 +834,61 @@ async function placesRoute(req, res, m) {
   const r = await placesTry(placeSearch(), { q: body.value?.q, lang: body.value?.lang });
   if (r.error) return json(res, 422, { error: r.error });
   return json(res, 200, r);
+}
+
+/**
+ * Tower 14 · Agent Desk on the Code page (signed in; writes are same-origin JSON: checked before this). m[1] = what,
+ * m[2] = whose token, m[3] = a job id.
+ *   POST tokens/:who → { token, who, view }: the token in full this once. DELETE tokens/:who → the page's data.
+ *   PUT options → the page's data | 422. POST try { type } → { ok, job_id, view } | { ok:false, error, reason, view }.
+ *   GET files/:id → a Try's picture; 404 for anything else.
+ */
+async function deskRoute(req, res, m) {
+  const d = await db();
+  if (m[3]) {
+    if (req.method !== "GET") return send(res, 404, "Not found", { "Content-Type": "text/plain" });
+    const file = await deskTryFile(d, m[3]);
+    if (!file) return send(res, 404, "Not found", { "Content-Type": "text/plain" });
+    return sendClip(req, res, file.buf, file.type, SECURITY_HEADERS);
+  }
+  const what = m[2] ? "token" : m[1];
+  const allowed = { token: ["POST", "DELETE"], options: ["PUT"], try: ["POST"] }[what];
+  if (!allowed.includes(req.method)) {
+    req.resume();
+    return json(res, 404, { error: "Not found." });
+  }
+  if (what === "try") {
+    const body = await readJsonBody(req, 1e3);
+    if (body.bad || body.tooLarge) return json(res, 400, { error: "Send { type }." });
+    if (testLimited(req)) return json(res, 429, { error: `That is ${MAX_TESTS} tries in 15 minutes. Try again later.` });
+    const r = await queueDeskTry(d, body.value.type);
+    await audit(req, "desk_try", { type: String(body.value.type).slice(0, 10), ok: r.ok, ...(r.ok ? { job: r.job_id } : { reason: r.reason }) });
+    const view = await connectionsView(d, req);
+    if (!r.ok) return json(res, r.status, { ok: false, error: r.error, reason: r.reason, view });
+    return json(res, 200, { ok: true, job_id: r.job_id, view });
+  }
+  if (writeLimited(req)) {
+    req.resume();
+    return json(res, 429, { error: "Too many changes. Try again in a few minutes." });
+  }
+  if (what === "token") {
+    req.resume();
+    if (req.method === "DELETE") {
+      const r = await revokeDeskToken(d, m[2]);
+      await audit(req, "desk_token_revoke", { who: m[2], removed: r.removed });
+      return json(res, 200, await connectionsView(d, req));
+    }
+    const { token, view: made } = await newDeskToken(d, m[2], { by: "superadmin" });
+    await audit(req, "desk_token_new", { who: m[2], last4: made.last4 });
+    return json(res, 200, { token, who: m[2], view: await connectionsView(d, req) });
+  }
+  const body = await readJsonBody(req, 1e4);
+  if (body.tooLarge) return json(res, 413, { error: "That is far too long to save." });
+  if (body.bad) return json(res, 400, { error: "Send the options as JSON." });
+  const r = await saveDeskOptions(d, body.value, { by: "superadmin" });
+  if (!r.ok) return json(res, 422, { error: r.error, field: r.field });
+  await audit(req, "desk_options", { types: r.options.types });
+  return json(res, 200, await connectionsView(d, req));
 }
 
 /**
@@ -1326,6 +1394,10 @@ export async function handleThirtyDaAdmin(req, res, url) {
   // Tower 11 · Wan: tokens, options, Try, and the Try's clip (src/lib/thirtyda-hub-wan.mjs).
   m = sub.match(/^\/api\/connections\/wan\/(tokens\/(client|worker)|options|try|clips\/([a-f0-9]{32}))$/);
   if (m) return wanRoute(req, res, m);
+
+  // Tower 14 · Agent Desk: tokens, options, Try, a Try's picture (src/lib/thirtyda-hub-desk.mjs).
+  m = sub.match(/^\/api\/connections\/desk\/(tokens\/(media|m1|m2|worker)|options|try|files\/([a-f0-9]{32}))$/);
+  if (m) return deskRoute(req, res, m);
 
   // Tower 13 · Translate: On / Off + the wait (PUT options), Try (POST try). Its keys: the generic PUT / DELETE below.
   m = sub.match(/^\/api\/connections\/translate\/(options|try)$/);

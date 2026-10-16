@@ -1,12 +1,13 @@
-// 30+DA super admin · Code — the sign-in and messaging hub, the GK API Hub (owner 2026-10-14): thirteen towers left to right,
+// 30+DA super admin · Code — the sign-in and messaging hub, the GK API Hub (owner 2026-10-14): fourteen towers left to right,
 // in the owner's order (1 TikTok, 2 Telegram Bot, 3 Telegram Gateway, 4 Facebook, 5 Google, 6 WhatsApp, 7 WeChat, 8 Alipay,
-// 9 YouTube, 10 Apple, 11 Wan, 12 Places, 13 Translate; 7–9 are "Later" placeholders), each with the keys it needs. Tower 10 is Sign in with Apple
+// 9 YouTube, 10 Apple, 11 Wan, 12 Places, 13 Translate, 14 Agent Desk; 7–9 are "Later" placeholders), each with the keys it needs. Tower 10 is Sign in with Apple
 // (owner 2026-10-14): the sign-in needs no key; its key (Team ID, Key ID, the .p8) lets a deleted account end its Apple
 // link. Tower 11 is Wan (owner 2026-10-14): image to video on our M5 for Yai Media Director — a client token and a worker
 // token (each shown once, then only its last 4), On / Off, the sizes and seconds allowed, and a Try that plays its clip
 // here (src/lib/thirtyda-hub-wan.mjs). Tower 12 is Places (owner 2026-10-15): our own Phnom Penh place list — its
 // status, Refresh now and a test search (src/lib/thirtyda-hub-places.mjs). Tower 13 is Translate (owner 2026-10-15): where
-// chat lines are translated — our own model on the M1 (src/lib/thirtyda-hub-translate.mjs). A strip at the top jumps to a tower; ‹ ›, the
+// chat lines are translated — our own model on the M1 (src/lib/thirtyda-hub-translate.mjs). Tower 14 is Agent Desk (owner
+// 2026-10-16): the Gemini Worker on the M1 doing text, image and maps jobs for our other apps (src/lib/thirtyda-hub-desk.mjs). A strip at the top jumps to a tower; ‹ ›, the
 // arrow keys and the slider move along; the last tower is remembered in this browser. Later all our apps use this hub.
 // Telegram and WhatsApp send the sign-in code: offered in the app only once a test code went through since the
 // keys were saved, and stopped again by a lasting failure (no balance, bad token, template). Google, Facebook and
@@ -21,11 +22,13 @@ const API = '/30da/admin/api/connections';
 const $ = (id) => document.getElementById(id);
 
 // wanReveal: a Wan token just made { kind, token } — this page's memory only, until "Done" (never stored, never sent back).
+// deskReveal / deskBusy / deskTrying / deskTryError: Tower 14's tokens (a new one shown once) and Try.
 // placesBusy / placesError: Tower 12's Refresh now; placesTry: its test search { busy, result, error } (its Google key,
 // On / Off and cap: googleBlock); trTry: Tower 13's Try.
 const state = {
   data: null, busy: false, test: {}, testPhone: {}, wanReveal: null, wanBusy: null, wanTrying: false, wanTryError: null,
   placesBusy: false, placesError: null, placesTry: {}, trTry: {},
+  deskReveal: null, deskBusy: null, deskTrying: null, deskTryError: null,
 };
 
 // ---------- dom ----------
@@ -60,6 +63,8 @@ const LOGOS = {
   places: '<path d="M12 21s-6.6-6.1-6.6-11.2a6.6 6.6 0 0 1 13.2 0C18.6 14.9 12 21 12 21Z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><circle cx="12" cy="9.8" r="2.4" stroke="currentColor" stroke-width="1.6" fill="none"/>',
   // Translate (tower 13): two speech marks, "A" and "文", our own drawing.
   translate: '<path d="M3.5 5.5h9v7h-5l-3 2.5v-2.5h-1Z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="m6.2 11 1.8-4.2 1.8 4.2M6.8 9.6h2.4" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.5 9.5h6v7h-1v2.5l-3-2.5h-5v-3" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="M14.4 12.2h4.2M16.5 11.2v1M15 15.4c1.4-.6 2.6-1.8 3-3.2M15.4 13.2c.5 1 1.4 1.8 2.6 2.2" stroke="currentColor" stroke-width="1.1" fill="none" stroke-linecap="round"/>',
+  // Agent Desk (tower 14): a desk with three small windows on it, our own drawing.
+  desk: '<rect x="3" y="4" width="18" height="11" rx="2" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M6 7.5h3.5v4H6zM10.3 7.5h3.4v4h-3.4zM14.5 7.5H18v4h-3.5z" stroke="currentColor" stroke-width="1.1" fill="none"/><path d="M8 15v4.5M16 15v4.5M5.5 19.5h13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>',
   apple: '<path d="M12 8.1c-1.1-.9-3.6-1.4-5.1.5-1.6 2-1.1 5.8.6 8.4 1 1.5 2 2.6 3.1 2.5.9-.1 1.1-.6 2.1-.6 1 0 1.3.5 2.1.6 1.2.1 2.2-1.1 3.1-2.5.6-.9 1-1.8 1.2-2.4-1.7-.8-2.5-3.3-1.1-5 .3-.4.6-.7 1-.9-1.5-1.9-4-1.7-5.2-.6Z" fill="currentColor"/><path d="M12.1 7.3c-.1-1.6 1.2-3.2 2.8-3.3.2 1.7-1.2 3.3-2.8 3.3Z" fill="currentColor"/>',
 };
 function logo(id) {
@@ -1887,7 +1892,233 @@ function renderTranslate(view) {
   if (!state.data || !redrawTower('translate')) render(view ?? state.data);
 }
 
-// ---------- the hub: thirteen towers left to right ----------
+// ---------- Tower 14 · Agent Desk ----------
+// The Gemini Worker on the M1 (src/lib/thirtyda-hub-desk.mjs, contract v1): one Chrome with three hidden windows signed
+// in to Google — text (Gemini), image (Gemini), maps (Google Maps) — taking jobs from our other apps (Yai Media
+// Director, the M1 apps, the M2 apps), never from 30+DA. Pull design like Wan: the M1 calls out, nothing is opened on it.
+// One token per app and one for the worker (each shown once, then its last 4); each type On / Off; the last 10 jobs
+// (type, app, time, outcome — never a text prompt); a Try per type whose answer shows here.
+
+const DESK_PILLS = {
+  not_set: { pill: 'off', text: 'Not set' },
+  off: { pill: 'off', text: 'Off' },
+  waiting: { pill: 'wait', text: 'Waiting for the M1' },
+  live: { pill: 'live', text: 'Live' },
+};
+const deskPill = (k) => DESK_PILLS[k?.status] || DESK_PILLS.not_set;
+const DESK_TYPE_WORDS = {
+  text: ['Text', 'Gemini: translation, language checks, fact finding'],
+  image: ['Image', 'Gemini: make or edit a picture'],
+  maps: ['Maps', 'Google Maps: place details'],
+};
+const DESK_WINDOW_WORDS = { ready: 'ready', busy: 'busy', signed_out: 'signed out', error: 'error', closed: 'closed' };
+const DESK_JOB_WORDS = { pending: 'Waiting', running: 'Working', done: 'Done', failed: 'Failed' };
+const DESK_WHO = {
+  media: { label: 'Yai Media Director', help: 'Its own token: it sees only its own jobs.' },
+  m1: { label: 'M1 apps', help: 'One token for the apps on the M1.' },
+  m2: { label: 'M2 apps', help: 'One token for the apps on the M2.' },
+  worker: { label: 'Worker · the Gemini Worker on the M1', help: 'Goes in the Gemini Worker’s settings on the M1. It can only take jobs and send answers back.' },
+};
+
+function deskWorkerLine(k) {
+  if (!k.worker) {
+    return [h('b', { text: 'Not seen yet' }), k.tokens.worker.set ? ' · start the Gemini Worker on the M1 with the worker token.' : ' · make a worker token, then start the Gemini Worker on the M1.'];
+  }
+  const { name, seenAgoS, info = {} } = k.worker;
+  const live = seenAgoS * 1000 <= 2 * 60e3;
+  const about = [info.chrome ? `Chrome ${info.chrome}` : null, info.version ? `v${info.version}` : null].filter(Boolean).join(' · ');
+  return [h('b', { class: live ? 'cx-ok' : null, text: `${name || 'M1'} seen ${ago(seenAgoS)} ago` }), about ? ` · ${about}` : '',
+    live ? '' : ' · asleep or away: jobs wait here until it calls in again.'];
+}
+
+function deskWindowsLine(k) {
+  const w = k.worker?.windows || {};
+  return h('span', {}, ...['text', 'image', 'maps'].map((t, i) => [i ? ' · ' : '', `${DESK_TYPE_WORDS[t][0]} `,
+    h('b', { class: w[t] === 'ready' || w[t] === 'busy' ? 'cx-ok' : w[t] ? 'cx-bad' : null, text: DESK_WINDOW_WORDS[w[t]] || '—' })]).flat());
+}
+
+function deskQueueLine(k) {
+  const q = k.queue;
+  return `${q.pending} waiting · ${q.running} working (at most ${q.max}) · pictures ${megabytes(q.storedBytes)} of ${megabytes(q.storageMax)}`;
+}
+
+async function makeDeskToken(who, replacing) {
+  if (state.deskBusy) return;
+  if (replacing && !confirm(`Make a new ${DESK_WHO[who].label} token?\n\nThe one in use now stops working at once: paste the new one there.`)) return;
+  state.deskBusy = who;
+  renderDesk();
+  const r = await call('POST', `${API}/desk/tokens/${who}`, {});
+  state.deskBusy = null;
+  if (!r.ok) {
+    renderDesk();
+    return toast(r.data.error || 'Could not make the token.');
+  }
+  state.deskReveal = { who, token: r.data.token }; // shown once: this page's memory only, until "Done"
+  render(r.data.view?.connections ? r.data.view : state.data);
+  $(`desk-copy-${who}`)?.focus();
+}
+
+async function revokeDeskToken(who) {
+  if (!confirm(`Revoke the ${DESK_WHO[who].label} token?\n\n${who === 'worker' ? 'The Gemini Worker cannot take jobs until a new token is made; jobs wait here.' : 'That app cannot send jobs until a new token is made.'}`)) return;
+  const r = await call('DELETE', `${API}/desk/tokens/${who}`, {});
+  if (!r.ok) return toast(r.data.error || 'Could not revoke it.');
+  if (state.deskReveal?.who === who) state.deskReveal = null;
+  render(r.data);
+  toast(`${DESK_WHO[who].label} token revoked.`);
+}
+
+function deskReveal(who) {
+  const r = state.deskReveal;
+  if (!r || r.who !== who) return null;
+  return h('div', { class: 'cx-result ok cx-reveal' },
+    h('p', {}, h('b', { text: 'Shown once. ' }), 'Copy it now: after this only its last 4 characters show. A token made before it has stopped working.'),
+    h('div', { class: 'cx-copy-row' }, h('code', { class: 'cx-mono cx-address', text: r.token }), copyButton(r.token, 'Token copied.', `desk-copy-${who}`)),
+    h('button', { type: 'button', class: 'link', on: { click: () => { state.deskReveal = null; render(state.data); } } }, 'Done, I copied it'));
+}
+
+function deskTokenRow(k, who) {
+  const t = who === 'worker' ? k.tokens.worker : k.tokens.apps[who];
+  const busy = state.deskBusy === who;
+  const make = h('button', {
+    type: 'button', class: 'btn cx-test-btn', id: `desk-new-${who}`, disabled: Boolean(state.deskBusy),
+    on: { click: () => makeDeskToken(who, t.set) },
+  }, busy ? 'Making…' : t.set ? 'New token' : 'Make token');
+  const revoke = t.set ? h('button', { type: 'button', class: 'link cx-remove', on: { click: () => revokeDeskToken(who) } }, 'Revoke') : null;
+  return h('div', { class: 'cx-token' },
+    h('p', { class: 'cx-token-line' }, h('b', { text: DESK_WHO[who].label }), ' · ',
+      t.set ? ['ends ', h('code', { class: 'cx-mono', text: `…${t.last4}` }), ` · made ${when(t.madeAt)}`] : h('span', { class: 'cx-bad', text: 'not set' })),
+    h('p', { class: 'cx-help' }, DESK_WHO[who].help),
+    deskReveal(who),
+    h('div', { class: 'cx-actions' }, make, revoke));
+}
+
+async function saveDeskTypes(types) {
+  if (state.busy) return;
+  state.busy = true;
+  const r = await call('PUT', `${API}/desk/options`, { types });
+  state.busy = false;
+  if (!r.ok) return toast(r.data.error || 'Could not save.');
+  render(r.data, { fresh: 'desk' });
+  const [t, on] = Object.entries(types)[0];
+  toast(`${DESK_TYPE_WORDS[t][0]} jobs ${on ? 'on' : 'off'}.`);
+}
+
+function deskTypesBlock(k) {
+  return h('div', { class: 'cx-try' },
+    h('h3', { text: 'Jobs' }),
+    ...k.options.all.map((t) => {
+      const on = k.options.types[t];
+      return h('div', { class: 'cx-power' },
+        h('button', { type: 'button', class: 'btn cx-test-btn', id: `desk-power-${t}`, 'aria-pressed': String(on), on: { click: () => saveDeskTypes({ [t]: !on }) } },
+          on ? `Turn ${t} off` : `Turn ${t} on`),
+        h('p', { class: 'cx-help' }, h('b', { text: `${DESK_TYPE_WORDS[t][0]}: ` }), `${DESK_TYPE_WORDS[t][1]} · at most ${k.limits.perHour[t]} an hour per app${on ? '' : ' · OFF: apps get “type_off”'}`));
+    }),
+    h('p', { class: 'cx-fine' }, `Answers are kept ${k.limits.keepHours} hours, then deleted; job records ${k.limits.jobDays} days. A text job's own words are never shown here.`));
+}
+
+async function tryDesk(type) {
+  if (state.deskTrying) return;
+  state.deskTrying = type;
+  state.deskTryError = null;
+  renderDesk();
+  const r = await call('POST', `${API}/desk/try`, { type });
+  state.deskTrying = null;
+  state.deskTryError = r.ok ? null : `${DESK_TYPE_WORDS[type][0]}: ${r.data.error || 'Could not queue the try.'}`;
+  if (r.data.view?.desk) renderDesk(r.data.view);
+  else renderDesk();
+  $(`desk-try-${type}`)?.focus();
+}
+
+function deskTryAnswer(j) {
+  if (!j) return null;
+  const head = h('p', {}, h('b', { text: `${DESK_TYPE_WORDS[j.type][0]}: ${DESK_JOB_WORDS[j.status] || j.status}` }),
+    ` · ${when(j.createdAt)}${j.ms ? ` · ${(j.ms / 1000).toFixed(1)} s` : ''}${j.error ? ` · ${j.error}` : ''}`);
+  const a = j.answer;
+  let body = null;
+  if (a?.text) body = h('p', { class: 'cx-tr-out', text: a.text });
+  else if (a?.names) body = h('p', {}, `${a.count} ${a.count === 1 ? 'place' : 'places'}${a.names.length ? `: ${a.names.join(' · ')}` : ''}`);
+  else if (a?.url) body = h('img', { class: 'cx-video', src: a.url, alt: 'The Try picture' });
+  else if (j.status === 'done') body = h('p', { class: 'cx-fine' }, 'Deleted 48 hours after it was made.');
+  return h('div', { class: `cx-result ${j.status === 'done' ? 'ok' : j.status === 'failed' ? 'bad' : ''}` }, head, body);
+}
+
+function deskTryBlock(k) {
+  const ready = k.tokens.worker.set;
+  return h('div', { class: 'cx-try' },
+    h('h3', { text: 'Try' }),
+    h('p', { class: 'cx-help' }, ready
+      ? 'Queues a fixed, harmless job of one type (a greeting to translate, a café picture, Brown Coffee in Toul Kork). The M1 takes it on its next claim; the answer shows here.'
+      : 'Make a worker token and start the Gemini Worker first.'),
+    h('div', { class: 'cx-actions' }, ...k.options.all.map((t) => h('button', {
+      type: 'button', class: 'btn cx-test-btn', id: `desk-try-${t}`, disabled: Boolean(state.deskTrying) || !ready || !k.options.types[t],
+      on: { click: () => tryDesk(t) },
+    }, state.deskTrying === t ? 'Queueing…' : `Try ${t}`))),
+    state.deskTryError ? h('div', { class: 'cx-result bad' }, h('p', {}, h('b', { text: 'Not queued. ' }), state.deskTryError)) : null,
+    ...k.options.all.map((t) => deskTryAnswer(k.tries[t])));
+}
+
+function deskJobsBlock(k) {
+  if (!k.jobs?.length) return null;
+  const appName = (a) => (a === 'try' ? 'Try' : DESK_WHO[a]?.label || a);
+  return h('div', { class: 'cx-try' },
+    h('h3', { text: 'Last jobs' }),
+    h('ol', { class: 'cx-jobs' }, k.jobs.map((j) => h('li', {},
+      h('span', { class: `cx-job ${j.status}`, text: DESK_JOB_WORDS[j.status] || j.status }),
+      ` ${DESK_TYPE_WORDS[j.type]?.[0] || j.type} · ${appName(j.app)} · ${when(j.createdAt)}`,
+      j.ms ? ` · ${(j.ms / 1000).toFixed(1)} s` : '',
+      j.error ? h('span', { class: 'cx-bad', text: ` · ${j.error}` }) : null))));
+}
+
+function deskCard(k) {
+  return h('section', { class: 'panel cx-card cx-signin', 'aria-labelledby': 'cx-desk' },
+    h('div', { class: 'cx-head' }, logo('desk'),
+      h('div', { class: 'cx-title' }, h('h2', { id: 'cx-desk', text: 'Agent Desk' }), h('p', { class: 'cx-sub', text: 'Gemini text, images and Google Maps on the M1 · for our other apps' }))),
+    h('dl', { class: 'cx-status' },
+      row('M1', ...deskWorkerLine(k)),
+      row('Windows', deskWindowsLine(k)),
+      row('Queue', deskQueueLine(k)),
+      row('Rules', 'No 30+DA user data in any job (chat translation stays on Translate). Maps answers go only to the app that asked, never into our place list.'),
+      row('Note', h('span', { class: 'cx-bad', text: 'Automating Gemini and Google Maps in a browser can get the Google account suspended (your choice, 16 Oct).' }))),
+    h('div', { class: 'cx-signin-body' },
+      h('div', { class: 'cx-try' }, h('h3', { text: 'Tokens' }), ...['media', 'm1', 'm2', 'worker'].map((who) => deskTokenRow(k, who))),
+      deskTypesBlock(k),
+      deskTryBlock(k),
+      deskJobsBlock(k),
+      addressRow('Endpoint', `for developers: the apps and the Gemini Worker follow contract ${k.contract || 'v1'}; every call and answer is listed at the top of src/lib/thirtyda-hub-desk.mjs. Tokens go in Authorization: Bearer.`, k.endpoint)));
+}
+
+/** Tower 14's own draws: the Agent Desk tower only (its data from `view` when there is one). */
+function renderDesk(view) {
+  if (view?.desk && state.data) state.data = { ...state.data, desk: view.desk };
+  if (!state.data || !redrawTower('desk')) render(view ?? state.data);
+  pollDesk(state.data);
+}
+
+/** While a Try waits or works, the page asks every 5 seconds (at most 10 minutes); only this tower is re-drawn. */
+const deskAsk = { timer: 0, since: 0 };
+function pollDesk(data) {
+  clearTimeout(deskAsk.timer);
+  const busy = Object.values(data?.desk?.tries || {}).some((j) => j && (j.status === 'pending' || j.status === 'running'));
+  if (!busy) {
+    deskAsk.since = 0;
+    return;
+  }
+  deskAsk.since ||= Date.now();
+  if (Date.now() - deskAsk.since > 10 * 60e3) return;
+  deskAsk.timer = setTimeout(async () => {
+    if (state.busy || document.hidden) return pollDesk(state.data);
+    let r;
+    try {
+      r = await call('GET', API);
+    } catch {
+      return; // signed out: call() already moved on
+    }
+    if (!r.ok || !r.data.desk) return pollDesk(state.data);
+    renderDesk(r.data);
+  }, 5000);
+}
+
+// ---------- the hub: fourteen towers left to right ----------
 
 /** A sign-in tower (TikTok, Facebook, Google): its keys card, its pill from signinStatus. */
 const signinTower = (id, name) => ({
@@ -1932,6 +2163,10 @@ const TOWERS = [
   {
     key: 'translate', name: 'Translate', kind: 'Language', has: (byId, data) => Boolean(data?.translate),
     status: (byId, data) => trPill(data.translate), draw: (byId, data) => translateCard(data.translate, data),
+  },
+  {
+    key: 'desk', name: 'Agent Desk', kind: 'Agents', has: (byId, data) => Boolean(data?.desk),
+    status: (byId, data) => deskPill(data.desk), draw: (byId, data) => deskCard(data.desk),
   },
 ];
 const towerNumber = (t) => TOWERS.indexOf(t) + 1;
@@ -2211,6 +2446,7 @@ function render(data, { fresh = null } = {}) {
   if (focused && $(focused) && !$(focused).disabled) $(focused).focus();
   pollWan(data);
   pollPlaces(data);
+  pollDesk(data);
 }
 
 /**

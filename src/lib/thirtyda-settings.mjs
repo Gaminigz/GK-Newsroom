@@ -342,7 +342,12 @@ export async function saveFields(d, name, values, { by = "superadmin", rawKey } 
  * Only the token's SHA-256, its last 4 characters and when it was made are kept: nothing to open, so no
  * THIRTYDA_SECRET_KEY is needed, and a leaked database gives no token. Never cached: a revoke stops it at once everywhere.
  */
-export const TOKEN_SETTINGS = { wan_client: "wanc_", wan_worker: "wanw_" };
+export const TOKEN_SETTINGS = {
+  wan_client: "wanc_", wan_worker: "wanw_",
+  // Tower 14 · Agent Desk (src/lib/thirtyda-hub-desk.mjs): one CLIENT token per app (Yai Media Director, the M1 apps,
+  // the M2 apps) — the prefix says which app — and the WORKER token of the Gemini Worker on the M1.
+  desk_media: "deskm_", desk_m1: "desk1_", desk_m2: "desk2_", desk_worker: "deskw_",
+};
 const TOKEN_BODY_RE = /^[A-Za-z0-9_-]{43}$/; // 32 random bytes, base64url without padding
 
 const checkTokenName = (name) => checkName(name, Object.keys(TOKEN_SETTINGS));

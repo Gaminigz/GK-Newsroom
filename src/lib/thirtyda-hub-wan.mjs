@@ -242,7 +242,7 @@ const settingsOf = (d) => d.collection(SETTINGS_COLLECTION);
 
 // ---------------------------------------------------------------- http
 
-class HubError extends Error {
+export class HubError extends Error {
   constructor(status, code, message, extra = {}, headers = {}) {
     super(message);
     this.status = status;
@@ -251,15 +251,16 @@ class HubError extends Error {
     this.headers = headers;
   }
 }
-const fail = (status, code, message, extra, headers) => new HubError(status, code, message, extra, headers);
-const invalid = (field, message) => fail(400, "invalid", message, { field });
-const tooLarge = (message, field) => fail(413, "too_large", message, field ? { field } : {});
-const notFound = (message = "No such job.") => fail(404, "not_found", message);
+// Shared with Tower 14 · Agent Desk (src/lib/thirtyda-hub-desk.mjs): the same errors, bodies and answers.
+export const fail = (status, code, message, extra, headers) => new HubError(status, code, message, extra, headers);
+export const invalid = (field, message) => fail(400, "invalid", message, { field });
+export const tooLarge = (message, field) => fail(413, "too_large", message, field ? { field } : {});
+export const notFound = (message = "No such job.") => fail(404, "not_found", message);
 const notYours = () => fail(409, "not_yours", "This job is no longer leased to you: the lease ran out and the job moved on.");
 
-const BASE_HEADERS = { "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store" };
+export const BASE_HEADERS = { "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store" };
 
-function sendJson(res, status, obj, headers = {}) {
+export function sendJson(res, status, obj, headers = {}) {
   res.writeHead(status, { ...BASE_HEADERS, "Content-Type": "application/json; charset=utf-8", ...headers });
   res.end(JSON.stringify(obj));
 }
@@ -269,7 +270,7 @@ function sendJson(res, status, obj, headers = {}) {
  * before a byte is read; while reading, nothing past `max` is kept and the answer goes out at once (the caller closes
  * the connection, so the rest is never read into memory).
  */
-function readRaw(req, max) {
+export function readRaw(req, max) {
   const declared = Number(req.headers["content-length"]);
   if (Number.isFinite(declared) && declared > max) return Promise.resolve({ tooLarge: true });
   return new Promise((resolve) => {
@@ -297,7 +298,7 @@ function readRaw(req, max) {
 }
 
 /** A JSON object body of at most `max` bytes, or the matching HubError. */
-async function readJson(req, max = WAN_LIMITS.json, what = "That body") {
+export async function readJson(req, max = WAN_LIMITS.json, what = "That body") {
   const r = await readRaw(req, max);
   if (r.tooLarge) throw tooLarge(`${what} is too large.`);
   if (r.bad) throw invalid("body", "The body could not be read.");
@@ -836,9 +837,15 @@ const ROUTES = [
   ["POST", /^\/worker\/jobs\/([^/]+)\/fail$/, failJob],
 ];
 
-/** /30da/hub/… — today only /30da/hub/wan. Every answer is JSON (or a clip); nothing here sets or reads a cookie. */
+/**
+ * /30da/hub/… — /30da/hub/wan (tower 11) and /30da/hub/desk (tower 14 · Agent Desk, src/lib/thirtyda-hub-desk.mjs, loaded
+ * on its first call). Every answer is JSON (or a clip / a picture); nothing here sets or reads a cookie.
+ */
 export async function handleThirtyDaHub(req, res, url) {
   const path = url.pathname.replace(/\/+$/, "") || "/";
+  if (path === "/30da/hub/desk" || path.startsWith("/30da/hub/desk/")) {
+    return (await import("./thirtyda-hub-desk.mjs")).handleDesk(req, res, path);
+  }
   const ctx = { req, res, sent: false };
   try {
     if (path !== WAN_BASE && !path.startsWith(`${WAN_BASE}/`)) throw fail(404, "not_found", "No such endpoint.");

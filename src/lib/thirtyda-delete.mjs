@@ -100,6 +100,9 @@ export const COVERAGE = {
   // A picture goes when its render is done or failed, a clip 48 h after done, the record 30 days after.
   thirtyda_hub_wan_jobs: null,
   thirtyda_hub_wan: null, // their GridFS bucket (the pictures and clips)
+  // Tower 14 · Agent Desk (src/lib/thirtyda-hub-desk.mjs): jobs from our other apps, never a 30+DA person's data.
+  thirtyda_hub_desk_jobs: null,
+  thirtyda_hub_desk: null, // their GridFS bucket (pictures in and out)
 };
 
 /** Names that look like collections but are cookies / browser storage keys. */
