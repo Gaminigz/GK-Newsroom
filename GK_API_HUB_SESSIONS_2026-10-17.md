@@ -79,6 +79,11 @@ The M5 sessions can message each other. The M1 sessions can't be reached from th
 - Plan and Step 1 brief in git (private): `Gaminigz/m1-guard` → `docs/LOCAL-AI-TOWER15-PLAN.md`, `docs/STEP1-BRIEF.md`; the snapshot will land beside them as `docs/STEP1-SNAPSHOT-*.md`.
 - Paste-ready brief: `~/Desktop/GK Drop/GK to YAI /Local-AI-Tower15-Step1-brief-for-M1-Guard-Editor.md`
 
+### 5. Yai health check and FIX 1 (18 Oct)
+- **Checked:** both guards healthy; all 13 PAs, Big Brain and 8 data screens answer when asked one at a time. Nothing of ours touched Yai.
+- **Weak spot:** 4 simultaneous PA questions → `admin` and `mrp` returned 503 after about 55 s instead of falling back to exact records. Likely cause: the free-Qwen narrative path has no time limit (`proxy.py`, `_pa_query_core`).
+- **FIX 1** (brief written, waits for the M1 Guard Editor): about 15 s limit on every Qwen call, at most 2 at once, fall back to `records-only`. Brief: private repo `Gaminigz/m1-guard` → `docs/FIX1-QWEN-SLOW-FALLBACK-BRIEF.md`. Do this **before** Tower 15 step 2 (Hy-MT2 and the gateway add load to the same M1).
+
 ## Waiting on Gamini
 - Paste the **Tower 15 Step 1 brief** into the M1 Guard Editor.
 - Paste the **Tower 14 brief + contract** into the Gemini Worker, then make the Worker token on Tower 14.
