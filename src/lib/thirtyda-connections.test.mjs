@@ -69,7 +69,7 @@ function fakeFetch(reply) {
 // ---------- settings: several fields in one sealed box ----------
 
 test('fields settings: whatsapp / google / facebook (+ the Telegram bot, Sign in with Apple\'s key), each with its secret marked', () => {
-  assert.deepEqual(Object.keys(FIELD_SETTINGS).sort(), ['apple', 'facebook', 'google', 'googleplaces', 'telegram_bot', 'tiktok', 'translate', 'whatsapp']);
+  assert.deepEqual(Object.keys(FIELD_SETTINGS).sort(), ['apple', 'facebook', 'google', 'googleplaces', 'telegram_bot', 'tiktok', 'translate', 'translategemini', 'whatsapp']);
   assert.equal(FIELD_SETTINGS.googleplaces.key.secret, true, 'the Google Places key: sealed, shown as its last 4 only');
   assert.equal(FIELD_SETTINGS.apple.privateKey.secret, true, 'the .p8 private key: sealed, shown as its last 4 only');
   assert.ok(!FIELD_SETTINGS.apple.teamId.secret && !FIELD_SETTINGS.apple.keyId.secret, 'Team ID and Key ID are not secret');

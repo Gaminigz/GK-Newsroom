@@ -6,7 +6,7 @@
  * Mongo `thirtyda_settings`, one doc per setting:
  *   { _id:'telegram', kind:'secret', box:{ v:1, alg:'aes-256-gcm', iv, tag, data }, last4,
  *     updatedAt, updatedBy, lastSend?:{ ok, reason, detail, at } }
- *   { _id:'whatsapp'|'google'|'facebook'|'tiktok'|'apple'|'telegram_bot'|'translate'|'googleplaces', kind:'fields', box (sealed JSON of ALL the fields), last4, masks:{ <secret field>: last4 },
+ *   { _id:'whatsapp'|'google'|'facebook'|'tiktok'|'apple'|'telegram_bot'|'translate'|'translategemini'|'googleplaces', kind:'fields', box (sealed JSON of ALL the fields), last4, masks:{ <secret field>: last4 },
  *     updatedAt, updatedBy, lastSend? }
  * A "fields" setting (FIELD_SETTINGS) keeps every field in the one sealed box; the fields marked secret are
  * only ever shown as their last 4 characters, the others (a phone number ID, a template name, an app ID)
@@ -50,6 +50,8 @@ export const FIELD_SETTINGS = {
   // Tower 13 · Translate (src/lib/thirtyda-hub-translate.mjs): the translation server (our M1), its model, its bearer
   // token and how the model is asked ('hy-mt' | 'chat').
   translate: { url: {}, model: {}, token: { secret: true }, style: {} },
+  // Its backup (owner 2026-10-17): the paid Gemini API's key and model, asked only when the M1 cannot answer.
+  translategemini: { key: { secret: true }, model: {} },
   // Tower 12 · Places, Google (src/lib/thirtyda-places-google.mjs): the Places API key the meeting search asks Google with.
   googleplaces: { key: { secret: true } },
 };
