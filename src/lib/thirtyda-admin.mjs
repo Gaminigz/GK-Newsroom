@@ -60,7 +60,9 @@
  *   `translate` block (where: host, model, prompt style; On / Off, the wait; the app's numbers; the last Try; never the token):
  *   PUT  /30da/admin/api/connections/translate        { url, model, token?, style } (empty token = keep the saved one)
  *   PUT  /30da/admin/api/connections/translate/options { enabled?, timeoutS? } → the page's data | 422
- *   POST /30da/admin/api/connections/translate/try    { text, from, to | 'all' } → { ok, results: [{ to, ok, text | error, ms }], view }
+ *   POST /30da/admin/api/connections/translate/try    { text, from, to | 'all', provider?: 'm1' | 'gemini' } → { ok, results: [{ to, ok, text | error, ms }], view }
+ *   PUT|DELETE /30da/admin/api/connections/translategemini  { key?, model } the backup's key (sealed) and model
+ *   PUT  /30da/admin/api/connections/translate/gemini  { enabled?, monthlyCap? } the backup's On / Off and cap
  *   POST /30da/admin/api/connections/telegram|whatsapp/test   { phone } → a real code to that phone, or why not.
  *        A test that goes through turns the channel on in the app (src/lib/thirtyda-code-send.mjs channelOffer);
  *        the answer carries the page's fresh data (`view`) so the card can say so at once.
@@ -169,7 +171,7 @@ import { targetLabel } from "../thirtyda-app/shared/safety.js";
 import { BAD_WORD_REASONS } from "../thirtyda-app/shared/bad-words.js";
 import { readPhoto, isPhotoId, deletePhoto, thumbPhoto, savePhoto, PhotoError } from "./thirtyda-photos.mjs";
 import { placesAdminView, refreshPlaces, placesTry } from "./thirtyda-hub-places.mjs";
-import { translateAdminView, checkTranslateFields, saveTranslateOptions, translateTry } from "./thirtyda-hub-translate.mjs";
+import { translateAdminView, checkTranslateFields, checkGeminiFields, saveTranslateOptions, saveGeminiOptions, translateTry } from "./thirtyda-hub-translate.mjs";
 import { resetTranslate } from "./thirtyda-translate.mjs";
 import { placeIndex, placeSearch, placesGoogle } from "./thirtyda-meet.mjs";
 import { checkGooglePlacesFields, saveGoogleOptions } from "./thirtyda-places-google.mjs";
@@ -618,10 +620,11 @@ const FIELD_CHECKS = {
   tiktok: (input, current) => checkSigninFields("tiktok", input, current),
   apple: (input, current) => checkAppleFields(input, current),
   translate: (input, current) => checkTranslateFields(input, current),
+  translategemini: (input, current) => checkGeminiFields(input, current),
   googleplaces: (input, current) => checkGooglePlacesFields(input, current),
 };
 const CONNECTION_NAMES = {
-  telegram: "Telegram", whatsapp: "WhatsApp", google: "Google", facebook: "Facebook", tiktok: "TikTok", apple: "Apple", translate: "Translate",
+  telegram: "Telegram", whatsapp: "WhatsApp", google: "Google", facebook: "Facebook", tiktok: "TikTok", apple: "Apple", translate: "Translate", translategemini: "Gemini API",
   googleplaces: "Google Places",
 };
 const TESTABLE = ["telegram", "whatsapp"];
@@ -899,7 +902,7 @@ async function deskRoute(req, res, m) {
  */
 const translateTries = windowLimiter(WINDOW_MS);
 async function translateRoute(req, res, m) {
-  const want = m[1] === "options" ? "PUT" : "POST";
+  const want = m[1] === "try" ? "POST" : "PUT";
   if (req.method !== want) {
     req.resume();
     return json(res, 404, { error: "Not found." });
@@ -908,6 +911,13 @@ async function translateRoute(req, res, m) {
   const body = await readJsonBody(req, 1e4);
   if (body.tooLarge) return json(res, 413, { error: "That is far too long." });
   if (body.bad) return json(res, 400, { error: "Send it as JSON." });
+  if (m[1] === "gemini") {
+    if (writeLimited(req)) return json(res, 429, { error: "Too many changes. Try again in a few minutes." });
+    const r = await saveGeminiOptions(d, body.value, { by: "superadmin" });
+    if (!r.ok) return json(res, 422, { error: r.error, field: r.field });
+    await audit(req, "translate_gemini_options", { enabled: r.options.enabled, monthlyCap: r.options.monthlyCap });
+    return json(res, 200, await connectionsView(d, req));
+  }
   if (m[1] === "options") {
     if (writeLimited(req)) return json(res, 429, { error: "Too many changes. Try again in a few minutes." });
     const r = await saveTranslateOptions(d, body.value, { by: "superadmin" });
@@ -918,7 +928,7 @@ async function translateRoute(req, res, m) {
   if (translateTries.over(tokenOf(req) || clientIp(req), 30)) return json(res, 429, { error: "That is 30 tries in 15 minutes. Try again later." });
   const r = await translateTry(d, body.value);
   if (r.status) return json(res, r.status, { error: r.error, field: r.field, reason: r.reason });
-  await audit(req, "translate_try", { ok: r.ok, from: r.from, to: r.results.map((x) => x.to), model: r.model });
+  await audit(req, "translate_try", { ok: r.ok, provider: r.provider, from: r.from, to: r.results.map((x) => x.to), model: r.model });
   return json(res, 200, { ...r, view: await connectionsView(d, req) });
 }
 
@@ -1400,7 +1410,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
   if (m) return deskRoute(req, res, m);
 
   // Tower 13 · Translate: On / Off + the wait (PUT options), Try (POST try). Its keys: the generic PUT / DELETE below.
-  m = sub.match(/^\/api\/connections\/translate\/(options|try)$/);
+  m = sub.match(/^\/api\/connections\/translate\/(options|try|gemini)$/);
   if (m) return translateRoute(req, res, m);
 
   // Tower 12 · Places: Refresh now, a test search (src/lib/thirtyda-hub-places.mjs).
@@ -1461,7 +1471,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
     if (req.method === "DELETE") {
       req.resume();
       const r = await removeSecret(d, id);
-      if (id === "translate") resetTranslate(); // the app goes back to the env (or off) at once
+      if (id === "translate" || id === "translategemini") resetTranslate(); // the app goes back to the env (or off) at once
       if (id === "googleplaces") placesGoogle().reset(); // the app stops asking Google at once
       await audit(req, "connection_remove", { connection: id, removed: r.removed });
       return json(res, 200, await connectionsView(d, req));
@@ -1482,7 +1492,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
         const c = FIELD_CHECKS[id](body.value, current);
         if (!c.ok) return json(res, 422, { error: c.error, field: c.field });
         const saved = await saveFields(d, id, c.values, { by: "superadmin" });
-        if (id === "translate") resetTranslate(); // the app uses the new server at once
+        if (id === "translate" || id === "translategemini") resetTranslate(); // the app uses the new server at once
         if (id === "googleplaces") placesGoogle().reset(); // the app uses the new key at once
         // Never a secret in the audit: only which boxes changed, and the secrets' last 4.
         const changed = Object.keys(c.values).filter((f) => !current || current[f] !== c.values[f]);

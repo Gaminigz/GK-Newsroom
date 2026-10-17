@@ -44,7 +44,7 @@ export const OPERATOR = "GGMT PTE. LTD.";
 export const PLAY_APP_NAME = "30+DA:Safe Calm Dating for 30+";
 export const PLAY_DEVELOPER = "Kassapa Gamini Gunasingha";
 /** The day the privacy policy last changed (YYYY-MM-DD): the one place to change it. Each language writes it its own way (policyDate). */
-export const POLICY_DATE = "2026-10-16";
+export const POLICY_DATE = "2026-10-17";
 /** The subject a deletion email asks for (English in every language: the team reads it; the mail link fills it in). */
 export const DELETE_SUBJECT = "Delete my 30+DA account";
 const NAMES = { google: "Google", facebook: "Facebook", tiktok: "TikTok" };
@@ -149,7 +149,8 @@ export const PAGE_STRINGS = {
     proc_osm: "turns a rough point into an area name. It never gets your name.",
     proc_places: "finds a place to meet from your words and a rough point. It never gets your name.",
     proc_translate_k: "Our own translation server:",
-    proc_translate: "translates lines and chat. No outside AI company sees them.",
+    proc_translate: "translates lines and chat on our own computer.",
+    proc_translate_backup: "only when our server can't, one line at a time. Google doesn't train on it.",
     proc_fonts: "the app’s letters. Google sees your internet address.",
     priv_codes_k: "Telegram or WhatsApp (Meta):",
     priv_codes: "your number, only to send or check your code.",
@@ -359,7 +360,8 @@ export const PAGE_STRINGS = {
     proc_osm: "ប្ដូរចំណុចប្រហាក់ប្រហែលទៅជាឈ្មោះតំបន់។ វាមិនដែលទទួលបានឈ្មោះរបស់អ្នកទេ។",
     proc_places: "ស្វែងរកទីកន្លែងដែលអ្នករកសម្រាប់ការជួបគ្នា។ វាទទួលបានតែពាក្យដែលអ្នកវាយ និងចំណុចប្រហាក់ប្រហែល មិនដែលទទួលបានឈ្មោះរបស់អ្នកទេ។",
     proc_translate_k: "ម៉ាស៊ីនបកប្រែផ្ទាល់ខ្លួនរបស់យើង៖",
-    proc_translate: "បកប្រែឃ្លា និងការជជែក។ គ្មានក្រុមហ៊ុន AI ខាងក្រៅណាមួយឃើញទេ។",
+    proc_translate: "បកប្រែឃ្លា និងការជជែក នៅលើកុំព្យូទ័រផ្ទាល់ខ្លួនរបស់យើង។",
+    proc_translate_backup: "តែនៅពេលម៉ាស៊ីនរបស់យើងបកប្រែមិនបាន ម្តងមួយឃ្លា។ Google មិនប្រើវាដើម្បីបង្ហាត់ AI ទេ។",
     proc_fonts: "អក្សររបស់កម្មវិធី។ Google ឃើញអាសយដ្ឋានអ៊ីនធឺណិតរបស់អ្នក។",
     priv_codes_k: "Telegram ឬ WhatsApp (Meta)៖",
     priv_codes: "ប្រើលេខរបស់អ្នក តែដើម្បីផ្ញើ ឬពិនិត្យលេខកូដប៉ុណ្ណោះ។",
@@ -564,7 +566,8 @@ export const PAGE_STRINGS = {
     proc_osm: "把大致位置转换成区域名称。它永远拿不到你的名字。",
     proc_places: "在你约见面时查找你搜索的地点。它只收到你输入的文字和大致位置，永远拿不到你的名字。",
     proc_translate_k: "我们自己的翻译服务器：",
-    proc_translate: "翻译简短的话和聊天。没有任何外部 AI 公司能看到。",
+    proc_translate: "在我们自己的电脑上翻译简短的话和聊天。",
+    proc_translate_backup: "只在我们的服务器无法翻译时使用，一次一句。Google 不会用它训练 AI。",
     proc_fonts: "提供应用的字体。Google 能看到你的网络地址。",
     priv_codes_k: "Telegram 或 WhatsApp（Meta）：",
     priv_codes: "只用你的号码发送或核对验证码。",
@@ -769,7 +772,8 @@ export const PAGE_STRINGS = {
     proc_osm: "대략적인 위치를 지역 이름으로 바꿔요. 이름은 절대 받지 않아요.",
     proc_places: "만날 장소를 검색할 때 장소를 찾아줘요. 입력한 글자와 대략적인 위치만 받고, 이름은 절대 받지 않아요.",
     proc_translate_k: "자체 번역 서버:",
-    proc_translate: "한마디와 채팅을 번역해요. 외부 AI 회사는 보지 못해요.",
+    proc_translate: "한마디와 채팅을 우리 컴퓨터에서 번역해요.",
+    proc_translate_backup: "우리 서버가 번역하지 못할 때만, 한 줄씩 써요. Google은 이를 AI 학습에 쓰지 않아요.",
     proc_fonts: "앱의 글꼴. Google은 내 인터넷 주소를 볼 수 있어요.",
     priv_codes_k: "Telegram·WhatsApp(Meta):",
     priv_codes: "인증 코드를 보내거나 확인할 때만 번호를 써요.",
@@ -974,7 +978,8 @@ export const PAGE_STRINGS = {
     proc_osm: "おおよその位置を地域名に変えます。あなたの名前は渡しません。",
     proc_places: "待ち合わせの場所を検索するときに場所を探します。入力した文字とおおよその位置だけを受け取り、あなたの名前は渡しません。",
     proc_translate_k: "自前の翻訳サーバー：",
-    proc_translate: "ひとこととチャットを翻訳します。外部の AI 企業は内容を見ません。",
+    proc_translate: "ひとこととチャットを自前のコンピューターで翻訳します。",
+    proc_translate_backup: "自前のサーバーで翻訳できないときだけ、一文ずつ使います。Google はそれを AI の学習に使いません。",
     proc_fonts: "アプリの文字（フォント）。Google にはあなたのインターネットアドレスが見えます。",
     priv_codes_k: "Telegram・WhatsApp（Meta）：",
     priv_codes: "コードを送ったり確認したりするためだけに番号を使います。",
@@ -1238,6 +1243,7 @@ export const TRANSLATE_HOST = "llm.ggmt.sg";
  *   OpenStreetMap Nominatim a rounded point → an area name (src/lib/thirtyda-geo.mjs), never a name
  *   Google Maps             the words of a meeting place search + a rough point (src/lib/thirtyda-places-google.mjs)
  *   our translation server  lines and chat (src/lib/thirtyda-translate.mjs, TRANSLATE_HOST)
+ *   Google (Gemini API)     a line, only when our own server can't translate it (the paid API: no training on it)
  *   Google Fonts            the app's letters (every page loads them)
  *   Telegram / WhatsApp     the number, to send or check a code (and the Telegram support bot)
  *   Google, Facebook, TikTok, Apple   sign-in, only when chosen
@@ -1250,6 +1256,8 @@ export const PROCESSORS = Object.freeze([
   // Google Places (src/lib/thirtyda-places-google.mjs, owner 2026-10-16): the meeting place search, first when Tower 12 has it on.
   ["Google Maps", "proc_places"],
   [null, "proc_translate"],
+  // Its backup (owner 2026-10-17, src/lib/thirtyda-translate.mjs): the paid Gemini API, only when our own server can't.
+  ["Google (Gemini API)", "proc_translate_backup"],
   ["Google Fonts", "proc_fonts"],
   [null, "priv_codes"],
   ["Google, Facebook, TikTok, Apple", "proc_signin"],
