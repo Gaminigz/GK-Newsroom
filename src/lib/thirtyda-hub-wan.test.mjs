@@ -210,7 +210,8 @@ function seed(n, fields) {
 
 test('tokens: 32 random bytes behind wanc_ / wanw_, kept as SHA-256 + last 4 + made-at only; checked by hash', async () => {
   // (tower 14 · Agent Desk adds its own: src/lib/thirtyda-hub-desk.test.mjs)
-  assert.deepEqual(TOKEN_SETTINGS, { wan_client: 'wanc_', wan_worker: 'wanw_', desk_media: 'deskm_', desk_m1: 'desk1_', desk_m2: 'desk2_', desk_worker: 'deskw_' });
+  assert.deepEqual(TOKEN_SETTINGS, { wan_client: 'wanc_', wan_worker: 'wanw_', desk_media: 'deskm_', desk_m1: 'desk1_', desk_m2: 'desk2_', desk_worker: 'deskw_',
+    ai_gateway: 'aigw_', ai_yai: 'aiyai_', ai_iews: 'aiiews_', ai_iews_ba: 'aiba_', ai_thirtyda: 'ai30_', ai_newsroom: 'ainews_', ai_media: 'aimedia_', ai_mobile: 'aimob_' });
   const { token, view } = await makeToken(d, 'wan_client');
   assert.match(token, /^wanc_[A-Za-z0-9_-]{43}$/);
   assert.equal(Buffer.from(token.slice(5), 'base64url').length, 32);
@@ -1333,7 +1334,7 @@ test('Code page: tower 11 "Wan" (Video), its words, its own icon; tokens shown o
   const towers = js.slice(js.indexOf('const TOWERS = ['), js.indexOf('const towerNumber'));
   assert.match(towers, /key: 'wan', name: 'Wan', kind: 'Video'/);
   assert.match(js, /'Image to video on our M5 · for Yai Media Director'/);
-  assert.match(js, /fourteen towers/);
+  assert.match(js, /fifteen towers/);
   assert.match(js, /11 Wan/);
   assert.match(js, /\n {2}wan: '<rect /, 'our own drawing in LOGOS');
   for (const words of ['Not set', 'Off', 'Waiting for the M5', 'Live', 'Shown once. ', 'Done, I copied it', 'Try a render',
@@ -1349,5 +1350,5 @@ test('Code page: tower 11 "Wan" (Video), its words, its own icon; tokens shown o
   const css = readFileSync(new URL('../thirtyda-admin/app.css', import.meta.url), 'utf8');
   for (const rule of ['.cx-pill.wait', '.cx-dot.wait', '.cx-logo.wan', '.cx-tower[data-tower="wan"]', '.cx-video']) assert.ok(css.includes(rule), rule);
   const html = readFileSync(new URL('../thirtyda-admin/connections.html', import.meta.url), 'utf8');
-  assert.match(html, /fourteen towers/);
+  assert.match(html, /fifteen towers/);
 });

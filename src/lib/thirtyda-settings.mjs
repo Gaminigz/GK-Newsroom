@@ -349,6 +349,10 @@ export const TOKEN_SETTINGS = {
   // Tower 14 · Agent Desk (src/lib/thirtyda-hub-desk.mjs): one CLIENT token per app (Yai Media Director, the M1 apps,
   // the M2 apps) — the prefix says which app — and the WORKER token of the Gemini Worker on the M1.
   desk_media: "deskm_", desk_m1: "desk1_", desk_m2: "desk2_", desk_worker: "deskw_",
+  // Tower 15 · Local AI (src/lib/thirtyda-hub-ai.mjs): the M1 gateway's token, and one per app — the apps call the
+  // gateway on the M1 (llm.ggmt.sg/v2), which checks them against the SHA-256s it fetches from the hub.
+  ai_gateway: "aigw_", ai_yai: "aiyai_", ai_iews: "aiiews_", ai_iews_ba: "aiba_", ai_thirtyda: "ai30_", ai_newsroom: "ainews_",
+  ai_media: "aimedia_", ai_mobile: "aimob_",
 };
 const TOKEN_BODY_RE = /^[A-Za-z0-9_-]{43}$/; // 32 random bytes, base64url without padding
 

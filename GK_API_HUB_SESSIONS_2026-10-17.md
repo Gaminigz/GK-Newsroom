@@ -35,9 +35,9 @@ The M5 sessions can message each other. The M1 sessions can't be reached from th
 | 10 · Apple | Key saved, works |
 | 11 · Wan | Live, no tokens yet |
 | 12 · Places | List filled; Google Places key box built, **no key yet** (Gamini makes it in Google Cloud) |
-| 13 · Translate | Built, **Off**; waits for Hy-MT2 on the M1 |
+| 13 · Translate | Built, **Off**. Option 3 live (`aa4fd10`, 17 Oct): the M1 (Hy-MT2) first, the **paid Gemini API** as the backup (key, model `gemini-3.5-flash-lite`, Off, its own monthly cap). Privacy page names "Google (Gemini API)". Waits for Hy-MT2 on the M1 and the Gemini key |
 | 14 · Agent Desk | Live, **no tokens yet**; waits for the Gemini Worker to connect |
-| 15 · Local AI | **Planned**, see thread 4 |
+| 15 · Local AI | **Hub side live** (17 Oct, see thread 4): gateway token + one token per app, services and apps with caps, the M1 heartbeat, counts. Contract: `~/Desktop/GK Drop/GK to YAI /Local-AI-Tower15-hub-contract.md`. Waits for the M1 gateway (step 2) |
 
 ### 3. Stores → the app sessions
 - Both apps are in review. They load the live web app, so web changes need no new build.
@@ -67,7 +67,7 @@ The M5 sessions can message each other. The M1 sessions can't be reached from th
 | 0 | Study, read-only | main | ✅ done |
 | 1 | Snapshot the live M1, change nothing | M1 Guard Editor | brief written, waits for Gamini to paste |
 | 2 | Build the clone gateway beside the old guard | M1 session | after Gamini's go |
-| 3 | Tower 15 card (per-app tokens, M1 heartbeat) | towers session | after step 2 is designed |
+| 3 | Tower 15 card (per-app tokens, M1 heartbeat) | towers session | ✅ hub side live 17 Oct; the M1 gateway follows the contract in GK Drop |
 | 4 | Test the clone side by side (Qwen exam, demo watchdog) | M1 + main | |
 | 5 | Move new users first (30+DA translation, Newsroom, Media) | towers + main | |
 | 6 | Move IEWS one feature at a time, Claude as fallback | IEWS session + main | |
@@ -84,6 +84,8 @@ The M5 sessions can message each other. The M1 sessions can't be reached from th
 - Paste the **Tower 14 brief + contract** into the Gemini Worker, then make the Worker token on Tower 14.
 - **Google Places key** in Google Cloud → Tower 12 → Turn on.
 - **Hy-MT2** on the M1 → Tower 13 → Turn on. This may move into Tower 15 step 2.
+- **Gemini API key** (AI Studio, **billing on**) → Tower 13 backup → Try → Turn on → budget alert.
+- **Tower 15:** make the Gateway token → paste with the contract into the M1 session (step 2) → then one token per app.
 - Sign in with Apple test on the real iPhone.
 - Back up the Apple `.p8` and `~/.iews-android`.
 - Review sign-in OFF after both stores approve.

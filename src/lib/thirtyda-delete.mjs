@@ -103,6 +103,8 @@ export const COVERAGE = {
   // Tower 14 · Agent Desk (src/lib/thirtyda-hub-desk.mjs): jobs from our other apps, never a 30+DA person's data.
   thirtyda_hub_desk_jobs: null,
   thirtyda_hub_desk: null, // their GridFS bucket (pictures in and out)
+  // Tower 15 · Local AI (src/lib/thirtyda-hub-ai.mjs): daily counts per app and service, never a prompt or a person.
+  thirtyda_hub_ai_counts: null,
 };
 
 /** Names that look like collections but are cookies / browser storage keys. */

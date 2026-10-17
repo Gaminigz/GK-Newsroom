@@ -556,7 +556,7 @@ textarea.input.q-in {
 .btn-primary.q-save { width: auto; min-width: 150px; height: 38px; margin-top: 0; padding: 0 18px; }
 .btn-primary.q-save[disabled] { opacity: 0.4; cursor: default; }
 
-/* ---------- Code: the sign-in and messaging hub — fourteen towers left to right (owner 2026-10-14) ---------- */
+/* ---------- Code: the sign-in and messaging hub — fifteen towers left to right (owner 2026-10-14) ---------- */
 .cx-banner {
   margin: 0 0 16px;
   max-width: 78ch;
@@ -866,6 +866,10 @@ a.btn.cx-try-btn { display: inline-flex; align-items: center; height: 40px; colo
 .cx-logo.translate { background: #e4f0fb; color: #1a6fc7; }
 .cx-tower[data-tower="desk"] { --bar: linear-gradient(90deg, #4285f4, #34a853, #fbbc05); }
 .cx-logo.desk { background: #eef2fd; color: #3367d6; }
+.cx-tower[data-tower="ai"] { --bar: linear-gradient(90deg, #0f766e, #6366f1); }
+.cx-logo.ai { background: #e6f4f1; color: #0f766e; }
+/* Tower 15 · Local AI: an app's services, as checkboxes in two columns. */
+.cx-checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 6px 12px; margin: 8px 0; }
 .cx-pill.wait { background: #fff3e0; color: #9a5b0b; }
 .cx-dot.wait { background: var(--amber); }
 .cx-signin-body > .cx-try:first-child { padding-top: 0; border-top: 0; }

@@ -1,13 +1,15 @@
-// 30+DA super admin · Code — the sign-in and messaging hub, the GK API Hub (owner 2026-10-14): fourteen towers left to right,
+// 30+DA super admin · Code — the sign-in and messaging hub, the GK API Hub (owner 2026-10-14): fifteen towers left to right,
 // in the owner's order (1 TikTok, 2 Telegram Bot, 3 Telegram Gateway, 4 Facebook, 5 Google, 6 WhatsApp, 7 WeChat, 8 Alipay,
-// 9 YouTube, 10 Apple, 11 Wan, 12 Places, 13 Translate, 14 Agent Desk; 7–9 are "Later" placeholders), each with the keys it needs. Tower 10 is Sign in with Apple
+// 9 YouTube, 10 Apple, 11 Wan, 12 Places, 13 Translate, 14 Agent Desk, 15 Local AI; 7–9 are "Later" placeholders), each with the keys it needs. Tower 10 is Sign in with Apple
 // (owner 2026-10-14): the sign-in needs no key; its key (Team ID, Key ID, the .p8) lets a deleted account end its Apple
 // link. Tower 11 is Wan (owner 2026-10-14): image to video on our M5 for Yai Media Director — a client token and a worker
 // token (each shown once, then only its last 4), On / Off, the sizes and seconds allowed, and a Try that plays its clip
 // here (src/lib/thirtyda-hub-wan.mjs). Tower 12 is Places (owner 2026-10-15): our own Phnom Penh place list — its
 // status, Refresh now and a test search (src/lib/thirtyda-hub-places.mjs). Tower 13 is Translate (owner 2026-10-15): where
 // chat lines are translated — our own model on the M1 (src/lib/thirtyda-hub-translate.mjs). Tower 14 is Agent Desk (owner
-// 2026-10-16): the Gemini Worker on the M1 doing text, image and maps jobs for our other apps (src/lib/thirtyda-hub-desk.mjs). A strip at the top jumps to a tower; ‹ ›, the
+// 2026-10-16): the Gemini Worker on the M1 doing text, image and maps jobs for our other apps (src/lib/thirtyda-hub-desk.mjs).
+// Tower 15 is Local AI (owner 2026-10-17): the rules of the M1 gateway llm.ggmt.sg/v2 — per-app tokens, services, caps,
+// counts (src/lib/thirtyda-hub-ai.mjs). A strip at the top jumps to a tower; ‹ ›, the
 // arrow keys and the slider move along; the last tower is remembered in this browser. Later all our apps use this hub.
 // Telegram and WhatsApp send the sign-in code: offered in the app only once a test code went through since the
 // keys were saved, and stopped again by a lasting failure (no balance, bad token, template). Google, Facebook and
@@ -23,12 +25,14 @@ const $ = (id) => document.getElementById(id);
 
 // wanReveal: a Wan token just made { kind, token } — this page's memory only, until "Done" (never stored, never sent back).
 // deskReveal / deskBusy / deskTrying / deskTryError: Tower 14's tokens (a new one shown once) and Try.
+// aiReveal / aiBusy: Tower 15's tokens (a new one shown once).
 // placesBusy / placesError: Tower 12's Refresh now; placesTry: its test search { busy, result, error } (its Google key,
 // On / Off and cap: googleBlock); trTry: Tower 13's Try.
 const state = {
   data: null, busy: false, test: {}, testPhone: {}, wanReveal: null, wanBusy: null, wanTrying: false, wanTryError: null,
   placesBusy: false, placesError: null, placesTry: {}, trTry: {},
   deskReveal: null, deskBusy: null, deskTrying: null, deskTryError: null,
+  aiReveal: null, aiBusy: null,
 };
 
 // ---------- dom ----------
@@ -65,6 +69,8 @@ const LOGOS = {
   translate: '<path d="M3.5 5.5h9v7h-5l-3 2.5v-2.5h-1Z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="m6.2 11 1.8-4.2 1.8 4.2M6.8 9.6h2.4" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.5 9.5h6v7h-1v2.5l-3-2.5h-5v-3" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="M14.4 12.2h4.2M16.5 11.2v1M15 15.4c1.4-.6 2.6-1.8 3-3.2M15.4 13.2c.5 1 1.4 1.8 2.6 2.2" stroke="currentColor" stroke-width="1.1" fill="none" stroke-linecap="round"/>',
   // Agent Desk (tower 14): a desk with three small windows on it, our own drawing.
   desk: '<rect x="3" y="4" width="18" height="11" rx="2" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M6 7.5h3.5v4H6zM10.3 7.5h3.4v4h-3.4zM14.5 7.5H18v4h-3.5z" stroke="currentColor" stroke-width="1.1" fill="none"/><path d="M8 15v4.5M16 15v4.5M5.5 19.5h13" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/>',
+  // Local AI (tower 15): a chip with a spark, our own drawing.
+  ai: '<rect x="5" y="5" width="14" height="14" rx="3" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M9 2.8V5M15 2.8V5M9 19v2.2M15 19v2.2M2.8 9H5M2.8 15H5M19 9h2.2M19 15h2.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="m12 8.4 1 2.6 2.6 1-2.6 1-1 2.6-1-2.6-2.6-1 2.6-1Z" fill="currentColor"/>',
   apple: '<path d="M12 8.1c-1.1-.9-3.6-1.4-5.1.5-1.6 2-1.1 5.8.6 8.4 1 1.5 2 2.6 3.1 2.5.9-.1 1.1-.6 2.1-.6 1 0 1.3.5 2.1.6 1.2.1 2.2-1.1 3.1-2.5.6-.9 1-1.8 1.2-2.4-1.7-.8-2.5-3.3-1.1-5 .3-.4.6-.7 1-.9-1.5-1.9-4-1.7-5.2-.6Z" fill="currentColor"/><path d="M12.1 7.3c-.1-1.6 1.2-3.2 2.8-3.3.2 1.7-1.2 3.3-2.8 3.3Z" fill="currentColor"/>',
 };
 function logo(id) {
@@ -2241,7 +2247,195 @@ function pollDesk(data) {
   }, 5000);
 }
 
-// ---------- the hub: fourteen towers left to right ----------
+// ---------- Tower 15 · Local AI ----------
+// The M1 gateway, llm.ggmt.sg/v2 (src/lib/thirtyda-hub-ai.mjs, contract v1): every app calls it with its own token; the
+// gateway fetches the rules from here (each app's token as a SHA-256, what it may use, the caps) and posts a heartbeat
+// with its health and its counts. This tower: the M1 (last seen, models, memory, the Gemini Worker's windows), the
+// gateway token and one token per app (each shown once, then its last 4), each service On / Off with a daily cap, each
+// app On / Off with its allowed services and a daily cap, and the counts (today, 7 days) — never a prompt or an answer.
+
+const AI_PILLS = {
+  not_set: { pill: 'off', text: 'Not set' },
+  waiting: { pill: 'wait', text: 'Waiting for the M1' },
+  live: { pill: 'live', text: 'Live' },
+};
+const aiPill = (a) => AI_PILLS[a?.status] || AI_PILLS.not_set;
+const countLine = (t) => `${t.calls.toLocaleString('en-GB')} calls${t.failed ? ` · ${t.failed} failed` : ''}${t.avgMs ? ` · ${secs(t.avgMs)} avg` : ''}`;
+const capWords = (n) => (n ? `${n.toLocaleString('en-GB')} a day` : 'no cap');
+
+function aiGatewayLine(a) {
+  if (!a.gateway) {
+    return [h('b', { text: 'Not seen yet' }), a.tokens.gateway.set ? ' · start the gateway on the M1 with the gateway token.' : ' · make a gateway token, then start the gateway on the M1.'];
+  }
+  const g = a.gateway;
+  const live = g.seenAgoS * 1000 <= a.limits.liveMinutes * 60e3;
+  const ram = g.ram ? ` · ${(g.ram.freeMb / 1024).toFixed(1)} GB free of ${(g.ram.totalMb / 1024).toFixed(0)} GB` : '';
+  return [h('b', { class: live ? 'cx-ok' : 'cx-bad', text: `${g.name || 'M1'} seen ${ago(g.seenAgoS)} ago` }),
+    g.version ? ` · v${g.version}` : '', ram, g.uptimeS ? ` · up ${ago(g.uptimeS)}` : '', live ? '' : ' · away: apps get their fallback.'];
+}
+
+function aiModelsLine(a) {
+  const models = a.gateway?.models || [];
+  if (!models.length) return '—';
+  return h('span', {}, ...models.map((m, i) => [i ? ' · ' : '', h('b', { class: m.loaded ? 'cx-ok' : 'cx-bad', text: m.id }), m.loaded ? '' : ' (not loaded)']).flat());
+}
+
+function aiDeskLine(a) {
+  const w = a.gateway?.desk || {};
+  return h('span', {}, ...['text', 'image', 'maps'].map((t, i) => [i ? ' · ' : '', `${DESK_TYPE_WORDS[t][0]} `,
+    h('b', { class: w[t] === 'ready' || w[t] === 'busy' ? 'cx-ok' : w[t] ? 'cx-bad' : null, text: DESK_WINDOW_WORDS[w[t]] || '—' })]).flat());
+}
+
+async function makeAiToken(who, label, replacing) {
+  if (state.aiBusy) return;
+  if (replacing && !confirm(`Make a new ${label} token?\n\nThe one in use stops working once the gateway fetches its rules again (about a minute).`)) return;
+  state.aiBusy = who;
+  renderAi();
+  const r = await call('POST', `${API}/ai/tokens/${who}`, {});
+  state.aiBusy = null;
+  if (!r.ok) {
+    renderAi();
+    return toast(r.data.error || 'Could not make the token.');
+  }
+  state.aiReveal = { who, token: r.data.token }; // shown once: this page's memory only, until "Done"
+  render(r.data.view?.connections ? r.data.view : state.data);
+  $(`ai-copy-${who}`)?.focus();
+}
+
+async function revokeAiToken(who, label) {
+  if (!confirm(`Revoke the ${label} token?\n\n${who === 'gateway' ? 'The gateway cannot fetch its rules or post its heartbeat until a new token is made.' : 'That app cannot use the M1 gateway once it fetches its rules again.'}`)) return;
+  const r = await call('DELETE', `${API}/ai/tokens/${who}`, {});
+  if (!r.ok) return toast(r.data.error || 'Could not revoke it.');
+  if (state.aiReveal?.who === who) state.aiReveal = null;
+  render(r.data);
+  toast(`${label} token revoked.`);
+}
+
+function aiTokenRow(t, who, label, help) {
+  const busy = state.aiBusy === who;
+  const r = state.aiReveal?.who === who ? state.aiReveal : null;
+  return h('div', { class: 'cx-token' },
+    h('p', { class: 'cx-token-line' }, h('b', { text: `${label} token` }), ' · ',
+      t.set ? ['ends ', h('code', { class: 'cx-mono', text: `…${t.last4}` }), ` · made ${when(t.madeAt)}`] : h('span', { class: 'cx-bad', text: 'not set' })),
+    help ? h('p', { class: 'cx-help' }, help) : null,
+    r ? h('div', { class: 'cx-result ok cx-reveal' },
+      h('p', {}, h('b', { text: 'Shown once. ' }), 'Copy it now: after this only its last 4 characters show. A token made before it stops working.'),
+      h('div', { class: 'cx-copy-row' }, h('code', { class: 'cx-mono cx-address', text: r.token }), copyButton(r.token, 'Token copied.', `ai-copy-${who}`)),
+      h('button', { type: 'button', class: 'link', on: { click: () => { state.aiReveal = null; render(state.data); } } }, 'Done, I copied it')) : null,
+    h('div', { class: 'cx-actions' },
+      h('button', { type: 'button', class: 'btn cx-test-btn', id: `ai-new-${who}`, disabled: Boolean(state.aiBusy), on: { click: () => makeAiToken(who, label, t.set) } },
+        busy ? 'Making…' : t.set ? 'New token' : 'Make token'),
+      t.set ? h('button', { type: 'button', class: 'link cx-remove', on: { click: () => revokeAiToken(who, label) } }, 'Revoke') : null));
+}
+
+async function saveAi(path, body, okWords, err) {
+  if (state.busy) return;
+  state.busy = true;
+  const r = await call('PUT', `${API}/ai/${path}`, body);
+  state.busy = false;
+  if (!r.ok) {
+    if (err) {
+      err.textContent = r.data.error || 'Could not save.';
+      err.hidden = false;
+    } else toast(r.data.error || 'Could not save.');
+    return;
+  }
+  render(r.data, { fresh: `ai-${path}` });
+  toast(okWords);
+}
+
+/** A number box + Save for a daily cap. */
+function capRow(id, value, max, onSave) {
+  const err = h('p', { class: 'cx-err', id: `${id}-err`, role: 'alert', hidden: true });
+  const box = h('input', {
+    class: 'input cx-mono cx-secs', type: 'number', id, min: '0', max: String(max), step: '1', inputmode: 'numeric', value: String(value),
+    'data-draft': id, 'aria-describedby': `${id}-err`, 'aria-label': 'Calls a day at most (0 = no cap)',
+  });
+  const save = h('button', {
+    type: 'button', class: 'btn cx-test-btn', id: `${id}-save`,
+    on: {
+      click: () => {
+        const n = Number(box.value);
+        if (!Number.isInteger(n) || n < 0 || n > max) {
+          err.textContent = `A whole number from 0 (no cap) to ${max.toLocaleString('en-GB')}.`;
+          err.hidden = false;
+          box.focus();
+          return;
+        }
+        onSave(n, err);
+      },
+    },
+  }, 'Save');
+  return [h('div', { class: 'cx-test-row' }, h('span', { class: 'cx-fine', text: 'Calls a day at most' }), box, save), err];
+}
+
+function aiServicesBlock(a) {
+  return h('div', { class: 'cx-try' },
+    h('h3', { text: 'Services' }),
+    ...a.services.map((s) => h('div', { class: 'cx-token' },
+      h('p', { class: 'cx-token-line' }, h('b', { text: s.name }), ` · ${s.note} · `, h('span', { class: s.enabled ? 'cx-ok' : 'cx-bad', text: s.enabled ? 'On' : 'Off' }),
+        ` · ${capWords(s.dailyCap)} · today ${countLine(s.today)} · 7 days ${countLine(s.week)}`),
+      h('div', { class: 'cx-actions' },
+        h('button', { type: 'button', class: 'btn cx-test-btn', id: `ai-svc-${s.id}`, 'aria-pressed': String(s.enabled),
+          on: { click: () => saveAi(`services/${s.id}`, { enabled: !s.enabled }, `${s.name} ${s.enabled ? 'off' : 'on'}.`) } }, s.enabled ? 'Turn off' : 'Turn on')),
+      ...capRow(`ai-svc-cap-${s.id}`, s.dailyCap, a.limits.capMax, (n, err) => saveAi(`services/${s.id}`, { dailyCap: n }, `${s.name}: ${capWords(n)}.`, err)))));
+}
+
+function aiAppBlock(a, app) {
+  const names = Object.fromEntries(a.services.map((s) => [s.id, s.name]));
+  const boxes = a.services.map((s) => {
+    const never = app.never.includes(s.id);
+    return h('label', { class: 'cx-check-label', for: `ai-${app.id}-${s.id}` },
+      h('input', { type: 'checkbox', id: `ai-${app.id}-${s.id}`, checked: app.allowed.includes(s.id), disabled: never, 'data-draft': `ai-apps/${app.id}` }),
+      h('span', { text: never ? `${s.name} — never (private chats)` : s.name }));
+  });
+  const err = h('p', { class: 'cx-err', id: `ai-${app.id}-err`, role: 'alert', hidden: true });
+  const saveAllowed = h('button', {
+    type: 'button', class: 'btn cx-test-btn', id: `ai-${app.id}-save`,
+    on: {
+      click: () => {
+        const allowed = a.services.map((s) => s.id).filter((id) => $(`ai-${app.id}-${id}`)?.checked);
+        saveAi(`apps/${app.id}`, { allowed }, `${app.name}: ${allowed.length ? allowed.map((x) => names[x]).join(', ') : 'nothing'}.`, err);
+      },
+    },
+  }, 'Save services');
+  return h('div', { class: 'cx-try' },
+    h('h3', { text: app.name }),
+    h('p', { class: 'cx-help' }, h('span', { class: app.enabled ? 'cx-ok' : 'cx-bad', text: app.enabled ? 'On' : 'Off' }),
+      ` · ${capWords(app.dailyCap)} · today ${countLine(app.today)} · 7 days ${countLine(app.week)}`),
+    aiTokenRow(a.tokens.apps[app.id], app.id, app.name, null),
+    h('div', { class: 'cx-checks' }, boxes),
+    h('div', { class: 'cx-actions' }, saveAllowed,
+      h('button', { type: 'button', class: 'btn cx-test-btn', id: `ai-${app.id}-power`, 'aria-pressed': String(app.enabled),
+        on: { click: () => saveAi(`apps/${app.id}`, { enabled: !app.enabled }, `${app.name} ${app.enabled ? 'off' : 'on'}.`) } }, app.enabled ? 'Turn off' : 'Turn on')),
+    err,
+    ...capRow(`ai-app-cap-${app.id}`, app.dailyCap, a.limits.capMax, (n, e) => saveAi(`apps/${app.id}`, { dailyCap: n }, `${app.name}: ${capWords(n)}.`, e)));
+}
+
+function aiCard(a) {
+  return h('section', { class: 'panel cx-card cx-signin', 'aria-labelledby': 'cx-ai' },
+    h('div', { class: 'cx-head' }, logo('ai'),
+      h('div', { class: 'cx-title' }, h('h2', { id: 'cx-ai', text: 'Local AI' }), h('p', { class: 'cx-sub', text: 'llm.ggmt.sg/v2 on the M1 · one token per app' }))),
+    h('dl', { class: 'cx-status' },
+      row('M1', ...aiGatewayLine(a)),
+      row('Models', aiModelsLine(a)),
+      row('Agent Desk', aiDeskLine(a)),
+      row('Rules', 'Local models first; Claude only where an app allows it. 30+DA: translate only, never the Gemini Worker or Claude. Counts only, never a prompt or an answer.')),
+    h('div', { class: 'cx-signin-body' },
+      h('div', { class: 'cx-try' }, h('h3', { text: 'Gateway' }),
+        aiTokenRow(a.tokens.gateway, 'gateway', 'Gateway', 'Goes in the gateway’s settings on the M1. It can only fetch these rules and post its heartbeat; the apps never call this hub.')),
+      aiServicesBlock(a),
+      ...a.apps.map((app) => aiAppBlock(a, app)),
+      h('p', { class: 'cx-fine' }, `Counts are kept ${a.limits.keepDays} days. The gateway fetches the rules every ${a.limits.pollSeconds} s, so a change here reaches it within about a minute.`),
+      addressRow('Endpoint', `for the M1 gateway: contract ${a.contract || 'v1'} (GET /config, POST /heartbeat), listed at the top of src/lib/thirtyda-hub-ai.mjs. The gateway token goes in Authorization: Bearer.`, a.endpoint)));
+}
+
+/** Tower 15's own draws: the Local AI tower only. */
+function renderAi() {
+  if (!state.data || !redrawTower('ai')) render(state.data);
+}
+
+// ---------- the hub: fifteen towers left to right ----------
 
 /** A sign-in tower (TikTok, Facebook, Google): its keys card, its pill from signinStatus. */
 const signinTower = (id, name) => ({
@@ -2290,6 +2484,10 @@ const TOWERS = [
   {
     key: 'desk', name: 'Agent Desk', kind: 'Agents', has: (byId, data) => Boolean(data?.desk),
     status: (byId, data) => deskPill(data.desk), draw: (byId, data) => deskCard(data.desk),
+  },
+  {
+    key: 'ai', name: 'Local AI', kind: 'AI gateway', has: (byId, data) => Boolean(data?.ai),
+    status: (byId, data) => aiPill(data.ai), draw: (byId, data) => aiCard(data.ai),
   },
 ];
 const towerNumber = (t) => TOWERS.indexOf(t) + 1;

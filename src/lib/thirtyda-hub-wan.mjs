@@ -838,13 +838,16 @@ const ROUTES = [
 ];
 
 /**
- * /30da/hub/… — /30da/hub/wan (tower 11) and /30da/hub/desk (tower 14 · Agent Desk, src/lib/thirtyda-hub-desk.mjs, loaded
- * on its first call). Every answer is JSON (or a clip / a picture); nothing here sets or reads a cookie.
+ * /30da/hub/… — /30da/hub/wan (tower 11), /30da/hub/desk (tower 14 · Agent Desk, src/lib/thirtyda-hub-desk.mjs) and
+ * /30da/hub/ai (tower 15 · Local AI, src/lib/thirtyda-hub-ai.mjs), each loaded on its first call. Every answer is JSON (or a clip / a picture); nothing here sets or reads a cookie.
  */
 export async function handleThirtyDaHub(req, res, url) {
   const path = url.pathname.replace(/\/+$/, "") || "/";
   if (path === "/30da/hub/desk" || path.startsWith("/30da/hub/desk/")) {
     return (await import("./thirtyda-hub-desk.mjs")).handleDesk(req, res, path);
+  }
+  if (path === "/30da/hub/ai" || path.startsWith("/30da/hub/ai/")) {
+    return (await import("./thirtyda-hub-ai.mjs")).handleAi(req, res, path);
   }
   const ctx = { req, res, sent: false };
   try {

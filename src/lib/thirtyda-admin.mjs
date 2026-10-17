@@ -56,6 +56,11 @@
  *   PUT  /30da/admin/api/connections/desk/options    { types: { text?, image?, maps? } } → the page's data | 422
  *   POST /30da/admin/api/connections/desk/try        { type } a fixed, harmless job of that type (source 'try')
  *   GET  /30da/admin/api/connections/desk/files/:id  a Try's picture, never an app's
+ *   Tower 15 · Local AI (the M1 gateway llm.ggmt.sg/v2: per-app tokens and rules, src/lib/thirtyda-hub-ai.mjs) — the
+ *   page's data carries an `ai` block (status, the M1's last heartbeat, tokens' last 4, services, apps, counts only):
+ *   POST|DELETE /30da/admin/api/connections/ai/tokens/gateway|yai|iews|iews_ba|thirtyda|newsroom|media|mobile
+ *   PUT  /30da/admin/api/connections/ai/services/:id  { enabled?, dailyCap? } → the page's data | 422
+ *   PUT  /30da/admin/api/connections/ai/apps/:id      { enabled?, allowed?, dailyCap? } → the page's data | 422
  *   Tower 13 · Translate (where chat lines are translated, src/lib/thirtyda-hub-translate.mjs) — the page's data carries a
  *   `translate` block (where: host, model, prompt style; On / Off, the wait; the app's numbers; the last Try; never the token):
  *   PUT  /30da/admin/api/connections/translate        { url, model, token?, style } (empty token = keep the saved one)
@@ -175,6 +180,7 @@ import { translateAdminView, checkTranslateFields, checkGeminiFields, saveTransl
 import { resetTranslate } from "./thirtyda-translate.mjs";
 import { placeIndex, placeSearch, placesGoogle } from "./thirtyda-meet.mjs";
 import { checkGooglePlacesFields, saveGoogleOptions } from "./thirtyda-places-google.mjs";
+import { aiAdminView, newAiToken, revokeAiToken, saveAiService, saveAiApp, APP_IDS, SERVICE_IDS } from "./thirtyda-hub-ai.mjs";
 import { deskAdminView, newDeskToken, revokeDeskToken, saveDeskOptions, queueDeskTry, deskTryFile } from "./thirtyda-hub-desk.mjs";
 import { wanAdminView, newWanToken, revokeWanToken, saveWanOptions, queueWanTry, wanTryClip, sendClip } from "./thirtyda-hub-wan.mjs";
 import {
@@ -599,6 +605,11 @@ async function connectionsView(d, req) {
       console.error("[30da admin] places:", err instanceof Error ? err.message : err);
       return null;
     }),
+    // Tower 15 · Local AI (src/lib/thirtyda-hub-ai.mjs): never a token or a hash, counts only. A failure: without it.
+    ai: await aiAdminView(d, req).catch((err) => {
+      console.error("[30da admin] ai:", err instanceof Error ? err.message : err);
+      return null;
+    }),
     // Tower 14 · Agent Desk (src/lib/thirtyda-hub-desk.mjs): never a token, a text prompt or a picture. A failure: without it.
     desk: await deskAdminView(d, req).catch((err) => {
       console.error("[30da admin] desk:", err instanceof Error ? err.message : err);
@@ -837,6 +848,45 @@ async function placesRoute(req, res, m) {
   const r = await placesTry(placeSearch(), { q: body.value?.q, lang: body.value?.lang });
   if (r.error) return json(res, 422, { error: r.error });
   return json(res, 200, r);
+}
+
+/**
+ * Tower 15 · Local AI on the Code page (signed in; writes are same-origin JSON: checked before this). m[1] = what,
+ * m[2] = whose token, m[3] = a service, m[4] = an app.
+ *   POST tokens/:who → { token, who, view }: the token in full this once. DELETE tokens/:who → the page's data.
+ *   PUT services/:id, PUT apps/:id → the page's data | 422 { error, field }.
+ */
+async function aiRoute(req, res, m) {
+  const d = await db();
+  const what = m[2] ? "token" : m[3] ? "service" : "app";
+  const allowed = what === "token" ? ["POST", "DELETE"] : ["PUT"];
+  if (!allowed.includes(req.method)) {
+    req.resume();
+    return json(res, 404, { error: "Not found." });
+  }
+  if (writeLimited(req)) {
+    req.resume();
+    return json(res, 429, { error: "Too many changes. Try again in a few minutes." });
+  }
+  if (what === "token") {
+    req.resume();
+    if (req.method === "DELETE") {
+      const r = await revokeAiToken(d, m[2]);
+      await audit(req, "ai_token_revoke", { who: m[2], removed: r.removed });
+      return json(res, 200, await connectionsView(d, req));
+    }
+    const { token, view: made } = await newAiToken(d, m[2], { by: "superadmin" });
+    await audit(req, "ai_token_new", { who: m[2], last4: made.last4 });
+    return json(res, 200, { token, who: m[2], view: await connectionsView(d, req) });
+  }
+  const body = await readJsonBody(req, 1e4);
+  if (body.tooLarge) return json(res, 413, { error: "That is far too long to save." });
+  if (body.bad) return json(res, 400, { error: "Send it as JSON." });
+  const r = what === "service" ? await saveAiService(d, m[3], body.value) : await saveAiApp(d, m[4], body.value);
+  if (!r.ok) return json(res, 422, { error: r.error, field: r.field });
+  const id = m[3] ?? m[4];
+  await audit(req, what === "service" ? "ai_service" : "ai_app", { id, ...(what === "service" ? r.config.services[id] : r.config.apps[id]) });
+  return json(res, 200, await connectionsView(d, req));
 }
 
 /**
@@ -1404,6 +1454,10 @@ export async function handleThirtyDaAdmin(req, res, url) {
   // Tower 11 · Wan: tokens, options, Try, and the Try's clip (src/lib/thirtyda-hub-wan.mjs).
   m = sub.match(/^\/api\/connections\/wan\/(tokens\/(client|worker)|options|try|clips\/([a-f0-9]{32}))$/);
   if (m) return wanRoute(req, res, m);
+
+  // Tower 15 · Local AI: tokens, services, apps (src/lib/thirtyda-hub-ai.mjs).
+  m = sub.match(new RegExp(`^/api/connections/ai/(tokens/(gateway|${APP_IDS.join("|")})|services/(${SERVICE_IDS.join("|")})|apps/(${APP_IDS.join("|")}))$`));
+  if (m) return aiRoute(req, res, m);
 
   // Tower 14 · Agent Desk: tokens, options, Try, a Try's picture (src/lib/thirtyda-hub-desk.mjs).
   m = sub.match(/^\/api\/connections\/desk\/(tokens\/(media|m1|m2|worker)|options|try|files\/([a-f0-9]{32}))$/);
