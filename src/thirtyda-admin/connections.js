@@ -650,26 +650,6 @@ const FIELD_CARDS = {
       },
     ],
   },
-  // Tower 13's backup (owner 2026-10-17, "option 3"): the PAID Gemini API, asked only when the M1 cannot answer.
-  translategemini: {
-    title: 'Gemini API (paid)',
-    sub: 'Translates a line only when the M1 cannot',
-    what: 'key',
-    steps: [
-      ['Open ', link('https://aistudio.google.com/apikey', 'aistudio.google.com/apikey'), ' → “Create API key” → pick or make a Google Cloud project (e.g. “30DA translate”).'],
-      ['Turn billing ON for that project (AI Studio → “Billing”, or the Cloud console). The free tier may use what it is sent to improve Google’s products; the paid tier does not.'],
-      ['Paste the key here, keep the model (or a newer small Flash-Lite) → Save.'],
-      ['Try a few lines below with “Gemini API” picked → Turn on.'],
-      ['In the Cloud console “Billing” → “Budgets & alerts”, set a small monthly budget with an email alert. The cap below stops us too.'],
-    ],
-    fields: [
-      {
-        key: 'key', label: 'API key', secret: true, placeholder: 'AIza… (39 characters)',
-        help: ['From Google AI Studio (billing on). Saved locked; only its last 4 characters show again.'],
-      },
-      { key: 'model', label: 'Model', placeholder: 'gemini-3.5-flash-lite', fallback: 'gemini-3.5-flash-lite', help: ['A small Flash-Lite model is plenty for one line.'] },
-    ],
-  },
   // Tower 13 · Translate (src/lib/thirtyda-hub-translate.mjs): the pick is Tencent Hy-MT2-1.8B in LM Studio on the M1.
   translate: {
     title: 'Translate',
@@ -782,14 +762,13 @@ function fieldsForm(c, data) {
         render(r.data, { fresh: c.id });
         const now = r.data.connections.find((x) => x.id === c.id) ?? r.data[c.id];
         toast(c.id === 'googleplaces' ? `Google Places key saved · ends …${r.data.places?.google?.masks?.key || ''}. Try a search below, then turn it on.`
-          : c.id === 'translategemini' ? `Gemini API key saved · ends …${r.data.translate?.gemini?.masks?.key || ''}. Try a line below with “Gemini API” picked.`
           : c.id === 'translate' ? `Translate keys saved · token ends …${now?.masks?.token}. Try a line below.`
           : c.id === 'whatsapp'
           ? `WhatsApp keys saved · token ends …${now.masks?.token}. Send a test code to check them.`
           : c.id === 'apple' ? `Apple key saved · key ends …${now.masks?.privateKey}. Press “Try the key” to check it.`
             : `${NAMES[c.id]} keys saved · secret ends …${now.last4}. Press Try sign-in to check them.`);
         if (c.id === 'apple') $('apple-try')?.focus();
-        if (c.id === 'translate' || c.id === 'translategemini') $('tr-text')?.focus();
+        if (c.id === 'translate') $('tr-text')?.focus();
         if (c.id === 'googleplaces') $('places-q')?.focus();
         if (c.id === 'whatsapp') $('wa-phone')?.focus();
       },
@@ -970,7 +949,6 @@ const REMOVE_TEXT = {
   google: () => 'Remove the Google keys?\n\nThe Google button in the app goes back to “Coming soon”, and nobody can sign in with Google until keys are saved again.',
   facebook: () => 'Remove the Facebook keys?\n\nThe Facebook button in the app goes back to “Coming soon”, and nobody can sign in with Facebook until keys are saved again.',
   tiktok: () => 'Remove the TikTok keys?\n\nThe TikTok button in the app goes back to “Coming soon”, and nobody can sign in with TikTok until keys are saved again.',
-  translategemini: () => 'Remove the Gemini API key?\n\nWhen the M1 cannot translate a line, people see the original line again.',
   translate: () => 'Remove the Translate keys?\n\nNew chat lines are no longer translated (people see the original) until keys are saved again.',
   googleplaces: () => 'Remove the Google Places key?\n\nThe app stops asking Google at once; place searches use our own list and OpenStreetMap only.',
   apple: () => 'Remove the Apple key?\n\nSign in with Apple keeps working on the iPhone app. Only the Apple link of a deleted account is no longer ended at Apple until a key is saved again.',
@@ -981,7 +959,7 @@ async function removeConnection(id) {
   if (!r.ok) return toast(r.data.error || 'Could not remove it.');
   state.test[id] = null;
   render(r.data, { fresh: id });
-  toast(id === 'translategemini' ? 'Gemini API key removed.' : id === 'googleplaces' ? 'Google Places key removed.' : id === 'translate' ? 'Translate keys removed.' : id === 'telegram' ? 'Telegram token removed.' : id === 'telegram-bot' ? 'Telegram bot removed.' : id === 'apple' ? 'Apple key removed.' : `${NAMES[id]} keys removed.`);
+  toast(id === 'googleplaces' ? 'Google Places key removed.' : id === 'translate' ? 'Translate keys removed.' : id === 'telegram' ? 'Telegram token removed.' : id === 'telegram-bot' ? 'Telegram bot removed.' : id === 'apple' ? 'Apple key removed.' : `${NAMES[id]} keys removed.`);
 }
 
 // ---------- the "Later" towers (7–9): not built yet (10, Apple, only while the server sends no apple connection) ----------
@@ -1772,8 +1750,7 @@ function trTokenLine(t) {
 }
 
 function trAppLine(t) {
-  const backup = t.gemini?.set && t.gemini.options.enabled;
-  if (!t.host) return backup ? 'The M1 is not set: lines go to the Gemini API backup (below).' : 'Nothing is translated: people see the original line.';
+  if (!t.host) return 'Nothing is translated: people see the original line.';
   if (!t.options.enabled) return [h('b', { class: 'cx-bad', text: 'Off: ' }), 'nothing is translated; people see the original line. Try it, then turn it on.'];
   const s = t.stats;
   return `On · since the server started: ${s.ok} translated, ${s.failed} failed, ${s.cached} from memory${s.avgMs ? ` · about ${secs(s.avgMs)} a line` : ''}.`;
@@ -1842,106 +1819,11 @@ function trOptionsBlock(t) {
     err);
 }
 
-const GEMINI_STATE = {
-  not_set: ['cx-bad', 'Not set', ' · when the M1 cannot translate a line, people see the original.'],
-  unreadable: ['cx-bad', 'Saved with another lock key', ' · save the key again.'],
-  off: ['cx-bad', 'Off', ' · the key is saved; try a line below, then turn it on.'],
-  cap: ['cx-bad', 'The month’s cap is reached', ' · not asked until the 1st.'],
-  failing: ['cx-bad', 'Failing', ' · its last line failed (below).'],
-  saved: ['cx-ok', 'On', ' · ready; not needed yet.'],
-  live: ['cx-ok', 'On', ' · translates when the M1 cannot.'],
-};
-
-function geminiLine(g) {
-  const [cls, word, rest] = GEMINI_STATE[g.state] || GEMINI_STATE.not_set;
-  return [h('b', { class: cls, text: word }), rest, g.set && g.masks?.key ? [' · key ', h('code', { class: 'cx-mono', text: `…${g.masks.key}` })] : '',
-    g.fields?.model ? ` · ${g.fields.model}` : ''];
-}
-
-function geminiUsageLine(g) {
-  const u = g.usage;
-  const cap = g.options.monthlyCap;
-  const out = [h('b', { class: u.calls >= cap ? 'cx-bad' : 'cx-ok', text: `${u.calls.toLocaleString('en-GB')} of ${cap.toLocaleString('en-GB')}` }),
-    ` lines this month (${u.month}, Phnom Penh time) · ${u.ok} good · ${u.failed} failed`];
-  if (u.lastError && (!u.lastOk || u.lastError.at > u.lastOk.at)) out.push(' · ', h('span', { class: 'cx-bad', text: u.lastError.message }), ` · ${when(u.lastError.at)}`);
-  else if (u.lastOk) out.push(` · last good ${when(u.lastOk.at)}${Number.isFinite(u.lastOk.ms) ? `, ${secs(u.lastOk.ms)}` : ''}`);
-  return out;
-}
-
-async function saveGeminiOptions(body, err) {
-  if (state.busy) return;
-  state.busy = true;
-  const r = await call('PUT', `${API}/translate/gemini`, body);
-  state.busy = false;
-  if (!r.ok) {
-    if (err) {
-      err.textContent = r.data.error || 'Could not save.';
-      err.hidden = false;
-    } else toast(r.data.error || 'Could not save.');
-    return;
-  }
-  render(r.data, { fresh: 'translategemini-opt' });
-  toast('enabled' in body ? `Gemini API backup ${r.data.translate?.gemini?.options.enabled ? 'on' : 'off'}.` : 'Monthly cap saved.');
-}
-
-/** The backup: the paid Gemini API — set-up steps, the key box, this month's meter, On / Off and the cap. */
-function trGeminiBlock(t) {
-  const g = t.gemini;
-  if (!g) return null;
-  const card = FIELD_CARDS.translategemini;
-  const o = g.options;
-  const [min, max] = g.capRange;
-  const err = h('p', { class: 'cx-err', id: 'tg-opt-err', role: 'alert', hidden: true });
-  const cap = h('input', {
-    class: 'input cx-mono cx-secs', type: 'number', id: 'tg-cap', min: String(min), max: String(max), step: '1',
-    inputmode: 'numeric', value: String(o.monthlyCap), 'data-draft': 'translategemini-opt', 'aria-describedby': 'tg-opt-err',
-  });
-  const power = h('button', {
-    type: 'button', class: 'btn cx-test-btn', id: 'tg-power', 'aria-pressed': String(o.enabled), disabled: !g.set || !g.readable,
-    on: { click: () => saveGeminiOptions({ enabled: !o.enabled }) },
-  }, o.enabled ? 'Turn off' : 'Turn on');
-  const save = h('button', {
-    type: 'button', class: 'btn cx-test-btn', id: 'tg-cap-save',
-    on: {
-      click: () => {
-        const n = Number(cap.value);
-        if (!Number.isInteger(n) || n < min || n > max) {
-          err.textContent = `A whole number of lines from ${min} to ${max.toLocaleString('en-GB')}.`;
-          err.hidden = false;
-          cap.focus();
-          return;
-        }
-        saveGeminiOptions({ monthlyCap: n }, err);
-      },
-    },
-  }, 'Save');
-  const st = g.stats;
-  return h('div', { class: 'cx-try' },
-    h('h3', { text: 'Backup: Gemini API (paid)' }),
-    h('p', { class: 'cx-help' }, 'Asked only when the M1 cannot answer (not set, Off, paused, too slow or an error). The paid API: Google does not train on what it is sent. Never the Gemini website or Agent Desk for a chat line.'),
-    h('div', { class: 'cx-where' },
-      h('p', { class: 'cx-help' }, h('b', { text: 'How to set it up:' })),
-      h('ol', { class: 'cx-steps' }, card.steps.map((step) => h('li', {}, ...step)))),
-    fieldsForm({ ...g, id: 'translategemini' }, state.data),
-    h('dl', { class: 'cx-status' },
-      row('Backup', ...geminiLine(g)),
-      row('This month', ...geminiUsageLine(g)),
-      row('Since start', `${st.ok} translated, ${st.failed} failed${st.avgMs ? ` · about ${secs(st.avgMs)} a line` : ''}${st.pausedUntil ? ` · paused until ${when(st.pausedUntil)}` : ''}`)),
-    h('div', { class: 'cx-power' }, power, h('p', { class: 'cx-help' }, o.enabled
-      ? 'On: a line the M1 cannot translate goes to the Gemini API.'
-      : 'Off: when the M1 cannot translate, people see the original line. Tries below still work.')),
-    h('label', { class: 'field cx-secs-label', for: 'tg-cap' }, h('span', { class: 'label', text: 'Most lines a month' })),
-    h('div', { class: 'cx-test-row' }, cap, save),
-    h('p', { class: 'cx-help' }, `Past it, the backup is not asked until the 1st (Phnom Penh time) (${min}–${max.toLocaleString('en-GB')}; 0 = never). Each sent message is up to 4 lines (one per language).`),
-    err);
-}
-
 async function tryTranslateNow() {
   if (state.trTry.busy) return;
   const text = ($('tr-text')?.value || '').trim();
   const from = $('tr-from')?.value || 'en';
   const to = $('tr-to')?.value || 'all';
-  const provider = $('tr-provider')?.value || 'm1';
   if (!text) {
     state.trTry = { error: 'Write a line to translate.' };
     renderTranslate();
@@ -1950,7 +1832,7 @@ async function tryTranslateNow() {
   }
   state.trTry = { busy: true, result: state.trTry.result };
   renderTranslate();
-  const r = await call('POST', `${API}/translate/try`, { text, from, to, provider });
+  const r = await call('POST', `${API}/translate/try`, { text, from, to });
   state.trTry = r.ok ? { result: r.data } : { error: r.data.error || 'Could not try.' };
   renderTranslate(r.data.view);
   $('tr-text')?.focus();
@@ -1961,7 +1843,7 @@ function trTryResult(tt) {
   const r = tt.result;
   if (!r) return null;
   return h('div', { class: `cx-result ${r.ok ? 'ok' : 'bad'}` },
-    h('p', {}, h('b', { text: r.ok ? 'Works ✓ ' : 'Failed. ' }), `${r.provider === 'gemini' ? 'Gemini API' : r.host} · ${r.model || 'the loaded model'}${r.enabled ? '' : ' · still Off in the app'}`),
+    h('p', {}, h('b', { text: r.ok ? 'Works ✓ ' : 'Failed. ' }), `${r.host} · ${r.model || 'the loaded model'}${r.enabled ? '' : ' · the app is still Off'}`),
     h('ol', { class: 'cx-jobs' }, r.results.map((x) => h('li', {},
       h('span', { class: `cx-job ${x.ok ? 'done' : 'failed'}`, text: LANG_WORDS[x.to] || x.to }), ' ',
       x.ok ? h('span', { class: 'cx-tr-out', lang: x.to, text: x.text }) : h('span', { class: 'cx-bad', text: x.error }),
@@ -1976,16 +1858,13 @@ function trTryBlock(t) {
     class: 'input cx-area', id: 'tr-text', rows: '2', maxlength: '500', 'aria-label': 'Line to translate', 'data-draft': 'translate-try',
     placeholder: 'e.g. Would you like to meet for coffee on Saturday?',
   });
-  const provider = h('select', { class: 'input cx-lang', id: 'tr-provider', 'aria-label': 'Translate with', 'data-draft': 'translate-try' },
-    h('option', { value: 'm1', text: 'The M1' }), h('option', { value: 'gemini', text: 'Gemini API' }));
-  const btn = h('button', { type: 'button', class: 'btn cx-test-btn', id: 'tr-try', disabled: Boolean(tt.busy) || (!t.host && !t.gemini?.set), on: { click: tryTranslateNow } },
+  const btn = h('button', { type: 'button', class: 'btn cx-test-btn', id: 'tr-try', disabled: Boolean(tt.busy) || !t.host, on: { click: tryTranslateNow } },
     tt.busy ? 'Translating…' : 'Translate');
   return h('div', { class: 'cx-try' },
     h('h3', { text: 'Try' }),
-    h('p', { class: 'cx-help' }, t.host || t.gemini?.set
-      ? 'One line through the M1 or the Gemini API, even while Off; “All four” goes one language after the other. The line is not kept. A Gemini try counts against its month. Check Khmer with a Khmer speaker.'
-      : 'Save the M1’s address, model and token (or the Gemini API key) first.'),
-    h('div', { class: 'cx-test-row' }, h('span', { class: 'cx-fine', text: 'With' }), provider),
+    h('p', { class: 'cx-help' }, t.host
+      ? 'One line through the saved server, even while Off; “All four” goes one language after the other. The line is not kept. Check Khmer with a Khmer speaker.'
+      : 'Save the address, model and token first.'),
     text,
     h('div', { class: 'cx-test-row cx-tr-row' }, langSelect('tr-from', 'Written in', null), h('span', { class: 'cx-fine', text: '→' }),
       langSelect('tr-to', 'Translate into', h('option', { value: 'all', text: 'All four' })), btn),
@@ -2002,7 +1881,6 @@ function translateCard(t, data) {
       row('Token', ...[trTokenLine(t)].flat()),
       row('In the app', trAppLine(t)),
       row('Last', ...[trLastLine(t)].flat()),
-      t.gemini ? row('Backup', ...geminiLine(t.gemini)) : null,
       t.lastTry ? row('Last try', h('b', { class: t.lastTry.ok ? 'cx-ok' : 'cx-bad', text: t.lastTry.ok ? 'worked ✓' : 'failed' }),
         ` · ${when(t.lastTry.at)}${t.lastTry.detail ? ` · ${t.lastTry.detail}` : ''}`) : null),
     h('div', { class: 'cx-signin-body' },
@@ -2011,7 +1889,6 @@ function translateCard(t, data) {
         h('ol', { class: 'cx-steps' }, card.steps.map((step) => h('li', {}, ...step)))),
       fieldsForm(t, data),
       trOptionsBlock(t),
-      trGeminiBlock(t),
       trTryBlock(t)));
 }
 

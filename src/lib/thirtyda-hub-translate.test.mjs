@@ -13,10 +13,7 @@ import {
   translate, translateAll, translateEnabled, translateConfig, translateRequest, translateStats, setTranslateTestHooks, endpointOf,
   styleOfModel, cleanTranslation, COOL_OFF_MS, TIMEOUT_DEFAULT_S,
 } from './thirtyda-translate.mjs';
-import { checkTranslateFields, checkGeminiFields, translateAdminView, saveTranslateOptions, saveGeminiOptions, translateTry } from './thirtyda-hub-translate.mjs';
-import {
-  geminiRequest, geminiUrl, geminiUsage, GEMINI_MODEL_DEFAULT, GEMINI_CAP_DEFAULT, GEMINI_SETTING,
-} from './thirtyda-translate.mjs';
+import { checkTranslateFields, translateAdminView, saveTranslateOptions, translateTry } from './thirtyda-hub-translate.mjs';
 
 const TOKEN = 'm1tok_FAKE0123456789abcdefWXYZ';
 const TOWER = { url: 'https://llm.ggmt.sg', model: 'hy-mt2-1.8b', token: TOKEN, style: 'hy-mt' };
@@ -29,16 +26,10 @@ function fakeDb() {
     async findOne(q) { const x = docs.get(q._id); return x ? structuredClone(x) : null; },
     async replaceOne(q, doc) { docs.set(q._id, structuredClone({ ...doc, _id: q._id })); return { acknowledged: true }; },
     async deleteOne(q) { return { deletedCount: docs.delete(q._id) ? 1 : 0 }; },
-    async updateOne(q, u, opts = {}) {
-      let x = docs.get(q._id);
-      if (x && q.month?.$ne !== undefined && x.month === q.month.$ne) x = null; // the backup's month counter
-      if (!x || (q.box?.$exists && !x.box)) {
-        if (!opts.upsert || docs.has(q._id)) return { matchedCount: 0 };
-        x = { _id: q._id, ...structuredClone(u.$setOnInsert || {}) };
-        docs.set(q._id, x);
-      }
-      Object.assign(x, structuredClone(u.$set || {}));
-      for (const [k, n] of Object.entries(u.$inc || {})) x[k] = (x[k] ?? 0) + n;
+    async updateOne(q, u) {
+      const x = docs.get(q._id);
+      if (!x || (q.box?.$exists && !x.box)) return { matchedCount: 0 };
+      Object.assign(x, structuredClone(u.$set));
       return { matchedCount: 1 };
     },
   };
@@ -290,157 +281,7 @@ test('Code page: tower 13 "Translate" (Language) after Places, its boxes and wor
   const admin = readFileSync(new URL('./thirtyda-admin.mjs', import.meta.url), 'utf8');
   assert.match(admin, /translate: "Translate",/);
   assert.match(admin, /translate: \(input, current\) => checkTranslateFields\(input, current\),/);
-  assert.match(admin, /m = sub\.match\(\/\^\\\/api\\\/connections\\\/translate\\\/\(options\|try\|gemini\)\$\/\);\n {2}if \(m\) return translateRoute\(req, res, m\);/);
+  assert.match(admin, /m = sub\.match\(\/\^\\\/api\\\/connections\\\/translate\\\/\(options\|try\)\$\/\);\n {2}if \(m\) return translateRoute\(req, res, m\);/);
   assert.match(admin, /translate: await translateAdminView\(d\)\.catch\(/, 'a Translate failure never takes the page down');
-  assert.match(admin, /await audit\(req, "translate_try", \{ ok: r\.ok, provider: r\.provider, from: r\.from, to: r\.results\.map\(\(x\) => x\.to\), model: r\.model \}\);/, 'never the line');
-});
-
-// ---------------------------------------------------------------- the backup: the paid Gemini API (owner 2026-10-17)
-
-const GKEY = 'AIzaSyFAKEfakeFAKEfake0123456789abcdeXy';
-const GEMINI = { key: GKEY, model: 'gemini-3.5-flash-lite' };
-/** The M1 and the Gemini API in one fetch: `m1(body)` / `gemini(body)` give a reply (content, or a Response). */
-function bothFetch({ m1 = (b) => `[m1 ${b.messages.at(-1).content.split('\n\n').pop()}]`, gemini = (b) => `[gemini ${b.contents[0].parts[0].text}]` } = {}) {
-  const calls = [];
-  const fn = async (url, init) => {
-    const body = JSON.parse(init.body);
-    const who = String(url).includes('generativelanguage') ? 'gemini' : 'm1';
-    calls.push({ who, url: String(url), init, body });
-    const out = await (who === 'gemini' ? gemini : m1)(body, init);
-    if (out instanceof Response) return out;
-    if (who === 'gemini') return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: out }] }, finishReason: 'STOP' }] }), { status: 200 });
-    return new Response(JSON.stringify({ choices: [{ message: { content: out } }] }), { status: 200 });
-  };
-  fn.calls = calls;
-  fn.who = () => calls.map((c) => c.who);
-  return fn;
-}
-const geminiOn = async () => { await saveFields(d, GEMINI_SETTING, GEMINI); await saveGeminiOptions(d, { enabled: true }); };
-
-test('the Gemini API request: the same short instruction as the system one, the line as the user\'s; its address; a small Flash-Lite', () => {
-  const b = geminiRequest({ text: 'See you at 7?', from: 'en', to: 'km' });
-  assert.match(b.systemInstruction.parts[0].text, /from English to Khmer/);
-  assert.deepEqual(b.contents, [{ role: 'user', parts: [{ text: 'See you at 7?' }] }]);
-  assert.deepEqual(b.generationConfig, { temperature: 0.2, maxOutputTokens: 1024 });
-  assert.equal(geminiUrl('gemini-3.5-flash-lite'), 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent');
-  assert.deepEqual([GEMINI_MODEL_DEFAULT, GEMINI_CAP_DEFAULT], ['gemini-3.5-flash-lite', 20000]);
-});
-
-test('the backup\'s boxes: a Google key (AIza + 35), kept when left empty; the model defaults to the small one', () => {
-  assert.deepEqual(checkGeminiFields(GEMINI), { ok: true, values: GEMINI });
-  assert.equal(checkGeminiFields({ key: GKEY, model: '' }).values.model, GEMINI_MODEL_DEFAULT);
-  assert.equal(checkGeminiFields({ key: '', model: '' }, { key: GKEY }).values.key, GKEY);
-  assert.equal(checkGeminiFields({ key: 'sk-not-google' }).field, 'key');
-  assert.equal(checkGeminiFields({}).field, 'key');
-  assert.equal(checkGeminiFields({ key: GKEY, model: 'gpt-4o' }).field, 'model');
-});
-
-test('the order: the M1 first; on its error the Gemini API (the key in x-goog-api-key); the M1 then pauses a minute and Gemini answers', async () => {
-  let m1Up = true;
-  const fetchImpl = bothFetch({ m1: (b) => (m1Up ? `[m1 ${b.messages.at(-1).content.split('\n\n').pop()}]` : new Response('{}', { status: 502 })) });
-  hooks(fetchImpl);
-  await saveFields(d, 'translate', TOWER);
-  await turnOn();
-  await geminiOn();
-  assert.equal(await translate('one', 'en', 'km'), '[m1 one]');
-  assert.deepEqual(fetchImpl.who(), ['m1'], 'Gemini not asked while the M1 answers');
-  m1Up = false;
-  assert.equal(await translate('two', 'en', 'km'), '[gemini two]');
-  assert.deepEqual(fetchImpl.who(), ['m1', 'm1', 'gemini']);
-  const g = fetchImpl.calls[2];
-  assert.equal(g.url, geminiUrl('gemini-3.5-flash-lite'));
-  assert.equal(g.init.headers['x-goog-api-key'], GKEY);
-  assert.equal(g.init.headers.Authorization, undefined, 'never the M1 token to Google');
-  assert.equal(await translate('three', 'en', 'km'), '[gemini three]');
-  assert.deepEqual(fetchImpl.who().slice(3), ['gemini'], 'the M1 pauses: straight to Gemini');
-  const s = translateStats();
-  assert.deepEqual([s.ok, s.failed, s.gemini.ok, s.gemini.failed], [1, 1, 2, 0], 'counted per provider');
-  assert.ok(s.pausedUntil && !s.gemini.pausedUntil);
-  const u = await geminiUsage(d, clock.t);
-  assert.deepEqual([u.calls, u.ok, u.failed], [2, 2, 0], 'the month counts the backup');
-  clock.t += COOL_OFF_MS;
-  m1Up = true;
-  assert.equal(await translate('four', 'en', 'km'), '[m1 four]', 'a minute later: the M1 again');
-});
-
-test('the backup alone (M1 not set), Off, past its cap, failing too: then the original line (null)', async () => {
-  const fetchImpl = bothFetch({});
-  hooks(fetchImpl);
-  assert.equal(await translate('x', 'en', 'km'), null, 'nothing set');
-  await saveFields(d, GEMINI_SETTING, GEMINI);
-  assert.equal(await translate('x', 'en', 'km'), null, 'saved but Off');
-  assert.equal(await translateEnabled(), false);
-  await saveGeminiOptions(d, { enabled: true, monthlyCap: 2 });
-  assert.equal(await translateEnabled(), true);
-  assert.equal(await translate('a', 'en', 'km'), '[gemini a]', 'M1 not set: the backup');
-  assert.equal(await translate('b', 'en', 'km'), '[gemini b]');
-  assert.equal(await translate('c', 'en', 'km'), null, 'the cap: not asked');
-  assert.equal(fetchImpl.calls.length, 2);
-  assert.equal(await translateEnabled(), false);
-  await saveGeminiOptions(d, { monthlyCap: 100 });
-  hooks(bothFetch({ gemini: () => new Response(JSON.stringify({ error: { message: 'API key not valid. Please pass a valid API key.' } }), { status: 400 }) }));
-  assert.equal(await translate('d', 'en', 'km'), null, 'both down: the original');
-  const s = translateStats();
-  assert.match(s.gemini.lastError.message, /^Gemini HTTP 400 \(API key not valid/);
-  assert.ok(s.gemini.pausedUntil, 'the backup pauses a minute too');
-  assert.equal(JSON.stringify(s).includes(GKEY), false);
-});
-
-test('a Gemini answer: its thoughts left out, a block or an empty answer said in plain words', async () => {
-  hooks(bothFetch({ gemini: () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'thinking…', thought: true }, { text: '“សួស្តី”' }] } }] }), { status: 200 }) }));
-  await geminiOn();
-  assert.equal(await translate('hello', 'en', 'km'), 'សួស្តី');
-  hooks(bothFetch({ gemini: () => new Response(JSON.stringify({ promptFeedback: { blockReason: 'SAFETY' } }), { status: 200 }) }));
-  await geminiOn();
-  const r = await translateTry(d, { text: 'hi', from: 'en', to: 'ja', provider: 'gemini' });
-  assert.deepEqual([r.ok, r.results[0].error], [false, 'blocked: SAFETY']);
-});
-
-test('Try with the Gemini API: even while Off, counted against its month, refused past the cap; a bad provider refused', async () => {
-  const fetchImpl = bothFetch({});
-  hooks(fetchImpl);
-  assert.equal((await translateTry(d, { text: 'hi', from: 'en', to: 'km', provider: 'gemini' })).reason, 'not_set');
-  assert.equal((await translateTry(d, { text: 'hi', from: 'en', to: 'km', provider: 'claude' })).field, 'provider');
-  await saveFields(d, GEMINI_SETTING, GEMINI);
-  const all = await translateTry(d, { text: 'Good morning', from: 'en', to: 'all', provider: 'gemini' });
-  assert.deepEqual([all.ok, all.provider, all.enabled, all.results.map((x) => x.to)], [true, 'gemini', false, ['km', 'zh', 'ko', 'ja']]);
-  assert.equal((await geminiUsage(d, clock.t)).calls, 4, 'paid: counted');
-  assert.equal(translateStats().gemini.calls, 0, 'not the app\'s numbers');
-  await saveGeminiOptions(d, { monthlyCap: 4 });
-  const capped = await translateTry(d, { text: 'again', from: 'en', to: 'km', provider: 'gemini' });
-  assert.deepEqual([capped.ok, capped.results[0].error], [false, 'this month\'s cap is reached']);
-  assert.equal(fetchImpl.calls.length, 4);
-});
-
-test('the tower\'s view: the backup\'s block (never its key); the pill shows the better provider; options checked', async () => {
-  hooks(bothFetch({}));
-  let v = await translateAdminView(d);
-  assert.deepEqual([v.status, v.gemini.state, v.gemini.set], ['not_set', 'not_set', false]);
-  await saveFields(d, GEMINI_SETTING, GEMINI);
-  v = await translateAdminView(d);
-  assert.deepEqual([v.gemini.state, v.gemini.masks.key, v.gemini.fields, v.status], ['off', 'deXy', { model: 'gemini-3.5-flash-lite' }, 'off']);
-  assert.equal(JSON.stringify(v).includes(GKEY), false, 'never the key');
-  await saveGeminiOptions(d, { enabled: true });
-  assert.deepEqual([(await translateAdminView(d)).gemini.state, (await translateAdminView(d)).status], ['saved', 'saved']);
-  await translate('hi', 'en', 'km');
-  v = await translateAdminView(d);
-  assert.deepEqual([v.m1Status, v.gemini.state, v.status, v.gemini.usage.calls], ['not_set', 'live', 'live', 1], 'the M1 not set, the backup live: Live');
-  for (const [input, field] of [[{ enabled: 1 }, 'enabled'], [{ monthlyCap: -1 }, 'monthlyCap'], [{ monthlyCap: 2.5 }, 'monthlyCap']]) {
-    assert.equal((await saveGeminiOptions(d, input)).field, field);
-  }
-  await saveGeminiOptions(d, { monthlyCap: 1 });
-  assert.equal((await translateAdminView(d)).gemini.state, 'cap');
-});
-
-test('Code page: the backup\'s section on Tower 13 (steps with billing on, key box, meter, On / Off, cap), Try picks the provider', () => {
-  const js = readFileSync(new URL('../thirtyda-admin/connections.js', import.meta.url), 'utf8');
-  for (const words of ['Backup: Gemini API (paid)', 'aistudio.google.com/apikey', 'Turn billing ON', 'the paid tier does not',
-    'Never the Gemini website or Agent Desk for a chat line', 'Most lines a month', "h('option', { value: 'gemini', text: 'Gemini API' })",
-    'Remove the Gemini API key?', '`${API}/translate/gemini`', "fieldsForm({ ...g, id: 'translategemini' }, state.data)"]) {
-    assert.ok(js.includes(words), words);
-  }
-  assert.match(js, /const r = await call\('POST', `\$\{API\}\/translate\/try`, \{ text, from, to, provider \}\);/);
-  const admin = readFileSync(new URL('./thirtyda-admin.mjs', import.meta.url), 'utf8');
-  assert.match(admin, /translategemini: \(input, current\) => checkGeminiFields\(input, current\),/);
-  assert.match(admin, /if \(id === "translate" \|\| id === "translategemini"\) resetTranslate\(\);/);
+  assert.match(admin, /await audit\(req, "translate_try", \{ ok: r\.ok, from: r\.from, to: r\.results\.map\(\(x\) => x\.to\), model: r\.model \}\);/, 'never the line');
 });

@@ -35,7 +35,7 @@ The M5 sessions can message each other. The M1 sessions can't be reached from th
 | 10 · Apple | Key saved, works |
 | 11 · Wan | Live, no tokens yet |
 | 12 · Places | List filled; Google Places key box built, **no key yet** (Gamini makes it in Google Cloud) |
-| 13 · Translate | Built, **Off**. Option 3 live (`aa4fd10`, 17 Oct): the M1 (Hy-MT2) first, the **paid Gemini API** as the backup (key, model `gemini-3.5-flash-lite`, Off, its own monthly cap). Privacy page names "Google (Gemini API)". Waits for Hy-MT2 on the M1 and the Gemini key |
+| 13 · Translate | Built, **Off**. **The M1 (Hy-MT2) only**; when it can't answer, people see the original line. No paid Gemini API (Gamini 17 Oct: "a waste of money"; the backup from `aa4fd10` was removed again the same day, privacy page back to "our own server only"). Waits for Hy-MT2 on the M1 |
 | 14 · Agent Desk | Live, **no tokens yet**; waits for the Gemini Worker to connect |
 | 15 · Local AI | **Hub side live** (17 Oct, see thread 4): gateway token + one token per app, services and apps with caps, the M1 heartbeat, counts. Contract: `~/Desktop/GK Drop/GK to YAI /Local-AI-Tower15-hub-contract.md`. Waits for the M1 gateway (step 2) |
 
@@ -84,7 +84,6 @@ The M5 sessions can message each other. The M1 sessions can't be reached from th
 - Paste the **Tower 14 brief + contract** into the Gemini Worker, then make the Worker token on Tower 14.
 - **Google Places key** in Google Cloud → Tower 12 → Turn on.
 - **Hy-MT2** on the M1 → Tower 13 → Turn on. This may move into Tower 15 step 2.
-- **Gemini API key** (AI Studio, **billing on**) → Tower 13 backup → Try → Turn on → budget alert.
 - **Tower 15:** make the Gateway token → paste with the contract into the M1 session (step 2) → then one token per app.
 - Sign in with Apple test on the real iPhone.
 - Back up the Apple `.p8` and `~/.iews-android`.

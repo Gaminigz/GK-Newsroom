@@ -111,7 +111,7 @@ test('privacy: who sees what — guests see app name, gender, job, hearts, a dis
 
 test('privacy: every outside service by name — Railway, MongoDB Atlas, Nominatim, our translation server, Google Fonts, Telegram, WhatsApp/Meta, Google/Facebook/TikTok/Apple', () => {
   assert.equal(TRANSLATE_HOST, 'llm.ggmt.sg');
-  assert.deepEqual(PROCESSORS.map(([, k]) => k), ['proc_railway', 'proc_atlas', 'proc_osm', 'proc_places', 'proc_translate', 'proc_translate_backup', 'proc_fonts', 'priv_codes', 'proc_signin', 'proc_dictation']);
+  assert.deepEqual(PROCESSORS.map(([, k]) => k), ['proc_railway', 'proc_atlas', 'proc_osm', 'proc_places', 'proc_translate', 'proc_fonts', 'priv_codes', 'proc_signin', 'proc_dictation']);
   const colon = { en: ':', km: '៖', zh: '：', ko: ':', ja: '：' };
   for (const lang of LANGS) {
     const t = PAGE_STRINGS[lang];
@@ -121,16 +121,13 @@ test('privacy: every outside service by name — Railway, MongoDB Atlas, Nominat
       assert.ok(p.includes(`<li><b>${label}</b> ${t[k]}`), `${lang}: ${name || k}`);
     }
     const text = shown(p);
-    for (const w of ['Railway', 'MongoDB Atlas', 'OpenStreetMap Nominatim', 'Google Maps', 'llm.ggmt.sg', 'Google (Gemini API)', 'Google Fonts', 'Telegram', 'WhatsApp', 'Meta',
+    for (const w of ['Railway', 'MongoDB Atlas', 'OpenStreetMap Nominatim', 'Google Maps', 'llm.ggmt.sg', 'Google Fonts', 'Telegram', 'WhatsApp', 'Meta',
       'Google', 'Facebook', 'TikTok', 'Apple']) assert.ok(text.includes(w), `${lang}: names ${w}`);
   }
   // The code really uses them (so the list is not made up).
   assert.match(read('./thirtyda-geo.mjs'), /nominatim\.openstreetmap\.org/);
   assert.match(read('./thirtyda-translate.mjs'), /llm\.ggmt\.sg/);
-  // Our own computer first; the paid Gemini API only when it can't (owner 2026-10-17), and Google doesn't train on it.
-  assert.match(PAGE_STRINGS.en.proc_translate, /on our own computer/);
-  assert.match(PAGE_STRINGS.en.proc_translate_backup, /only when our server can't.*Google doesn't train on it/);
-  assert.match(read('./thirtyda-translate.mjs'), /generativelanguage\.googleapis\.com/);
+  assert.match(PAGE_STRINGS.en.proc_translate, /No outside AI company/);
 });
 
 test('privacy: how long, what a delete keeps (true to thirtyda-delete.mjs), and how to withdraw consent', () => {
