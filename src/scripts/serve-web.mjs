@@ -28,6 +28,7 @@
  */
 
 import http from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { getDb } from "../lib/mongo.ts";
 import { getEpisodeAudio, listEpisodes } from "../lib/podcast.ts";
@@ -50,6 +51,54 @@ import { isoToFlag } from "../lib/ai-country-fetch.ts";
 
 const PORT = Number(process.env.PORT || 8080);
 const CACHE_MS = 5 * 60 * 1000;
+
+function hasCalendarFeedToken(req) {
+  const expected = process.env.CALENDAR_FEED_TOKEN;
+  const supplied = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!expected || !supplied) return false;
+  const a = Buffer.from(supplied);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function calendarFeedDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+async function loadCalendarFeed() {
+  const db = await getDb();
+  const fields = { title: 1, url: 1, source: 1, publishedAt: 1, createdAt: 1 };
+  const [funding, brands, garments] = await Promise.all([
+    db.collection("ai_country_items")
+      .find({ relevant: { $ne: false } }, { projection: { ...fields, country: 1, topic: 1 } })
+      .sort({ publishedAt: -1 }).limit(300).toArray(),
+    db.collection("brand_signals")
+      .find({ signal: true }, { projection: { ...fields, brand: 1 } })
+      .sort({ publishedAt: -1 }).limit(300).toArray(),
+    db.collection("garment_press_items")
+      .find({}, { projection: fields })
+      .sort({ publishedAt: -1 }).limit(300).toArray(),
+  ]);
+
+  const rows = [
+    ...funding.map((doc) => ({ ...doc, category: "AI FUNDING", detail: doc.country, topic: doc.topic })),
+    ...brands.map((doc) => ({ ...doc, category: "BRAND AI", detail: doc.brand })),
+    ...garments.map((doc) => ({ ...doc, category: "GARMENTS" })),
+  ];
+  const seen = new Set();
+  return rows.flatMap((doc) => {
+    const url = typeof doc.url === "string" ? doc.url : "";
+    const publishedAt = calendarFeedDate(doc.publishedAt ?? doc.createdAt);
+    if (!doc.title || !publishedAt || !/^https:\/\//i.test(url) || seen.has(url)) return [];
+    seen.add(url);
+    return [{
+      title: String(doc.title), url, publishedAt,
+      source: String(doc.source ?? ""), category: doc.category,
+      detail: String(doc.detail ?? ""), topic: String(doc.topic ?? ""),
+    }];
+  }).sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
+}
 
 /* ---------------------------------------------------------------- data */
 
@@ -1279,6 +1328,26 @@ const server = http.createServer(async (req, res) => {
     if (path === "/healthz") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // Private, read-only bridge for Yai's strategy calendar. Only whitelisted
+    // story fields from the three newsroom feeds are returned; the database
+    // itself stays private and the public HTTP route requires a bearer token.
+    if (path === "/api/strategy-calendar/newsroom" && req.method === "GET") {
+      if (!hasCalendarFeedToken(req)) {
+        res.writeHead(process.env.CALENDAR_FEED_TOKEN ? 401 : 503, {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "WWW-Authenticate": "Bearer",
+        }).end(JSON.stringify({ ok: false, error: "unauthorised" }));
+        return;
+      }
+      const items = await loadCalendarFeed();
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "private, no-store",
+      }).end(JSON.stringify({ ok: true, items }));
       return;
     }
 
