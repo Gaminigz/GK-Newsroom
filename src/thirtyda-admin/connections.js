@@ -2424,6 +2424,32 @@ function aiAppBlock(a, app) {
     ...capRow(`ai-app-cap-${app.id}`, app.dailyCap, a.limits.capMax, (n, e) => saveAi(`apps/${app.id}`, { dailyCap: n }, `${app.name}: ${capWords(n)}.`, e)));
 }
 
+function renderAiClientDirectory(a) {
+  const grid = $('ai-client-grid');
+  if (!grid) return;
+  if (!a?.apps || !a?.services) {
+    grid.replaceChildren(h('p', { class: 'cx-fine', text: 'App client details are not available right now.' }));
+    return;
+  }
+  const services = Object.fromEntries(a.services.map((s) => [s.id, s.name]));
+  grid.replaceChildren(...a.apps.map((app) => {
+    const repo = AI_APP_REPOSITORIES[app.id];
+    const token = a.tokens?.apps?.[app.id];
+    const allowed = app.allowed.map((id) => services[id]).filter(Boolean);
+    return h('article', { class: 'cx-client-card' },
+      h('div', { class: 'cx-client-title' },
+        h('h3', { text: app.name }),
+        h('span', { class: app.enabled ? 'cx-ok' : 'cx-bad', text: app.enabled ? 'On' : 'Off' })),
+      h('p', { class: 'cx-client-id' }, 'Client ID · ', h('code', { class: 'cx-mono', text: app.id })),
+      h('dl', { class: 'cx-client-meta' },
+        h('div', {}, h('dt', { class: 'label', text: 'Git repo' }), h('dd', {}, repo ? link(repo.url, repo.name) : 'Not recorded')),
+        h('div', {}, h('dt', { class: 'label', text: 'API access' }), h('dd', {}, allowed.length ? allowed.join(' · ') : 'No services allowed')),
+        h('div', {}, h('dt', { class: 'label', text: 'Client token' }), h('dd', {}, token?.set ? `Set · ends …${token.last4}` : 'Not set')),
+        h('div', {}, h('dt', { class: 'label', text: 'Usage' }), h('dd', {}, `Today ${countLine(app.today)} · 7 days ${countLine(app.week)}`))),
+      h('a', { class: 'cx-client-manage', href: '#tower-ai', text: 'Manage access in Local AI →' }));
+  }));
+}
+
 function aiCard(a) {
   return h('section', { class: 'panel cx-card cx-signin', 'aria-labelledby': 'cx-ai' },
     h('div', { class: 'cx-head' }, logo('ai'),
@@ -2437,9 +2463,9 @@ function aiCard(a) {
       h('div', { class: 'cx-try' }, h('h3', { text: 'Gateway' }),
         aiTokenRow(a.tokens.gateway, 'gateway', 'Gateway', 'Goes in the gateway’s settings on the M1. It can only fetch these rules and post its heartbeat; the apps never call this hub.')),
       aiServicesBlock(a),
-      h('div', { class: 'cx-try', id: 'ai-app-clients' },
-        h('h3', { text: 'Apps & clients' }),
-        h('p', { class: 'cx-help', text: 'Each entry is an application client that calls Local AI. It shows the client ID, source repo when recorded, token status, allowed services and usage. Human 30+DA profiles are in 30+DA Admin.' })),
+      h('div', { class: 'cx-try' },
+        h('h3', { text: 'Client access' }),
+        h('p', { class: 'cx-help', text: 'Create or revoke each application token and choose the services it may call.' })),
       ...a.apps.map((app) => aiAppBlock(a, app)),
       h('p', { class: 'cx-fine' }, `Counts are kept ${a.limits.keepDays} days. The gateway fetches the rules every ${a.limits.pollSeconds} s, so a change here reaches it within about a minute.`),
       addressRow('Endpoint', `for the M1 gateway: contract ${a.contract || 'v1'} (GET /config, POST /heartbeat), listed at the top of src/lib/thirtyda-hub-ai.mjs. The gateway token goes in Authorization: Bearer.`, a.endpoint)));
@@ -2757,6 +2783,7 @@ function render(data, { fresh = null } = {}) {
   $('dev-banner').hidden = !warning;
   $('dev-banner').textContent = warning;
   $('state').textContent = headline(data);
+  renderAiClientDirectory(data.ai);
   // The towers, left to right, and the strip's buttons; the row stays where it was.
   const row = $('cards');
   const left = row.scrollLeft;

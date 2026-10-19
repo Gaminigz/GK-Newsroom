@@ -701,6 +701,23 @@ body:has(.cx-page) { height: auto; min-height: 100%; }
   .cx-hub { scrollbar-width: thin; scrollbar-color: #a9b4c8 #e3e8f0; }
 }
 .cx-card { padding: 18px; }
+.cx-client-directory { margin: 18px 0 20px; padding: 20px; }
+.cx-client-directory-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.cx-client-directory-head h2 { margin: 0; font-size: 18px; font-weight: 800; }
+.cx-client-directory-head p { margin: 5px 0 0; max-width: 74ch; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.cx-client-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.cx-client-card { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.cx-client-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cx-client-title h3 { margin: 0; font-size: 15px; font-weight: 800; }
+.cx-client-id { margin: 6px 0 12px; color: var(--muted); font: 11px var(--mono); overflow-wrap: anywhere; }
+.cx-client-meta { display: grid; gap: 9px; margin: 0; }
+.cx-client-meta > div { min-width: 0; }
+.cx-client-meta dt { margin-bottom: 3px; }
+.cx-client-meta dd { margin: 0; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.cx-client-meta a { color: var(--ink); font-weight: 700; text-underline-offset: 2px; }
+.cx-client-manage { display: inline-block; margin-top: 12px; font-size: 12px; font-weight: 700; color: var(--ink); text-underline-offset: 2px; }
+@media (max-width: 1100px) { .cx-client-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .cx-client-directory-head { align-items: flex-start; flex-direction: column; } .cx-client-grid { grid-template-columns: 1fr; } }
 .cx-tower {
   --bar: linear-gradient(var(--line) 0 0);
   flex: 0 0 min(340px, calc(100% - 28px));

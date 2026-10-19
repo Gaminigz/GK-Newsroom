@@ -41,6 +41,18 @@
       <p class="q-lede">Manage shared APIs and the applications that call them. Human 30+DA profiles are managed in the 30+DA Admin workspace.</p>
       <p class="cx-banner" id="key-banner" role="alert" hidden></p>
       <p class="cx-banner" id="dev-banner" role="alert" hidden></p>
+      <section class="panel cx-client-directory" id="ai-app-clients" aria-labelledby="ai-app-clients-title">
+        <div class="cx-client-directory-head">
+          <div>
+            <h2 id="ai-app-clients-title">Apps &amp; clients</h2>
+            <p>Applications that call the Local AI gateway, their Git repo, token status, and allowed services. Human profiles are in 30+DA Admin.</p>
+          </div>
+          <a class="btn cx-try-btn" href="#tower-ai">Manage Local AI access</a>
+        </div>
+        <div class="cx-client-grid" id="ai-client-grid" aria-live="polite">
+          <p class="cx-fine">Loading app clients…</p>
+        </div>
+      </section>
       <!-- The hub: fifteen towers left to right (11 = Wan, the GK API Hub's image to video on the M5; 12 = Places, our own Phnom Penh place list; 13 = Translate, our own model on the M1; 14 = Agent Desk, the Gemini Worker on the M1; 15 = Local AI, the M1 gateway's rules). The strip jumps to a tower; ‹ › and the arrow keys step; the slider slides. -->
       <div class="cx-bar" id="hub-bar">
         <button class="cx-arrow" id="hub-prev" type="button" aria-label="Previous tower" aria-controls="cards" disabled>
