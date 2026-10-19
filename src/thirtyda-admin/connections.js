@@ -2384,8 +2384,15 @@ function aiServicesBlock(a) {
       ...capRow(`ai-svc-cap-${s.id}`, s.dailyCap, a.limits.capMax, (n, err) => saveAi(`services/${s.id}`, { dailyCap: n }, `${s.name}: ${capWords(n)}.`, err)))));
 }
 
+const AI_APP_REPOSITORIES = Object.freeze({
+  // Confirmed by this repository's README / source tree. Unknown mappings stay explicit rather than guessed.
+  thirtyda: { name: 'Gaminigz/GK-Newsroom', url: 'https://github.com/Gaminigz/GK-Newsroom' },
+  newsroom: { name: 'Gaminigz/GK-Newsroom', url: 'https://github.com/Gaminigz/GK-Newsroom' },
+});
+
 function aiAppBlock(a, app) {
   const names = Object.fromEntries(a.services.map((s) => [s.id, s.name]));
+  const repo = AI_APP_REPOSITORIES[app.id];
   const boxes = a.services.map((s) => {
     const never = app.never.includes(s.id);
     return h('label', { class: 'cx-check-label', for: `ai-${app.id}-${s.id}` },
@@ -2404,6 +2411,8 @@ function aiAppBlock(a, app) {
   }, 'Save services');
   return h('div', { class: 'cx-try' },
     h('h3', { text: app.name }),
+    h('p', { class: 'cx-help' }, h('b', { text: `Client ID: ${app.id}` }), ' · Git repo: ',
+      repo ? link(repo.url, repo.name) : h('span', { text: 'not recorded' })),
     h('p', { class: 'cx-help' }, h('span', { class: app.enabled ? 'cx-ok' : 'cx-bad', text: app.enabled ? 'On' : 'Off' }),
       ` · ${capWords(app.dailyCap)} · today ${countLine(app.today)} · 7 days ${countLine(app.week)}`),
     aiTokenRow(a.tokens.apps[app.id], app.id, app.name, null),
@@ -2428,6 +2437,9 @@ function aiCard(a) {
       h('div', { class: 'cx-try' }, h('h3', { text: 'Gateway' }),
         aiTokenRow(a.tokens.gateway, 'gateway', 'Gateway', 'Goes in the gateway’s settings on the M1. It can only fetch these rules and post its heartbeat; the apps never call this hub.')),
       aiServicesBlock(a),
+      h('div', { class: 'cx-try', id: 'ai-app-clients' },
+        h('h3', { text: 'Apps & clients' }),
+        h('p', { class: 'cx-help', text: 'Each entry is an application client that calls Local AI. It shows the client ID, source repo when recorded, token status, allowed services and usage. Human 30+DA profiles are in 30+DA Admin.' })),
       ...a.apps.map((app) => aiAppBlock(a, app)),
       h('p', { class: 'cx-fine' }, `Counts are kept ${a.limits.keepDays} days. The gateway fetches the rules every ${a.limits.pollSeconds} s, so a change here reaches it within about a minute.`),
       addressRow('Endpoint', `for the M1 gateway: contract ${a.contract || 'v1'} (GET /config, POST /heartbeat), listed at the top of src/lib/thirtyda-hub-ai.mjs. The gateway token goes in Authorization: Bearer.`, a.endpoint)));
