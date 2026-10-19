@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Choose a workspace · GK</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/30da/admin/gk-smart-favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..900&family=JetBrains+Mono:wght@400..600&display=swap">
+  <link rel="stylesheet" href="/30da/admin/app.css">
+</head>
+<body class="modules-body">
+  <header class="modules-topbar">
+    <div class="brand-row">
+      <img class="brand-logo" src="/30da/admin/gk-smart-logo.png" width="36" height="36" alt="GK SMART">
+      <span class="wordmark">GK Workspaces</span>
+      <span class="pill">Super admin</span>
+    </div>
+    <button class="link" id="signout" type="button">Sign out</button>
+  </header>
+  <main class="modules-main">
+    <p class="label modules-kicker">ADMIN WORKSPACES</p>
+    <h1>Where would you like to work?</h1>
+    <p class="modules-intro">Choose a workspace. You can switch between them at any time.</p>
+    <div class="module-grid">
+      <a class="module-card api-module" href="/30da/admin/connections">
+        <div class="module-card-head">
+          <span class="api-mark" aria-hidden="true">
+            <svg viewBox="0 0 48 48" fill="none"><path d="M24 4.5 40.9 14.25v19.5L24 43.5 7.1 33.75v-19.5L24 4.5Z" stroke="currentColor" stroke-width="2"/><path d="M15 17h18M15 24h12M15 31h18" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><circle cx="33" cy="24" r="3" fill="currentColor"/></svg>
+          </span>
+          <span class="module-arrow" aria-hidden="true">↗</span>
+        </div>
+        <p class="label">PLATFORM &amp; SERVICES</p>
+        <h2>GK API Hub</h2>
+        <p>Configure API connections, service towers, AI models, translation, and shared platform tools.</p>
+        <span class="module-cta">Open API Hub <span aria-hidden="true">→</span></span>
+      </a>
+      <a class="module-card app-module" href="/30da/admin/monitor">
+        <div class="module-card-head">
+          <img class="module-app-logo" src="/30da/admin/gk-smart-logo.png" width="56" height="56" alt="30+DA logo">
+          <span class="module-arrow" aria-hidden="true">↗</span>
+        </div>
+        <p class="label">APP OPERATIONS</p>
+        <h2>30+DA Admin</h2>
+        <p>Manage the app, monitor chats and users, review support requests, photos, and app settings.</p>
+        <span class="module-cta">Open 30+DA Admin <span aria-hidden="true">→</span></span>
+      </a>
+    </div>
+    <p class="modules-foot">One secure sign-in · your admin activity is logged</p>
+  </main>
+  <script src="/30da/admin/modules.js"></script>
+</body>
+</html>

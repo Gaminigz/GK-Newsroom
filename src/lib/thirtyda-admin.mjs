@@ -1292,7 +1292,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
   const path = url.pathname.replace(/\/+$/, "") || "/";
   const sub = path.slice(BASE.length) || "/";
 
-  const asset = sub.match(/^\/(app\.css|signin\.js|monitor\.js|questions\.js|connections\.js|support\.js|support\.css|support-badge\.js|photos\.js|photos\.css|review\.js|review\.css|delete-profile\.js|gk-smart-logo\.png|gk-smart-favicon\.png)$/);
+  const asset = sub.match(/^\/(app\.css|signin\.js|modules\.js|monitor\.js|questions\.js|connections\.js|support\.js|support\.css|support-badge\.js|photos\.js|photos\.css|review\.js|review\.css|delete-profile\.js|gk-smart-logo\.png|gk-smart-favicon\.png)$/);
   if (req.method === "GET" && asset) return serveFile(res, asset[1]);
 
   if (req.method !== "GET" && req.method !== "HEAD" && sub.startsWith("/api/")) {
@@ -1325,7 +1325,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
       expires: new Date(Date.now() + SESSION_HOURS * 3600e3),
     });
     await audit(req, "signin");
-    return json(res, 200, { ok: true, next: `${BASE}/monitor` }, {
+    return json(res, 200, { ok: true, next: `${BASE}/modules` }, {
       "Set-Cookie": `${COOKIE}=${token}; HttpOnly; Secure; SameSite=Strict; Path=${BASE}; Max-Age=${SESSION_HOURS * 3600}`,
     });
   }
@@ -1333,8 +1333,13 @@ export async function handleThirtyDaAdmin(req, res, url) {
   const me = await signedIn(req);
 
   if (req.method === "GET" && sub === "/") {
-    if (me) return send(res, 302, "", { Location: `${BASE}/monitor` });
+    if (me) return send(res, 302, "", { Location: `${BASE}/modules` });
     return serveFile(res, "signin.html");
+  }
+  if (req.method === "GET" && sub === "/modules") {
+    if (!me) return send(res, 302, "", { Location: BASE });
+    await audit(req, "view_admin_modules");
+    return serveFile(res, "modules.html");
   }
   if (req.method === "GET" && sub === "/monitor") {
     if (!me) return send(res, 302, "", { Location: BASE });
