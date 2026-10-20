@@ -20,6 +20,8 @@
 // The server never sends a secret back: only its last 4 characters
 // (last4 / masks); the plain boxes (WhatsApp phone number ID + template, Google client ID, Facebook app ID, TikTok
 // client key) come back as saved.
+import { serviceGuide } from './service-guide.js';
+
 const API = '/30da/admin/api/connections';
 const $ = (id) => document.getElementById(id);
 
@@ -32,7 +34,7 @@ const state = {
   data: null, busy: false, test: {}, testPhone: {}, wanReveal: null, wanBusy: null, wanTrying: false, wanTryError: null,
   placesBusy: false, placesError: null, placesTry: {}, trTry: {},
   deskReveal: null, deskBusy: null, deskTrying: null, deskTryError: null,
-  aiReveal: null, aiBusy: null,
+  aiReveal: null, aiBusy: null, guideOpen: new Set(),
 };
 
 // ---------- dom ----------
@@ -2533,10 +2535,43 @@ const TOWERS = [
 ];
 const towerNumber = (t) => TOWERS.indexOf(t) + 1;
 
+/** The same summary accompanies initial draws, saved settings and worker-status refreshes. */
+function towerOverview(t, st, byId, data) {
+  const guide = serviceGuide(t.key, byId, data);
+  const expandable = (key, title, ...content) => h('details', {
+    class: 'cx-guide-more', open: state.guideOpen.has(key),
+    on: { toggle: (event) => {
+      if (event.currentTarget.open) state.guideOpen.add(key);
+      else state.guideOpen.delete(key);
+    } },
+  }, h('summary', { text: title }), ...content);
+  const services = guide.services.length ? expandable(t.key + '/services', 'Services and permitted apps (' + guide.services.length + ')',
+    h('p', { class: 'cx-help', text: 'Permissions show what an app may call. Usage is recorded separately.' }),
+    h('ul', { class: 'cx-guide-services' }, guide.services.map((service) => h('li', {},
+      h('b', { text: service.name }), h('p', { text: service.purpose }),
+      h('p', { text: 'Permitted apps: ' + (service.permitted.join(', ') || 'None') }),
+      h('p', { text: (service.enabled ? 'On' : 'Off') + ' · Today ' + service.calls + ' recorded calls' }))))
+  ) : null;
+  return h('section', { class: 'cx-overview', 'aria-label': 'Service summary' },
+    h('dl', { class: 'cx-overview-facts' },
+      row('Status now', h('b', { text: st.text + '. ' }), guide.evidence),
+      row('Designed for', guide.purpose),
+      row('Used here', guide.usage)),
+    services,
+    expandable(t.key + '/maker', 'More from the maker',
+      h('p', { class: 'cx-help' }, h('b', { text: guide.maker + '. ' }), guide.more),
+      h('p', { class: 'cx-fine', text: 'Provider options for future work. Extra setup, permissions, approval or billing may be required.' }),
+      h('div', { class: 'cx-guide-links' }, guide.docs.map(([name, url]) => link(url, name)))));
+}
+
 /** One tower: its card, with the tower's top line (number, kind, status pill) put first. */
 function tower(t, st, byId, data) {
   const n = towerNumber(t);
   const card = t.draw(byId, data);
+  const overview = towerOverview(t, st, byId, data);
+  const heading = card.querySelector('.cx-head');
+  if (heading) heading.after(overview);
+  else card.prepend(overview);
   card.classList.add('cx-tower');
   card.id = `tower-${t.key}`;
   card.dataset.tower = t.key;

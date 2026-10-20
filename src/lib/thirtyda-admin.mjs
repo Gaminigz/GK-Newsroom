@@ -1292,7 +1292,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
   const path = url.pathname.replace(/\/+$/, "") || "/";
   const sub = path.slice(BASE.length) || "/";
 
-  const asset = sub.match(/^\/(app\.css|signin\.js|modules\.js|monitor\.js|questions\.js|connections\.js|support\.js|support\.css|support-badge\.js|photos\.js|photos\.css|review\.js|review\.css|delete-profile\.js|gk-smart-logo\.png|gk-smart-favicon\.png)$/);
+  const asset = sub.match(/^\/(app\.css|signin\.js|modules\.js|monitor\.js|questions\.js|connections\.js|service-guide\.js|support\.js|support\.css|support-badge\.js|photos\.js|photos\.css|review\.js|review\.css|delete-profile\.js|gk-smart-logo\.png|gk-smart-favicon\.png)$/);
   if (req.method === "GET" && asset) return serveFile(res, asset[1]);
 
   if (req.method !== "GET" && req.method !== "HEAD" && sub.startsWith("/api/")) {

@@ -702,6 +702,15 @@ body:has(.cx-page) { height: auto; min-height: 100%; }
   .cx-hub { scrollbar-width: thin; scrollbar-color: #a9b4c8 #e3e8f0; }
 }
 .cx-card { padding: 18px; }
+.cx-overview { margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #f8fafc; }
+.cx-overview-facts { display: grid; gap: 10px; margin: 0; }
+.cx-guide-more { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.cx-guide-more summary { cursor: pointer; font-size: 12px; font-weight: 700; line-height: 1.5; }
+.cx-guide-links { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; }
+.cx-guide-links a { color: var(--ink); font-size: 12px; font-weight: 600; text-underline-offset: 2px; }
+.cx-guide-services { list-style: none; padding: 0; margin: 10px 0 0; font-size: 12px; }
+.cx-guide-services li + li { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 10px; }
+.cx-guide-services p { margin: 4px 0 0; line-height: 1.45; color: var(--muted); }
 .cx-client-directory { margin: 18px 0 20px; padding: 20px; }
 .cx-client-directory-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .cx-client-directory-head h2 { margin: 0; font-size: 18px; font-weight: 800; }
