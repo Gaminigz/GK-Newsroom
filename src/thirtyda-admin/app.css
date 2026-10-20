@@ -571,6 +571,7 @@ textarea.input.q-in {
 /* The towers make this page taller than one screen: let the body grow with it (here only), so the sticky top bar stays
    pinned all the way down and the hub bar below it (top: 56px) never hangs under an empty strip. */
 body:has(.cx-page) { height: auto; min-height: 100%; }
+.shell:has(.cx-page) { width: 100%; max-width: none; }
 .cx-page .head #state { text-align: right; line-height: 1.5; }
 /* The bar over the towers (stays in view): ‹ the numbered strip › and the slider under them. */
 .cx-bar {
@@ -729,6 +730,21 @@ body:has(.cx-page) { height: auto; min-height: 100%; }
 .cx-tower.is-current { box-shadow: 0 0 0 1.5px #b6c1d6, 0 8px 22px rgb(11 28 63 / 0.08); }
 .cx-tower:focus { outline: none; }
 .cx-tower:focus-visible { outline: 2px solid #3b6fe0; outline-offset: 2px; }
+/* Large displays show every tower in the page grid; smaller windows retain the carousel. */
+@media (min-width: 1600px) {
+  .cx-bar { grid-template-columns: minmax(0, 1fr); }
+  .cx-bar .cx-arrow, .cx-bar .cx-slider { display: none; }
+  .cx-strip { flex-wrap: wrap; overflow: visible; }
+  .cx-hub {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    overflow: visible;
+    scroll-snap-type: none;
+  }
+  .cx-tower { width: 100%; min-width: 0; overflow-wrap: anywhere; }
+  .cx-tower .cx-plate { flex-wrap: wrap; }
+  .cx-client-grid { grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); }
+}
 .cx-tower[data-tower="tiktok"] { --bar: linear-gradient(90deg, #25f4ee, #111 35% 65%, #fe2c55); }
 .cx-tower[data-tower^="telegram"] { --bar: linear-gradient(#229ed9 0 0); }
 .cx-tower[data-tower="facebook"] { --bar: linear-gradient(#1877f2 0 0); }

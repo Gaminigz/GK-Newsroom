@@ -2580,6 +2580,7 @@ function remember(key) {
 }
 const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const towerEls = () => [...$('cards').children];
+const hubGrid = () => getComputedStyle($('cards')).display === 'grid';
 /** Where the row must be scrolled to for this tower to sit first (at the snap edge). */
 const startOf = (el) => el.offsetLeft - (parseFloat(getComputedStyle($('cards')).scrollPaddingLeft) || 0);
 
@@ -2592,8 +2593,17 @@ function go(i, { smooth = true, focus = null, page = true } = {}) {
   const behavior = smooth && !calm() ? 'smooth' : 'auto';
   hub.target = to;
   hub.until = behavior === 'smooth' ? Date.now() + 900 : 0;
-  row.scrollTo({ left: startOf(els[to]), behavior });
-  if (page) {
+  if (hubGrid()) {
+    row.scrollLeft = 0;
+    if (page) {
+      const bar = $('hub-bar');
+      const offset = (parseFloat(getComputedStyle(bar).top) || 0) + bar.getBoundingClientRect().height + 8;
+      window.scrollTo({ top: Math.max(0, window.scrollY + els[to].getBoundingClientRect().top - offset), behavior });
+    }
+  } else {
+    row.scrollTo({ left: startOf(els[to]), behavior });
+  }
+  if (page && !hubGrid()) {
     // Deep in a tall tower: bring the towers' tops back under the strip, so the new tower shows from its top.
     const gap = row.getBoundingClientRect().top - $('hub-bar').getBoundingClientRect().bottom;
     if (gap < 0) window.scrollTo({ top: window.scrollY + gap, behavior });
@@ -2617,8 +2627,11 @@ function syncHub() {
   const els = towerEls();
   if (!els.length) return;
   const box = row.getBoundingClientRect();
+  const grid = hubGrid();
+  const barBottom = $('hub-bar').getBoundingClientRect().bottom;
   hub.inView = els.map((el) => {
     const r = el.getBoundingClientRect();
+    if (grid) return r.top < window.innerHeight && r.bottom > barBottom;
     return (Math.min(r.right, box.right) - Math.max(r.left, box.left)) / r.width > 0.6;
   });
   let cur = hub.current;
@@ -2668,6 +2681,7 @@ function paintHub(moved) {
 
 /** Keeps the current tower's button in view in the strip (on a phone the strip slides too). */
 function showChip(i) {
+  if (hubGrid()) return;
   const strip = $('hub-strip');
   const li = strip.children[i];
   if (!li || strip.scrollWidth <= strip.clientWidth) return;
@@ -2734,9 +2748,21 @@ function wireHub() {
     const focus = el.closest('#hub-strip') ? 'chip' : el.closest('#hub-bar') ? null : 'tower';
     go(hub.current + (e.key === 'ArrowRight' ? 1 : -1), { focus });
   });
+  let wasGrid = hubGrid();
   window.addEventListener('resize', () => {
+    const grid = hubGrid();
+    if (grid !== wasGrid) {
+      hub.sliding = false;
+      row.classList.remove('is-sliding');
+      if (grid) row.scrollLeft = 0;
+      else go(hub.current, { smooth: false, page: false });
+      wasGrid = grid;
+    }
     if (!hub.frame) hub.frame = requestAnimationFrame(syncHub);
   });
+  window.addEventListener('scroll', () => {
+    if (hubGrid() && !hub.frame) hub.frame = requestAnimationFrame(syncHub);
+  }, { passive: true });
 }
 wireHub();
 
