@@ -38,9 +38,12 @@ export async function shopAdminData(d, section) {
     const [rows, total, removed] = await Promise.all([
       d.collection('app_dishes').find({}, { projection: { name: 1, nameSi: 1, shopId: 1, price: 1, special: 1, offMenu: 1, createdAt: 1 } }).sort({ createdAt: -1 }).limit(300).toArray(),
       d.collection('app_dishes').countDocuments(),
-      d.collection('shop_admin_removed_dishes').find({ removed: true }, { projection: { 'dish.name': 1, 'dish.shopId': 1, removedAt: 1 } }).sort({ removedAt: -1 }).limit(50).toArray(),
+      d.collection('shop_admin_removed_dishes').find({ restoredAt: { $exists: false } }, { projection: { 'dish.name': 1, 'dish.shopId': 1, removedAt: 1 } }).sort({ removedAt: -1 }).limit(50).toArray(),
     ]);
-    return { rows: await names(rows), total, limit: 300, removed: removed.map(r => ({ _id: String(r._id), name: r.dish?.name, removedAt: stamp(r.removedAt) })) };
+    // Also recover an interrupted removal: the archived copy exists even if the completion marker was not written.
+    const present = removed.length ? await d.collection('app_dishes').find({ _id: { $in: removed.map(r => r._id) } }, { projection: { _id: 1 } }).toArray() : [];
+    const live = new Set(present.map(r => String(r._id)));
+    return { rows: await names(rows), total, limit: 300, removed: removed.filter(r => !live.has(String(r._id))).map(r => ({ _id: String(r._id), name: r.dish?.name, removedAt: stamp(r.removedAt) })) };
   }
   if (section === 'chats') {
     const rows = await d.collection('app_orders').find({ 'messages.0': { $exists: true } },
@@ -109,7 +112,7 @@ export async function shopAdminAction(d, action, body, { actor, audit }) {
   }
   if (action === 'restore-menu') {
     const archive = d.collection('shop_admin_removed_dishes');
-    const saved = await archive.findOne({ _id: targetId, removed: true });
+    const saved = await archive.findOne({ _id: targetId, restoredAt: { $exists: false } });
     if (!saved?.dish) throw fail(404, 'Removed listing not found.');
     await log('dish_restore_requested', saved.dish.name);
     try { await d.collection('app_dishes').insertOne(saved.dish); }
