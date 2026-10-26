@@ -168,6 +168,7 @@ import {
   reviewView, setReviewSwitch, newReviewCode, makeReviewAccount, stopReviewAccount, ReviewError, isReview,
 } from "./thirtyda-review.mjs";
 import { deleteAccount } from "./thirtyda-delete.mjs";
+import { shopAdminData, shopAdminAction } from "./thirtyda-shop-admin.mjs";
 import { clearReviewWorld, forgetReviewDevices } from "./thirtyda-review-world.mjs";
 import { createDemoAccount, refreshDemoPhotos, demoView, DEMO_UPLOADED } from "./thirtyda-demo.mjs";
 import { QUESTION_CHOICES, CHOICE_LIMITS, TITLE_LIMITS } from "../thirtyda-app/shared/question-slots.js";
@@ -208,6 +209,7 @@ const QUESTIONS_BODY_MAX = 200_000; // 20 choices × 5 languages × 100 characte
 const MAX_TESTS = 10; // real Telegram test codes per admin session per window (each one costs money)
 const MAX_REPLIES = 60; // support replies per admin session per window
 const replyLimits = windowLimiter(WINDOW_MS);
+const shopLimits = windowLimiter(WINDOW_MS);
 const MAX_PHOTO_DECISIONS = 120; // Users → Photos approve / disqualify / upload per admin session per window (30 profiles × 4)
 const photoLimits = windowLimiter(WINDOW_MS);
 // Users → Photos → Upload: the photo itself is the body, so this one route takes an image type instead of JSON.
@@ -1292,7 +1294,7 @@ export async function handleThirtyDaAdmin(req, res, url) {
   const path = url.pathname.replace(/\/+$/, "") || "/";
   const sub = path.slice(BASE.length) || "/";
 
-  const asset = sub.match(/^\/(app\.css|signin\.js|modules\.js|monitor\.js|questions\.js|connections\.js|service-guide\.js|support\.js|support\.css|support-badge\.js|photos\.js|photos\.css|review\.js|review\.css|delete-profile\.js|gk-smart-logo\.png|gk-smart-favicon\.png)$/);
+  const asset = sub.match(/^\/(app\.css|signin\.js|modules\.js|shops\.js|shops\.css|monitor\.js|questions\.js|connections\.js|service-guide\.js|support\.js|support\.css|support-badge\.js|photos\.js|photos\.css|review\.js|review\.css|delete-profile\.js|gk-smart-logo\.png|gk-smart-favicon\.png)$/);
   if (req.method === "GET" && asset) return serveFile(res, asset[1]);
 
   if (req.method !== "GET" && req.method !== "HEAD" && sub.startsWith("/api/")) {
@@ -1340,6 +1342,11 @@ export async function handleThirtyDaAdmin(req, res, url) {
     if (!me) return send(res, 302, "", { Location: BASE });
     await audit(req, "view_admin_modules");
     return serveFile(res, "modules.html");
+  }
+  if (req.method === 'GET' && sub === '/shops') {
+    if (!me) return send(res, 302, '', { Location: BASE });
+    await audit(req, 'view_shop_workspace');
+    return serveFile(res, 'shops.html');
   }
   if (req.method === "GET" && sub === "/monitor") {
     if (!me) return send(res, 302, "", { Location: BASE });
@@ -1397,6 +1404,27 @@ export async function handleThirtyDaAdmin(req, res, url) {
   }
 
   if (sub.startsWith("/api/") && !me) return json(res, 401, { error: "signed_out" });
+
+  if (sub === '/api/shops' && req.method === 'GET') {
+    try {
+      const section = url.searchParams.get('section') || 'shops';
+      const data = await shopAdminData(await db(), section);
+      await audit(req, 'view_shop_' + section);
+      return json(res, 200, data);
+    } catch (err) { return json(res, err.status || 500, { error: err.status ? err.message : 'Shop data could not be loaded.' }); }
+  }
+  const shopAction = sub.match(/^\/api\/shops\/(status|resolve|remove-menu|restore-menu)$/);
+  if (shopAction && req.method === 'POST') {
+    if (shopLimits.over(tokenOf(req), 30)) return json(res, 429, { error: 'Too many shop changes. Try again later.' });
+    try {
+      const body = await readJson(req);
+      const result = await shopAdminAction(await db(), shopAction[1], body, {
+        actor: 'GK admin ' + stateHash(tokenOf(req)).slice(0, 12),
+        audit: (action, extra) => audit(req, action, extra),
+      });
+      return json(res, 200, result);
+    } catch (err) { return json(res, err.status || 500, { error: err.status ? err.message : 'The shop change could not finish. Refresh before trying again.' }); }
+  }
 
   if (req.method === "POST" && sub === "/api/signout") {
     const d = await db();

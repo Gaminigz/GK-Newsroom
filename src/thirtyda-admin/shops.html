@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>3una 5aha · Shop Administration</title>
+  <link rel="icon" href="/30da/admin/gk-smart-favicon.png">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..900&family=JetBrains+Mono:wght@400..600&display=swap">
+  <link rel="stylesheet" href="/30da/admin/app.css"><link rel="stylesheet" href="/30da/admin/shops.css">
+</head>
+<body class="shop-body">
+  <header class="topbar"><div class="brand-row"><span class="shop-wordmark">3una 5aha</span><span class="pill">Super admin</span></div>
+    <a class="link module-switch" href="/30da/admin/modules">Workspaces</a><button class="link" id="signout">Sign out</button></header>
+  <div class="shop-layout">
+    <nav class="shop-nav" aria-label="Shop administration"><a href="#shops">Shops &amp; reports</a><a href="#orders">Orders</a><a href="#menus">Menus</a><a href="#chats">Buyer–shop chats</a><a href="#activity">Activity log</a><a href="#logic">How it controls the apps</a></nav>
+    <main class="shop-main"><div class="shop-heading"><div><p class="label">MARKETPLACE OPERATIONS</p><h1 id="title">Shops &amp; reports</h1></div><button class="btn" id="refresh">Refresh</button></div>
+      <p class="shop-intro">Administration for the 3una 5aha marketplace. Changes use the same shop, menu and order records as its apps.</p>
+      <p id="notice" role="status" hidden></p><p id="state" class="label" role="status">Loading…</p>
+      <label class="shop-search" id="search-wrap">Search loaded records<input id="search" type="search" placeholder="Shop, owner, country, order or dish…" class="input"></label>
+      <div id="content" aria-live="polite"></div>
+    </main>
+  </div>
+  <dialog id="change-dialog"><form id="change-form"><h2 id="change-title">Confirm change</h2><p id="change-help"></p>
+    <label>Reason<textarea id="change-reason" required minlength="5" maxlength="300" rows="3" class="input"></textarea></label>
+    <p id="change-error" role="alert"></p><div class="shop-actions"><button type="button" id="change-cancel" class="link">Cancel</button><button type="submit" id="change-submit" class="btn">Confirm change</button></div>
+  </form></dialog>
+  <script type="module" src="/30da/admin/shops.js"></script>
+</body></html>

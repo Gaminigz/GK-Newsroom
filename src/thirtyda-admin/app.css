@@ -1026,6 +1026,10 @@ textarea.input.cx-area { height: auto; min-height: 64px; padding: 9px 12px; line
 .api-module { border-top: 4px solid #39a875; }
 .api-module .module-cta { color: #17794d; }
 .app-module { border-top: 4px solid #17366f; }
+.shop-module { border-top: 4px solid #d9542b; }
+.shop-module .module-cta { color: #a33f20; }
+.shop-mark { display: grid; width: 64px; height: 64px; place-items: center; border-radius: 16px; color: #a33f20; background: #fff0e9; }
+.shop-mark svg { width: 42px; height: 42px; }
 .modules-foot { color: #687388; font: 11px var(--mono); letter-spacing: .03em; margin: 24px 0 0; }
 @media (max-width: 1120px) { .module-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 820px) { .module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
