@@ -564,8 +564,14 @@ export const askVars = (check) => ({
  * The sendMessage parameters for one reply (kind: ask | not_own | done | mismatch | expired | help | support_ack);
  * vars fill ask. support_ack leaves the keyboard alone (a "Share my number" button may still be waiting).
  */
-export function botReply(kind, lang, chatId, vars = null) {
-  const T = BOT_TEXT[lang] ?? BOT_TEXT.en;
+export function botReply(kind, lang, chatId, vars = null, context = null) {
+  const T = context ? {
+    ...BOT_TEXT.en,
+    ask: `GKVerify — confirm your number for ${context.appName} ({time}, Phnom Penh time).\nCheck that your ${context.appName} screen shows {mark}, then tap the button to share your number.\nIf someone sent you this link, do not tap.`,
+    done: `Number verified ✓ Return to ${context.appName} to continue.`,
+    mismatch: `That number is not the one you typed in ${context.appName}. Enter the number your Telegram account uses, including its country code, and try again.`,
+    expired: `This link has expired. Return to ${context.appName} and start again.`,
+  } : BOT_TEXT[lang] ?? BOT_TEXT.en;
   const button = { keyboard: [[{ text: T.button, request_contact: true }]], one_time_keyboard: true, resize_keyboard: true };
   const fill = { ...askVars(null), ...(vars ?? {}) };
   const text = (T[kind] ?? T.help).replace(/\{(time|mark)\}/g, (_, k) => String(fill[k]));
@@ -615,7 +621,11 @@ export function siteOrigin(savedHookUrl) {
 export const backUrl = (origin = DEFAULT_ORIGIN) => `${origin}${BACK_PATH}`;
 
 /** The sendMessage parameters for the back message: the line + one inline URL button to backUrl(origin). */
-export function backReply(lang, chatId, origin = DEFAULT_ORIGIN) {
+export function backReply(lang, chatId, origin = DEFAULT_ORIGIN, context = null) {
+  if (context) return {
+    chat_id: chatId, text: `Tap the button to return to ${context.appName}.`,
+    reply_markup: { inline_keyboard: [[{ text: `⬅️ Back to ${context.appName}`, url: context.returnUrl }]] },
+  };
   const T = BACK_TEXT[lang] ?? BACK_TEXT.en;
   const named = (s) => s.replaceAll("{app}", APP_NAME);
   return {
@@ -635,6 +645,8 @@ export async function processUpdate(d, u, now = Date.now()) {
   if (!u || u.kind === "ignore") return null;
   const col = d.collection(TG_CHECKS);
   const live = { state: "waiting", expires: { $gt: new Date(now) } };
+  const contextual = (check, plan) => check?.hubApp === 'iews' && check.hubReturnUrl
+    ? { ...plan, context: { appName: 'IEWS', returnUrl: check.hubReturnUrl } } : plan;
   if (u.kind === "help") return { kind: "help", lang: langFor(null, u.langCode) };
   if (u.kind === "start") {
     if (!u.token) return { kind: u.hadParam ? "expired" : "help", lang: langFor(null, u.langCode) };
@@ -647,7 +659,7 @@ export async function processUpdate(d, u, now = Date.now()) {
       { _id: id, ...live, $or: [{ tgUserId: { $exists: false } }, { tgUserId: u.fromId }] },
       { $set: { tgUserId: u.fromId, openedAt: new Date(now) } },
     );
-    return r.matchedCount ? { kind: "ask", lang, vars: askVars(c) } : { kind: "expired", lang };
+    return contextual(c, r.matchedCount ? { kind: "ask", lang, vars: askVars(c) } : { kind: "expired", lang });
   }
   // A contact, or anything else: about this person's most recently opened live check.
   const c = await col.findOne({ tgUserId: u.fromId, ...live }, { sort: { openedAt: -1 } });
@@ -655,23 +667,23 @@ export async function processUpdate(d, u, now = Date.now()) {
   // Words that are not a number: a question for the team (support), even in the middle of a check.
   if (u.kind === "other" && u.text && !looksLikePhone(u.text)) return { kind: "support", lang };
   if (!c) return { kind: "help", lang };
-  if (u.kind !== "contact") return { kind: "ask", lang, vars: askVars(c) }; // a number typed as text is never believed: the button again
+  if (u.kind !== "contact") return contextual(c, { kind: "ask", lang, vars: askVars(c) }); // a number typed as text is never believed: the button again
   const verdict = contactVerdict(u.contact, u.fromId, c.phone);
-  if (verdict === "not_own") return { kind: "not_own", lang };
+  if (verdict === "not_own") return contextual(c, { kind: "not_own", lang });
   if (verdict === "mismatch") {
     await col.updateOne({ _id: c._id, state: "waiting" }, { $set: { state: "mismatch", endedAt: new Date(now) } });
-    return { kind: "mismatch", lang };
+    return contextual(c, { kind: "mismatch", lang });
   }
   const r = await col.updateOne(
     { _id: c._id, state: "waiting" },
     { $set: { state: "verified", verifiedAt: new Date(now) }, $max: { expires: new Date(now + VERIFIED_GRACE_MS) } },
   );
-  if (r.matchedCount) {
+  if (r.matchedCount && !c.hubApp) {
     // Support can name this person's 30+DA profile later (best effort: the check itself is what signs in).
     await d.collection(TG_LINKS).updateOne({ _id: u.fromId }, { $set: { phone: c.phone, at: new Date(now) } }, { upsert: true })
       .catch(() => {});
   }
-  return { kind: r.matchedCount ? "done" : "expired", lang };
+  return contextual(c, { kind: r.matchedCount ? "done" : "expired", lang });
 }
 
 /** A small JSON body (Telegram's update) → object, or null when too big or not JSON. */
@@ -737,7 +749,7 @@ export async function handleTelegramHook(req, res, { db, fetchImpl = fetch, now 
       plan = s.ack ? { kind: "support_ack", lang: s.lang } : null;
     }
     if (plan) {
-      const sent = await botCall(cfg.token, "sendMessage", botReply(plan.kind, plan.lang, u.chatId, plan.vars), { fetchImpl });
+      const sent = await botCall(cfg.token, "sendMessage", botReply(plan.kind, plan.lang, u.chatId, plan.vars, plan.context), { fetchImpl });
       if (!sent.ok) {
         console.warn(`[30da telegram] the bot's reply was not sent: ${sent.reason}`);
         // Telegram no longer takes this key: the app stops offering the bot until the admin saves and tries again.
@@ -747,7 +759,7 @@ export async function handleTelegramHook(req, res, { db, fetchImpl = fetch, now 
         }
       } else if (BACK_AFTER.includes(plan.kind)) {
         // The check is over: a big button back to the app, as its own message (the reply above stays as it is).
-        const back = await botCall(cfg.token, "sendMessage", backReply(plan.lang, u.chatId, siteOrigin(cfg.hookUrl)), { fetchImpl });
+        const back = await botCall(cfg.token, "sendMessage", backReply(plan.lang, u.chatId, siteOrigin(cfg.hookUrl), plan.context), { fetchImpl });
         if (!back.ok) console.warn(`[30da telegram] the back button was not sent: ${back.reason}`);
       }
     }

@@ -159,6 +159,7 @@ import {
 import { outboundFetch } from "./thirtyda-test-fetch.mjs";
 import { APPLE, checkAppleFields, appleKeys, tryAppleKey } from "./thirtyda-apple.mjs";
 import { botView, saveBot, tryBot, removeBot, windowLimiter } from "./thirtyda-telegram-bot.mjs";
+import { verificationAdminView, verificationAdminAction } from './thirtyda-hub-verify.mjs';
 import {
   listSupportChats, supportThread, sendSupportReply, supportUnread, describeBot, SUPPORT_TEXT_MAX,
 } from "./thirtyda-support.mjs";
@@ -556,6 +557,7 @@ async function connectionsView(d, req) {
     testCodes: await testCodesAllowed(d, devAuth),
     // On Railway (the live server) test mode must be off: the page shows a red warning while it is on.
     onRailway: Boolean(process.env.RAILWAY_ENVIRONMENT),
+    verification: await verificationAdminView(d),
     connections: [
       {
         id: "telegram",
@@ -1483,6 +1485,21 @@ export async function handleThirtyDaAdmin(req, res, url) {
   }
 
   if (req.method === "GET" && sub === "/api/connections") return json(res, 200, await connectionsView(await db(), req));
+
+  if (sub === '/api/connections/telegram-bot/clients/iews' && ['PUT', 'POST', 'DELETE'].includes(req.method)) {
+    if (writeLimited(req)) { req.resume(); return json(res, 429, { error: 'Too many changes. Try again later.' }); }
+    const body = await readJsonBody(req, 4096);
+    if (body.bad || body.tooLarge) return json(res, 400, { error: 'Send a small JSON object.' });
+    try {
+      const result = await verificationAdminAction(await db(), req.method, body.value);
+      await audit(req, 'telegram_client_change', { app: 'iews', method: req.method });
+      const view = await connectionsView(await db(), req);
+      return json(res, 200, result.token ? { token: result.token, view } : view);
+    } catch (err) {
+      if (!err.status) throw err;
+      return json(res, err.status, { error: err.message, reason: err.code });
+    }
+  }
 
   // Tower 11 · Wan: tokens, options, Try, and the Try's clip (src/lib/thirtyda-hub-wan.mjs).
   m = sub.match(/^\/api\/connections\/wan\/(tokens\/(client|worker)|options|try|clips\/([a-f0-9]{32}))$/);

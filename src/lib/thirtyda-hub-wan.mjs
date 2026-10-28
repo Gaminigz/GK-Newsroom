@@ -843,6 +843,9 @@ const ROUTES = [
  */
 export async function handleThirtyDaHub(req, res, url) {
   const path = url.pathname.replace(/\/+$/, "") || "/";
+  if (path === "/30da/hub/verify/telegram" || path.startsWith("/30da/hub/verify/telegram/")) {
+    return (await import("./thirtyda-hub-verify.mjs")).handleVerification(req, res, path);
+  }
   if (path === "/30da/hub/desk" || path.startsWith("/30da/hub/desk/")) {
     return (await import("./thirtyda-hub-desk.mjs")).handleDesk(req, res, path);
   }

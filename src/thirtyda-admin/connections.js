@@ -34,7 +34,7 @@ const state = {
   data: null, busy: false, test: {}, testPhone: {}, wanReveal: null, wanBusy: null, wanTrying: false, wanTryError: null,
   placesBusy: false, placesError: null, placesTry: {}, trTry: {},
   deskReveal: null, deskBusy: null, deskTrying: null, deskTryError: null,
-  aiReveal: null, aiBusy: null, guideOpen: new Set(),
+  aiReveal: null, aiBusy: null, verifyReveal: null, guideOpen: new Set(),
 };
 
 // ---------- dom ----------
@@ -510,18 +510,55 @@ function botTry(b) {
 }
 
 /** Tower 2: the free 30+DA bot (what the owner uses). Its data rides on the Telegram connection (c.bot). */
+function verificationClient(v) {
+  if (!v) return null;
+  const url = h('input', { class: 'input', type: 'url', id: 'verify-iews-url', value: v.returnUrl,
+    placeholder: 'https://your-iews-site/phone-verification' });
+  const action = async (method, body = {}) => {
+    if (state.busy) return;
+    if (method !== 'PUT' && v.token.set && !confirm(`${method === 'DELETE' ? 'Revoke' : 'Replace'} the IEWS verification key? Existing checks using it will stop working.`)) return;
+    state.busy = true;
+    let r;
+    try { r = await call(method, `${API}/telegram-bot/clients/iews`, body); }
+    finally { state.busy = false; }
+    if (!r.ok) return toast(r.data.error || 'Could not update IEWS verification.');
+    if (method === 'POST') state.verifyReveal = r.data.token;
+    if (method === 'DELETE') state.verifyReveal = null;
+    render(r.data.view || r.data);
+    toast(method === 'PUT' ? 'IEWS return page saved.' : method === 'POST' ? 'Copy the IEWS key now. It is shown only here.' : 'IEWS key revoked.');
+  };
+  return h('section', { class: 'cx-split' },
+    h('h3', {}, 'Shared verification · IEWS'),
+    h('p', { class: 'cx-help' }, v.ready ? 'Configured for IEWS. A real user must complete a check to confirm the full flow.' : 'Setup required: save the IEWS return page, create its key, and ensure the bot is enabled above.'),
+    h('p', { class: 'cx-help' }, 'IEWS uses its own accounts. This connection only verifies the number; it does not log anyone into 30+DA. Requests currently kept: ',
+      Object.entries(v.recent).map(([s, n]) => `${s}: ${n}`).join(' · ') || 'none', '. These are short-lived records, not lifetime totals.'),
+    h('p', { class: 'cx-help' }, link('https://github.com/Gaminigz/GK-Newsroom/blob/main/docs/iews-telegram-verification.md', 'IEWS integration instructions and Node.js helper')),
+    h('form', { class: 'cx-form', on: { submit: e => { e.preventDefault(); action('PUT', { returnUrl: url.value.trim() }); } } },
+      h('label', { class: 'field', for: 'verify-iews-url' }, h('span', { class: 'label' }, 'IEWS return page (HTTPS)')), url,
+      h('p', { class: 'cx-help' }, 'The page that the “Back to IEWS” button opens. Use a page without query parameters. Returning alone does not prove verification.'),
+      h('button', { type: 'submit', class: 'btn' }, 'Save return page')),
+    row('IEWS server key', v.token.set ? `Saved · ends …${v.token.last4}` : 'Not created'),
+    state.verifyReveal ? h('div', { class: 'cx-form' },
+      h('p', { class: 'cx-help' }, 'Save this in IEWS server secrets as IEWS_GK_VERIFY_TOKEN. Never put it in browser or mobile code.'),
+      h('code', { class: 'cx-mono', style: 'display:block;overflow-wrap:anywhere', text: state.verifyReveal }),
+      h('button', { class: 'link', type: 'button', on: { click: () => { state.verifyReveal = null; render(state.data); } } }, 'Done, I saved it')) : null,
+    h('div', { class: 'cx-actions' },
+      h('button', { class: 'btn', type: 'button', on: { click: () => action('POST') } }, v.token.set ? 'Replace IEWS key' : 'Create IEWS key'),
+      v.token.set ? h('button', { class: 'link danger', type: 'button', on: { click: () => action('DELETE') } }, 'Revoke IEWS key') : null));
+}
+
 function telegramBotCard(c, data) {
   const b = c.bot || { set: false };
   return h('section', { class: 'panel cx-card cx-main', 'aria-labelledby': 'cx-tg-bot' },
     h('div', { class: 'cx-head' }, logo('telegram'),
       h('div', { class: 'cx-title' }, h('h2', { id: 'cx-tg-bot' }, 'Telegram Bot ', h('span', { class: 'cx-free', text: 'free' })),
         h('p', { class: 'cx-sub', text: 'People prove their phone number with Telegram' }))),
-    h('p', { class: 'cx-help cx-intro' }, 'People type their number, tap Telegram and share their number with your 30+DA bot. No code, no cost.'),
+    h('p', { class: 'cx-help cx-intro' }, 'People enter their number, open Telegram and share their own contact with GKVerify. No code to type. 30+DA and the IEWS server integration use separate verification flows.'),
     h('dl', { class: 'cx-status' },
       row('Bot', ...botLine(b)),
       row('In the app', botAppLine(b)),
       lastBotTry(b)),
-    h('div', { class: 'cx-split' }, botForm(b, data), botTry(b)));
+    h('div', { class: 'cx-split' }, botForm(b, data), botTry(b)), verificationClient(data.verification));
 }
 
 // ---------- WhatsApp, Google, Facebook: several boxes saved together ----------

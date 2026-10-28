@@ -7,7 +7,7 @@ export const SERVICE_GUIDES = Object.freeze({
     docs: [['TikTok products', 'https://developers.tiktok.com/']],
   },
   'telegram-bot': {
-    purpose: 'Verify a 30+DA phone number when its owner shares their contact with our Telegram bot.',
+    purpose: 'Verify a phone number when its owner shares their own contact with GKVerify, for 30+DA or the separately authenticated IEWS integration.',
     maker: 'Telegram',
     more: 'The Bot API also supports messages, media, commands, polls, notifications and Mini Apps. Our bot currently handles phone verification.',
     docs: [['Telegram Bot features', 'https://core.telegram.org/bots/features']],
@@ -131,6 +131,9 @@ export function serviceGuide(key, byId = {}, data = {}) {
     result.evidence = evidence(bot?.lastTry, 'bot test');
     result.usage = bot?.offered ? 'Enabled for 30+DA phone verification. No phone-verification traffic count is shown here.'
       : 'Intended for 30+DA phone verification; the app is not currently offering this bot.';
+    if (data.verification) result.usage += data.verification.ready
+      ? ' IEWS has a server key and return page configured; completed user verification is not implied.'
+      : ' IEWS shared verification still needs setup in this tower.';
   } else if (key === 'telegram-gateway' || key === 'whatsapp') {
     const c = byId[key === 'whatsapp' ? key : 'telegram'];
     result.evidence = !c?.set ? 'No credentials saved.' : !c.readable ? 'Saved credentials cannot be read.'

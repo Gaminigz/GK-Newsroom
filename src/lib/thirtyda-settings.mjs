@@ -345,6 +345,7 @@ export async function saveFields(d, name, values, { by = "superadmin", rawKey } 
  * THIRTYDA_SECRET_KEY is needed, and a leaked database gives no token. Never cached: a revoke stops it at once everywhere.
  */
 export const TOKEN_SETTINGS = {
+  verify_iews: "verifyiews_",
   wan_client: "wanc_", wan_worker: "wanw_",
   // Tower 14 · Agent Desk (src/lib/thirtyda-hub-desk.mjs): one CLIENT token per app (Yai Media Director, the M1 apps,
   // the M2 apps) — the prefix says which app — and the WORKER token of the Gemini Worker on the M1.
